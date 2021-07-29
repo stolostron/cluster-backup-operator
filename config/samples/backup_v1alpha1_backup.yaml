@@ -1,0 +1,9 @@
+apiVersion: backup.cluster.management.io/v1alpha1
+kind: Backup
+metadata:
+  name: backup-acm
+spec:
+  veleroConfigBackupProxy: 
+    metadata: oadp-operator
+  interval: 20
+  maxBackups: 5
