@@ -221,7 +221,15 @@ func (r *BackupReconciler) cleanupBackups(ctx context.Context, backup *v1alpha1.
 
 			// sort backups by create time
 			sort.Slice(sliceBackups, func(i, j int) bool {
-				return sliceBackups[i].Status.StartTimestamp.Time.Unix() < sliceBackups[j].Status.StartTimestamp.Time.Unix()
+				var timeA int64
+				var timeB int64
+				if sliceBackups[i].Status.StartTimestamp != nil {
+					timeA = sliceBackups[i].Status.StartTimestamp.Time.Unix()
+				}
+				if sliceBackups[j].Status.StartTimestamp != nil {
+					timeB = sliceBackups[j].Status.StartTimestamp.Time.Unix()
+				}
+				return timeA < timeB
 			})
 			for i := 0; i < len(sliceBackups)-maxBackups; i++ {
 				// delete backup now
