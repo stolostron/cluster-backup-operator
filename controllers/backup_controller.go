@@ -155,11 +155,6 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 
 			msg := fmt.Sprintf("velero.io.Backup [name=%s, namespace=%s] resource NOT FOUND, creating it now", veleroIdentity.Name, veleroIdentity.Namespace)
 			backupLogger.Info(msg)
-
-			if err = ctrl.SetControllerReference(backup, veleroBackup, r.Scheme); err != nil {
-				backup.Status.LastMessage = err.Error()
-				return nil, err
-			}
 			// set ACM backup configuration
 			setBackupInfo(ctx, veleroBackup, c)
 
@@ -176,7 +171,17 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 			backup.Status.LastMessage = msg
 		}
 	} else {
-		msg := fmt.Sprintf("Current Backup [%s] phase:%s", veleroIdentity.Name, veleroBackup.Status.Phase)
+		veleroStatus := veleroBackup.Status.Phase
+		msg := fmt.Sprintf("Current Backup [%s] phase:%s", veleroIdentity.Name, veleroStatus)
+		msgStatusNil := "If the status is empty check the oadp operator pod is running and that you have created a Velero resource as documented in the oadp install guide."
+		msgStatusFailed := "Check if the BackupStorageLocation resource points to a valid storage."
+
+		if veleroStatus == "" {
+			msg = fmt.Sprintf("%sEmpty. %s", msg, msgStatusNil)
+		}
+		if veleroStatus == "Failed" {
+			msg = fmt.Sprintf("%s. %s", msg, msgStatusFailed)
+		}
 		backupLogger.Info(msg)
 
 		backup.Status.LastMessage = msg
@@ -251,10 +256,6 @@ func (r *BackupReconciler) cleanupBackups(ctx context.Context, backup *v1alpha1.
 						veleroDeleteBackup.Spec.BackupName = backupName
 						veleroDeleteBackup.Name = backupDeleteIdentity.Name
 						veleroDeleteBackup.Namespace = backupDeleteIdentity.Namespace
-
-						if err = ctrl.SetControllerReference(backup, veleroDeleteBackup, r.Scheme); err != nil {
-							backupLogger.Error(err, fmt.Sprintf("SetControllerReference for DeleteBackupRequest %s", backupName))
-						}
 
 						err = c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{})
 						if err != nil {
