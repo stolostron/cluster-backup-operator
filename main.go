@@ -34,6 +34,7 @@ import (
 	backupv1alpha1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1alpha1"
 	"github.com/open-cluster-management-io/cluster-backup-operator/controllers"
 
+	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	//+kubebuilder:scaffold:imports
 )
@@ -44,11 +45,13 @@ var (
 )
 
 func init() {
+
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(backupv1alpha1.AddToScheme(scheme))
 
 	utilruntime.Must(veleroapi.AddToScheme(scheme))
+	utilruntime.Must(clusterv1.AddToScheme(scheme))
 
 	//+kubebuilder:scaffold:scheme
 }
