@@ -22,10 +22,16 @@ import (
 
 // IsRestoreFinsihed returns true when Restore is finished
 func IsRestoreFinsihed(restore *v1alpha1.Restore) bool {
-	if restore.Status.RestoreProxyReference == nil {
+	switch {
+	case restore == nil:
 		return false
+	case restore.Status.Phase == "Completed" ||
+		restore.Status.Phase == "Failed" ||
+		restore.Status.Phase == "PartiallyFailed" ||
+		restore.Status.Phase == "FailedValidation":
+		return true
 	}
-	return true
+	return false
 }
 
 // name used by the velero restore resource, created by the restore acm controller
