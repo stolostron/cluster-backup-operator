@@ -85,9 +85,13 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		msg := fmt.Errorf("unable to create Velero restore for %s: %v", restore.Name, err)
 		restoreLogger.Error(err, err.Error())
 		restore.Status.LastMessage = msg.Error()
-		restore.Status.Phase = "ERROR"
+		restore.Status.Phase = "Failed"
 	}
 	restoreLogger.Info(fmt.Sprintf("<< EXIT reconcile for Restore resource name=%s (namespace: %s)", req.NamespacedName.Name, req.NamespacedName.Namespace))
+
+	if IsRestoreFinsihed(restore) {
+		return ctrl.Result{}, errors.Wrap(r.Client.Status().Update(ctx, restore), "could not update status")
+	}
 
 	return ctrl.Result{RequeueAfter: restoreRequeueInterval}, errors.Wrap(r.Client.Status().Update(ctx, restore), "could not update status")
 }
@@ -125,9 +129,6 @@ func (r *RestoreReconciler) submitAcmRestoreSettings(ctx context.Context, restor
 			msg := fmt.Sprintf("velero.io.Restore [name=%s, namespace=%s] resource NOT FOUND, creating it now", veleroIdentity.Name, veleroIdentity.Namespace)
 			restoreLogger.Info(msg)
 
-			if err = ctrl.SetControllerReference(restore, veleroRestore, r.Scheme); err != nil {
-				return nil, err
-			}
 			// set ACM restore configuration
 			veleroRestore.Spec.BackupName = restore.Spec.BackupName
 
