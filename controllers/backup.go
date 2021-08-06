@@ -108,7 +108,11 @@ func canStartBackup(backup *v1alpha1.Backup) bool {
 		return true
 	}
 
-	completedTime := backup.Status.VeleroBackup.Status.CompletionTimestamp.Time.Unix()
+	var completedTime int64
+	if backup.Status.VeleroBackup.Status.CompletionTimestamp != nil {
+		completedTime = backup.Status.VeleroBackup.Status.CompletionTimestamp.Time.Unix()
+	}
+
 	if completedTime < 0 {
 		// completion time not set, wait for it to be set
 		return false
