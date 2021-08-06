@@ -281,7 +281,7 @@ func setBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client
 	veleroBackup.Spec.IncludeClusterResources = &clusterResource
 	veleroBackup.Spec.ExcludedResources = appendUnique(veleroBackup.Spec.ExcludedResources, "certificatesigningrequests")
 
-	for i := range backupNamespacesOCM {
+	for i := range backupNamespacesACM {
 		// check if the NS exists
 		veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, backupNamespacesACM[i])
 	}
