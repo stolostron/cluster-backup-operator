@@ -174,11 +174,18 @@ kubectl create -n <ns> -f config/samples/restore_v1alpha1_backup.yaml
 
 # Testing
 
-Example of a Backup execution
+Example of a Backup execution with a backup in progress
 
 ```
 $ oc get cbkp -A
 NAMESPACE       NAME         PHASE        BACKUP                         LASTBACKUP                     LASTBACKUPTIME         DURATION   MESSAGE
 oadp-operator   backup-acm   InProgress   backup-acm-2021-08-09-144411   backup-acm-2021-08-06-160528   2021-08-07T15:27:08Z   5m51s      Current Backup [backup-acm-2021-08-09-144411] phase:InProgress
 
+```
+Example of a Backup execution with no backup in progress
+
+```
+$ oc get cbkp -A
+NAMESPACE       NAME         PHASE       BACKUP                         LASTBACKUP                     LASTBACKUPTIME         DURATION   MESSAGE
+oadp-operator   backup-acm   Completed   backup-acm-2021-08-09-144411   backup-acm-2021-08-09-144411   2021-08-09T18:48:52Z   4m40s      Current Backup [backup-acm-2021-08-09-144411] phase:Completed
 ```
