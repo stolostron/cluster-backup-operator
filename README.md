@@ -16,7 +16,7 @@ Cluster Back up and Restore Operator.
   - [Installation](#installation)
     - [Outside the Cluster](#outside-the-cluster)
     - [Inside the Cluster](#inside-the-cluster)
-    - [Deploy Operator using OLM] (#deploy-operator-using-olm)
+    - [Deploy Operator using OLM](#deploy-operator-using-olm)
 - [Usage](#usage)
 - [Testing](#testing)
 
@@ -41,8 +41,8 @@ Included fonts are licensed under the *SIL Open Font License 1.1*, and copies of
 The Cluster Back up and Restore Operator runs on the hub and depends on the OADP Operator to backup and restore ACM hub resources. You need to install the OADP Operator first as described here https://github.com/openshift/oadp-operator.
 
 ## Design
-The operator defines a Backup and Restore CRD in the cluster.open-cluster-management.io group, used to setup a hub backup and restore configuration.
-Based on the Backup spec, the operator creates corresponding Velero resources and sets the options needed to backup remote clusters and any other hub resources that needs to be restored.
+The operator defines the `Backup.cluster.open-cluster-management.io` and `Restore.cluster.open-cluster-management.io` resources, used to setup a hub backup and restore configuration.
+The operator creates corresponding Velero resources and sets the options needed to backup remote clusters and any other hub resources that needs to be restored.
 
 
 # Setting up Your Dev Environment
@@ -118,8 +118,12 @@ If you would like to deploy Operator using OLM, you'll need to build and push th
 
 ## Usage
 
-Before using Cluster Back up and Restore Operator backup or restore support you have to install the OADP Operator which will install the Velero required resources. Make sure you follow the OADP Operator installation instructions and create a Velero resource and a valid connection to a backup location where backups will be stored.
+Before using Cluster Back up and Restore Operator backup or restore support you have to install the OADP Operator which will install the Velero required resources. 
+
+Make sure you follow the OADP Operator installation instructions and create a Velero resource and a valid connection to a backup location where backups will be stored.
+
 If you are trying to use the Cluster Back up and Restore Operator to backup data, you have to create a `backup` (`cluster.open-cluster-management.io` `v1beta1`) resource that will be consumed by the operator and create all the necessary resources for you.
+
 If you are trying to use the Cluster Back up and Restore Operator to restore a backup, then you have to create a `restore` (`cluster.open-cluster-management.io` `v1beta1`) resource which will run the restore and execute any other post restore operations, such as registering restored remote clusters with the new hub.
 
 Here you can find an example of a `backup.cluster.open-cluster-management.io` resource definition:
@@ -136,7 +140,10 @@ spec:
   maxBackups: 5
 ```
 The `veleroConfigBackupProxy` `metadata` defines the namespace where the OADP Operator (so Velero) is installed. 
-The `interval` value in the `spec`, defines the time interval in minutes for running the another backup. The interval takes into consideration the time taken to execute the provious backup; for example, if the previous backup took 60min to execute, the next backup will be called after interval + 60 minutes. Note: this property is work in progress, may be replaced with a Cron expression.
+
+The `interval` value in the `spec`, defines the time interval in minutes for running the another backup. The interval takes into consideration the time taken to execute the provious backup; for example, if the previous backup took 60min to execute, the next backup will be called after interval + 60 minutes. 
+<i>Note: this property is work in progress, may be replaced with a Cron expression.</i>
+
 The `maxBackup` represents the numbed of backups after which the old backups are being removed.
 
 
@@ -154,6 +161,7 @@ spec:
 ```
 
 The `veleroConfigBackupProxy` `metadata` defines the namespace where the OADP Operator (so Velero) is installed. 
+
 The `backupName` represents the name of the `velero.io/v1` `Backup` resource to be restored on the hub where the `cluster.open-cluster-management.io/v1beta1` `Restore` resource was created.
 You can find the available Backups by going to the OADP Operator, under the Backup resource section.
 
