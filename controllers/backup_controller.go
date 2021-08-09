@@ -128,7 +128,7 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 	backupLogger.Info(">> ENTER submitAcmBackupSettings for new backup")
 
 	veleroBackup := &veleroapi.Backup{}
-	veleroBackup.Name = getActiveBackupName(backup, c)
+	veleroBackup.Name = r.getActiveBackupName(backup, c, ctx, veleroBackup)
 	veleroBackup.Namespace = backup.Spec.VeleroConfig.Namespace
 
 	veleroIdentity := types.NamespacedName{
@@ -169,8 +169,8 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 	} else {
 		veleroStatus := veleroBackup.Status.Phase
 		msg := fmt.Sprintf("Current Backup [%s] phase:%s", veleroIdentity.Name, veleroStatus)
-		msgStatusNil := "If the status is empty check the oadp operator pod is running and that you have created a Velero resource as documented in the oadp install guide."
-		msgStatusFailed := "Check if the BackupStorageLocation resource points to a valid storage."
+		msgStatusNil := "If the status is empty check the velero pod is running and that you have created a Velero resource as documented in the install guide."
+		msgStatusFailed := "Check if the velero.io.BackupStorageLocation resource points to a valid storage."
 
 		if veleroStatus == "" {
 			msg = fmt.Sprintf("%sEmpty. %s", msg, msgStatusNil)
@@ -273,7 +273,7 @@ func (r *BackupReconciler) cleanupBackups(ctx context.Context, backup *v1alpha1.
 var backupNamespacesACM = [...]string{"open-cluster-management-agent", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager"}
 var backupNamespacesOCM = [...]string{"open-cluster-management", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager"}
 
-var excludeNS = [...]string{"kube*", "openshift-*", "velero*", "oadp*", "local-cluster", "open-cluster-management", "open-cluster-management-agent-addon", "open-cluster-management-hub"}
+var excludeNS = [...]string{"kube*", "openshift-*", "open-cluster-management*", "oadp-operator", "velero", "local-cluster"}
 
 // set all acm backup info
 func setBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client.Client) {

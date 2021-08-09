@@ -17,33 +17,15 @@ limitations under the License.
 package controllers
 
 import (
+	"context"
 	"fmt"
 	"time"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	v1alpha1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1alpha1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-// returns then name of the last backup resource, or, if this is the first time to run the backup, a newly generated name
-func getActiveBackupName(backup *v1alpha1.Backup, c client.Client) string {
-
-	if backup.Status.CurrentBackup == "" {
-
-		// no active backup, return newyly generated backup name
-		return getVeleroBackupName(backup.Name, backup.Spec.VeleroConfig.Namespace)
-	}
-
-	if !isBackupFinished(backup.Status.VeleroBackup) {
-		//if an active backup, return the CurrentBackup value
-		return backup.Status.CurrentBackup
-	}
-
-	// no active backup, return newyly generated backup name
-	return getVeleroBackupName(backup.Name, backup.Spec.VeleroConfig.Namespace)
-
-}
 
 func isBackupFinished(backup *veleroapi.Backup) bool {
 	switch {
@@ -60,6 +42,40 @@ func isBackupFinished(backup *veleroapi.Backup) bool {
 // name used by the velero backup resource, created by the backup acm controller
 func getVeleroBackupName(backupName, backupNamesapce string) string {
 	return backupName + "-" + getFormattedTimeCRD(time.Now())
+}
+
+// returns then name of the last backup resource, or,
+// if this is the first time to run the backup or current backup is not found, a newly generated name
+func (r *BackupReconciler) getActiveBackupName(backup *v1alpha1.Backup, c client.Client, ctx context.Context, veleroBackup *veleroapi.Backup) string {
+
+	if backup.Status.CurrentBackup == "" {
+
+		// no active backup, return newyly generated backup name
+		return getVeleroBackupName(backup.Name, backup.Spec.VeleroConfig.Namespace)
+	} else {
+		// check if current backup resource exists
+
+		veleroIdentity := types.NamespacedName{
+			Namespace: backup.Spec.VeleroConfig.Namespace,
+			Name:      backup.Status.CurrentBackup,
+		}
+		// get the velero CR using the veleroIdentity
+		err := r.Get(ctx, veleroIdentity, veleroBackup)
+		if err != nil {
+			// unable to get backup resource, create a new one
+			backup.Status.CurrentBackup = ""
+			return getVeleroBackupName(backup.Name, backup.Spec.VeleroConfig.Namespace)
+		}
+	}
+
+	if !isBackupFinished(backup.Status.VeleroBackup) {
+		//if an active backup, return the CurrentBackup value
+		return backup.Status.CurrentBackup
+	}
+
+	// no active backup, return newyly generated backup name
+	return getVeleroBackupName(backup.Name, backup.Spec.VeleroConfig.Namespace)
+
 }
 
 // Find takes a slice and looks for an element in it. If found it will
