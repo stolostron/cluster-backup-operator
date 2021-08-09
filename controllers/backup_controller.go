@@ -122,10 +122,6 @@ func (r *BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-//TODO check whether this list change for version (backup) and how we can detect whether ACM or OCM
-var backupNamespacesACM = [...]string{"open-cluster-management-agent", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager"}
-var backupNamespacesOCM = [...]string{"open-cluster-management", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager"}
-
 func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *v1alpha1.Backup, c client.Client) (*veleroapi.Backup, error) {
 
 	backupLogger := log.FromContext(ctx)
@@ -273,13 +269,28 @@ func (r *BackupReconciler) cleanupBackups(ctx context.Context, backup *v1alpha1.
 	}
 }
 
+//TODO check whether this list change for version (backup) and how we can detect whether ACM or OCM
+var backupNamespacesACM = [...]string{"open-cluster-management-agent", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager"}
+var backupNamespacesOCM = [...]string{"open-cluster-management", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager"}
+
+var excludeNS = [...]string{"kube*", "openshift-*", "velero*", "oadp*", "local-cluster", "open-cluster-management", "open-cluster-management-agent-addon", "open-cluster-management-hub"}
+
 // set all acm backup info
 func setBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client.Client) {
 
 	backupLogger := log.FromContext(ctx)
 	var clusterResource bool = false
 	veleroBackup.Spec.IncludeClusterResources = &clusterResource
-	veleroBackup.Spec.ExcludedResources = appendUnique(veleroBackup.Spec.ExcludedResources, "certificatesigningrequests")
+
+	/*
+		for i := range excludeNS {
+			// check if the NS exists
+			veleroBackup.Spec.ExcludedNamespaces = appendUnique(veleroBackup.Spec.ExcludedNamespaces, excludeNS[i])
+		}
+
+		veleroBackup.Spec.ExcludedResources = appendUnique(veleroBackup.Spec.ExcludedResources, "certificatesigningrequests")
+		backupLogger.Info("done")
+	*/
 
 	for i := range backupNamespacesACM {
 		// check if the NS exists
