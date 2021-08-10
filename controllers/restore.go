@@ -17,11 +17,11 @@ limitations under the License.
 package controllers
 
 import (
-	v1alpha1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1alpha1"
+	v1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
 )
 
 // IsRestoreFinsihed returns true when Restore is finished
-func IsRestoreFinsihed(restore *v1alpha1.Restore) bool {
+func IsRestoreFinsihed(restore *v1beta1.Restore) bool {
 	switch {
 	case restore == nil:
 		return false
@@ -35,6 +35,6 @@ func IsRestoreFinsihed(restore *v1alpha1.Restore) bool {
 }
 
 // name used by the velero restore resource, created by the restore acm controller
-func getVeleroRestoreName(restore *v1alpha1.Restore) string {
+func getVeleroRestoreName(restore *v1beta1.Restore) string {
 	return restore.Name + "-" + restore.Spec.BackupName
 }

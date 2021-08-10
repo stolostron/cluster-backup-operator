@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	v1alpha1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1alpha1"
+	v1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
 )
 
 var (
@@ -43,9 +43,9 @@ type RestoreReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=backup.cluster.management.io,resources=restores,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=backup.cluster.management.io,resources=restores/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=backup.cluster.management.io,resources=restores/finalizers,verbs=update
+//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=restores,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=restores/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=restores/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -58,7 +58,7 @@ type RestoreReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	restoreLogger := log.FromContext(ctx)
-	restore := &v1alpha1.Restore{}
+	restore := &v1beta1.Restore{}
 
 	restoreLogger.Info(fmt.Sprintf(">> Enter reconcile for Restore CR name=%s (namespace: %s)", req.NamespacedName.Name, req.NamespacedName.Namespace))
 
@@ -99,11 +99,11 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 // SetupWithManager sets up the controller with the Manager.
 func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.Restore{}).
+		For(&v1beta1.Restore{}).
 		Complete(r)
 }
 
-func (r *RestoreReconciler) submitAcmRestoreSettings(ctx context.Context, restore *v1alpha1.Restore, c client.Client) (*veleroapi.Restore, error) {
+func (r *RestoreReconciler) submitAcmRestoreSettings(ctx context.Context, restore *v1beta1.Restore, c client.Client) (*veleroapi.Restore, error) {
 
 	restoreLogger := log.FromContext(ctx)
 	restoreLogger.Info(">> ENTER submitAcmRestoreSettings for new restore")
@@ -144,7 +144,7 @@ func (r *RestoreReconciler) submitAcmRestoreSettings(ctx context.Context, restor
 		restoreLogger.Info(msg)
 
 		restore.Status.LastMessage = msg
-		restore.Status.Phase = v1alpha1.StatusPhase(veleroRestore.Status.Phase)
+		restore.Status.Phase = v1beta1.StatusPhase(veleroRestore.Status.Phase)
 	}
 
 	return veleroRestore, err

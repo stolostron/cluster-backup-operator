@@ -22,7 +22,7 @@ import (
 	"sort"
 	"time"
 
-	v1alpha1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1alpha1"
+	v1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	"github.com/pkg/errors"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
@@ -37,7 +37,7 @@ import (
 
 var (
 	backupOwnerKey  = ".metadata.controller"
-	apiGV           = "v1alpha1" //v1alpha1.GroupVersion.String()
+	apiGV           = "v1beta1" //v1beta1.GroupVersion.String()
 	requeueInterval = time.Minute * 1
 )
 
@@ -47,9 +47,9 @@ type BackupReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=backup.cluster.management.io,resources=backups,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=backup.cluster.management.io,resources=backups/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=backup.cluster.management.io,resources=backups/finalizers,verbs=update
+//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backups,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backups/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backups/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -62,7 +62,7 @@ type BackupReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	backupLogger := log.FromContext(ctx)
-	backup := &v1alpha1.Backup{}
+	backup := &v1beta1.Backup{}
 
 	backupLogger.Info(fmt.Sprintf(">> Enter reconcile for Backup CRD name=%s (namespace: %s) with interval=%d", req.NamespacedName.Name, req.NamespacedName.Namespace, backup.Spec.Interval))
 
@@ -114,11 +114,11 @@ func (r *BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.Backup{}).
+		For(&v1beta1.Backup{}).
 		Complete(r)
 }
 
-func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *v1alpha1.Backup, c client.Client) (*veleroapi.Backup, error) {
+func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *v1beta1.Backup, c client.Client) (*veleroapi.Backup, error) {
 
 	backupLogger := log.FromContext(ctx)
 	backupLogger.Info(">> ENTER submitAcmBackupSettings for new backup")
@@ -177,7 +177,7 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 		backupLogger.Info(msg)
 
 		backup.Status.LastMessage = msg
-		backup.Status.Phase = v1alpha1.StatusPhase(veleroBackup.Status.Phase)
+		backup.Status.Phase = v1beta1.StatusPhase(veleroBackup.Status.Phase)
 
 		if veleroBackup.Status.CompletionTimestamp != nil {
 			// store current backup names as the last backup
@@ -196,7 +196,7 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 }
 
 // clean up old backups if they exceed the maxCount number
-func (r *BackupReconciler) cleanupBackups(ctx context.Context, backup *v1alpha1.Backup, c client.Client) {
+func (r *BackupReconciler) cleanupBackups(ctx context.Context, backup *v1beta1.Backup, c client.Client) {
 	maxBackups := backup.Spec.MaxBackups
 	backupLogger := log.FromContext(ctx)
 
@@ -269,24 +269,12 @@ func (r *BackupReconciler) cleanupBackups(ctx context.Context, backup *v1alpha1.
 var backupNamespacesACM = [...]string{"open-cluster-management-agent", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager"}
 var backupNamespacesOCM = [...]string{"open-cluster-management", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager"}
 
-var excludeNS = [...]string{"kube*", "openshift-*", "open-cluster-management*", "oadp-operator", "velero", "local-cluster"}
-
 // set all acm backup info
 func setBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client.Client) {
 
 	backupLogger := log.FromContext(ctx)
 	var clusterResource bool = false
 	veleroBackup.Spec.IncludeClusterResources = &clusterResource
-
-	/*
-		for i := range excludeNS {
-			// check if the NS exists
-			veleroBackup.Spec.ExcludedNamespaces = appendUnique(veleroBackup.Spec.ExcludedNamespaces, excludeNS[i])
-		}
-
-		veleroBackup.Spec.ExcludedResources = appendUnique(veleroBackup.Spec.ExcludedResources, "certificatesigningrequests")
-		backupLogger.Info("done")
-	*/
 
 	for i := range backupNamespacesACM {
 		// check if the NS exists
