@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	v1alpha1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1alpha1"
+	v1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -46,7 +46,7 @@ func getVeleroBackupName(backupName, backupNamesapce string) string {
 
 // returns then name of the last backup resource, or,
 // if this is the first time to run the backup or current backup is not found, a newly generated name
-func (r *BackupReconciler) getActiveBackupName(backup *v1alpha1.Backup, c client.Client, ctx context.Context, veleroBackup *veleroapi.Backup) string {
+func (r *BackupReconciler) getActiveBackupName(backup *v1beta1.Backup, c client.Client, ctx context.Context, veleroBackup *veleroapi.Backup) string {
 
 	if backup.Status.CurrentBackup == "" {
 
@@ -117,7 +117,7 @@ func getFormattedDuration(duration time.Duration) string {
 
 // returns true if the interval required to wait for a backup has passed since the last backup execution
 // or if there is no previous backup execution
-func canStartBackup(backup *v1alpha1.Backup) bool {
+func canStartBackup(backup *v1beta1.Backup) bool {
 
 	if backup.Status.VeleroBackup == nil {
 		// no previous completed backup, can start one now

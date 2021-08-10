@@ -122,11 +122,11 @@ Before using Cluster Back up and Restore Operator backup or restore support you 
 
 Make sure you follow the OADP Operator installation instructions and create a Velero resource and a valid connection to a backup location where backups will be stored.
 
-If you are trying to use the Cluster Back up and Restore Operator to backup data, you have to create a `backup` (`cluster.open-cluster-management.io` `v1beta1`) resource that will be consumed by the operator and create all the necessary resources for you.
+If you are trying to use the Cluster Back up and Restore Operator to backup data, you have to create a `Backup.cluster.open-cluster-management.io` resource that will be consumed by the operator and create all the necessary resources for you.
 
-If you are trying to use the Cluster Back up and Restore Operator to restore a backup, then you have to create a `restore` (`cluster.open-cluster-management.io` `v1beta1`) resource which will run the restore and execute any other post restore operations, such as registering restored remote clusters with the new hub.
+If you are trying to use the Cluster Back up and Restore Operator to restore a backup, then you have to create a `Restore.cluster.open-cluster-management.io` resource which will run the restore and execute any other post restore operations, such as registering restored remote clusters with the new hub.
 
-Here you can find an example of a `backup.cluster.open-cluster-management.io` resource definition:
+Here you can find an example of a `Backup.cluster.open-cluster-management.io` resource definition:
 
 ```yaml
 apiVersion: cluster.open-cluster-management.io/v1beta1
@@ -147,7 +147,7 @@ The `interval` value in the `spec`, defines the time interval in minutes for run
 The `maxBackup` represents the numbed of backups after which the old backups are being removed.
 
 
-This is an example of a `restore.cluster.open-cluster-management.io` resource definition
+This is an example of a `Restore.cluster.open-cluster-management.io` resource definition
 
 ```yaml
 apiVersion: cluster.open-cluster-management.io/v1beta1
@@ -162,14 +162,14 @@ spec:
 
 The `veleroConfigBackupProxy` `metadata` defines the namespace where the OADP Operator (so Velero) is installed. 
 
-The `backupName` represents the name of the `velero.io/v1` `Backup` resource to be restored on the hub where the `cluster.open-cluster-management.io/v1beta1` `Restore` resource was created.
+The `backupName` represents the name of the `Backup.velero.io` resource to be restored on the hub where the  `Restore.cluster.open-cluster-management.io` resource was created.
 You can find the available Backups by going to the OADP Operator, under the Backup resource section.
 
-In order to create an instance of `cluster.open-cluster-management.io/v1beta1` `Backup` or `Restore` in the specified namespace you can start from one of the [sample configurations](config/samples).
+In order to create an instance of `Backup.cluster.open-cluster-management.io` or `Restore.cluster.open-cluster-management.io` in the specified namespace you can start from one of the [sample configurations](config/samples).
 
 ```shell
-kubectl create -n <ns> -f config/samples/backup_v1alpha1_backup.yaml
-kubectl create -n <ns> -f config/samples/restore_v1alpha1_backup.yaml
+kubectl create -n <ns> -f config/samples/backup_v1beta1_backup.yaml
+kubectl create -n <ns> -f config/samples/restore_v1beta1_backup.yaml
 ```
 
 # Testing

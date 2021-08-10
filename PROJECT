@@ -14,6 +14,6 @@ resources:
   domain: cluster.management.io
   group: backup
   kind: Backup
-  path: github.com/open-cluster-management-io/cluster-backup-operator/api/v1alpha1
-  version: v1alpha1
+  path: github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1
+  version: v1beta1
 version: "3"
