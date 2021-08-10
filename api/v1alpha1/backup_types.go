@@ -71,7 +71,7 @@ type BackupStatus struct {
 	LastBackup string `json:"lastBackup"`
 	// The completion time for the last backup
 	// +kubebuilder:validation:Optional
-	CompletionTimestamp metav1.Time `json:"completionTimestamp"`
+	CompletionTimestamp *metav1.Time `json:"completionTimestamp,omitempty"`
 	// The duration in minutes for the last backup operation
 	// +kubebuilder:validation:Optional
 	LastBackupDuration string `json:"backupDuration"`
