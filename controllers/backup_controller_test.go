@@ -8,7 +8,7 @@ import (
 	. "github.com/onsi/gomega"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	v1alpha1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1alpha1"
+	v1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -96,17 +96,17 @@ var _ = Describe("Backup controller", func() {
 				return false
 			}, timeout, interval).Should(BeTrue())
 
-			rhacmBackup := v1alpha1.Backup{
+			rhacmBackup := v1beta1.Backup{
 				TypeMeta: metav1.TypeMeta{
-					APIVersion: "backup.cluster.management.io/v1alpha1",
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
 					Kind:       "Backup",
 				},
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      backupName,
 					Namespace: veleroNamespaceName,
 				},
-				Spec: v1alpha1.BackupSpec{
-					VeleroConfig: &v1alpha1.VeleroConfigBackupProxy{
+				Spec: v1beta1.BackupSpec{
+					VeleroConfig: &v1beta1.VeleroConfigBackupProxy{
 						Namespace: veleroNamespaceName,
 					},
 					Interval:   60,
@@ -115,7 +115,7 @@ var _ = Describe("Backup controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, &rhacmBackup)).Should(Succeed())
 			backupLookupKey := types.NamespacedName{Name: backupName, Namespace: veleroNamespaceName}
-			createdBackup := v1alpha1.Backup{}
+			createdBackup := v1beta1.Backup{}
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, backupLookupKey, &createdBackup)
 				return err == nil

@@ -2,8 +2,8 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
-- bases/backup.cluster.management.io_backups.yaml
-- bases/backup.cluster.management.io_restores.yaml
+- bases/cluster.open-cluster-management.io_backups.yaml
+- bases/cluster.open-cluster-management.io_restores.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:

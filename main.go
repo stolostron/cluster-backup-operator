@@ -31,7 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	backupv1alpha1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1alpha1"
+	backupv1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
 	"github.com/open-cluster-management-io/cluster-backup-operator/controllers"
 
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
@@ -48,7 +48,7 @@ func init() {
 
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(backupv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(backupv1beta1.AddToScheme(scheme))
 
 	utilruntime.Must(veleroapi.AddToScheme(scheme))
 	utilruntime.Must(clusterv1.AddToScheme(scheme))
