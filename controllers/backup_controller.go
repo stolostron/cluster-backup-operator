@@ -36,9 +36,11 @@ import (
 )
 
 var (
-	backupOwnerKey  = ".metadata.controller"
-	apiGV           = "v1beta1" //v1beta1.GroupVersion.String()
-	requeueInterval = time.Minute * 1
+	backupOwnerKey      = ".metadata.controller"
+	apiGV               = "v1beta1" //v1beta1.GroupVersion.String()
+	requeueInterval     = time.Minute * 1
+	backupNamespacesACM = [...]string{"open-cluster-management-agent", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager"}
+	backupNamespacesObs = [...]string{"open-cluster-management-observability"}
 )
 
 // BackupReconciler reconciles a Backup object
@@ -165,6 +167,10 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 	} else {
 		veleroStatus := veleroBackup.Status.Phase
 		msg := fmt.Sprintf("Current Backup [%s] phase:%s", veleroIdentity.Name, veleroStatus)
+
+		if veleroBackup.Status.Progress != nil {
+			msg = fmt.Sprintf("%s ItemsBackedUp[%d], TotalItems[%d]", msg, veleroBackup.Status.Progress.ItemsBackedUp, veleroBackup.Status.Progress.TotalItems)
+		}
 		msgStatusNil := "If the status is empty check the velero pod is running and that you have created a Velero resource as documented in the install guide."
 		msgStatusFailed := "Check if the velero.io.BackupStorageLocation resource points to a valid storage."
 
@@ -231,11 +237,12 @@ func (r *BackupReconciler) cleanupBackups(ctx context.Context, backup *v1beta1.B
 			for i := 0; i < len(sliceBackups)-maxBackups; i++ {
 				// delete backup now
 				backupName := sliceBackups[i].ObjectMeta.Name
+				backupNamespace := sliceBackups[i].ObjectMeta.Namespace
 				backupLogger.Info(fmt.Sprintf("delete backup %s", backupName))
 
 				backupDeleteIdentity := types.NamespacedName{
 					Name:      backupName,
-					Namespace: backup.Namespace,
+					Namespace: backupNamespace,
 				}
 
 				// get the velero CR using the backupDeleteIdentity
@@ -265,10 +272,6 @@ func (r *BackupReconciler) cleanupBackups(ctx context.Context, backup *v1beta1.B
 	}
 }
 
-//TODO check whether this list change for version (backup) and how we can detect whether ACM or OCM
-var backupNamespacesACM = [...]string{"open-cluster-management-agent", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager"}
-var backupNamespacesOCM = [...]string{"open-cluster-management", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager"}
-
 // set all acm backup info
 func setBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client.Client) {
 
@@ -276,11 +279,12 @@ func setBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client
 	var clusterResource bool = false
 	veleroBackup.Spec.IncludeClusterResources = &clusterResource
 
-	for i := range backupNamespacesACM {
-		// check if the NS exists
+	for i := range backupNamespacesACM { // acm ns
 		veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, backupNamespacesACM[i])
 	}
-
+	for i := range backupNamespacesObs { // observability ns
+		veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, backupNamespacesObs[i])
+	}
 	managedClusterList := clusterv1.ManagedClusterList{}
 	if err := c.List(ctx, &managedClusterList, &client.ListOptions{}); err != nil {
 		// if NotFound error
