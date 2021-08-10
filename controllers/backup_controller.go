@@ -67,8 +67,6 @@ func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	backupLogger.Info(fmt.Sprintf(">> Enter reconcile for Backup CRD name=%s (namespace: %s) with interval=%d", req.NamespacedName.Name, req.NamespacedName.Namespace, backup.Spec.Interval))
 
 	if err := r.Get(ctx, req.NamespacedName, backup); err != nil {
-
-		// check if this is a NotFound error
 		if !k8serr.IsNotFound(err) {
 			backupLogger.Error(err, "unable to fetch Backup CR")
 		}
@@ -100,14 +98,12 @@ func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &veleroapi.Backup{}, backupOwnerKey, func(rawObj client.Object) []string {
 		backup := rawObj.(*veleroapi.Backup)
 		owner := metav1.GetControllerOf(backup)
 		if owner == nil {
 			return nil
 		}
-		// It must be an open-cluster-management.io Backup
 		if owner.APIVersion != apiGV || owner.Kind != "Backup" {
 			return nil
 		}
@@ -189,7 +185,7 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 
 			completedTime := veleroBackup.Status.CompletionTimestamp
 			startTime := veleroBackup.Status.StartTimestamp
-			backup.Status.CompletionTimestamp = *completedTime
+			backup.Status.CompletionTimestamp = completedTime
 
 			duration := completedTime.Time.Sub(startTime.Time)
 			backup.Status.LastBackupDuration = getFormattedDuration(duration)
