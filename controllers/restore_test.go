@@ -14,7 +14,7 @@ var _ = Describe("Restore", func() {
 	)
 
 	Context("For utility functions of Restore", func() {
-		It("IsRestoreFinsihed should return correct value based on the status", func() {
+		It("isRestoreFinsihed should return correct value based on the status", func() {
 			rhacmRestore := v1beta1.Restore{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "cluster.open-cluster-management.io/v1beta1",
