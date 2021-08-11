@@ -24,6 +24,7 @@ import (
 
 	v1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
+	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
 	"github.com/pkg/errors"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -39,6 +40,8 @@ var (
 	backupOwnerKey      = ".metadata.controller"
 	apiGV               = "v1beta1" //v1beta1.GroupVersion.String()
 	requeueInterval     = time.Minute * 1
+	acmNS               = "open-cluster-management"
+	acmChannel          = "charts-v1"
 	backupNamespacesACM = [...]string{"open-cluster-management-agent", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager"}
 	backupNamespacesObs = [...]string{"open-cluster-management-observability"}
 )
@@ -304,6 +307,27 @@ func setBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client
 	for i := range backupNamespacesObs { // observability ns
 		veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, backupNamespacesObs[i])
 	}
+
+	// get app channel namespaces
+	channels := chnv1.ChannelList{}
+	if err := c.List(ctx, &channels, &client.ListOptions{}); err != nil {
+		// if NotFound error
+		if !k8serr.IsNotFound(err) {
+			backupLogger.Info("channel resources NOT FOUND")
+		} else {
+			backupLogger.Error(err, "failed to get chnv1.ChannelList")
+		}
+	} else {
+		for i := range channels.Items {
+
+			// ignore acm channels
+			if channels.Items[i].Name == acmChannel || channels.Items[i].Namespace == acmNS {
+				continue
+			}
+			veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, channels.Items[i].Namespace)
+		}
+	}
+	// get managed clusters namespaces
 	managedClusterList := clusterv1.ManagedClusterList{}
 	if err := c.List(ctx, &managedClusterList, &client.ListOptions{}); err != nil {
 		// if NotFound error
