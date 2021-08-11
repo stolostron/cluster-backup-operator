@@ -1,0 +1,17 @@
+-include /opt/build-harness/Makefile.prow
+
+.PHONY: push-prow
+push-prow: build-prow
+	docker push ${REPO_URL}/cluster-backup-operator:${VERSION}
+	docker tag ${REPO_URL}/cluster-backup-operator:${VERSION} ${REPO_URL}/cluster-backup-operator:latest
+	docker push ${REPO_URL}/cluster-backup-operator:latest
+
+.PHONY: build-prow
+build-prow: 
+	docker build -f Dockerfile . -t ${REPO_URL}/cluster-backup-operator:${VERSION}
+
+#.PHONY: unit-tests
+#unit-tests:
+#	GOFLAGS="" go test -timeout 120s -v -short ./controllers/clusterclaims
+#	GOFLAGS="" go test -timeout 120s -v -short ./controllers/clusterpools
+	
