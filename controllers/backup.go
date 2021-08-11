@@ -142,3 +142,22 @@ func canStartBackup(backup *v1beta1.Backup) bool {
 	return currentTime-completedTime >= int64(interval*60)
 
 }
+
+// filter backup list based on a boolean function
+func filterBackups(vs []veleroapi.Backup, f func(veleroapi.Backup) bool) []veleroapi.Backup {
+	filtered := make([]veleroapi.Backup, 0)
+	for _, v := range vs {
+		if f(v) {
+			filtered = append(filtered, v)
+		}
+	}
+	return filtered
+}
+
+// min returns the smallest of x or y.
+func min(x, y int) int {
+	if x < y {
+		return x
+	}
+	return y
+}

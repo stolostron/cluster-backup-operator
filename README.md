@@ -118,11 +118,11 @@ If you would like to deploy Operator using OLM, you'll need to build and push th
 
 ## Usage
 
-Before using Cluster Back up and Restore Operator backup or restore support you have to install the OADP Operator which will install the Velero required resources. 
+Before using Cluster Back up and Restore Operator backup or restore support you have to install the OADP Operator which will install Velero. 
 
 Make sure you follow the OADP Operator installation instructions and create a Velero resource and a valid connection to a backup location where backups will be stored.
 
-If you are trying to use the Cluster Back up and Restore Operator to backup data, you have to create a `Backup.cluster.open-cluster-management.io` resource that will be consumed by the operator and create all the necessary resources for you.
+If you are trying to use the Cluster Back up and Restore Operator to backup data, you have to create a `Backup.cluster.open-cluster-management.io` resource which will be consumed by the operator and create all the necessary intermediary backup resources.
 
 If you are trying to use the Cluster Back up and Restore Operator to restore a backup, then you have to create a `Restore.cluster.open-cluster-management.io` resource which will run the restore and execute any other post restore operations, such as registering restored remote clusters with the new hub.
 
@@ -141,8 +141,8 @@ spec:
 ```
 The `veleroConfigBackupProxy` `metadata` defines the namespace where the OADP Operator (so Velero) is installed. 
 
-The `interval` value in the `spec`, defines the time interval in minutes for running the another backup. The interval takes into consideration the time taken to execute the provious backup; for example, if the previous backup took 60min to execute, the next backup will be called after interval + 60 minutes. 
-<i>Note: this property is work in progress, may be replaced with a Cron expression.</i>
+The `interval` value in the `spec` defines the time interval in minutes for running another backup. The interval takes into consideration the time taken to execute the previous backup; for example, if the previous backup took 60 minutes to execute, the next backup will be called after `interval` + 60 minutes. 
+<i>Note: this property is marked as work in progress, may be replaced with a Cron expression.</i>
 
 The `maxBackup` represents the numbed of backups after which the old backups are being removed.
 

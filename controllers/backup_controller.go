@@ -149,16 +149,16 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 
 			msg := fmt.Sprintf("velero.io.Backup [name=%s, namespace=%s] resource NOT FOUND, creating it now", veleroIdentity.Name, veleroIdentity.Namespace)
 			backupLogger.Info(msg)
+
+			// clean up old backups if they exceed the maxCount number
+			r.cleanupBackups(ctx, backup, c)
+
 			// set ACM backup configuration
 			setBackupInfo(ctx, veleroBackup, c)
 
 			backup.Status.LastMessage = msg
 			backup.Status.CurrentBackup = veleroIdentity.Name
 			err = c.Create(ctx, veleroBackup, &client.CreateOptions{})
-
-			// clean up old backups if they exceed the maxCount number
-			r.cleanupBackups(ctx, backup, c)
-
 		} else {
 			msg := fmt.Sprintf("velero.io.Backup [name=%s, namespace=%s] returned ERROR, error=%s ", veleroIdentity.Name, veleroIdentity.Namespace, err.Error())
 			backupLogger.Error(err, msg)
@@ -234,41 +234,60 @@ func (r *BackupReconciler) cleanupBackups(ctx context.Context, backup *v1beta1.B
 				}
 				return timeA < timeB
 			})
+
+			backupsInError := filterBackups(sliceBackups, func(bkp veleroapi.Backup) bool {
+				return bkp.Status.Errors > 0
+			})
+
+			// delete backup in error first
+			for i := 0; i < min(len(backupsInError), maxBackups); i++ {
+				r.deleteBackup(&backupsInError[i], ctx, c)
+			}
+
 			for i := 0; i < len(sliceBackups)-maxBackups; i++ {
-				// delete backup now
-				backupName := sliceBackups[i].ObjectMeta.Name
-				backupNamespace := sliceBackups[i].ObjectMeta.Namespace
-				backupLogger.Info(fmt.Sprintf("delete backup %s", backupName))
-
-				backupDeleteIdentity := types.NamespacedName{
-					Name:      backupName,
-					Namespace: backupNamespace,
+				// delete extra backups now
+				if sliceBackups[i].Status.Errors > 0 {
+					continue // ignore error status backups, they were processed in the step above
 				}
-
-				// get the velero CR using the backupDeleteIdentity
-				veleroDeleteBackup := &veleroapi.DeleteBackupRequest{}
-				err = r.Get(ctx, backupDeleteIdentity, veleroDeleteBackup)
-				if err != nil {
-					// check if this is a  resource NotFound error, in which case create the resource
-					if k8serr.IsNotFound(err) {
-
-						veleroDeleteBackup.Spec.BackupName = backupName
-						veleroDeleteBackup.Name = backupDeleteIdentity.Name
-						veleroDeleteBackup.Namespace = backupDeleteIdentity.Namespace
-
-						err = c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{})
-						if err != nil {
-							backupLogger.Error(err, fmt.Sprintf("create  DeleteBackupRequest request error for %s", backupName))
-						}
-					} else {
-						backupLogger.Error(err, fmt.Sprintf("Failed to create DeleteBackupRequest for resource %s", backupName))
-					}
-				} else {
-					backupLogger.Info(fmt.Sprintf("DeleteBackupRequest already exists, skip request creation %s", backupName))
-				}
+				r.deleteBackup(&sliceBackups[i], ctx, c)
 			}
 		}
 
+	}
+}
+
+func (r *BackupReconciler) deleteBackup(backup *veleroapi.Backup, ctx context.Context, c client.Client) {
+	// delete backup now
+	backupLogger := log.FromContext(ctx)
+	backupName := backup.ObjectMeta.Name
+	backupNamespace := backup.ObjectMeta.Namespace
+	backupLogger.Info(fmt.Sprintf("delete backup %s", backupName))
+
+	backupDeleteIdentity := types.NamespacedName{
+		Name:      backupName,
+		Namespace: backupNamespace,
+	}
+
+	// get the velero CR using the backupDeleteIdentity
+	veleroDeleteBackup := &veleroapi.DeleteBackupRequest{}
+	err := r.Get(ctx, backupDeleteIdentity, veleroDeleteBackup)
+	if err != nil {
+		// check if this is a  resource NotFound error, in which case create the resource
+		if k8serr.IsNotFound(err) {
+
+			veleroDeleteBackup.Spec.BackupName = backupName
+			veleroDeleteBackup.Name = backupDeleteIdentity.Name
+			veleroDeleteBackup.Namespace = backupDeleteIdentity.Namespace
+
+			err = c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{})
+			if err != nil {
+				backupLogger.Error(err, fmt.Sprintf("create  DeleteBackupRequest request error for %s", backupName))
+			}
+		} else {
+			backupLogger.Error(err, fmt.Sprintf("Failed to create DeleteBackupRequest for resource %s", backupName))
+		}
+	} else {
+		backupLogger.Info(fmt.Sprintf("DeleteBackupRequest already exists, skip request creation %s", backupName))
 	}
 }
 
