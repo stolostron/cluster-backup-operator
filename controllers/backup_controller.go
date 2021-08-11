@@ -313,9 +313,9 @@ func setBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client
 	if err := c.List(ctx, &channels, &client.ListOptions{}); err != nil {
 		// if NotFound error
 		if !k8serr.IsNotFound(err) {
-			backupLogger.Info("managed clusters resources NOT FOUND")
+			backupLogger.Info("channel resources NOT FOUND")
 		} else {
-			backupLogger.Error(err, "failed to get clusterv1.ManagedClusterList")
+			backupLogger.Error(err, "failed to get chnv1.ChannelList")
 		}
 	} else {
 		for i := range channels.Items {
