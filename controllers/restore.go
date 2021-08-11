@@ -21,7 +21,7 @@ import (
 )
 
 // IsRestoreFinsihed returns true when Restore is finished
-func IsRestoreFinsihed(restore *v1beta1.Restore) bool {
+func isRestoreFinsihed(restore *v1beta1.Restore) bool {
 	switch {
 	case restore == nil:
 		return false
