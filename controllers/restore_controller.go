@@ -89,7 +89,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	restoreLogger.Info(fmt.Sprintf("<< EXIT reconcile for Restore resource name=%s (namespace: %s)", req.NamespacedName.Name, req.NamespacedName.Namespace))
 
-	if IsRestoreFinsihed(restore) {
+	if isRestoreFinsihed(restore) {
 		return ctrl.Result{}, errors.Wrap(r.Client.Status().Update(ctx, restore), "could not update status")
 	}
 
