@@ -28,15 +28,15 @@ import (
 // RestoreSpec defines the desired state of Restore
 type RestoreSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
-	BackupName   string                    `json:"backupName,omitempty"`
-	VeleroConfig *VeleroConfigRestoreProxy `json:"veleroConfigRestoreProxy,omitempty"`
+	// BackupName is the name of the velero back-up used to restore ACM Hub.
+	// Is optional, in case no VeleroBackupName is supplied the backup name will be selected
+	// from the available backups in the Velero namespace specified in .spec.VelereoConfig.VeleroNamespace
+	VeleroBackupName *string                   `json:"veleroBackupName,omitempty"`
+	VeleroConfig     *VeleroConfigRestoreProxy `json:"veleroConfigRestoreProxy,omitempty"`
 }
 
 // RestoreStatus defines the observed state of Restore
 type RestoreStatus struct {
-	// Phase shows the status for the restore operation
-	// +kubebuilder:validation:Optional
-	Phase StatusPhase `json:"phase"`
 	// Important: Run "make" to regenerate code after modifying this file
 	RestoreProxyReference *corev1.ObjectReference `json:"restoreProxyReference,omitempty"`
 	// Message on the last operation
@@ -74,8 +74,8 @@ type RestoreList struct {
 
 // VeleroConfigRestoreProxy defines the configuration information for velero configuration to restore ACM through Velero
 type VeleroConfigRestoreProxy struct {
-	// Namespace defines the namespace where velero is installed
-	Namespace string `json:"metadata"`
+	// VeleroNamespace defines the namespace where velero is installed
+	VeleroNamespace string `json:"veleroNamespace,omitempty"`
 	// DetachManagedCluster will detach managedcluster  from backedHub. backedHub has to be available and BackedUpSecreName must be supplied
 	DetachManagedCluster bool `json:"detachManagedClusters,omitempty"`
 	// BackedUpHubSecretName contains the secret name to access the backed up HUB

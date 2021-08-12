@@ -19,28 +19,31 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/pkg/errors"
-	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	k8serr "k8s.io/apimachinery/pkg/api/errors"
+
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
+	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 )
 
 var (
-	restoreRequeueInterval = time.Minute * 1
+	restoreOwnerKey = ".metadata.controller"
+	apiGVStr        = v1beta1.GroupVersion.String()
 )
 
 // RestoreReconciler reconciles a Restore object
 type RestoreReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=restores,verbs=get;list;watch;create;update;patch;delete
@@ -60,92 +63,108 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	restoreLogger := log.FromContext(ctx)
 	restore := &v1beta1.Restore{}
 
-	restoreLogger.Info(fmt.Sprintf(">> Enter reconcile for Restore CR name=%s (namespace: %s)", req.NamespacedName.Name, req.NamespacedName.Namespace))
+	//restoreLogger.Info(fmt.Sprintf(">> Enter reconcile for Restore CR name=%s (namespace: %s)", req.NamespacedName.Name, req.NamespacedName.Namespace))
 
 	if err := r.Get(ctx, req.NamespacedName, restore); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 
-		// check if this is a NotFound error
-		if !k8serr.IsNotFound(err) {
-			restoreLogger.Error(err, "unable to fetch Restore CR")
+	// retrieve the velero restore (if any)
+	veleroRestoreList := veleroapi.RestoreList{}
+	if err := r.List(ctx, &veleroRestoreList, client.InNamespace(req.Namespace), client.MatchingFields{restoreOwnerKey: req.Name}); err != nil {
+		restoreLogger.Error(err, "unable to list velero restores for restore %s/%s", req.Namespace, req.Name)
+		return ctrl.Result{}, err
+	}
+
+	switch {
+	case len(veleroRestoreList.Items) == 0:
+		veleroRestore, err := r.initVeleroRestore(ctx, restore)
+		if err != nil {
+			restoreLogger.Error(err, "unable to create velero restore for restore %s/%s", req.Namespace, req.Name)
+			return ctrl.Result{}, err
 		}
+		if err = r.Create(ctx, veleroRestore, &client.CreateOptions{}); err != nil {
+			restoreLogger.Error(err, "unable to create velero restore for restore %s/%s", req.Namespace, req.Name)
 
-		restoreLogger.Info("Restore CR was not created in the %s namespace", req.NamespacedName.Namespace)
-		return ctrl.Result{RequeueAfter: restoreRequeueInterval}, client.IgnoreNotFound(err)
+			return ctrl.Result{}, err
+		}
+		r.Recorder.Event(restore, v1.EventTypeNormal, "Velero Restore created:", fmt.Sprintf("%s/%s", veleroRestore.Namespace, veleroRestore.Name))
+		restore.Status.VeleroRestore = veleroRestore.DeepCopy()
+
+	case len(veleroRestoreList.Items) == 1:
+		if isRestoreFinsihed(restore) {
+			r.managedClustersHandler(restore)
+		}
+	default:
+		// TODO: handles multiple velero restores:
+		// check if one velero is still running... update status and wait
+		// if all finished handleManagedClusters
+		//for i := range veleroRestoreList.Items {}
 	}
 
-	var (
-		err           error
-		veleroRestore *veleroapi.Restore
-	)
-	veleroRestore, err = r.submitAcmRestoreSettings(ctx, restore, r.Client)
-	if veleroRestore != nil {
-		restore.Status.VeleroRestore = veleroRestore
-	}
-	if err != nil {
-		msg := fmt.Errorf("unable to create Velero restore for %s: %v", restore.Name, err)
-		restoreLogger.Error(err, err.Error())
-		restore.Status.LastMessage = msg.Error()
-		restore.Status.Phase = "Failed"
-	}
-	restoreLogger.Info(fmt.Sprintf("<< EXIT reconcile for Restore resource name=%s (namespace: %s)", req.NamespacedName.Name, req.NamespacedName.Namespace))
-
-	if isRestoreFinsihed(restore) {
-		return ctrl.Result{}, errors.Wrap(r.Client.Status().Update(ctx, restore), "could not update status")
-	}
-
-	return ctrl.Result{RequeueAfter: restoreRequeueInterval}, errors.Wrap(r.Client.Status().Update(ctx, restore), "could not update status")
+	err := r.Client.Status().Update(ctx, restore)
+	return ctrl.Result{}, errors.Wrap(err, fmt.Sprintf("could not update status for restore %s/%s", restore.Namespace, restore.Name))
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &veleroapi.Restore{}, restoreOwnerKey, func(rawObj client.Object) []string {
+		// grab the job object, extract the owner...
+		job := rawObj.(*veleroapi.Restore)
+		owner := metav1.GetControllerOf(job)
+		if owner == nil {
+			return nil
+		}
+		// ..should be a Restore in Group cluster.open-cluster-management.io
+		if owner.APIVersion != apiGVStr || owner.Kind != "Restore" {
+			return nil
+		}
+
+		// ...and if so, return it
+		return []string{owner.Name}
+	}); err != nil {
+		return err
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.Restore{}).
+		Owns(&veleroapi.Restore{}).
 		Complete(r)
 }
 
-func (r *RestoreReconciler) submitAcmRestoreSettings(ctx context.Context, restore *v1beta1.Restore, c client.Client) (*veleroapi.Restore, error) {
-
-	restoreLogger := log.FromContext(ctx)
-	restoreLogger.Info(">> ENTER submitAcmRestoreSettings for new restore")
-
-	veleroRestore := &veleroapi.Restore{}
-	veleroRestore.Name = getVeleroRestoreName(restore)
-	veleroRestore.Namespace = restore.Spec.VeleroConfig.Namespace
-
-	veleroIdentity := types.NamespacedName{
-		Namespace: veleroRestore.Namespace,
-		Name:      veleroRestore.Name,
-	}
-
-	// get the velero CRD using the veleroIdentity
-	err := r.Get(ctx, veleroIdentity, veleroRestore)
-
+// name used by the velero restore resource, created by the restore acm controller
+func (r *RestoreReconciler) getVeleroRestoreName(ctx context.Context, restore *v1beta1.Restore) (string, error) {
+	backupName, err := r.getVeleroBackupName(ctx, restore)
 	if err != nil {
-		restoreLogger.Info("velero.io.Restore resource [name=%s, namespace=%s] returned error, checking if the resource was not yet created", veleroIdentity.Name, veleroIdentity.Namespace)
+		return "", err
+	}
+	return restore.Name + "-" + backupName, err
+}
 
-		// check if this is a resource NotFound error, in which case create the resource
-		if k8serr.IsNotFound(err) {
+func (r *RestoreReconciler) getVeleroBackupName(ctx context.Context, restore *v1beta1.Restore) (string, error) {
+	if restore.Spec.VeleroBackupName != nil {
+		return *restore.Spec.VeleroBackupName, nil
+	}
+	//r.Client.List(ctx)
+	return "thebackup", nil
+}
 
-			msg := fmt.Sprintf("velero.io.Restore [name=%s, namespace=%s] resource NOT FOUND, creating it now", veleroIdentity.Name, veleroIdentity.Namespace)
-			restoreLogger.Info(msg)
-
-			// set ACM restore configuration
-			veleroRestore.Spec.BackupName = restore.Spec.BackupName
-
-			restore.Status.LastMessage = msg
-			err = c.Create(ctx, veleroRestore, &client.CreateOptions{})
-		} else {
-			msg := fmt.Sprintf("velero.io.Restore [name=%s, namespace=%s] returned ERROR, error=%s ", veleroIdentity.Name, veleroIdentity.Namespace, err.Error())
-			restoreLogger.Error(err, msg)
-			restore.Status.LastMessage = msg
-		}
-	} else {
-		msg := fmt.Sprintf("Restore [%s] is currently in phase:%s", veleroIdentity.Name, veleroRestore.Status.Phase)
-		restoreLogger.Info(msg)
-
-		restore.Status.LastMessage = msg
-		restore.Status.Phase = v1beta1.StatusPhase(veleroRestore.Status.Phase)
+func (r *RestoreReconciler) initVeleroRestore(ctx context.Context, restore *v1beta1.Restore) (*veleroapi.Restore, error) {
+	veleroRestore := &veleroapi.Restore{}
+	var err error
+	veleroRestore.Name, err = r.getVeleroRestoreName(ctx, restore)
+	if err != nil {
+		return veleroRestore, err
+	}
+	veleroRestore.Namespace = restore.Spec.VeleroConfig.VeleroNamespace
+	if err := ctrl.SetControllerReference(restore, veleroRestore, r.Scheme); err != nil {
+		return nil, err
 	}
 
-	return veleroRestore, err
+	return veleroRestore, nil
+}
+
+func (r *RestoreReconciler) managedClustersHandler(restore *v1beta1.Restore) (bool, error) {
+	shouldUpdate := true
+	return shouldUpdate, nil
 }

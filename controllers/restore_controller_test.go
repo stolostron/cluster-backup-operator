@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
+	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,7 +22,7 @@ var _ = Describe("Restore controller", func() {
 		veleroNamespaceName string
 		restoreName         string = "the-restore-name"
 
-		timeout  = time.Second * 70
+		timeout  = time.Second * 60
 		interval = time.Millisecond * 250
 	)
 
@@ -68,7 +69,7 @@ var _ = Describe("Restore controller", func() {
 				},
 				Spec: v1beta1.RestoreSpec{
 					VeleroConfig: &v1beta1.VeleroConfigRestoreProxy{
-						Namespace: veleroNamespaceName,
+						VeleroNamespace: veleroNamespaceName,
 					},
 				},
 			}
@@ -76,21 +77,12 @@ var _ = Describe("Restore controller", func() {
 			Expect(k8sClient.Create(ctx, &rhacmRestore)).Should(Succeed())
 			restoreLookupKey := types.NamespacedName{Name: restoreName, Namespace: veleroNamespaceName}
 			createdRestore := v1beta1.Restore{}
-			Eventually(func() bool {
-				err := k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
-				return err == nil
-			}, timeout, interval).Should(BeTrue())
-
-			Expect(createdRestore.CreationTimestamp.Time).NotTo(BeNil())
-
-			//By("created restore should contain velero restore in status")
-			Eventually(func() bool {
-				err := k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
-				if err != nil {
-					return false
-				}
-				return createdRestore.Status.VeleroRestore != nil
+			By("created restore should contain velero restore in status")
+			Eventually(func() *veleroapi.Restore {
+				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+				return createdRestore.Status.VeleroRestore
 			}, timeout, interval).ShouldNot(BeNil())
 		})
 	})
+
 })

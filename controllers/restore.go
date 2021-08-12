@@ -18,23 +18,19 @@ package controllers
 
 import (
 	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
+	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 )
 
-// IsRestoreFinsihed returns true when Restore is finished
+// isRestoreFinsihed returns true when Restore is finished
 func isRestoreFinsihed(restore *v1beta1.Restore) bool {
 	switch {
 	case restore == nil:
 		return false
-	case restore.Status.Phase == "Completed" ||
-		restore.Status.Phase == "Failed" ||
-		restore.Status.Phase == "PartiallyFailed" ||
-		restore.Status.Phase == "FailedValidation":
-		return true
+	case restore.Status.VeleroRestore == nil:
+		return false
+	case restore.Status.VeleroRestore.Status.Phase == veleroapi.RestorePhaseNew ||
+		restore.Status.VeleroRestore.Status.Phase == veleroapi.RestorePhaseInProgress:
+		return false
 	}
-	return false
-}
-
-// name used by the velero restore resource, created by the restore acm controller
-func getVeleroRestoreName(restore *v1beta1.Restore) string {
-	return restore.Name + "-" + restore.Spec.BackupName
+	return true
 }

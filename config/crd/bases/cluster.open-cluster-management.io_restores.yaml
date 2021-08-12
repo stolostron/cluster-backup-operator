@@ -45,9 +45,12 @@ spec:
           spec:
             description: RestoreSpec defines the desired state of Restore
             properties:
-              backupName:
+              veleroBackupName:
                 description: 'Important: Run "make" to regenerate code after modifying
-                  this file'
+                  this file BackupName is the name of the velero back-up used to restore
+                  ACM Hub. Is optional, in case no VeleroBackupName is supplied the
+                  backup name will be selected from the available backups in the Velero
+                  namespace specified in .spec.VelereoConfig.VeleroNamespace'
                 type: string
               veleroConfigRestoreProxy:
                 description: VeleroConfigRestoreProxy defines the configuration information
@@ -62,8 +65,9 @@ spec:
                       backedHub. backedHub has to be available and BackedUpSecreName
                       must be supplied
                     type: boolean
-                  metadata:
-                    description: Namespace defines the namespace where velero is installed
+                  veleroNamespace:
+                    description: VeleroNamespace defines the namespace where velero
+                      is installed
                     type: string
                 type: object
             type: object
@@ -72,9 +76,6 @@ spec:
             properties:
               lastMessage:
                 description: Message on the last operation
-                type: string
-              phase:
-                description: Phase shows the status for the restore operation
                 type: string
               restoreProxyReference:
                 description: 'Important: Run "make" to regenerate code after modifying
