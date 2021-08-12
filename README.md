@@ -1,5 +1,5 @@
 # cluster-backup-operator
-Cluster Back up and Restore Operator.
+Cluster Back up and Restore Operator. 
 ------
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
