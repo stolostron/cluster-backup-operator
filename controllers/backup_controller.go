@@ -20,13 +20,13 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	v1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
-	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
-	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
 	"github.com/pkg/errors"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	v1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -37,13 +37,13 @@ import (
 )
 
 var (
-	backupOwnerKey      = ".metadata.controller"
-	apiGV               = "v1beta1" //v1beta1.GroupVersion.String()
-	requeueInterval     = time.Minute * 1
-	acmNS               = "open-cluster-management"
-	acmChannel          = "charts-v1"
-	backupNamespacesACM = [...]string{"open-cluster-management-agent", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager"}
-	backupNamespacesObs = [...]string{"open-cluster-management-observability"}
+	backupOwnerKey  = ".metadata.controller"
+	apiGV           = "v1beta1" //v1beta1.GroupVersion.String()
+	requeueInterval = time.Minute * 1
+
+	backupNamespacesACM  = []string{"open-cluster-management-agent", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager", "open-cluster-management-addon-observability", "open-cluster-management-observability", "openshift-gitops"}
+	backupResources      = [...]string{"channel", "subscription", "placementrule", "application", "deployable", "policy", "PlacementBinding.policy.open-cluster-management.io", "applications.app.k8s.io", "configmap", "managedcluster", "multiclusterobservability"}
+	backupCredsResources = [...]string{"secret"}
 )
 
 // BackupReconciler reconciles a Backup object
@@ -162,6 +162,7 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 			backup.Status.LastMessage = msg
 			backup.Status.CurrentBackup = veleroIdentity.Name
 			err = c.Create(ctx, veleroBackup, &client.CreateOptions{})
+
 		} else {
 			msg := fmt.Sprintf("velero.io.Backup [name=%s, namespace=%s] returned ERROR, error=%s ", veleroIdentity.Name, veleroIdentity.Namespace, err.Error())
 			backupLogger.Error(err, msg)
@@ -199,6 +200,32 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 			duration := completedTime.Time.Sub(startTime.Time)
 			backup.Status.LastBackupDuration = getFormattedDuration(duration)
 		}
+	}
+
+	// create credentials backup
+	veleroCredsIdentity := types.NamespacedName{
+		Namespace: veleroBackup.Namespace,
+		Name:      fmt.Sprintf("%s-creds", veleroBackup.Name),
+	}
+
+	veleroCredsBackup := &veleroapi.Backup{}
+	veleroCredsBackup.Name = veleroCredsIdentity.Name
+	veleroCredsBackup.Namespace = veleroCredsIdentity.Namespace
+
+	errBackup := r.Get(ctx, veleroCredsIdentity, veleroCredsBackup)
+	if errBackup != nil {
+		backupLogger.Info("velero.io.Backup for credentials [name=%s, namespace=%s] returned error, checking if the resource was not yet created", veleroCredsIdentity.Name, veleroCredsIdentity.Namespace)
+		// check if this is a  resource NotFound error, in which case create the resource
+		if k8serr.IsNotFound(errBackup) {
+			// create backup containing just secrets
+			setCredsBackupInfo(ctx, veleroCredsBackup, c)
+			err = c.Create(ctx, veleroCredsBackup, &client.CreateOptions{})
+		}
+	}
+
+	if veleroCredsBackup.Status.Progress != nil {
+		msg := fmt.Sprintf("%s Creds : [ItemsBackedUp[%d], TotalItems[%d]]", backup.Status.LastMessage, veleroCredsBackup.Status.Progress.ItemsBackedUp, veleroCredsBackup.Status.Progress.TotalItems)
+		backup.Status.LastMessage = msg
 	}
 
 	return veleroBackup, err
@@ -294,55 +321,57 @@ func (r *BackupReconciler) deleteBackup(backup *veleroapi.Backup, ctx context.Co
 	}
 }
 
-// set all acm backup info
+// set all acm resources backup info
 func setBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client.Client) {
 
 	backupLogger := log.FromContext(ctx)
+	var clusterResource bool = true // we want cluster resources such as ManagedCluster and MCO observability
+	veleroBackup.Spec.IncludeClusterResources = &clusterResource
+
+	for i := range backupResources { // acm ns
+		veleroBackup.Spec.IncludedResources = appendUnique(veleroBackup.Spec.IncludedResources, backupResources[i])
+	}
+
+	namespaces := v1.NamespaceList{}
+
+	if err := c.List(ctx, &namespaces, &client.ListOptions{}); err != nil {
+		if !k8serr.IsNotFound(err) {
+			backupLogger.Info("NS resources NOT FOUND")
+		} else {
+			backupLogger.Error(err, "failed to get chnv1.NS")
+		}
+	} else {
+		for i := range namespaces.Items {
+			if contains(backupNamespacesACM, namespaces.Items[i].Name) {
+				continue
+			}
+			if strings.HasPrefix(namespaces.Items[i].Name, "open-cluster-management") || strings.HasPrefix(namespaces.Items[i].Name, "openshift") || strings.HasPrefix(namespaces.Items[i].Name, "kube-") || namespaces.Items[i].Name == "local-cluster" || namespaces.Items[i].Name == "velero" {
+				veleroBackup.Spec.ExcludedNamespaces = appendUnique(veleroBackup.Spec.ExcludedNamespaces, namespaces.Items[i].Name)
+			}
+		}
+	}
+}
+
+// set credentials backup info
+func setCredsBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client.Client) {
+
 	var clusterResource bool = false
 	veleroBackup.Spec.IncludeClusterResources = &clusterResource
 
-	for i := range backupNamespacesACM { // acm ns
-		veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, backupNamespacesACM[i])
-	}
-	for i := range backupNamespacesObs { // observability ns
-		veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, backupNamespacesObs[i])
+	for i := range backupCredsResources { // acm secrets
+		veleroBackup.Spec.IncludedResources = appendUnique(veleroBackup.Spec.IncludedResources, backupCredsResources[i])
 	}
 
-	// get app channel namespaces
-	channels := chnv1.ChannelList{}
-	if err := c.List(ctx, &channels, &client.ListOptions{}); err != nil {
-		// if NotFound error
-		if !k8serr.IsNotFound(err) {
-			backupLogger.Info("channel resources NOT FOUND")
-		} else {
-			backupLogger.Error(err, "failed to get chnv1.ChannelList")
-		}
-	} else {
-		for i := range channels.Items {
+	if veleroBackup.Spec.LabelSelector == nil {
+		labels := &metav1.LabelSelector{}
+		veleroBackup.Spec.LabelSelector = labels
 
-			// ignore acm channels
-			if channels.Items[i].Name == acmChannel || channels.Items[i].Namespace == acmNS {
-				continue
-			}
-			veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, channels.Items[i].Namespace)
-		}
+		requirements := make([]metav1.LabelSelectorRequirement, 0)
+		veleroBackup.Spec.LabelSelector.MatchExpressions = requirements
 	}
-	// get managed clusters namespaces
-	managedClusterList := clusterv1.ManagedClusterList{}
-	if err := c.List(ctx, &managedClusterList, &client.ListOptions{}); err != nil {
-		// if NotFound error
-		if !k8serr.IsNotFound(err) {
-			backupLogger.Info("managed clusters resources NOT FOUND")
-		} else {
-			backupLogger.Error(err, "failed to get clusterv1.ManagedClusterList")
-		}
-	} else {
-		for i := range managedClusterList.Items {
-			if managedClusterList.Items[i].Name == "local-cluster" {
-				continue
-			}
-			veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, managedClusterList.Items[i].Name)
-		}
-	}
+	req := &metav1.LabelSelectorRequirement{}
+	req.Key = "cluster.open-cluster-management.io/type"
+	req.Operator = "Exists"
+	veleroBackup.Spec.LabelSelector.MatchExpressions = append(veleroBackup.Spec.LabelSelector.MatchExpressions, *req)
 
 }
