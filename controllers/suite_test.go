@@ -31,7 +31,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	backupv1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
-	restorev1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	valeroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	//+kubebuilder:scaffold:imports
@@ -65,9 +64,6 @@ var _ = BeforeSuite(func() {
 	Expect(cfg).NotTo(BeNil())
 
 	err = backupv1beta1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
-
-	err = restorev1beta1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	err = clusterv1.AddToScheme(scheme.Scheme) // for managedclusters
