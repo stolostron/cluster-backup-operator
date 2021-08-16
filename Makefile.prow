@@ -10,8 +10,7 @@ push-prow: build-prow
 build-prow: 
 	docker build -f Dockerfile . -t ${REPO_URL}/cluster-backup-operator:${VERSION}
 
-#.PHONY: unit-tests
-#unit-tests:
-#	GOFLAGS="" go test -timeout 120s -v -short ./controllers/clusterclaims
-#	GOFLAGS="" go test -timeout 120s -v -short ./controllers/clusterpools
+.PHONY: unit-tests
+unit-tests:
+	GOFLAGS="" go test -timeout 120s -v -short ./controllers
 	
