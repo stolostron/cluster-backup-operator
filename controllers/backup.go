@@ -233,7 +233,7 @@ func (r *BackupReconciler) createBackupForResource(resourceType string, backup *
 func setResourcesBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client.Client) {
 
 	backupLogger := log.FromContext(ctx)
-	var clusterResource bool = true // we want cluster resources such as MCO observability
+	var clusterResource bool = false
 	veleroBackup.Spec.IncludeClusterResources = &clusterResource
 	veleroBackup.Spec.ExcludedNamespaces = appendUnique(veleroBackup.Spec.ExcludedNamespaces, "local-cluster")
 
