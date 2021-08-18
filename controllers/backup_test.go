@@ -21,41 +21,9 @@ var _ = Describe("Backup", func() {
 		It("isBackupFinished should return correct value based on the status", func() {
 			Expect(isBackupFinished(nil)).Should(BeFalse())
 
-			var veleroBackup veleroapi.Backup
-			Expect(isBackupFinished(&veleroBackup)).Should(BeFalse())
+			veleroBackups := make([]*veleroapi.Backup, 0)
+			Expect(isBackupFinished(veleroBackups)).Should(BeFalse())
 
-			veleroBackup = veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      backupName,
-					Namespace: "",
-				},
-			}
-
-			Expect(isBackupFinished(&veleroBackup)).Should(BeFalse())
-
-			veleroBackup.Status.Phase = "Completed"
-			Expect(isBackupFinished(&veleroBackup)).Should(BeTrue())
-			veleroBackup.Status.Phase = "Failed"
-			Expect(isBackupFinished(&veleroBackup)).Should(BeTrue())
-			veleroBackup.Status.Phase = "PartiallyFailed"
-			Expect(isBackupFinished(&veleroBackup)).Should(BeTrue())
-
-			veleroBackup.Status.Phase = "InvalidStatus"
-			Expect(isBackupFinished(&veleroBackup)).Should(BeFalse())
-		})
-
-		It("getFormattedDuration should return the expected value", func() {
-			duration := time.Minute * 10
-			formatted := "10m0s"
-
-			Expect(getFormattedDuration(duration)).Should(Equal(formatted))
-		})
-
-		It("canStartBackup should return the expected value", func() {
 			veleroBackup := veleroapi.Backup{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "cluster.open-cluster-management.io/v1beta1",
@@ -66,6 +34,42 @@ var _ = Describe("Backup", func() {
 					Namespace: "",
 				},
 			}
+			veleroBackups = append(veleroBackups, &veleroBackup)
+
+			Expect(isBackupFinished(veleroBackups)).Should(BeFalse())
+
+			veleroBackup.Status.Phase = "Completed"
+			Expect(isBackupFinished(veleroBackups)).Should(BeTrue())
+			veleroBackup.Status.Phase = "Failed"
+			Expect(isBackupFinished(veleroBackups)).Should(BeTrue())
+			veleroBackup.Status.Phase = "PartiallyFailed"
+			Expect(isBackupFinished(veleroBackups)).Should(BeTrue())
+
+			veleroBackup.Status.Phase = "InvalidStatus"
+			Expect(isBackupFinished(veleroBackups)).Should(BeFalse())
+		})
+
+		It("getFormattedDuration should return the expected value", func() {
+			duration := time.Minute * 10
+			formatted := "10m0s"
+
+			Expect(getFormattedDuration(duration)).Should(Equal(formatted))
+		})
+
+		It("canStartBackup should return the expected value", func() {
+			veleroBackups := make([]*veleroapi.Backup, 0)
+			veleroBackup := veleroapi.Backup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
+					Kind:       "Backup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      backupName,
+					Namespace: "",
+				},
+			}
+			veleroBackups = append(veleroBackups, &veleroBackup)
+
 			rhacmBackup := v1beta1.Backup{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "cluster.open-cluster-management.io/v1beta1",
@@ -83,7 +87,7 @@ var _ = Describe("Backup", func() {
 					MaxBackups: 2,
 				},
 				Status: v1beta1.BackupStatus{
-					VeleroBackup: &veleroBackup,
+					VeleroBackups: veleroBackups,
 				},
 			}
 
@@ -100,16 +104,16 @@ var _ = Describe("Backup", func() {
 			Expect(min(2, 3)).Should(Equal(2))
 		})
 
-		It("Find should return the expected value", func() {
+		It("find should return the expected value", func() {
 			slice := []string{}
-			index, found := Find(slice, "two")
+			index, found := find(slice, "two")
 			Expect(index).Should(Equal(-1))
 			Expect(found).Should(BeFalse())
 
 			slice = append(slice, "one")
 			slice = append(slice, "two")
 			slice = append(slice, "three")
-			index, found = Find(slice, "two")
+			index, found = find(slice, "two")
 			Expect(index).Should(Equal(1))
 			Expect(found).Should(BeTrue())
 		})
