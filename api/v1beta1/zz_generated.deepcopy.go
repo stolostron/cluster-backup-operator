@@ -112,10 +112,16 @@ func (in *BackupStatus) DeepCopyInto(out *BackupStatus) {
 		in, out := &in.CompletionTimestamp, &out.CompletionTimestamp
 		*out = (*in).DeepCopy()
 	}
-	if in.VeleroBackup != nil {
-		in, out := &in.VeleroBackup, &out.VeleroBackup
-		*out = new(v1.Backup)
-		(*in).DeepCopyInto(*out)
+	if in.VeleroBackups != nil {
+		in, out := &in.VeleroBackups, &out.VeleroBackups
+		*out = make([]*v1.Backup, len(*in))
+		for i := range *in {
+			if (*in)[i] != nil {
+				in, out := &(*in)[i], &(*out)[i]
+				*out = new(v1.Backup)
+				(*in).DeepCopyInto(*out)
+			}
+		}
 	}
 }
 

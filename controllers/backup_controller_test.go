@@ -129,7 +129,7 @@ var _ = Describe("Backup controller", func() {
 				if err != nil {
 					return false
 				}
-				return createdBackup.Status.VeleroBackup != nil
+				return createdBackup.Status.VeleroBackups != nil
 			}, timeout, interval).ShouldNot(BeNil())
 
 		})

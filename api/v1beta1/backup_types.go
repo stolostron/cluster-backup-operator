@@ -81,9 +81,9 @@ type BackupStatus struct {
 	// Message on the last operation
 	// +kubebuilder:validation:Optional
 	LastMessage string `json:"lastMessage"`
-	// Velero operation status
+	// Velero Backups operation status
 	// +kubebuilder:validation:Optional
-	VeleroBackup *veleroapi.Backup `json:"veleroBackup,omitempty"`
+	VeleroBackups []*veleroapi.Backup `json:"veleroBackup,omitempty"`
 }
 
 // +kubebuilder:object:root=true
