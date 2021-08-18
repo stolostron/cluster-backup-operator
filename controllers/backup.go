@@ -42,7 +42,8 @@ var (
 		"placementrule", "placement", "placementdecisions",
 		"PlacementBinding.policy.open-cluster-management.io",
 		"policy",
-		"multiclusterobservability"}
+		//"multiclusterobservability"
+	}
 	backupCredsResources = [...]string{"secret"}
 )
 
