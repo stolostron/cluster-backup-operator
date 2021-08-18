@@ -5,5 +5,5 @@ metadata:
 spec:
   veleroConfigBackupProxy: 
     metadata: oadp-operator
-  interval: 3
+  interval: 60
   maxBackups: 5
