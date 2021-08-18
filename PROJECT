@@ -1,19 +1,28 @@
-domain: cluster.management.io
+domain: open-cluster-management.io
 layout:
 - go.kubebuilder.io/v3
 plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
 projectName: cluster-backup-operator
-repo: github.com/open-cluster-management-io/cluster-backup-operator
+repo: github.com/open-cluster-management/cluster-backup-operator
 resources:
 - api:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: cluster.management.io
-  group: backup
+  domain: open-cluster-management.io
+  group: cluster
   kind: Backup
-  path: github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1
+  path: github.com/open-cluster-management/cluster-backup-operator/api/v1beta1
+  version: v1beta1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: open-cluster-management.io
+  group: cluster
+  kind: Restore
+  path: github.com/open-cluster-management/cluster-backup-operator/api/v1beta1
   version: v1beta1
 version: "3"
