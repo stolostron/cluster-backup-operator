@@ -153,7 +153,7 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 				updateLastBackupStatus(backup)
 
 				//clean up
-				backup.Status.VeleroBackups = nil //make([]*veleroapi.Backup, 0)
+				backup.Status.VeleroBackups = nil
 
 				// add backup to list of backups
 				backup.Status.VeleroBackups = append(backup.Status.VeleroBackups, veleroBackup)
