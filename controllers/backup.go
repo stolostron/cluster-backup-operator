@@ -51,7 +51,7 @@ var (
 // if this is the first time to run the backup or current backup is not found, a newly generated name
 func (r *BackupReconciler) getActiveBackupName(backup *v1beta1.Backup, c client.Client, ctx context.Context) string {
 
-	if backup.Status.CurrentBackup == "" {
+	if backup.Status.CurrentBackup == "" || isBackupPhaseFinished(backup.Status.Phase) {
 
 		// no active backup, return newyly generated backup name
 		return getVeleroBackupName(backup.Name, backup.Spec.VeleroConfig.Namespace)
@@ -190,11 +190,11 @@ func (r *BackupReconciler) createBackupForResource(resourceType string, backup *
 	veleroResBackup.Name = veleroResIdentity.Name
 	veleroResBackup.Namespace = veleroResIdentity.Namespace
 
-	errBackup := r.Get(ctx, veleroResIdentity, veleroResBackup)
-	if errBackup != nil {
+	err := r.Get(ctx, veleroResIdentity, veleroResBackup)
+	if err != nil {
 		backupLogger.Info("velero.io.Backup [name=%s, namespace=%s] returned error, checking if the resource was not yet created", veleroResIdentity.Name, veleroResIdentity.Namespace)
 		// check if this is a  resource NotFound error, in which case create the resource
-		if k8serr.IsNotFound(errBackup) {
+		if k8serr.IsNotFound(err) {
 			// create backup based on resource type
 			switch resourceType {
 			case "resource":
@@ -203,23 +203,30 @@ func (r *BackupReconciler) createBackupForResource(resourceType string, backup *
 				setCredsBackupInfo(ctx, veleroResBackup, c)
 			}
 
-			errBackup = c.Create(ctx, veleroResBackup, &client.CreateOptions{})
+			err = c.Create(ctx, veleroResBackup, &client.CreateOptions{})
 			if veleroResBackup != nil {
 				// add backup to list of backups
 				backup.Status.VeleroBackups = append(backup.Status.VeleroBackups, veleroResBackup)
 			}
 
-			if errBackup != nil {
-				backupLogger.Error(errBackup, "create backup error")
+			if err != nil {
+				backupLogger.Error(err, "create backup error")
 				return
 			}
 		}
 	} else {
 		if resourceType == "creds" {
-			backup.Status.VeleroBackups[1] = veleroResBackup
+			if len(backup.Status.VeleroBackups) <= 1 {
+				backup.Status.VeleroBackups = append(backup.Status.VeleroBackups, veleroResBackup)
+			} else {
+				backup.Status.VeleroBackups[1] = veleroResBackup
+			}
 		} else {
-			backup.Status.VeleroBackups[2] = veleroResBackup
-
+			if len(backup.Status.VeleroBackups) <= 2 {
+				backup.Status.VeleroBackups = append(backup.Status.VeleroBackups, veleroResBackup)
+			} else {
+				backup.Status.VeleroBackups[2] = veleroResBackup
+			}
 		}
 	}
 
@@ -320,7 +327,7 @@ func updateLastBackupStatus(backup *v1beta1.Backup) {
 		backup.Status.Phase = v1beta1.StatusPhase(getBackupPhase(backup.Status.VeleroBackups))
 		if isBackupFinished(backup.Status.VeleroBackups) {
 			backup.Status.LastBackup = backup.Status.CurrentBackup
-			//backup.Status.CurrentBackup = ""
+
 			completedTime := getLastBackupCompletionTime(backup)
 			if completedTime != nil {
 				backup.Status.CompletionTimestamp = completedTime
@@ -364,13 +371,13 @@ func getBackupPhase(backups []*veleroapi.Backup) veleroapi.BackupPhase {
 	// get all backups and check status for each
 	for i := 0; i < len(backups); i++ {
 
-		if backups[i].Status.Phase == "InProgress" {
+		if backups[i].Status.Phase == veleroapi.BackupPhase(v1beta1.InProgressStatusPhase) {
 			return backups[i].Status.Phase // some backup is not ready, show that
 		}
-		if backups[i].Status.Phase == "Failed" {
+		if backups[i].Status.Phase == veleroapi.BackupPhase(v1beta1.FailedStatusPhase) {
 			return backups[i].Status.Phase // show failed first
 		}
-		if backups[i].Status.Phase == "PartiallyFailed" {
+		if backups[i].Status.Phase == veleroapi.BackupPhase(v1beta1.PartiallyFailedStatusPhase) {
 			return backups[i].Status.Phase // show PartiallyFailed second
 		}
 	}
@@ -379,7 +386,7 @@ func getBackupPhase(backups []*veleroapi.Backup) veleroapi.BackupPhase {
 	return backups[0].Status.Phase
 }
 
-// return the execution time for the last backup in this list of backups ( creds, res, cluster)
+// return the completion time for the last backup in this list of backups ( creds, res, cluster)
 func getLastBackupCompletionTime(backup *v1beta1.Backup) *v1.Time {
 
 	if backup.Status.VeleroBackups == nil || len(backup.Status.VeleroBackups) <= 0 {
@@ -387,7 +394,7 @@ func getLastBackupCompletionTime(backup *v1beta1.Backup) *v1.Time {
 		return nil
 	}
 
-	lastBackup := backup.Status.VeleroBackups[2]
+	lastBackup := backup.Status.VeleroBackups[len(backup.Status.VeleroBackups)-1]
 	if lastBackup.Status.CompletionTimestamp != nil {
 		return lastBackup.Status.CompletionTimestamp
 	}

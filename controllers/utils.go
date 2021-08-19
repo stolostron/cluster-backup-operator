@@ -67,9 +67,9 @@ func getVeleroBackupName(backupName, backupNamesapce string) string {
 
 func isBackupPhaseFinished(phase v1beta1.StatusPhase) bool {
 
-	return phase == "Completed" ||
-		phase == "Failed" ||
-		phase == "PartiallyFailed"
+	return phase == v1beta1.CompletedStatusPhase ||
+		phase == v1beta1.FailedStatusPhase ||
+		phase == v1beta1.PartiallyFailedStatusPhase
 
 }
 

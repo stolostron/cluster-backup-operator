@@ -35,7 +35,7 @@ import (
 
 var (
 	backupOwnerKey  = ".metadata.controller"
-	apiGV           = "v1beta1" //v1beta1.GroupVersion.String()
+	apiGV           = v1beta1.GroupVersion.String()
 	requeueInterval = time.Second * 10
 )
 
@@ -83,7 +83,7 @@ func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		msg2 := fmt.Errorf("unable to create Velero backup for %s: %v", backup.Name, v_err)
 		backupLogger.Error(v_err, v_err.Error())
 		backup.Status.LastMessage = msg2.Error()
-		backup.Status.Phase = "ERROR"
+		backup.Status.Phase = v1beta1.ErrorStatusPhase
 		backup.Status.CurrentBackup = ""
 	}
 
@@ -177,7 +177,12 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 			backup.Status.LastMessage = msg
 		}
 	} else {
-		backup.Status.VeleroBackups[0] = veleroBackup
+		if backup.Status.VeleroBackups == nil {
+			backup.Status.VeleroBackups = append(backup.Status.VeleroBackups, veleroBackup)
+		} else {
+			backup.Status.VeleroBackups[0] = veleroBackup
+		}
+
 		veleroStatus := getBackupPhase(backup.Status.VeleroBackups)
 		msg := fmt.Sprintf("Velero Backup [%s] ", veleroIdentity.Name)
 
