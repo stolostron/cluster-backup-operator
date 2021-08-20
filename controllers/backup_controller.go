@@ -19,12 +19,9 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"sort"
 	"time"
 
 	v1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
-	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
-	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
 	"github.com/pkg/errors"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -37,13 +34,9 @@ import (
 )
 
 var (
-	backupOwnerKey      = ".metadata.controller"
-	apiGV               = "v1beta1" //v1beta1.GroupVersion.String()
-	requeueInterval     = time.Minute * 1
-	acmNS               = "open-cluster-management"
-	acmChannel          = "charts-v1"
-	backupNamespacesACM = [...]string{"open-cluster-management-agent", "open-cluster-management-hub", "hive", "openshift-operator-lifecycle-manager"}
-	backupNamespacesObs = [...]string{"open-cluster-management-observability"}
+	backupOwnerKey  = ".metadata.controller"
+	apiGV           = v1beta1.GroupVersion.String()
+	requeueInterval = time.Second * 10
 )
 
 // BackupReconciler reconciles a Backup object
@@ -69,8 +62,6 @@ func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	backupLogger := log.FromContext(ctx)
 	backup := &v1beta1.Backup{}
 
-	backupLogger.Info(fmt.Sprintf(">> Enter reconcile for Backup CRD name=%s (namespace: %s) with interval=%d", req.NamespacedName.Name, req.NamespacedName.Namespace, backup.Spec.Interval))
-
 	if err := r.Get(ctx, req.NamespacedName, backup); err != nil {
 		if !k8serr.IsNotFound(err) {
 			backupLogger.Error(err, "unable to fetch Backup CR")
@@ -86,18 +77,24 @@ func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	)
 	veleroBackup, v_err = r.submitAcmBackupSettings(ctx, backup, r.Client)
 	if veleroBackup != nil {
-		backup.Status.VeleroBackup = veleroBackup
+		backup.Status.VeleroBackups[0] = veleroBackup
 	}
 	if v_err != nil {
 		msg2 := fmt.Errorf("unable to create Velero backup for %s: %v", backup.Name, v_err)
 		backupLogger.Error(v_err, v_err.Error())
 		backup.Status.LastMessage = msg2.Error()
-		backup.Status.Phase = "ERROR"
+		backup.Status.Phase = v1beta1.ErrorStatusPhase
 		backup.Status.CurrentBackup = ""
 	}
-	backupLogger.Info(fmt.Sprintf("<< EXIT reconcile for Backup resource name=%s (namespace: %s)", req.NamespacedName.Name, req.NamespacedName.Namespace))
 
-	return ctrl.Result{RequeueAfter: requeueInterval}, errors.Wrap(r.Client.Status().Update(ctx, backup), "could not update status")
+	// if backup is complete wake up after the specified backup.Spec.Interval, don't reque every > requeueInterval
+	if veleroBackup != nil && isBackupPhaseFinished(backup.Status.Phase) {
+		nextDuration := time.Minute * time.Duration(backup.Spec.Interval)
+		return ctrl.Result{RequeueAfter: nextDuration}, errors.Wrap(r.Client.Status().Update(ctx, backup), "could not update status")
+
+	} else {
+		return ctrl.Result{RequeueAfter: requeueInterval}, errors.Wrap(r.Client.Status().Update(ctx, backup), "could not update status")
+	}
 
 }
 
@@ -126,16 +123,15 @@ func (r *BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *v1beta1.Backup, c client.Client) (*veleroapi.Backup, error) {
 
 	backupLogger := log.FromContext(ctx)
-	backupLogger.Info(">> ENTER submitAcmBackupSettings for new backup")
-
-	veleroBackup := &veleroapi.Backup{}
-	veleroBackup.Name = r.getActiveBackupName(backup, c, ctx, veleroBackup)
-	veleroBackup.Namespace = backup.Spec.VeleroConfig.Namespace
 
 	veleroIdentity := types.NamespacedName{
-		Namespace: veleroBackup.Namespace,
-		Name:      veleroBackup.Name,
+		Namespace: backup.Spec.VeleroConfig.Namespace,
+		Name:      r.getActiveBackupName(backup, c, ctx),
 	}
+
+	veleroBackup := &veleroapi.Backup{}
+	veleroBackup.Name = veleroIdentity.Name
+	veleroBackup.Namespace = veleroIdentity.Namespace
 
 	// get the velero CR using the veleroIdentity
 	err := r.Get(ctx, veleroIdentity, veleroBackup)
@@ -146,7 +142,6 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 		if k8serr.IsNotFound(err) {
 
 			if !canStartBackup(backup) {
-				backupLogger.Info("wait for time interval ..")
 				return nil, nil
 			}
 
@@ -156,23 +151,43 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 			// clean up old backups if they exceed the maxCount number
 			r.cleanupBackups(ctx, backup, c)
 
-			// set ACM backup configuration
-			setBackupInfo(ctx, veleroBackup, c)
+			// set ACM backup configuration for managed clusters
+			setManagedClustersBackupInfo(ctx, veleroBackup, c)
+			err = c.Create(ctx, veleroBackup, &client.CreateOptions{})
 
+			if veleroBackup != nil {
+				updateLastBackupStatus(backup)
+
+				//clean up
+				backup.Status.VeleroBackups = nil
+
+				// add backup to list of backups
+				backup.Status.VeleroBackups = append(backup.Status.VeleroBackups, veleroBackup)
+			}
 			backup.Status.LastMessage = msg
 			backup.Status.CurrentBackup = veleroIdentity.Name
-			err = c.Create(ctx, veleroBackup, &client.CreateOptions{})
+
+			if err != nil {
+				backupLogger.Error(err, "create backup error")
+			}
+
 		} else {
 			msg := fmt.Sprintf("velero.io.Backup [name=%s, namespace=%s] returned ERROR, error=%s ", veleroIdentity.Name, veleroIdentity.Namespace, err.Error())
 			backupLogger.Error(err, msg)
 			backup.Status.LastMessage = msg
 		}
 	} else {
-		veleroStatus := veleroBackup.Status.Phase
-		msg := fmt.Sprintf("Current Backup [%s] phase:%s", veleroIdentity.Name, veleroStatus)
+		if backup.Status.VeleroBackups == nil {
+			backup.Status.VeleroBackups = append(backup.Status.VeleroBackups, veleroBackup)
+		} else {
+			backup.Status.VeleroBackups[0] = veleroBackup
+		}
+
+		veleroStatus := getBackupPhase(backup.Status.VeleroBackups)
+		msg := fmt.Sprintf("Velero Backup [%s] ", veleroIdentity.Name)
 
 		if veleroBackup.Status.Progress != nil {
-			msg = fmt.Sprintf("%s ItemsBackedUp[%d], TotalItems[%d]", msg, veleroBackup.Status.Progress.ItemsBackedUp, veleroBackup.Status.Progress.TotalItems)
+			msg = fmt.Sprintf("%s [clusters: ItemsBackedUp[%d], TotalItems[%d]]", msg, veleroBackup.Status.Progress.ItemsBackedUp, veleroBackup.Status.Progress.TotalItems)
 		}
 		msgStatusNil := "If the status is empty check the velero pod is running and that you have created a Velero resource as documented in the install guide."
 		msgStatusFailed := "Check if the velero.io.BackupStorageLocation resource points to a valid storage."
@@ -183,166 +198,15 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 		if veleroStatus == "Failed" {
 			msg = fmt.Sprintf("%s. %s", msg, msgStatusFailed)
 		}
-		backupLogger.Info(msg)
-
 		backup.Status.LastMessage = msg
-		backup.Status.Phase = v1beta1.StatusPhase(veleroBackup.Status.Phase)
-
-		if veleroBackup.Status.CompletionTimestamp != nil {
-			// store current backup names as the last backup
-			backup.Status.LastBackup = backup.Status.CurrentBackup
-
-			completedTime := veleroBackup.Status.CompletionTimestamp
-			startTime := veleroBackup.Status.StartTimestamp
-			backup.Status.CompletionTimestamp = completedTime
-
-			duration := completedTime.Time.Sub(startTime.Time)
-			backup.Status.LastBackupDuration = getFormattedDuration(duration)
-		}
 	}
+
+	// create credentials backup
+	r.createBackupForResource("creds", backup, veleroBackup, ctx, c)
+	// create resources backup
+	r.createBackupForResource("resource", backup, veleroBackup, ctx, c)
+
+	updateLastBackupStatus(backup)
 
 	return veleroBackup, err
-}
-
-// clean up old backups if they exceed the maxCount number
-func (r *BackupReconciler) cleanupBackups(ctx context.Context, backup *v1beta1.Backup, c client.Client) {
-	maxBackups := backup.Spec.MaxBackups
-	backupLogger := log.FromContext(ctx)
-
-	backupLogger.Info(fmt.Sprintf("check if needed to remove backups maxBackups=%d", maxBackups))
-	veleroBackupList := veleroapi.BackupList{}
-	if err := c.List(ctx, &veleroBackupList, &client.ListOptions{}); err != nil {
-
-		// this is a NotFound error
-		if !k8serr.IsNotFound(err) {
-			backupLogger.Info("no backups found")
-		} else {
-			backupLogger.Error(err, "failed to get veleroapi.BackupList")
-		}
-	} else {
-
-		sliceBackups := veleroBackupList.Items[:]
-		if maxBackups < len(sliceBackups) {
-			// need to delete backups
-
-			// sort backups by create time
-			sort.Slice(sliceBackups, func(i, j int) bool {
-				var timeA int64
-				var timeB int64
-				if sliceBackups[i].Status.StartTimestamp != nil {
-					timeA = sliceBackups[i].Status.StartTimestamp.Time.Unix()
-				}
-				if sliceBackups[j].Status.StartTimestamp != nil {
-					timeB = sliceBackups[j].Status.StartTimestamp.Time.Unix()
-				}
-				return timeA < timeB
-			})
-
-			backupsInError := filterBackups(sliceBackups, func(bkp veleroapi.Backup) bool {
-				return bkp.Status.Errors > 0
-			})
-
-			// delete backup in error first
-			for i := 0; i < min(len(backupsInError), maxBackups); i++ {
-				r.deleteBackup(&backupsInError[i], ctx, c)
-			}
-
-			for i := 0; i < len(sliceBackups)-maxBackups; i++ {
-				// delete extra backups now
-				if sliceBackups[i].Status.Errors > 0 {
-					continue // ignore error status backups, they were processed in the step above
-				}
-				r.deleteBackup(&sliceBackups[i], ctx, c)
-			}
-		}
-
-	}
-}
-
-func (r *BackupReconciler) deleteBackup(backup *veleroapi.Backup, ctx context.Context, c client.Client) {
-	// delete backup now
-	backupLogger := log.FromContext(ctx)
-	backupName := backup.ObjectMeta.Name
-	backupNamespace := backup.ObjectMeta.Namespace
-	backupLogger.Info(fmt.Sprintf("delete backup %s", backupName))
-
-	backupDeleteIdentity := types.NamespacedName{
-		Name:      backupName,
-		Namespace: backupNamespace,
-	}
-
-	// get the velero CR using the backupDeleteIdentity
-	veleroDeleteBackup := &veleroapi.DeleteBackupRequest{}
-	err := r.Get(ctx, backupDeleteIdentity, veleroDeleteBackup)
-	if err != nil {
-		// check if this is a  resource NotFound error, in which case create the resource
-		if k8serr.IsNotFound(err) {
-
-			veleroDeleteBackup.Spec.BackupName = backupName
-			veleroDeleteBackup.Name = backupDeleteIdentity.Name
-			veleroDeleteBackup.Namespace = backupDeleteIdentity.Namespace
-
-			err = c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{})
-			if err != nil {
-				backupLogger.Error(err, fmt.Sprintf("create  DeleteBackupRequest request error for %s", backupName))
-			}
-		} else {
-			backupLogger.Error(err, fmt.Sprintf("Failed to create DeleteBackupRequest for resource %s", backupName))
-		}
-	} else {
-		backupLogger.Info(fmt.Sprintf("DeleteBackupRequest already exists, skip request creation %s", backupName))
-	}
-}
-
-// set all acm backup info
-func setBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client.Client) {
-
-	backupLogger := log.FromContext(ctx)
-	var clusterResource bool = false
-	veleroBackup.Spec.IncludeClusterResources = &clusterResource
-
-	for i := range backupNamespacesACM { // acm ns
-		veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, backupNamespacesACM[i])
-	}
-	for i := range backupNamespacesObs { // observability ns
-		veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, backupNamespacesObs[i])
-	}
-
-	// get app channel namespaces
-	channels := chnv1.ChannelList{}
-	if err := c.List(ctx, &channels, &client.ListOptions{}); err != nil {
-		// if NotFound error
-		if !k8serr.IsNotFound(err) {
-			backupLogger.Info("channel resources NOT FOUND")
-		} else {
-			backupLogger.Error(err, "failed to get chnv1.ChannelList")
-		}
-	} else {
-		for i := range channels.Items {
-
-			// ignore acm channels
-			if channels.Items[i].Name == acmChannel || channels.Items[i].Namespace == acmNS {
-				continue
-			}
-			veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, channels.Items[i].Namespace)
-		}
-	}
-	// get managed clusters namespaces
-	managedClusterList := clusterv1.ManagedClusterList{}
-	if err := c.List(ctx, &managedClusterList, &client.ListOptions{}); err != nil {
-		// if NotFound error
-		if !k8serr.IsNotFound(err) {
-			backupLogger.Info("managed clusters resources NOT FOUND")
-		} else {
-			backupLogger.Error(err, "failed to get clusterv1.ManagedClusterList")
-		}
-	} else {
-		for i := range managedClusterList.Items {
-			if managedClusterList.Items[i].Name == "local-cluster" {
-				continue
-			}
-			veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, managedClusterList.Items[i].Name)
-		}
-	}
-
 }

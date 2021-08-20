@@ -25,17 +25,17 @@ var _ = Describe("Restore", func() {
 					Namespace: "",
 				},
 				Status: v1beta1.RestoreStatus{
-					Phase: "INPROGRESS",
+					Phase: v1beta1.InProgressStatusPhase,
 				},
 			}
 
 			Expect(isRestoreFinsihed(&rhacmRestore)).Should(BeFalse())
 
-			rhacmRestore.Status.Phase = "Completed"
+			rhacmRestore.Status.Phase = v1beta1.CompletedStatusPhase
 			Expect(isRestoreFinsihed(&rhacmRestore)).Should(BeTrue())
-			rhacmRestore.Status.Phase = "Failed"
+			rhacmRestore.Status.Phase = v1beta1.FailedStatusPhase
 			Expect(isRestoreFinsihed(&rhacmRestore)).Should(BeTrue())
-			rhacmRestore.Status.Phase = "PartiallyFailed"
+			rhacmRestore.Status.Phase = v1beta1.PartiallyFailedStatusPhase
 			Expect(isRestoreFinsihed(&rhacmRestore)).Should(BeTrue())
 			rhacmRestore.Status.Phase = "FailedValidation"
 			Expect(isRestoreFinsihed(&rhacmRestore)).Should(BeTrue())

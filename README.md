@@ -16,7 +16,6 @@ Cluster Back up and Restore Operator.
   - [Installation](#installation)
     - [Outside the Cluster](#outside-the-cluster)
     - [Inside the Cluster](#inside-the-cluster)
-    - [Deploy Operator using OLM](#deploy-operator-using-olm)
 - [Usage](#usage)
 - [Testing](#testing)
 
@@ -35,7 +34,6 @@ Check the [CONTRIBUTING Doc](CONTRIBUTING.md) for how to contribute to the repo.
 
 This project is licensed under the *Apache License 2.0*. A copy of the license can be found in [LICENSE](LICENSE).
 
-Included fonts are licensed under the *SIL Open Font License 1.1*, and copies of this license can be found along side the corresponding fonts in the [./fonts](fonts) directory.
 
 ## Getting Started
 The Cluster Back up and Restore Operator runs on the hub and depends on the OADP Operator to backup and restore ACM hub resources. You need to install the OADP Operator first as described here https://github.com/openshift/oadp-operator.
@@ -91,42 +89,18 @@ registry service like [quay.io](https://quay.io).
     make deploy IMG=<registry>/<imagename>:<tag>
     ```
 
-### Deploy Operator using OLM
-
-If you would like to deploy Operator using OLM, you'll need to build and push the bundle image and index image. You need to host the images on a public registry service like [quay.io](https://quay.io).
-
-1. Build your bundle image
-    ```shell
-    make bundle-build REPO=<registry>
-    ```
-1. Push the bundle image
-    ```shell
-    make docker-push IMG=<bundle image name>
-    ```
-1. Build the index image
-
-    This `make` target will install `opm` if it is not already installed. If
-    you would like to install it in your `PATH` manually instead, get it from
-    [here](https://github.com/operator-framework/operator-registry/releases).
-    ```shell
-    make bundle-index-build REPO=<registry>
-    ```
-1. Push the index image
-    ```shell
-    make docker-push IMG=<index image name>
-    ```
 
 ## Usage
 
 Before using Cluster Back up and Restore Operator backup or restore support you have to install the OADP Operator which will install Velero. 
 
-Make sure you follow the OADP Operator installation instructions and create a Velero resource and a valid connection to a backup location where backups will be stored.
+Make sure you follow the OADP Operator installation instructions and create a Velero resource and a valid connection to a backup location where backups will be stored. Check the install and setup steps here https://github.com/openshift/oadp-operator
 
-If you are trying to use the Cluster Back up and Restore Operator to backup data, you have to create a `Backup.cluster.open-cluster-management.io` resource which will be consumed by the operator and create all the necessary intermediary backup resources.
+If you are trying to use the Cluster Back up and Restore Operator to backup data, you have to create a `backup.cluster.open-cluster-management.io` resource which will be consumed by the operator and create all the necessary intermediary backup resources.
 
-If you are trying to use the Cluster Back up and Restore Operator to restore a backup, then you have to create a `Restore.cluster.open-cluster-management.io` resource which will run the restore and execute any other post restore operations, such as registering restored remote clusters with the new hub.
+If you are trying to use the Cluster Back up and Restore Operator to restore a backup, then you have to create a `restore.cluster.open-cluster-management.io` resource which will run the restore and execute any other post restore operations, such as registering restored remote clusters with the new hub.
 
-Here you can find an example of a `Backup.cluster.open-cluster-management.io` resource definition:
+Here you can find an example of a `backup.cluster.open-cluster-management.io` resource definition:
 
 ```yaml
 apiVersion: cluster.open-cluster-management.io/v1beta1
@@ -147,7 +121,7 @@ The `interval` value in the `spec` defines the time interval in minutes for runn
 The `maxBackup` represents the numbed of backups after which the old backups are being removed.
 
 
-This is an example of a `Restore.cluster.open-cluster-management.io` resource definition
+This is an example of a `restore.cluster.open-cluster-management.io` resource definition
 
 ```yaml
 apiVersion: cluster.open-cluster-management.io/v1beta1
@@ -162,14 +136,14 @@ spec:
 
 The `veleroConfigBackupProxy` `metadata` defines the namespace where the OADP Operator (so Velero) is installed. 
 
-The `backupName` represents the name of the `Backup.velero.io` resource to be restored on the hub where the  `Restore.cluster.open-cluster-management.io` resource was created.
+The `backupName` represents the name of the `backup.velero.io` resource to be restored on the hub where the  `restore.cluster.open-cluster-management.io` resource was created.
 You can find the available Backups by going to the OADP Operator, under the Backup resource section.
 
-In order to create an instance of `Backup.cluster.open-cluster-management.io` or `Restore.cluster.open-cluster-management.io` in the specified namespace you can start from one of the [sample configurations](config/samples).
+In order to create an instance of `backup.cluster.open-cluster-management.io` or `restore.cluster.open-cluster-management.io` in the specified namespace you can start from one of the [sample configurations](config/samples).
 
 ```shell
-kubectl create -n <ns> -f config/samples/backup_v1beta1_backup.yaml
-kubectl create -n <ns> -f config/samples/restore_v1beta1_backup.yaml
+kubectl create -n <ns> -f config/samples/cluster_v1beta1_backup.yaml
+kubectl create -n <ns> -f config/samples/cluster_v1beta1_backup.yaml
 ```
 
 # Testing
@@ -179,12 +153,12 @@ Example of a Backup execution with a backup in progress
 ```
 $ oc get cbkp -A
 NAMESPACE       NAME         PHASE        BACKUP                         LASTBACKUP                     LASTBACKUPTIME         DURATION   MESSAGE
-oadp-operator   backup-acm   InProgress   backup-acm-2021-08-10-151345   backup-acm-2021-08-10-140404   2021-08-10T18:22:07Z   18m3s      Current Backup [backup-acm-2021-08-10-151345] phase:InProgress ItemsBackedUp[439], TotalItems[1410]
+oadp-operator   backup-acm   InProgress   backup-acm-2021-08-10-151345   backup-acm-2021-08-10-140404   2021-08-10T18:22:07Z   18m3s      Velero Backup [backup-acm-2021-08-10-151345] phase:InProgress ItemsBackedUp[439], TotalItems[1410]
 ```
 Example of a Backup execution with no backup in progress
 
 ```
 $ oc get cbkp -A
 NAMESPACE       NAME         PHASE       BACKUP                         LASTBACKUP                     LASTBACKUPTIME         DURATION   MESSAGE
-oadp-operator   backup-acm   Completed   backup-acm-2021-08-10-151345   backup-acm-2021-08-10-151345   2021-08-10T19:21:06Z   7m21s      Current Backup [backup-acm-2021-08-10-151345] phase:Completed ItemsBackedUp[1410], TotalItems[1410]
+oadp-operator   backup-acm   Completed   backup-acm-2021-08-10-151345   backup-acm-2021-08-10-151345   2021-08-10T19:21:06Z   7m21s      velero Backup [backup-acm-2021-08-10-151345] phase:Completed ItemsBackedUp[1410], TotalItems[1410]
 ```

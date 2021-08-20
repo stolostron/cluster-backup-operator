@@ -28,18 +28,13 @@ import (
 type StatusPhase string
 
 const (
-	InProgressStatusPhase StatusPhase = "INPROGRESS"
-	RunningStatusPhase    StatusPhase = "RUNNING"
-	PendingStatusPhase    StatusPhase = "PENDING"
-	ErrorStatusPhase      StatusPhase = "ERROR"
-)
-
-type StatusExecution string
-
-const (
-	SuccessExecution  StatusExecution = "SUCCESS"
-	ErrorExecution    StatusExecution = "ERROR"
-	CanceledExecution StatusExecution = "CANCELED"
+	CompletedStatusPhase       StatusPhase = "Completed"
+	InProgressStatusPhase      StatusPhase = "InProgress"
+	RunningStatusPhase         StatusPhase = "Running"
+	PendingStatusPhase         StatusPhase = "Pending"
+	ErrorStatusPhase           StatusPhase = "Error"
+	FailedStatusPhase          StatusPhase = "Failed"
+	PartiallyFailedStatusPhase StatusPhase = "PartiallyFailed"
 )
 
 // VeleroConfigBackupProxy defines the configuration information for velero configuration to  backup ACM through Velero
@@ -81,9 +76,9 @@ type BackupStatus struct {
 	// Message on the last operation
 	// +kubebuilder:validation:Optional
 	LastMessage string `json:"lastMessage"`
-	// Velero operation status
+	// Velero Backups operation status
 	// +kubebuilder:validation:Optional
-	VeleroBackup *veleroapi.Backup `json:"veleroBackup,omitempty"`
+	VeleroBackups []*veleroapi.Backup `json:"veleroBackups,omitempty"`
 }
 
 // +kubebuilder:object:root=true
