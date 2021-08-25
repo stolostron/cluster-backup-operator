@@ -22,6 +22,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	ocinfrav1 "github.com/openshift/api/config/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,6 +33,7 @@ import (
 
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	backupv1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
+
 	valeroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	//+kubebuilder:scaffold:imports
 )
@@ -70,6 +72,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = valeroapi.AddToScheme(scheme.Scheme) // for velero types
+	Expect(err).NotTo(HaveOccurred())
+
+	err = ocinfrav1.AddToScheme(scheme.Scheme) // for openshift config infrastructure types
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme

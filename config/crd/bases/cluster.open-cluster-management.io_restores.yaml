@@ -46,30 +46,11 @@ spec:
             description: RestoreSpec defines the desired state of Restore
             properties:
               veleroBackupName:
-                description: 'Important: Run "make" to regenerate code after modifying
-                  this file BackupName is the name of the velero back-up used to restore
-                  ACM Hub. Is optional, in case no VeleroBackupName is supplied the
-                  backup name will be selected from the available backups in the Velero
-                  namespace specified in .spec.VelereoConfig.VeleroNamespace'
+                description: VeleroBackupName is the name of the velero back-up used
+                  to restore ACM Hub. Is optional, in case no VeleroBackupName is
+                  supplied the backup name will be selected from the available backups
+                  in the current namespace
                 type: string
-              veleroConfigRestoreProxy:
-                description: VeleroConfigRestoreProxy defines the configuration information
-                  for velero configuration to restore ACM through Velero
-                properties:
-                  BackedUpHubSecretName:
-                    description: BackedUpHubSecretName contains the secret name to
-                      access the backed up HUB
-                    type: string
-                  detachManagedClusters:
-                    description: DetachManagedCluster will detach managedcluster  from
-                      backedHub. backedHub has to be available and BackedUpSecreName
-                      must be supplied
-                    type: boolean
-                  veleroNamespace:
-                    description: VeleroNamespace defines the namespace where velero
-                      is installed
-                    type: string
-                type: object
             type: object
           status:
             description: RestoreStatus defines the observed state of Restore
@@ -1018,6 +999,34 @@ spec:
                                                       required:
                                                       - port
                                                       type: object
+                                                    terminationGracePeriodSeconds:
+                                                      description: Optional duration
+                                                        in seconds the pod needs to
+                                                        terminate gracefully upon
+                                                        probe failure. The grace period
+                                                        is the duration in seconds
+                                                        after the processes running
+                                                        in the pod are sent a termination
+                                                        signal and the time when the
+                                                        processes are forcibly halted
+                                                        with a kill signal. Set this
+                                                        value longer than the expected
+                                                        cleanup time for your process.
+                                                        If this value is nil, the
+                                                        pod's terminationGracePeriodSeconds
+                                                        will be used. Otherwise, this
+                                                        value overrides the value
+                                                        provided by the pod spec.
+                                                        Value must be non-negative
+                                                        integer. The value zero indicates
+                                                        stop immediately via the kill
+                                                        signal (no opportunity to
+                                                        shut down). This is an alpha
+                                                        field and requires enabling
+                                                        ProbeTerminationGracePeriod
+                                                        feature gate.
+                                                      format: int64
+                                                      type: integer
                                                     timeoutSeconds:
                                                       description: 'Number of seconds
                                                         after which the probe times
@@ -1246,6 +1255,34 @@ spec:
                                                       required:
                                                       - port
                                                       type: object
+                                                    terminationGracePeriodSeconds:
+                                                      description: Optional duration
+                                                        in seconds the pod needs to
+                                                        terminate gracefully upon
+                                                        probe failure. The grace period
+                                                        is the duration in seconds
+                                                        after the processes running
+                                                        in the pod are sent a termination
+                                                        signal and the time when the
+                                                        processes are forcibly halted
+                                                        with a kill signal. Set this
+                                                        value longer than the expected
+                                                        cleanup time for your process.
+                                                        If this value is nil, the
+                                                        pod's terminationGracePeriodSeconds
+                                                        will be used. Otherwise, this
+                                                        value overrides the value
+                                                        provided by the pod spec.
+                                                        Value must be non-negative
+                                                        integer. The value zero indicates
+                                                        stop immediately via the kill
+                                                        signal (no opportunity to
+                                                        shut down). This is an alpha
+                                                        field and requires enabling
+                                                        ProbeTerminationGracePeriod
+                                                        feature gate.
+                                                      format: int64
+                                                      type: integer
                                                     timeoutSeconds:
                                                       description: 'Number of seconds
                                                         after which the probe times
@@ -1258,7 +1295,7 @@ spec:
                                                 resources:
                                                   description: 'Compute Resources
                                                     required by this container. Cannot
-                                                    be updated. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
+                                                    be updated. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
                                                   properties:
                                                     limits:
                                                       additionalProperties:
@@ -1270,7 +1307,7 @@ spec:
                                                       description: 'Limits describes
                                                         the maximum amount of compute
                                                         resources allowed. More info:
-                                                        https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
+                                                        https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
                                                       type: object
                                                     requests:
                                                       additionalProperties:
@@ -1286,7 +1323,7 @@ spec:
                                                         it defaults to Limits if that
                                                         is explicitly specified, otherwise
                                                         to an implementation-defined
-                                                        value. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
+                                                        value. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
                                                       type: object
                                                   type: object
                                                 securityContext:
@@ -1665,6 +1702,34 @@ spec:
                                                       required:
                                                       - port
                                                       type: object
+                                                    terminationGracePeriodSeconds:
+                                                      description: Optional duration
+                                                        in seconds the pod needs to
+                                                        terminate gracefully upon
+                                                        probe failure. The grace period
+                                                        is the duration in seconds
+                                                        after the processes running
+                                                        in the pod are sent a termination
+                                                        signal and the time when the
+                                                        processes are forcibly halted
+                                                        with a kill signal. Set this
+                                                        value longer than the expected
+                                                        cleanup time for your process.
+                                                        If this value is nil, the
+                                                        pod's terminationGracePeriodSeconds
+                                                        will be used. Otherwise, this
+                                                        value overrides the value
+                                                        provided by the pod spec.
+                                                        Value must be non-negative
+                                                        integer. The value zero indicates
+                                                        stop immediately via the kill
+                                                        signal (no opportunity to
+                                                        shut down). This is an alpha
+                                                        field and requires enabling
+                                                        ProbeTerminationGracePeriod
+                                                        feature gate.
+                                                      format: int64
+                                                      type: integer
                                                     timeoutSeconds:
                                                       description: 'Number of seconds
                                                         after which the probe times

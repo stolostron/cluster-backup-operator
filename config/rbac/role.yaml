@@ -101,6 +101,14 @@ rules:
   - patch
   - update
 - apiGroups:
+  - operator.openshift.io
+  resources:
+  - configs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - velero.io
   resources:
   - backups
@@ -118,6 +126,16 @@ rules:
   verbs:
   - create
   - list
+  - watch
+- apiGroups:
+  - velero.io
+  resources:
+  - restores
+  verbs:
+  - create
+  - get
+  - list
+  - update
   - watch
 - apiGroups:
   - velero.io
