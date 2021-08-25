@@ -67,7 +67,10 @@ func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			backupLogger.Error(err, "unable to fetch Backup CR")
 		}
 
-		backupLogger.Info("Backup CR was not created in the %s namespace", req.NamespacedName.Namespace)
+		backupLogger.Info(
+			"Backup CR was not created in the %s namespace",
+			req.NamespacedName.Namespace,
+		)
 		return ctrl.Result{RequeueAfter: requeueInterval}, client.IgnoreNotFound(err)
 	}
 
@@ -90,7 +93,12 @@ func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// if backup is complete wake up after the specified backup.Spec.Interval, don't reque every > requeueInterval
 	if veleroBackup != nil && isBackupPhaseFinished(backup.Status.Phase) {
 		nextDuration := time.Minute * time.Duration(backup.Spec.Interval)
-		return ctrl.Result{RequeueAfter: nextDuration}, errors.Wrap(r.Client.Status().Update(ctx, backup), "could not update status")
+		return ctrl.Result{
+				RequeueAfter: nextDuration,
+			}, errors.Wrap(
+				r.Client.Status().Update(ctx, backup),
+				"could not update status",
+			)
 
 	} else {
 		return ctrl.Result{RequeueAfter: requeueInterval}, errors.Wrap(r.Client.Status().Update(ctx, backup), "could not update status")
@@ -120,13 +128,17 @@ func (r *BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *v1beta1.Backup, c client.Client) (*veleroapi.Backup, error) {
+func (r *BackupReconciler) submitAcmBackupSettings(
+	ctx context.Context,
+	backup *v1beta1.Backup,
+	c client.Client,
+) (*veleroapi.Backup, error) {
 
 	backupLogger := log.FromContext(ctx)
 
 	veleroIdentity := types.NamespacedName{
 		Namespace: backup.Spec.VeleroConfig.Namespace,
-		Name:      r.getActiveBackupName(backup, c, ctx),
+		Name:      r.getActiveBackupName(ctx, backup, c),
 	}
 
 	veleroBackup := &veleroapi.Backup{}
@@ -136,7 +148,11 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 	// get the velero CR using the veleroIdentity
 	err := r.Get(ctx, veleroIdentity, veleroBackup)
 	if err != nil {
-		backupLogger.Info("velero.io.Backup resource [name=%s, namespace=%s] returned error, checking if the resource was not yet created", veleroIdentity.Name, veleroIdentity.Namespace)
+		backupLogger.Info(
+			"velero.io.Backup resource [name=%s, namespace=%s] returned error, checking if the resource was not yet created",
+			veleroIdentity.Name,
+			veleroIdentity.Namespace,
+		)
 
 		// check if this is a  resource NotFound error, in which case create the resource
 		if k8serr.IsNotFound(err) {
@@ -145,14 +161,18 @@ func (r *BackupReconciler) submitAcmBackupSettings(ctx context.Context, backup *
 				return nil, nil
 			}
 
-			msg := fmt.Sprintf("velero.io.Backup [name=%s, namespace=%s] resource NOT FOUND, creating it now", veleroIdentity.Name, veleroIdentity.Namespace)
+			msg := fmt.Sprintf(
+				"velero.io.Backup [name=%s, namespace=%s] resource NOT FOUND, creating it now",
+				veleroIdentity.Name,
+				veleroIdentity.Namespace,
+			)
 			backupLogger.Info(msg)
 
 			// clean up old backups if they exceed the maxCount number
 			r.cleanupBackups(ctx, backup, c)
 
 			// set ACM backup configuration for managed clusters
-			setManagedClustersBackupInfo(ctx, veleroBackup, c)
+			setManagedClustersBackupInfo(ctx, &veleroBackup.Spec, c)
 			err = c.Create(ctx, veleroBackup, &client.CreateOptions{})
 
 			if veleroBackup != nil {

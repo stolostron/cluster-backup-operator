@@ -49,27 +49,30 @@ var (
 
 // returns then name of the last backup resource, or,
 // if this is the first time to run the backup or current backup is not found, a newly generated name
-func (r *BackupReconciler) getActiveBackupName(backup *v1beta1.Backup, c client.Client, ctx context.Context) string {
+func (r *BackupReconciler) getActiveBackupName(
+	ctx context.Context,
+	backup *v1beta1.Backup,
+	c client.Client,
+) string {
 
 	if backup.Status.CurrentBackup == "" || isBackupPhaseFinished(backup.Status.Phase) {
 
 		// no active backup, return newyly generated backup name
 		return getVeleroBackupName(backup.Name, backup.Spec.VeleroConfig.Namespace)
-	} else {
-		// check if current backup resource exists
+	}
 
-		veleroIdentity := types.NamespacedName{
-			Namespace: backup.Spec.VeleroConfig.Namespace,
-			Name:      backup.Status.CurrentBackup,
-		}
-		// get the velero CR using the veleroIdentity
-		veleroBackup := &veleroapi.Backup{}
-		err := r.Get(ctx, veleroIdentity, veleroBackup)
-		if err != nil {
-			// unable to get backup resource, create a new one
-			backup.Status.CurrentBackup = ""
-			return getVeleroBackupName(backup.Name, backup.Spec.VeleroConfig.Namespace)
-		}
+	// check if current backup resource exists
+	veleroIdentity := types.NamespacedName{
+		Namespace: backup.Spec.VeleroConfig.Namespace,
+		Name:      backup.Status.CurrentBackup,
+	}
+	// get the velero CR using the veleroIdentity
+	veleroBackup := &veleroapi.Backup{}
+	err := r.Get(ctx, veleroIdentity, veleroBackup)
+	if err != nil {
+		// unable to get backup resource, create a new one
+		backup.Status.CurrentBackup = ""
+		return getVeleroBackupName(backup.Name, backup.Spec.VeleroConfig.Namespace)
 	}
 
 	if !isBackupFinished(backup.Status.VeleroBackups) {
@@ -83,7 +86,11 @@ func (r *BackupReconciler) getActiveBackupName(backup *v1beta1.Backup, c client.
 }
 
 // clean up old backups if they exceed the maxCount number
-func (r *BackupReconciler) cleanupBackups(ctx context.Context, backup *v1beta1.Backup, c client.Client) {
+func (r *BackupReconciler) cleanupBackups(
+	ctx context.Context,
+	backup *v1beta1.Backup,
+	c client.Client,
+) {
 	maxBackups := backup.Spec.MaxBackups * 3 // each backup contains 3 backup files ( for clusters, resources and secrets )
 	backupLogger := log.FromContext(ctx)
 
@@ -136,7 +143,11 @@ func (r *BackupReconciler) cleanupBackups(ctx context.Context, backup *v1beta1.B
 	}
 }
 
-func (r *BackupReconciler) deleteBackup(backup *veleroapi.Backup, ctx context.Context, c client.Client) {
+func (r *BackupReconciler) deleteBackup(
+	backup *veleroapi.Backup,
+	ctx context.Context,
+	c client.Client,
+) {
 	// delete backup now
 	backupLogger := log.FromContext(ctx)
 	backupName := backup.ObjectMeta.Name
@@ -161,7 +172,10 @@ func (r *BackupReconciler) deleteBackup(backup *veleroapi.Backup, ctx context.Co
 
 			err = c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{})
 			if err != nil {
-				backupLogger.Error(err, fmt.Sprintf("create  DeleteBackupRequest request error for %s", backupName))
+				backupLogger.Error(
+					err,
+					fmt.Sprintf("create  DeleteBackupRequest request error for %s", backupName),
+				)
 			}
 		} else {
 			backupLogger.Error(err, fmt.Sprintf("Failed to create DeleteBackupRequest for resource %s", backupName))
@@ -172,7 +186,13 @@ func (r *BackupReconciler) deleteBackup(backup *veleroapi.Backup, ctx context.Co
 }
 
 // create velero.io.Backup resource for the specified resourceType types
-func (r *BackupReconciler) createBackupForResource(resourceType string, backup *v1beta1.Backup, veleroBackup *veleroapi.Backup, ctx context.Context, c client.Client) {
+func (r *BackupReconciler) createBackupForResource(
+	resourceType string,
+	backup *v1beta1.Backup,
+	veleroBackup *veleroapi.Backup,
+	ctx context.Context,
+	c client.Client,
+) {
 
 	if resourceType != "creds" && resourceType != "resource" {
 		// skip if unknown backup type
@@ -192,15 +212,19 @@ func (r *BackupReconciler) createBackupForResource(resourceType string, backup *
 
 	err := r.Get(ctx, veleroResIdentity, veleroResBackup)
 	if err != nil {
-		backupLogger.Info("velero.io.Backup [name=%s, namespace=%s] returned error, checking if the resource was not yet created", veleroResIdentity.Name, veleroResIdentity.Namespace)
+		backupLogger.Info(
+			"velero.io.Backup [name=%s, namespace=%s] returned error, checking if the resource was not yet created",
+			veleroResIdentity.Name,
+			veleroResIdentity.Namespace,
+		)
 		// check if this is a  resource NotFound error, in which case create the resource
 		if k8serr.IsNotFound(err) {
 			// create backup based on resource type
 			switch resourceType {
 			case "resource":
-				setResourcesBackupInfo(ctx, veleroResBackup, c)
+				setResourcesBackupInfo(ctx, &veleroResBackup.Spec, c)
 			case "creds":
-				setCredsBackupInfo(ctx, veleroResBackup, c)
+				setCredsBackupInfo(ctx, &veleroResBackup.Spec, c)
 			}
 
 			err = c.Create(ctx, veleroResBackup, &client.CreateOptions{})
@@ -231,21 +255,37 @@ func (r *BackupReconciler) createBackupForResource(resourceType string, backup *
 	}
 
 	if veleroResBackup.Status.Progress != nil {
-		msg := fmt.Sprintf("%s ; [%s: ItemsBackedUp[%d], TotalItems[%d]]", backup.Status.LastMessage, resourceType, veleroResBackup.Status.Progress.ItemsBackedUp, veleroResBackup.Status.Progress.TotalItems)
+		msg := fmt.Sprintf(
+			"%s ; [%s: ItemsBackedUp[%d], TotalItems[%d]]",
+			backup.Status.LastMessage,
+			resourceType,
+			veleroResBackup.Status.Progress.ItemsBackedUp,
+			veleroResBackup.Status.Progress.TotalItems,
+		)
 		backup.Status.LastMessage = msg
 	}
 }
 
 // set all acm resources backup info
-func setResourcesBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client.Client) {
+func setResourcesBackupInfo(
+	ctx context.Context,
+	veleroBackupTemplate *veleroapi.BackupSpec,
+	c client.Client,
+) {
 
 	backupLogger := log.FromContext(ctx)
 	var clusterResource bool = false
-	veleroBackup.Spec.IncludeClusterResources = &clusterResource
-	veleroBackup.Spec.ExcludedNamespaces = appendUnique(veleroBackup.Spec.ExcludedNamespaces, "local-cluster")
+	veleroBackupTemplate.IncludeClusterResources = &clusterResource
+	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
+		veleroBackupTemplate.ExcludedNamespaces,
+		"local-cluster",
+	)
 
 	for i := range backupResources { // acm resources
-		veleroBackup.Spec.IncludedResources = appendUnique(veleroBackup.Spec.IncludedResources, backupResources[i])
+		veleroBackupTemplate.IncludedResources = appendUnique(
+			veleroBackupTemplate.IncludedResources,
+			backupResources[i],
+		)
 	}
 
 	// exclude acm channel namespaces
@@ -260,44 +300,61 @@ func setResourcesBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup,
 	} else {
 		for i := range channels.Items {
 			if channels.Items[i].Name == "charts-v1" {
-				veleroBackup.Spec.ExcludedNamespaces = appendUnique(veleroBackup.Spec.ExcludedNamespaces, channels.Items[i].Namespace)
+				veleroBackupTemplate.ExcludedNamespaces = appendUnique(veleroBackupTemplate.ExcludedNamespaces, channels.Items[i].Namespace)
 			}
 		}
 	}
 }
 
 // set credentials backup info
-func setCredsBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client.Client) {
+func setCredsBackupInfo(
+	ctx context.Context,
+	veleroBackupTemplate *veleroapi.BackupSpec,
+	c client.Client,
+) {
 
 	var clusterResource bool = false
-	veleroBackup.Spec.IncludeClusterResources = &clusterResource
+	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 
 	for i := range backupCredsResources { // acm secrets
-		veleroBackup.Spec.IncludedResources = appendUnique(veleroBackup.Spec.IncludedResources, backupCredsResources[i])
+		veleroBackupTemplate.IncludedResources = appendUnique(
+			veleroBackupTemplate.IncludedResources,
+			backupCredsResources[i],
+		)
 	}
 
-	if veleroBackup.Spec.LabelSelector == nil {
+	if veleroBackupTemplate.LabelSelector == nil {
 		labels := &v1.LabelSelector{}
-		veleroBackup.Spec.LabelSelector = labels
+		veleroBackupTemplate.LabelSelector = labels
 
 		requirements := make([]v1.LabelSelectorRequirement, 0)
-		veleroBackup.Spec.LabelSelector.MatchExpressions = requirements
+		veleroBackupTemplate.LabelSelector.MatchExpressions = requirements
 	}
 	req := &v1.LabelSelectorRequirement{}
 	req.Key = "cluster.open-cluster-management.io/type"
 	req.Operator = "Exists"
-	veleroBackup.Spec.LabelSelector.MatchExpressions = append(veleroBackup.Spec.LabelSelector.MatchExpressions, *req)
+	veleroBackupTemplate.LabelSelector.MatchExpressions = append(
+		veleroBackupTemplate.LabelSelector.MatchExpressions,
+		*req,
+	)
 }
 
 // set managed clusters backup info
-func setManagedClustersBackupInfo(ctx context.Context, veleroBackup *veleroapi.Backup, c client.Client) {
+func setManagedClustersBackupInfo(
+	ctx context.Context,
+	veleroBackupTemplate *veleroapi.BackupSpec,
+	c client.Client,
+) {
 
 	backupLogger := log.FromContext(ctx)
 	var clusterResource bool = false
-	veleroBackup.Spec.IncludeClusterResources = &clusterResource
+	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 
 	for i := range backupNamespacesACM { // acm ns
-		veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, backupNamespacesACM[i])
+		veleroBackupTemplate.IncludedNamespaces = appendUnique(
+			veleroBackupTemplate.IncludedNamespaces,
+			backupNamespacesACM[i],
+		)
 	}
 
 	// get managed clusters namespaces
@@ -314,7 +371,7 @@ func setManagedClustersBackupInfo(ctx context.Context, veleroBackup *veleroapi.B
 			if managedClusterList.Items[i].Name == "local-cluster" {
 				continue
 			}
-			veleroBackup.Spec.IncludedNamespaces = appendUnique(veleroBackup.Spec.IncludedNamespaces, managedClusterList.Items[i].Name)
+			veleroBackupTemplate.IncludedNamespaces = appendUnique(veleroBackupTemplate.IncludedNamespaces, managedClusterList.Items[i].Name)
 		}
 	}
 }

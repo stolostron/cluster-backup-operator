@@ -35,6 +35,32 @@ rules:
 - apiGroups:
   - cluster.open-cluster-management.io
   resources:
+  - clusterbackupschedules
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cluster.open-cluster-management.io
+  resources:
+  - clusterbackupschedules/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - cluster.open-cluster-management.io
+  resources:
+  - clusterbackupschedules/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - cluster.open-cluster-management.io
+  resources:
   - restores
   verbs:
   - create
