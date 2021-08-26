@@ -77,5 +77,5 @@ type ClusterBackupScheduleList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ClusterBackupSchedule{}, &ClusterBackupSchedule{})
+	SchemeBuilder.Register(&ClusterBackupSchedule{}, &ClusterBackupScheduleList{})
 }

@@ -18,6 +18,8 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 
 	v1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
 	"github.com/pkg/errors"
@@ -49,8 +51,8 @@ var (
 	// mapping ResourceTypes to Velero schedule names
 	resourceTypes = map[ResourceType]string{
 		ManagedClusters: "acm-managed-clusters-schedule",
-		Credentials:     "acm-resources-schedule",
-		Resources:       "acm-credentials-schedule",
+		Credentials:     "acm-credentials-schedule",
+		Resources:       "acm-resources-schedule",
 	}
 )
 
@@ -77,28 +79,31 @@ func (r *BackupScheduleReconciler) Reconcile(
 	ctx context.Context,
 	req ctrl.Request,
 ) (ctrl.Result, error) {
-	backupLogger := log.FromContext(ctx)
+	scheduleLogger := log.FromContext(ctx)
 	backupSchedule := &v1beta1.ClusterBackupSchedule{}
 
 	if err := r.Get(ctx, req.NamespacedName, backupSchedule); err != nil {
-		if !k8serr.IsNotFound(err) {
-			backupLogger.Error(err, "unable to fetch ClusterBackupSchedule CR")
-		}
-
-		backupLogger.Info(
-			"ClusterBackupSchedule CR was not created in the %s namespace",
-			req.NamespacedName.Namespace,
-		)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	if err := r.createBackupSchedulesForResources(ctx, backupSchedule, r.Client); err != nil {
+		scheduleLogger.Error(
+			err,
+			"unable to setup velero schedules for schedule",
+			"namespace", backupSchedule.Namespace,
+			"name", backupSchedule.Name,
+		)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	err := r.Client.Status().Update(ctx, backupSchedule)
 	return ctrl.Result{}, errors.Wrap(
-		r.Client.Status().Update(ctx, backupSchedule),
-		"could not update status",
+		err,
+		fmt.Sprintf(
+			"could not update status for schedule %s/%s",
+			backupSchedule.Namespace,
+			backupSchedule.Name,
+		),
 	)
 }
 
@@ -108,7 +113,7 @@ func (r *BackupScheduleReconciler) createBackupSchedulesForResources(
 	backupSchedule *v1beta1.ClusterBackupSchedule,
 	c client.Client,
 ) error {
-	backupLogger := log.FromContext(ctx)
+	scheduleLogger := log.FromContext(ctx)
 
 	// loop through resourceTypes to create a schedule per type
 	for key, value := range resourceTypes {
@@ -123,10 +128,10 @@ func (r *BackupScheduleReconciler) createBackupSchedulesForResources(
 
 		err := r.Get(ctx, veleroScheduleIdentity, veleroSchedule)
 		if err != nil {
-			backupLogger.Info(
-				"velero.io.Schedule [name=%s, namespace=%s] returned error, checking if the resource was not yet created",
-				veleroScheduleIdentity.Name,
-				veleroScheduleIdentity.Namespace,
+			scheduleLogger.Info(
+				"velero.io.Schedule returned error, checking if the resource was not yet created",
+				"name", veleroScheduleIdentity.Name,
+				"namespace", veleroScheduleIdentity.Namespace,
 			)
 			// check if this is a resource NotFound error, in which case create the resource
 			if k8serr.IsNotFound(err) {
@@ -152,42 +157,67 @@ func (r *BackupScheduleReconciler) createBackupSchedulesForResources(
 
 				err = c.Create(ctx, veleroSchedule, &client.CreateOptions{})
 				if err != nil {
-					backupLogger.Error(
+					scheduleLogger.Error(
 						err,
-						"Error in creating velero.io.Schedule [resourceType=%s]",
-						key,
+						"Error in creating velero.io.Schedule",
+						"name", veleroScheduleIdentity.Name,
+						"namespace", veleroScheduleIdentity.Namespace,
 					)
 					return err
 				}
 				// set veleroSchedule in backupSchedule status
-				setBackupScheduleStatus(key, veleroSchedule, backupSchedule)
+				err = r.setBackupScheduleStatus(ctx, key, veleroSchedule, backupSchedule)
+				if err != nil {
+					scheduleLogger.Error(
+						err,
+						"Error in updating status",
+						"name", veleroScheduleIdentity.Name,
+						"namespace", veleroScheduleIdentity.Namespace,
+					)
+					return err
+				}
 			} else {
 				return err
 			}
 		} else if veleroSchedule != nil {
-			veleroSchedule.Spec.Schedule = backupSchedule.Spec.VeleroSchedule
-			veleroSchedule.Spec.Template.TTL = backupSchedule.Spec.VeleroTTL
-			err = c.Update(ctx, veleroSchedule, &client.UpdateOptions{})
-			if err != nil {
-				backupLogger.Error(
-					err,
-					"Error in updating velero.io.Schedule [resourceType=%s]",
-					key,
-				)
-				return err
+			// the Velero schedule controller only processes schedules that have been newly added,
+			// and doesn't look at modifications
+			// updating velero schedule if backupSchedule is updated is functionally useless
+
+			// if velero schedule is changed, update its copy in schedule status
+			veleroCopy := getVeleroScheduleFromStatus(key, backupSchedule)
+			if !reflect.DeepEqual(veleroSchedule.Status, veleroCopy.Status) {
+				// set veleroSchedule in backupSchedule status to contain latest status and LastBackup
+				err = r.setBackupScheduleStatus(ctx, key, veleroSchedule, backupSchedule)
+				if err != nil {
+					scheduleLogger.Error(
+						err,
+						"Error in updating status",
+						"name", veleroScheduleIdentity.Name,
+						"namespace", veleroScheduleIdentity.Namespace,
+					)
+					return err
+				}
 			}
-			// set veleroSchedule in backupSchedule status
-			setBackupScheduleStatus(key, veleroSchedule, backupSchedule)
 		}
 	}
 	return nil
 }
 
-func setBackupScheduleStatus(
+func (r *BackupScheduleReconciler) setBackupScheduleStatus(
+	ctx context.Context,
 	resourceType ResourceType,
 	veleroSchedule *veleroapi.Schedule,
 	backupSchedule *v1beta1.ClusterBackupSchedule,
-) {
+) error {
+	scheduleLogger := log.FromContext(ctx)
+
+	scheduleLogger.Info(
+		"Updating status with a copy of velero schedule",
+		"name", veleroSchedule.Name,
+		"namespace", veleroSchedule.Namespace,
+	)
+
 	switch resourceType {
 	case ManagedClusters:
 		backupSchedule.Status.VeleroScheduleManagedClusters = veleroSchedule.DeepCopy()
@@ -196,6 +226,23 @@ func setBackupScheduleStatus(
 	case Resources:
 		backupSchedule.Status.VeleroScheduleResources = veleroSchedule.DeepCopy()
 	}
+
+	return r.Client.Status().Update(ctx, backupSchedule)
+}
+
+func getVeleroScheduleFromStatus(
+	resourceType ResourceType,
+	backupSchedule *v1beta1.ClusterBackupSchedule,
+) *veleroapi.Schedule {
+	switch resourceType {
+	case ManagedClusters:
+		return backupSchedule.Status.VeleroScheduleManagedClusters
+	case Credentials:
+		return backupSchedule.Status.VeleroScheduleCredentials
+	case Resources:
+		return backupSchedule.Status.VeleroScheduleResources
+	}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
