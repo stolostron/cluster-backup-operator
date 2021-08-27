@@ -83,6 +83,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	backupSchedule := &v1beta1.ClusterBackupSchedule{}
 
 	if err := r.Get(ctx, req.NamespacedName, backupSchedule); err != nil {
+		// we can get not-found errors on deleted requests
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -186,7 +187,7 @@ func (r *BackupScheduleReconciler) createBackupSchedulesForResources(
 
 			// if velero schedule is changed, update its copy in schedule status
 			veleroCopy := getVeleroScheduleFromStatus(key, backupSchedule)
-			if !reflect.DeepEqual(veleroSchedule.Status, veleroCopy.Status) {
+			if veleroCopy == nil || !reflect.DeepEqual(veleroSchedule.Status, veleroCopy.Status) {
 				// set veleroSchedule in backupSchedule status to contain latest status and LastBackup
 				err = r.setBackupScheduleStatus(ctx, key, veleroSchedule, backupSchedule)
 				if err != nil {
