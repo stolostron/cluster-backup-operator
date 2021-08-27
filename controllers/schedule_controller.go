@@ -23,6 +23,7 @@ import (
 
 	v1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
 	"github.com/pkg/errors"
+	"github.com/robfig/cron/v3"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -87,14 +88,20 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if err := r.createBackupSchedulesForResources(ctx, backupSchedule, r.Client); err != nil {
-		scheduleLogger.Error(
-			err,
-			"unable to setup velero schedules for schedule",
-			"namespace", backupSchedule.Namespace,
-			"name", backupSchedule.Name,
-		)
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+	errs := parseCronSchedule(ctx, backupSchedule)
+	if len(errs) > 0 {
+		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
+	} else {
+		if err := r.createBackupSchedulesForResources(ctx, backupSchedule, r.Client); err != nil {
+			scheduleLogger.Error(
+				err,
+				"unable to setup velero schedules for schedule",
+				"namespace", backupSchedule.Namespace,
+				"name", backupSchedule.Name,
+			)
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+		backupSchedule.Status.Phase = v1beta1.SchedulePhaseEnabled
 	}
 
 	err := r.Client.Status().Update(ctx, backupSchedule)
@@ -229,6 +236,53 @@ func (r *BackupScheduleReconciler) setBackupScheduleStatus(
 	}
 
 	return r.Client.Status().Update(ctx, backupSchedule)
+}
+
+func parseCronSchedule(
+	ctx context.Context,
+	backupSchedule *v1beta1.ClusterBackupSchedule,
+) []string {
+	var validationErrors []string
+
+	// cron.Parse panics if schedule is empty
+	if len(backupSchedule.Spec.VeleroSchedule) == 0 {
+		validationErrors = append(
+			validationErrors,
+			"Schedule must be a non-empty valid Cron expression",
+		)
+		return validationErrors
+	}
+
+	scheduleLogger := log.FromContext(ctx)
+
+	// adding a recover() around cron.Parse because it panics on empty string and is possible
+	// that it panics under other scenarios as well.
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				scheduleLogger.Info(
+					"Panic parsing schedule",
+					"schedule", backupSchedule.Spec.VeleroSchedule,
+				)
+				validationErrors = append(validationErrors, fmt.Sprintf("invalid schedule: %v", r))
+			}
+		}()
+
+		if _, err := cron.ParseStandard(backupSchedule.Spec.VeleroSchedule); err != nil {
+			scheduleLogger.Error(
+				err,
+				"Error parsing schedule",
+				"schedule", backupSchedule.Spec.VeleroSchedule,
+			)
+			validationErrors = append(validationErrors, fmt.Sprintf("invalid schedule: %v", err))
+		}
+	}()
+
+	if len(validationErrors) > 0 {
+		return validationErrors
+	}
+
+	return nil
 }
 
 func getVeleroScheduleFromStatus(
