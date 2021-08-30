@@ -36,7 +36,9 @@ This project is licensed under the *Apache License 2.0*. A copy of the license c
 
 
 ## Getting Started
-The Cluster Back up and Restore Operator runs on the hub and depends on the OADP Operator to backup and restore ACM hub resources. You need to install the OADP Operator first as described here https://github.com/openshift/oadp-operator.
+The Cluster Back up and Restore Operator runs on the hub and depends on the [OADP Operator](https://github.com/openshift/oadp-operator) to install [Velero](https://velero.io/) on the ACM hub, which is then used to backup and restore ACM hub resources. 
+Before you can use the cluster operator, you need to install the OADP Operator first as described [here](https://github.com/openshift/oadp-operator#installing-operator).
+Make sure you follow the steps to create the [secret for the cloud storage](https://github.com/openshift/oadp-operator#creating-credentials-secret) where the backups are going to be saved, then use that secret when creating the [Velero resource](https://github.com/openshift/oadp-operator#creating-velero-cr).
 
 ## Design
 The operator defines the `Backup.cluster.open-cluster-management.io` and `Restore.cluster.open-cluster-management.io` resources, used to setup a hub backup and restore configuration.
@@ -92,9 +94,9 @@ registry service like [quay.io](https://quay.io).
 
 ## Usage
 
-Before using Cluster Back up and Restore Operator backup or restore support you have to install the OADP Operator which will install Velero. 
+Before using Cluster Back up and Restore Operator backup or restore support you have to install the [OADP Operator](https://github.com/openshift/oadp-operator) which will install [Velero](https://velero.io/). 
 
-Make sure you follow the OADP Operator installation instructions and create a Velero resource and a valid connection to a backup location where backups will be stored. Check the install and setup steps here https://github.com/openshift/oadp-operator
+Make sure you follow the OADP Operator installation instructions and create a Velero resource and a valid connection to a backup storage location where backups will be stored. Check the install and setup steps [here](https://github.com/openshift/oadp-operator#installing-operator).
 
 If you are trying to use the Cluster Back up and Restore Operator to backup data, you have to create a `backup.cluster.open-cluster-management.io` resource which will be consumed by the operator and create all the necessary intermediary backup resources.
 
@@ -148,17 +150,42 @@ kubectl create -n <ns> -f config/samples/cluster_v1beta1_backup.yaml
 
 # Testing
 
-Example of a Backup execution with a backup in progress
+## Backup resources
+
+After you create a `backup.cluster.open-cluster-management.io` resource you should be able to run `oc get cbkp -A` and get the status of the backup executions.
+
+In the example below, the last completed backup is `backup-acm-2021-08-10-140404` and a new backup is currently running `backup-acm-2021-08-10-151345`.
+The name of the backup follows this template: `acm-backup-<timestamp>`
+
+Example of a `backup.cluster.open-cluster-management.io` execution with a `velero.io.backup` in progress:
 
 ```
 $ oc get cbkp -A
 NAMESPACE       NAME         PHASE        BACKUP                         LASTBACKUP                     LASTBACKUPTIME         DURATION   MESSAGE
 oadp-operator   backup-acm   InProgress   backup-acm-2021-08-10-151345   backup-acm-2021-08-10-140404   2021-08-10T18:22:07Z   18m3s      Velero Backup [backup-acm-2021-08-10-151345] phase:InProgress ItemsBackedUp[439], TotalItems[1410]
 ```
-Example of a Backup execution with no backup in progress
+
+Running the command below returns all `velero.io.backup` resources.
+You should also be able to see the backup files under the storage location defined when installing the OADP Operator.
+
+```
+$ oc get backup -A
+```
+
+
+Example of a Backup execution with no backup in progress:
 
 ```
 $ oc get cbkp -A
 NAMESPACE       NAME         PHASE       BACKUP                         LASTBACKUP                     LASTBACKUPTIME         DURATION   MESSAGE
 oadp-operator   backup-acm   Completed   backup-acm-2021-08-10-151345   backup-acm-2021-08-10-151345   2021-08-10T19:21:06Z   7m21s      velero Backup [backup-acm-2021-08-10-151345] phase:Completed ItemsBackedUp[1410], TotalItems[1410]
 ```
+
+## Restore a backup
+
+The restore operation should be run on a different hub then the one where the backup was created.
+
+After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -A` and get the status of the restore operation. You should also be able to verify on your new hub that the backed up resources contained by the backup file have been created.
+
+A restore operation is executed only once. If a backup name is specified on the restore resource, the resources from that backup are being restored. If no backup file is specified, the last valid backup file is being used instead.
+
