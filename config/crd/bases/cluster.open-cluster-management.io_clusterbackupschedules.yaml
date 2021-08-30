@@ -58,7 +58,7 @@ spec:
               ClusterBackupSchedule
             properties:
               phase:
-                description: Phase is the current phase of the schedule
+                description: Phase shows the status for the backup operation
                 type: string
               veleroCredentialsSchedule:
                 description: Velero Schedule for backing up credentials

@@ -22,23 +22,6 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 )
 
-// SchedulePhase shows phase of the schedule
-type SchedulePhase string
-
-const (
-	// SchedulePhaseNew means the schedule has been created but not
-	// yet processed by the ScheduleController
-	SchedulePhaseNew SchedulePhase = "New"
-
-	// SchedulePhaseEnabled means the schedule has been validated and
-	// will now be triggering backups according to the schedule spec.
-	SchedulePhaseEnabled SchedulePhase = "Enabled"
-
-	// SchedulePhaseFailedValidation means the schedule has failed
-	// the controller's validations and therefore will not trigger backups.
-	SchedulePhaseFailedValidation SchedulePhase = "FailedValidation"
-)
-
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
@@ -56,9 +39,9 @@ type ClusterBackupScheduleSpec struct {
 
 // ClusterBackupScheduleStatus defines the observed state of ClusterBackupSchedule
 type ClusterBackupScheduleStatus struct {
-	// Phase is the current phase of the schedule
+	// Phase shows the status for the backup operation
 	// +kubebuilder:validation:Optional
-	Phase SchedulePhase `json:"phase"`
+	Phase StatusPhase `json:"phase"`
 	// Velero Schedule for backing up remote clusters
 	// +kubebuilder:validation:Optional
 	VeleroScheduleManagedClusters *veleroapi.Schedule `json:"veleroManagedClustersSchedule,omitempty"`
