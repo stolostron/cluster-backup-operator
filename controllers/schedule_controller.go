@@ -19,18 +19,18 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	v1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
 	"github.com/pkg/errors"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 // ResourceType is the type to contain resource type string value
@@ -87,14 +87,26 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if err := r.createBackupSchedulesForResources(ctx, backupSchedule, r.Client); err != nil {
+	// retrieve the velero schedules (if any)
+	veleroScheduleList := veleroapi.ScheduleList{}
+	if err := r.List(ctx, &veleroScheduleList, client.InNamespace(req.Namespace), client.MatchingFields{scheduleOwnerKey: req.Name}); err != nil {
 		scheduleLogger.Error(
 			err,
-			"unable to setup velero schedules for schedule",
-			"namespace", backupSchedule.Namespace,
-			"name", backupSchedule.Name,
+			"unable to list velero schedules for schedule",
+			"namespace", req.Namespace,
+			"name", req.Name,
 		)
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, err
+	}
+
+	if len(veleroScheduleList.Items) == 0 {
+		if err := r.initVeleroSchedules(ctx, backupSchedule, r.Client); err != nil {
+			return ctrl.Result{}, err
+		}
+	} else {
+		for _, veleroSchedule := range veleroScheduleList.Items {
+			updateScheduleStatus(ctx, &veleroSchedule, backupSchedule)
+		}
 	}
 
 	err := r.Client.Status().Update(ctx, backupSchedule)
@@ -109,7 +121,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 }
 
 // create velero.io.Schedule resource for each resource type that needs backup
-func (r *BackupScheduleReconciler) createBackupSchedulesForResources(
+func (r *BackupScheduleReconciler) initVeleroSchedules(
 	ctx context.Context,
 	backupSchedule *v1beta1.ClusterBackupSchedule,
 	c client.Client,
@@ -127,90 +139,53 @@ func (r *BackupScheduleReconciler) createBackupSchedulesForResources(
 		veleroSchedule.Name = veleroScheduleIdentity.Name
 		veleroSchedule.Namespace = veleroScheduleIdentity.Namespace
 
-		err := r.Get(ctx, veleroScheduleIdentity, veleroSchedule)
+		// create backup based on resource type
+		veleroBackupTemplate := &veleroapi.BackupSpec{}
+
+		switch key {
+		case ManagedClusters:
+			setManagedClustersBackupInfo(ctx, veleroBackupTemplate, c)
+		case Credentials:
+			setCredsBackupInfo(ctx, veleroBackupTemplate, c)
+		case Resources:
+			setResourcesBackupInfo(ctx, veleroBackupTemplate, c)
+		}
+
+		veleroSchedule.Spec.Template = *veleroBackupTemplate
+		veleroSchedule.Spec.Schedule = backupSchedule.Spec.VeleroSchedule
+		veleroSchedule.Spec.Template.TTL = backupSchedule.Spec.VeleroTTL
+
+		if err := ctrl.SetControllerReference(backupSchedule, veleroSchedule, r.Scheme); err != nil {
+			return err
+		}
+
+		err := c.Create(ctx, veleroSchedule, &client.CreateOptions{})
 		if err != nil {
-			scheduleLogger.Info(
-				"velero.io.Schedule returned error, checking if the resource was not yet created",
+			scheduleLogger.Error(
+				err,
+				"Error in creating velero.io.Schedule",
 				"name", veleroScheduleIdentity.Name,
 				"namespace", veleroScheduleIdentity.Namespace,
 			)
-			// check if this is a resource NotFound error, in which case create the resource
-			if k8serr.IsNotFound(err) {
-				// create backup based on resource type
-				veleroBackupTemplate := &veleroapi.BackupSpec{}
-
-				switch key {
-				case ManagedClusters:
-					setManagedClustersBackupInfo(ctx, veleroBackupTemplate, c)
-				case Credentials:
-					setCredsBackupInfo(ctx, veleroBackupTemplate, c)
-				case Resources:
-					setResourcesBackupInfo(ctx, veleroBackupTemplate, c)
-				}
-
-				veleroSchedule.Spec.Template = *veleroBackupTemplate
-				veleroSchedule.Spec.Schedule = backupSchedule.Spec.VeleroSchedule
-				veleroSchedule.Spec.Template.TTL = backupSchedule.Spec.VeleroTTL
-
-				if err := ctrl.SetControllerReference(backupSchedule, veleroSchedule, r.Scheme); err != nil {
-					return err
-				}
-
-				err = c.Create(ctx, veleroSchedule, &client.CreateOptions{})
-				if err != nil {
-					scheduleLogger.Error(
-						err,
-						"Error in creating velero.io.Schedule",
-						"name", veleroScheduleIdentity.Name,
-						"namespace", veleroScheduleIdentity.Namespace,
-					)
-					return err
-				}
-				// set veleroSchedule in backupSchedule status
-				err = r.setBackupScheduleStatus(ctx, key, veleroSchedule, backupSchedule)
-				if err != nil {
-					scheduleLogger.Error(
-						err,
-						"Error in updating status",
-						"name", veleroScheduleIdentity.Name,
-						"namespace", veleroScheduleIdentity.Namespace,
-					)
-					return err
-				}
-			} else {
-				return err
-			}
-		} else if veleroSchedule != nil {
-			// the Velero schedule controller only processes schedules that have been newly added,
-			// and doesn't look at modifications
-			// updating velero schedule if backupSchedule is updated is functionally useless
-
-			// if velero schedule is changed, update its copy in schedule status
-			veleroCopy := getVeleroScheduleFromStatus(key, backupSchedule)
-			if veleroCopy == nil || !reflect.DeepEqual(veleroSchedule.Status, veleroCopy.Status) {
-				// set veleroSchedule in backupSchedule status to contain latest status and LastBackup
-				err = r.setBackupScheduleStatus(ctx, key, veleroSchedule, backupSchedule)
-				if err != nil {
-					scheduleLogger.Error(
-						err,
-						"Error in updating status",
-						"name", veleroScheduleIdentity.Name,
-						"namespace", veleroScheduleIdentity.Namespace,
-					)
-					return err
-				}
-			}
+			return err
 		}
+		scheduleLogger.Info(
+			"Velero schedule created",
+			"name", veleroSchedule.Name,
+			"namespace", veleroSchedule.Namespace,
+		)
+
+		// set veleroSchedule in backupSchedule status
+		setScheduleStatus(key, veleroSchedule, backupSchedule)
 	}
 	return nil
 }
 
-func (r *BackupScheduleReconciler) setBackupScheduleStatus(
+func updateScheduleStatus(
 	ctx context.Context,
-	resourceType ResourceType,
 	veleroSchedule *veleroapi.Schedule,
 	backupSchedule *v1beta1.ClusterBackupSchedule,
-) error {
+) {
 	scheduleLogger := log.FromContext(ctx)
 
 	scheduleLogger.Info(
@@ -219,6 +194,19 @@ func (r *BackupScheduleReconciler) setBackupScheduleStatus(
 		"namespace", veleroSchedule.Namespace,
 	)
 
+	for key, value := range resourceTypes {
+		if veleroSchedule.Name == value {
+			// set veleroSchedule in backupSchedule status
+			setScheduleStatus(key, veleroSchedule, backupSchedule)
+		}
+	}
+}
+
+func setScheduleStatus(
+	resourceType ResourceType,
+	veleroSchedule *veleroapi.Schedule,
+	backupSchedule *v1beta1.ClusterBackupSchedule,
+) {
 	switch resourceType {
 	case ManagedClusters:
 		backupSchedule.Status.VeleroScheduleManagedClusters = veleroSchedule.DeepCopy()
@@ -227,23 +215,6 @@ func (r *BackupScheduleReconciler) setBackupScheduleStatus(
 	case Resources:
 		backupSchedule.Status.VeleroScheduleResources = veleroSchedule.DeepCopy()
 	}
-
-	return r.Client.Status().Update(ctx, backupSchedule)
-}
-
-func getVeleroScheduleFromStatus(
-	resourceType ResourceType,
-	backupSchedule *v1beta1.ClusterBackupSchedule,
-) *veleroapi.Schedule {
-	switch resourceType {
-	case ManagedClusters:
-		return backupSchedule.Status.VeleroScheduleManagedClusters
-	case Credentials:
-		return backupSchedule.Status.VeleroScheduleCredentials
-	case Resources:
-		return backupSchedule.Status.VeleroScheduleResources
-	}
-	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -266,5 +237,11 @@ func (r *BackupScheduleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.ClusterBackupSchedule{}).
 		Owns(&veleroapi.Schedule{}).
+		WithEventFilter(predicate.Funcs{
+			UpdateFunc: func(e event.UpdateEvent) bool {
+				// Ignore updates to CR status in which case metadata.Generation does not change
+				return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()
+			},
+		}).
 		Complete(r)
 }
