@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	v1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
+	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	"github.com/pkg/errors"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
