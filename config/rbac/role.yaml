@@ -35,7 +35,7 @@ rules:
 - apiGroups:
   - cluster.open-cluster-management.io
   resources:
-  - clusterbackupschedules
+  - backupschedules
   verbs:
   - create
   - delete
@@ -47,13 +47,13 @@ rules:
 - apiGroups:
   - cluster.open-cluster-management.io
   resources:
-  - clusterbackupschedules/finalizers
+  - backupschedules/finalizers
   verbs:
   - update
 - apiGroups:
   - cluster.open-cluster-management.io
   resources:
-  - clusterbackupschedules/status
+  - backupschedules/status
   verbs:
   - get
   - patch

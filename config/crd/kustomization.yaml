@@ -4,7 +4,7 @@
 resources:
 - bases/cluster.open-cluster-management.io_backups.yaml
 - bases/cluster.open-cluster-management.io_restores.yaml
-- bases/cluster.open-cluster-management.io_clusterbackupschedules.yaml
+- bases/cluster.open-cluster-management.io_backupschedules.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:

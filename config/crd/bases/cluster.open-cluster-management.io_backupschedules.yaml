@@ -6,14 +6,16 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.4.1
   creationTimestamp: null
-  name: clusterbackupschedules.cluster.open-cluster-management.io
+  name: backupschedules.cluster.open-cluster-management.io
 spec:
   group: cluster.open-cluster-management.io
   names:
-    kind: ClusterBackupSchedule
-    listKind: ClusterBackupScheduleList
-    plural: clusterbackupschedules
-    singular: clusterbackupschedule
+    kind: BackupSchedule
+    listKind: BackupScheduleList
+    plural: backupschedules
+    shortNames:
+    - bsch
+    singular: backupschedule
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -23,8 +25,7 @@ spec:
     name: v1beta1
     schema:
       openAPIV3Schema:
-        description: ClusterBackupSchedule is the Schema for the backup schedules
-          API
+        description: BackupSchedule is the Schema for the backup schedules API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -39,7 +40,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: ClusterBackupScheduleSpec defines the desired state of ClusterBackupSchedule
+            description: BackupScheduleSpec defines the desired state of BackupSchedule
             properties:
               veleroSchedule:
                 description: Schedule is a Cron expression defining when to run the
@@ -54,8 +55,7 @@ spec:
             - veleroTtl
             type: object
           status:
-            description: ClusterBackupScheduleStatus defines the observed state of
-              ClusterBackupSchedule
+            description: BackupScheduleStatus defines the observed state of BackupSchedule
             properties:
               phase:
                 description: Phase shows the status for the backup operation

@@ -25,8 +25,8 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// ClusterBackupScheduleSpec defines the desired state of ClusterBackupSchedule
-type ClusterBackupScheduleSpec struct {
+// BackupScheduleSpec defines the desired state of BackupSchedule
+type BackupScheduleSpec struct {
 	// Schedule is a Cron expression defining when to run
 	// the Velero Backup
 	// +kubebuilder:validation:Required
@@ -37,8 +37,8 @@ type ClusterBackupScheduleSpec struct {
 	VeleroTTL metav1.Duration `json:"veleroTtl,omitempty"`
 }
 
-// ClusterBackupScheduleStatus defines the observed state of ClusterBackupSchedule
-type ClusterBackupScheduleStatus struct {
+// BackupScheduleStatus defines the observed state of BackupSchedule
+type BackupScheduleStatus struct {
 	// Phase shows the status for the backup operation
 	// +kubebuilder:validation:Optional
 	Phase StatusPhase `json:"phase"`
@@ -56,26 +56,27 @@ type ClusterBackupScheduleStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:validation:Optional
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:shortName={"bsch"}
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 
-// ClusterBackupSchedule is the Schema for the backup schedules API
-type ClusterBackupSchedule struct {
+// BackupSchedule is the Schema for the backup schedules API
+type BackupSchedule struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ClusterBackupScheduleSpec   `json:"spec,omitempty"`
-	Status ClusterBackupScheduleStatus `json:"status,omitempty"`
+	Spec   BackupScheduleSpec   `json:"spec,omitempty"`
+	Status BackupScheduleStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// ClusterBackupScheduleList contains a list of backup schedules
-type ClusterBackupScheduleList struct {
-	metav1.TypeMeta `                        json:",inline"`
-	metav1.ListMeta `                        json:"metadata,omitempty"`
-	Items           []ClusterBackupSchedule `json:"items"`
+// BackupScheduleList contains a list of backup schedules
+type BackupScheduleList struct {
+	metav1.TypeMeta `                 json:",inline"`
+	metav1.ListMeta `                 json:"metadata,omitempty"`
+	Items           []BackupSchedule `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&ClusterBackupSchedule{}, &ClusterBackupScheduleList{})
+	SchemeBuilder.Register(&BackupSchedule{}, &BackupScheduleList{})
 }

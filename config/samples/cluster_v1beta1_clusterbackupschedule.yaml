@@ -1,5 +1,5 @@
 apiVersion: cluster.open-cluster-management.io/v1beta1
-kind: ClusterBackupSchedule
+kind: BackupSchedule
 metadata:
   name: backup-schedule-acm
 spec:

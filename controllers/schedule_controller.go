@@ -56,20 +56,20 @@ var (
 	}
 )
 
-// BackupScheduleReconciler reconciles a ClusterBackupSchedule object
+// BackupScheduleReconciler reconciles a BackupSchedule object
 type BackupScheduleReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=clusterbackupschedules,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=clusterbackupschedules/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=clusterbackupschedules/finalizers,verbs=update
+//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the ClusterBackupSchedule object against the actual cluster state, and then
+// the BackupSchedule object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
@@ -80,7 +80,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	req ctrl.Request,
 ) (ctrl.Result, error) {
 	scheduleLogger := log.FromContext(ctx)
-	backupSchedule := &v1beta1.ClusterBackupSchedule{}
+	backupSchedule := &v1beta1.BackupSchedule{}
 
 	if err := r.Get(ctx, req.NamespacedName, backupSchedule); err != nil {
 		// we can get not-found errors on deleted requests
@@ -123,7 +123,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 // create velero.io.Schedule resource for each resource type that needs backup
 func (r *BackupScheduleReconciler) initVeleroSchedules(
 	ctx context.Context,
-	backupSchedule *v1beta1.ClusterBackupSchedule,
+	backupSchedule *v1beta1.BackupSchedule,
 	c client.Client,
 ) error {
 	scheduleLogger := log.FromContext(ctx)
@@ -184,7 +184,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 func updateScheduleStatus(
 	ctx context.Context,
 	veleroSchedule *veleroapi.Schedule,
-	backupSchedule *v1beta1.ClusterBackupSchedule,
+	backupSchedule *v1beta1.BackupSchedule,
 ) {
 	scheduleLogger := log.FromContext(ctx)
 
@@ -205,7 +205,7 @@ func updateScheduleStatus(
 func setScheduleStatus(
 	resourceType ResourceType,
 	veleroSchedule *veleroapi.Schedule,
-	backupSchedule *v1beta1.ClusterBackupSchedule,
+	backupSchedule *v1beta1.BackupSchedule,
 ) {
 	switch resourceType {
 	case ManagedClusters:
@@ -225,7 +225,7 @@ func (r *BackupScheduleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		if owner == nil {
 			return nil
 		}
-		if owner.APIVersion != apiGVString || owner.Kind != "ClusterBackupSchedule" {
+		if owner.APIVersion != apiGVString || owner.Kind != "BackupSchedule" {
 			return nil
 		}
 
@@ -235,7 +235,7 @@ func (r *BackupScheduleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1beta1.ClusterBackupSchedule{}).
+		For(&v1beta1.BackupSchedule{}).
 		Owns(&veleroapi.Schedule{}).
 		WithEventFilter(predicate.Funcs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
