@@ -31,8 +31,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	backupv1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
-	"github.com/open-cluster-management-io/cluster-backup-operator/controllers"
+	backupv1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
+	"github.com/open-cluster-management/cluster-backup-operator/controllers"
 
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"

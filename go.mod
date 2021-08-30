@@ -1,4 +1,4 @@
-module github.com/open-cluster-management-io/cluster-backup-operator
+module github.com/open-cluster-management/cluster-backup-operator
 
 go 1.16
 

@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
+	"github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 )
 
 // find takes a slice and looks for an element in it. If found it will
