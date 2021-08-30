@@ -17,7 +17,7 @@ limitations under the License.
 package controllers
 
 import (
-	v1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
+	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 )
 
 // IsRestoreFinsihed returns true when Restore is finished

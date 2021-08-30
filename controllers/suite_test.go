@@ -30,8 +30,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	backupv1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
+	backupv1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	valeroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	//+kubebuilder:scaffold:imports
 )

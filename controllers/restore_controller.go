@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	v1beta1 "github.com/open-cluster-management-io/cluster-backup-operator/api/v1beta1"
+	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 )
 
 var (
