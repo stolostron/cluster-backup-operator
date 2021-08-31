@@ -25,4 +25,13 @@ resources:
   kind: Restore
   path: github.com/open-cluster-management/cluster-backup-operator/api/v1beta1
   version: v1beta1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: open-cluster-management.io
+  group: cluster
+  kind: BackupSchedule
+  path: github.com/open-cluster-management/cluster-backup-operator/api/v1beta1
+  version: v1beta1
 version: "3"
