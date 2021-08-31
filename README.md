@@ -160,16 +160,17 @@ The name of the backup follows this template: `acm-backup-<timestamp>`
 Example of a `backup.cluster.open-cluster-management.io` execution with a `velero.io.backup` in progress:
 
 ```
-$ oc get cbkp -A
+$ oc get cbkp -n oadp_operator
 NAMESPACE       NAME         PHASE        BACKUP                         LASTBACKUP                     LASTBACKUPTIME         DURATION   MESSAGE
 oadp-operator   backup-acm   InProgress   backup-acm-2021-08-10-151345   backup-acm-2021-08-10-140404   2021-08-10T18:22:07Z   18m3s      Velero Backup [backup-acm-2021-08-10-151345] phase:InProgress ItemsBackedUp[439], TotalItems[1410]
 ```
 
-Running the command below returns all `velero.io.backup` resources.
+Running the command below returns all `velero.io.backup` resources, created in the same namespace with the OADP Operator. Replace the `<oadp_operator_ns>` with the namespace name used to install the OADP Operator (the default value for the OADP Operator install namespace is `oadp_operator`).
+
 You should also be able to see the backup files under the storage location defined when installing the OADP Operator.
 
 ```
-$ oc get backup -A
+$ oc get backup -n <oadp_operator_ns>
 ```
 
 
