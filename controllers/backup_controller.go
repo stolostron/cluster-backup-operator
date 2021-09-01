@@ -48,6 +48,10 @@ type BackupReconciler struct {
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backups,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backups/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backups/finalizers,verbs=update
+//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=managedclusters,verbs=get;list;watch
+//+kubebuilder:rbac:groups=apps.open-cluster-management.io,resources=channels,verbs=get;list;watch
+//+kubebuilder:rbac:groups=velero.io,resources=backups,verbs=get;list;watch;create;update;patch
+//+kubebuilder:rbac:groups=velero.io,resources=deletebackuprequests,verbs=create
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -68,9 +72,9 @@ func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 
 		backupLogger.Info(
-			"Backup CR was not created in the %s namespace",
-			req.NamespacedName.Namespace,
-		)
+			fmt.Sprintf("Backup CR was not created in the %s namespace",
+				req.NamespacedName.Namespace,
+			))
 		return ctrl.Result{RequeueAfter: requeueInterval}, client.IgnoreNotFound(err)
 	}
 
@@ -148,11 +152,11 @@ func (r *BackupReconciler) submitAcmBackupSettings(
 	// get the velero CR using the veleroIdentity
 	err := r.Get(ctx, veleroIdentity, veleroBackup)
 	if err != nil {
-		backupLogger.Info(
+		backupLogger.Info(fmt.Sprintf(
 			"velero.io.Backup resource [name=%s, namespace=%s] returned error, checking if the resource was not yet created",
 			veleroIdentity.Name,
 			veleroIdentity.Namespace,
-		)
+		))
 
 		// check if this is a  resource NotFound error, in which case create the resource
 		if k8serr.IsNotFound(err) {
