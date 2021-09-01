@@ -65,6 +65,9 @@ type BackupScheduleReconciler struct {
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules/finalizers,verbs=update
+//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=managedclusters,verbs=get;list;watch
+//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=channels,verbs=get;list;watch
+//+kubebuilder:rbac:groups=velero.io,resources=schedules,verbs=get;list;watch;create;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -83,7 +86,6 @@ func (r *BackupScheduleReconciler) Reconcile(
 	backupSchedule := &v1beta1.BackupSchedule{}
 
 	if err := r.Get(ctx, req.NamespacedName, backupSchedule); err != nil {
-		// we can get not-found errors on deleted requests
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -99,14 +101,15 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 
+	// no velero schedules, so create them
 	if len(veleroScheduleList.Items) == 0 {
 		if err := r.initVeleroSchedules(ctx, backupSchedule, r.Client); err != nil {
 			return ctrl.Result{}, err
 		}
-	} else {
-		for _, veleroSchedule := range veleroScheduleList.Items {
-			updateScheduleStatus(ctx, &veleroSchedule, backupSchedule)
-		}
+	}
+	// update schedule status with latest velero schedules
+	for _, veleroSchedule := range veleroScheduleList.Items {
+		updateScheduleStatus(ctx, &veleroSchedule, backupSchedule)
 	}
 
 	err := r.Client.Status().Update(ctx, backupSchedule)

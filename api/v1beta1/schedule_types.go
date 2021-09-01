@@ -43,13 +43,13 @@ type BackupScheduleStatus struct {
 	Phase StatusPhase `json:"phase"`
 	// Velero Schedule for backing up remote clusters
 	// +kubebuilder:validation:Optional
-	VeleroScheduleManagedClusters *veleroapi.Schedule `json:"veleroManagedClustersSchedule,omitempty"`
+	VeleroScheduleManagedClusters *veleroapi.Schedule `json:"veleroScheduleManagedClusters,omitempty"`
 	// Velero Schedule for backing up other resources
 	// +kubebuilder:validation:Optional
-	VeleroScheduleResources *veleroapi.Schedule `json:"veleroResourcesSchedule,omitempty"`
+	VeleroScheduleResources *veleroapi.Schedule `json:"veleroScheduleResources,omitempty"`
 	// Velero Schedule for backing up credentials
 	// +kubebuilder:validation:Optional
-	VeleroScheduleCredentials *veleroapi.Schedule `json:"veleroCredentialsSchedule,omitempty"`
+	VeleroScheduleCredentials *veleroapi.Schedule `json:"veleroScheduleCredentials,omitempty"`
 }
 
 // +kubebuilder:object:root=true

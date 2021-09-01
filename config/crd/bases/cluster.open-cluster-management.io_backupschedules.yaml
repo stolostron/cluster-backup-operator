@@ -60,7 +60,7 @@ spec:
               phase:
                 description: Phase shows the status for the backup operation
                 type: string
-              veleroCredentialsSchedule:
+              veleroScheduleCredentials:
                 description: Velero Schedule for backing up credentials
                 properties:
                   apiVersion:
@@ -444,7 +444,7 @@ spec:
                         type: array
                     type: object
                 type: object
-              veleroManagedClustersSchedule:
+              veleroScheduleManagedClusters:
                 description: Velero Schedule for backing up remote clusters
                 properties:
                   apiVersion:
@@ -828,7 +828,7 @@ spec:
                         type: array
                     type: object
                 type: object
-              veleroResourcesSchedule:
+              veleroScheduleResources:
                 description: Velero Schedule for backing up other resources
                 properties:
                   apiVersion:
