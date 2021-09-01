@@ -147,7 +147,7 @@ func (r *BackupReconciler) submitAcmBackupSettings(
 	backupLogger := log.FromContext(ctx)
 
 	veleroIdentity := types.NamespacedName{
-		Namespace: backup.Spec.VeleroConfig.Namespace,
+		Namespace: backup.Namespace,
 		Name:      r.getActiveBackupName(ctx, backup, c),
 	}
 

@@ -64,17 +64,9 @@ spec:
                 description: Maximum number of backups after which the old backups
                   are being removed
                 type: integer
-              veleroConfigBackupProxy:
-                description: Velero namespace and any other configuration option
-                properties:
-                  metadata:
-                    description: Namespace defines velero namespace
-                    type: string
-                type: object
             required:
             - interval
             - maxBackups
-            - veleroConfigBackupProxy
             type: object
           status:
             description: BackupStatus defines the observed state of Backup

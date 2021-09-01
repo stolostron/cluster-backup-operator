@@ -80,9 +80,6 @@ var _ = Describe("Backup", func() {
 					Namespace: veleroNamespaceName,
 				},
 				Spec: v1beta1.BackupSpec{
-					VeleroConfig: &v1beta1.VeleroConfigBackupProxy{
-						Namespace: veleroNamespaceName,
-					},
 					Interval:   60,
 					MaxBackups: 2,
 				},

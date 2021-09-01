@@ -58,12 +58,12 @@ func (r *BackupReconciler) getActiveBackupName(
 	if backup.Status.CurrentBackup == "" || isBackupPhaseFinished(backup.Status.Phase) {
 
 		// no active backup, return newyly generated backup name
-		return getVeleroBackupName(backup.Name, backup.Spec.VeleroConfig.Namespace)
+		return getVeleroBackupName(backup.Name, backup.Namespace)
 	}
 
 	// check if current backup resource exists
 	veleroIdentity := types.NamespacedName{
-		Namespace: backup.Spec.VeleroConfig.Namespace,
+		Namespace: backup.Namespace,
 		Name:      backup.Status.CurrentBackup,
 	}
 	// get the velero CR using the veleroIdentity
@@ -72,7 +72,7 @@ func (r *BackupReconciler) getActiveBackupName(
 	if err != nil {
 		// unable to get backup resource, create a new one
 		backup.Status.CurrentBackup = ""
-		return getVeleroBackupName(backup.Name, backup.Spec.VeleroConfig.Namespace)
+		return getVeleroBackupName(backup.Name, backup.Namespace)
 	}
 
 	if !isBackupFinished(backup.Status.VeleroBackups) {
@@ -81,7 +81,7 @@ func (r *BackupReconciler) getActiveBackupName(
 	}
 
 	// no active backup, return newyly generated backup name
-	return getVeleroBackupName(backup.Name, backup.Spec.VeleroConfig.Namespace)
+	return getVeleroBackupName(backup.Name, backup.Namespace)
 
 }
 
