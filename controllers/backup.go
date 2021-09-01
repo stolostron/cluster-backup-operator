@@ -212,11 +212,11 @@ func (r *BackupReconciler) createBackupForResource(
 
 	err := r.Get(ctx, veleroResIdentity, veleroResBackup)
 	if err != nil {
-		backupLogger.Info(
+		backupLogger.Info(fmt.Sprintf(
 			"velero.io.Backup [name=%s, namespace=%s] returned error, checking if the resource was not yet created",
 			veleroResIdentity.Name,
 			veleroResIdentity.Namespace,
-		)
+		))
 		// check if this is a  resource NotFound error, in which case create the resource
 		if k8serr.IsNotFound(err) {
 			// create backup based on resource type
