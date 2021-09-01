@@ -75,16 +75,15 @@ func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	var (
-		v_err        error
 		veleroBackup *veleroapi.Backup
 	)
-	veleroBackup, v_err = r.submitAcmBackupSettings(ctx, backup, r.Client)
+	veleroBackup, err := r.submitAcmBackupSettings(ctx, backup, r.Client)
 	if veleroBackup != nil {
 		backup.Status.VeleroBackups[0] = veleroBackup
 	}
-	if v_err != nil {
-		msg2 := fmt.Errorf("unable to create Velero backup for %s: %v", backup.Name, v_err)
-		backupLogger.Error(v_err, v_err.Error())
+	if err != nil {
+		msg2 := fmt.Errorf("unable to create Velero backup for %s: %v", backup.Name, err)
+		backupLogger.Error(err, err.Error())
 		backup.Status.LastMessage = msg2.Error()
 		backup.Status.Phase = v1beta1.ErrorStatusPhase
 		backup.Status.CurrentBackup = ""
@@ -100,26 +99,33 @@ func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				"could not update status",
 			)
 
-	} else {
-		return ctrl.Result{RequeueAfter: requeueInterval}, errors.Wrap(r.Client.Status().Update(ctx, backup), "could not update status")
 	}
-
+	return ctrl.Result{
+			RequeueAfter: requeueInterval,
+		}, errors.Wrap(
+			r.Client.Status().Update(ctx, backup),
+			"could not update status",
+		)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *BackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &veleroapi.Backup{}, backupOwnerKey, func(rawObj client.Object) []string {
-		backup := rawObj.(*veleroapi.Backup)
-		owner := metav1.GetControllerOf(backup)
-		if owner == nil {
-			return nil
-		}
-		if owner.APIVersion != apiGV || owner.Kind != "Backup" {
-			return nil
-		}
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&veleroapi.Backup{},
+		backupOwnerKey,
+		func(rawObj client.Object) []string {
+			backup := rawObj.(*veleroapi.Backup)
+			owner := metav1.GetControllerOf(backup)
+			if owner == nil {
+				return nil
+			}
+			if owner.APIVersion != apiGV || owner.Kind != "Backup" {
+				return nil
+			}
 
-		return []string{owner.Name}
-	}); err != nil {
+			return []string{owner.Name}
+		}); err != nil {
 		return err
 	}
 
@@ -192,7 +198,9 @@ func (r *BackupReconciler) submitAcmBackupSettings(
 			}
 
 		} else {
-			msg := fmt.Sprintf("velero.io.Backup [name=%s, namespace=%s] returned ERROR, error=%s ", veleroIdentity.Name, veleroIdentity.Namespace, err.Error())
+			msg := fmt.Sprintf(
+				"velero.io.Backup [name=%s, namespace=%s] returned ERROR, error=%s ",
+				veleroIdentity.Name, veleroIdentity.Namespace, err.Error())
 			backupLogger.Error(err, msg)
 			backup.Status.LastMessage = msg
 		}
@@ -207,9 +215,12 @@ func (r *BackupReconciler) submitAcmBackupSettings(
 		msg := fmt.Sprintf("Velero Backup [%s] ", veleroIdentity.Name)
 
 		if veleroBackup.Status.Progress != nil {
-			msg = fmt.Sprintf("%s [clusters: ItemsBackedUp[%d], TotalItems[%d]]", msg, veleroBackup.Status.Progress.ItemsBackedUp, veleroBackup.Status.Progress.TotalItems)
+			msg = fmt.Sprintf(
+				"%s [clusters: ItemsBackedUp[%d], TotalItems[%d]]",
+				msg, veleroBackup.Status.Progress.ItemsBackedUp, veleroBackup.Status.Progress.TotalItems)
 		}
-		msgStatusNil := "If the status is empty check the velero pod is running and that you have created a Velero resource as documented in the install guide."
+		msgStatusNil := "If the status is empty check the velero pod is running " +
+			"and that you have created a Velero resource as documented in the install guide."
 		msgStatusFailed := "Check if the velero.io.BackupStorageLocation resource points to a valid storage."
 
 		if veleroStatus == "" {

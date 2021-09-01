@@ -103,21 +103,21 @@ func main() {
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Backup")
+		setupLog.Error(err, "unable to create Backup controller")
 		os.Exit(1)
 	}
 	if err = (&controllers.BackupScheduleReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Schedule")
+		setupLog.Error(err, "unable to create Schedule controller")
 		os.Exit(1)
 	}
 	if err = (&controllers.RestoreReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Restore")
+		setupLog.Error(err, "unable to create Restore controller")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

@@ -91,7 +91,12 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 	// retrieve the velero schedules (if any)
 	veleroScheduleList := veleroapi.ScheduleList{}
-	if err := r.List(ctx, &veleroScheduleList, client.InNamespace(req.Namespace), client.MatchingFields{scheduleOwnerKey: req.Name}); err != nil {
+	if err := r.List(
+		ctx,
+		&veleroScheduleList,
+		client.InNamespace(req.Namespace),
+		client.MatchingFields{scheduleOwnerKey: req.Name},
+	); err != nil {
 		scheduleLogger.Error(
 			err,
 			"unable to list velero schedules for schedule",
@@ -108,8 +113,8 @@ func (r *BackupScheduleReconciler) Reconcile(
 		}
 	}
 	// update schedule status with latest velero schedules
-	for _, veleroSchedule := range veleroScheduleList.Items {
-		updateScheduleStatus(ctx, &veleroSchedule, backupSchedule)
+	for i := range veleroScheduleList.Items {
+		updateScheduleStatus(ctx, &veleroScheduleList.Items[i], backupSchedule)
 	}
 
 	err := r.Client.Status().Update(ctx, backupSchedule)
@@ -222,18 +227,22 @@ func setScheduleStatus(
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *BackupScheduleReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &veleroapi.Schedule{}, scheduleOwnerKey, func(rawObj client.Object) []string {
-		schedule := rawObj.(*veleroapi.Schedule)
-		owner := metav1.GetControllerOf(schedule)
-		if owner == nil {
-			return nil
-		}
-		if owner.APIVersion != apiGVString || owner.Kind != "BackupSchedule" {
-			return nil
-		}
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&veleroapi.Schedule{},
+		scheduleOwnerKey,
+		func(rawObj client.Object) []string {
+			schedule := rawObj.(*veleroapi.Schedule)
+			owner := metav1.GetControllerOf(schedule)
+			if owner == nil {
+				return nil
+			}
+			if owner.APIVersion != apiGVString || owner.Kind != "BackupSchedule" {
+				return nil
+			}
 
-		return []string{owner.Name}
-	}); err != nil {
+			return []string{owner.Name}
+		}); err != nil {
 		return err
 	}
 

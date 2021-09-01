@@ -128,7 +128,7 @@ func (r *BackupReconciler) cleanupBackups(
 
 			// delete backup in error first
 			for i := 0; i < min(len(backupsInError), maxBackups); i++ {
-				r.deleteBackup(&backupsInError[i], ctx, c)
+				r.deleteBackup(ctx, &backupsInError[i], c)
 			}
 
 			for i := 0; i < len(sliceBackups)-maxBackups; i++ {
@@ -136,7 +136,7 @@ func (r *BackupReconciler) cleanupBackups(
 				if sliceBackups[i].Status.Errors > 0 {
 					continue // ignore error status backups, they were processed in the step above
 				}
-				r.deleteBackup(&sliceBackups[i], ctx, c)
+				r.deleteBackup(ctx, &sliceBackups[i], c)
 			}
 		}
 
@@ -144,8 +144,8 @@ func (r *BackupReconciler) cleanupBackups(
 }
 
 func (r *BackupReconciler) deleteBackup(
-	backup *veleroapi.Backup,
 	ctx context.Context,
+	backup *veleroapi.Backup,
 	c client.Client,
 ) {
 	// delete backup now
@@ -300,7 +300,10 @@ func setResourcesBackupInfo(
 	} else {
 		for i := range channels.Items {
 			if channels.Items[i].Name == "charts-v1" {
-				veleroBackupTemplate.ExcludedNamespaces = appendUnique(veleroBackupTemplate.ExcludedNamespaces, channels.Items[i].Namespace)
+				veleroBackupTemplate.ExcludedNamespaces = appendUnique(
+					veleroBackupTemplate.ExcludedNamespaces,
+					channels.Items[i].Namespace,
+				)
 			}
 		}
 	}
@@ -371,7 +374,10 @@ func setManagedClustersBackupInfo(
 			if managedClusterList.Items[i].Name == "local-cluster" {
 				continue
 			}
-			veleroBackupTemplate.IncludedNamespaces = appendUnique(veleroBackupTemplate.IncludedNamespaces, managedClusterList.Items[i].Name)
+			veleroBackupTemplate.IncludedNamespaces = appendUnique(
+				veleroBackupTemplate.IncludedNamespaces,
+				managedClusterList.Items[i].Name,
+			)
 		}
 	}
 }
