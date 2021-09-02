@@ -52,7 +52,6 @@ spec:
                 type: string
             required:
             - veleroSchedule
-            - veleroTtl
             type: object
           status:
             description: BackupScheduleStatus defines the observed state of BackupSchedule

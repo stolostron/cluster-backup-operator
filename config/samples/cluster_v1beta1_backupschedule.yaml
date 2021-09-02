@@ -1,7 +1,7 @@
 apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: BackupSchedule
 metadata:
-  name: backup-schedule-acm
+  name: schedule-acm
 spec:
-  veleroSchedule: 0 */6 * * * #Create a backup every 6 hours
-  veleroTtl: 72h #delete after 72h
+  veleroSchedule: 0 */6 * * * # Create a backup every 6 hours
+  veleroTtl: 72h # deletes scheduled backups after 72h; optional, backups never expire if option not set
