@@ -116,18 +116,13 @@ kind: Backup
 metadata:
   name: backup-acm
 spec:
-  veleroConfigBackupProxy: 
-    metadata: oadp-operator
   interval: 20
   maxBackups: 5
 ```
-The `veleroConfigBackupProxy` `metadata` defines the namespace where the OADP Operator (so Velero) is installed. 
 
 The `interval` value in the `spec` defines the time interval in minutes for running another backup. The interval takes into consideration the time taken to execute the previous backup; for example, if the previous backup took 60 minutes to execute, the next backup will be called after `interval` + 60 minutes. 
-<i>Note: this property is marked as work in progress, may be replaced with a Cron expression.</i>
 
 The `maxBackup` represents the numbed of backups after which the old backups are being removed.
-
 
 This is an example of a `restore.cluster.open-cluster-management.io` resource definition
 
@@ -138,20 +133,15 @@ metadata:
   name: restore-acm
 spec:
   backupName: backup-acm-2021-07-30-163327
-  veleroConfigRestoreProxy:
-    metadata: oadp-operator
 ```
 
-The `veleroConfigBackupProxy` `metadata` defines the namespace where the OADP Operator (so Velero) is installed. 
-
 The `backupName` represents the name of the `backup.velero.io` resource to be restored on the hub where the  `restore.cluster.open-cluster-management.io` resource was created.
-You can find the available Backups by going to the OADP Operator, under the Backup resource section.
 
-In order to create an instance of `backup.cluster.open-cluster-management.io` or `restore.cluster.open-cluster-management.io` in the specified namespace you can start from one of the [sample configurations](config/samples).
+In order to create an instance of `backup.cluster.open-cluster-management.io` or `restore.cluster.open-cluster-management.io` in the OADP Operator namespace you can start from one of the [sample configurations](config/samples).
 
 ```shell
-kubectl create -n <ns> -f config/samples/cluster_v1beta1_backup.yaml
-kubectl create -n <ns> -f config/samples/cluster_v1beta1_backup.yaml
+kubectl create -n <oadp-operator-ns> -f config/samples/cluster_v1beta1_backup.yaml
+kubectl create -n <oadp-operator-ns> -f config/samples/cluster_v1beta1_backup.yaml
 ```
 
 # Testing
@@ -159,11 +149,12 @@ kubectl create -n <ns> -f config/samples/cluster_v1beta1_backup.yaml
 ## Backup resources
 
 After you create a `backup.cluster.open-cluster-management.io` resource you should be able to run `oc get cbkp -n <oadp-operator-ns>` and get the status of the backup executions.
+Replace the `<oadp-operator-ns>` with the namespace name used to install the OADP Operator (the default value for the OADP Operator install namespace is `oadp-operator`).
 
 In the example below, the last completed backup is `backup-acm-2021-08-10-140404` and a new backup is currently running `backup-acm-2021-08-10-151345`.
 The name of the backup follows this template: `acm-backup-<timestamp>`
 
-Example of a `backup.cluster.open-cluster-management.io` execution with a `velero.io.backup` in progress:
+Example of a `backup.cluster.open-cluster-management.io` execution with a `backup.velero.io` in progress:
 
 ```
 $ oc get cbkp -n oadp-operator
@@ -171,7 +162,7 @@ NAMESPACE       NAME         PHASE        BACKUP                         LASTBAC
 oadp-operator   backup-acm   InProgress   backup-acm-2021-08-10-151345   backup-acm-2021-08-10-140404   2021-08-10T18:22:07Z   18m3s      Velero Backup [backup-acm-2021-08-10-151345] phase:InProgress ItemsBackedUp[439], TotalItems[1410]
 ```
 
-Running the command below returns all `velero.io.backup` resources, created in the same namespace with the OADP Operator. Replace the `<oadp-operator-ns>` with the namespace name used to install the OADP Operator (the default value for the OADP Operator install namespace is `oadp-operator`).
+Running the command below returns all `backup.velero.io` resources, created in the same namespace with the OADP Operator. 
 
 You should also be able to see the backup files under the storage location defined when installing the OADP Operator.
 
@@ -192,7 +183,7 @@ oadp-operator   backup-acm   Completed   backup-acm-2021-08-10-151345   backup-a
 
 The restore operation should be run on a different hub then the one where the backup was created.
 
-After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -A` and get the status of the restore operation. You should also be able to verify on your new hub that the backed up resources contained by the backup file have been created.
+After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on your new hub that the backed up resources contained by the backup file have been created.
 
 A restore operation is executed only once. If a backup name is specified on the restore resource, the resources from that backup are being restored. If no backup file is specified, the last valid backup file is being used instead.
 

@@ -36,17 +36,8 @@ const (
 	PartiallyFailedStatusPhase StatusPhase = "PartiallyFailed"
 )
 
-// VeleroConfigBackupProxy defines the configuration information for velero configuration to  backup ACM through Velero
-type VeleroConfigBackupProxy struct {
-	// Namespace defines velero namespace
-	Namespace string `json:"metadata"`
-}
-
 // BackupSpec defines the desired state of Backup
 type BackupSpec struct {
-	//Velero namespace and any other configuration option
-	// +kubebuilder:validation:Required
-	VeleroConfig *VeleroConfigBackupProxy `json:"veleroConfigBackupProxy,omitempty"`
 	// Interval, in minutes, between backups
 	// +kubebuilder:validation:Required
 	Interval int `json:"interval"`

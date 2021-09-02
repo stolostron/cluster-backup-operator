@@ -3,7 +3,5 @@ kind: Backup
 metadata:
   name: backup-acm
 spec:
-  veleroConfigBackupProxy: 
-    metadata: oadp-operator
   interval: 60
   maxBackups: 5
