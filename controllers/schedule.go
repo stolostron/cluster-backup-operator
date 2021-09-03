@@ -26,6 +26,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+const (
+	// FailedPhaseMsg for when Velero schedule initialization failed
+	FailedPhaseMsg string = "Velero schedules initialization failed"
+	// NewPhaseMsg for when Velero schedule initialization succeeded
+	NewPhaseMsg string = "Velero schedules are initialized"
+	// EnabledPhaseMsg for when Velero schedules are processed by velero and enabled
+	EnabledPhaseMsg string = "Velero schedules are enabled"
+	// UnknownPhaseMsg for when some Velero schedules are not enabled
+	UnknownPhaseMsg string = "Some Velero schedules are not enabled"
+)
+
 func updateScheduleStatus(
 	ctx context.Context,
 	veleroSchedule *veleroapi.Schedule,

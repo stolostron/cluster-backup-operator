@@ -46,17 +46,6 @@ const (
 	Resources ResourceType = "resources"
 )
 
-const (
-	// FailedPhaseMsg for when Velero schedule initialization failed
-	FailedPhaseMsg string = "Velero schedules initialization failed"
-	// NewPhaseMsg for when Velero schedule initialization succeeded
-	NewPhaseMsg string = "Velero schedules are initialized"
-	// EnabledPhaseMsg for when Velero schedules are processed by velero and enabled
-	EnabledPhaseMsg string = "Velero schedules are enabled"
-	// UnknownPhaseMsg for when some Velero schedules are not enabled
-	UnknownPhaseMsg string = "Some Velero schedules are not enabled"
-)
-
 var (
 	scheduleOwnerKey = ".metadata.controller"
 	apiGVString      = v1beta1.GroupVersion.String()
