@@ -11,6 +11,8 @@ Cluster Back up and Restore Operator.
   - [License](#license)
   - [Getting Started](#getting-started)
   - [Design](#design)
+    - [Scheduling a cluster backup](#scheduling-a-cluster-backup)
+    - [Restoring a backup](#restoring-a-backup)
 - [Setting up Your Dev Environment](#setting-up-your-dev-environment)
   - [Prerequiste Tools](#prerequiste-tools)
   - [Installation](#installation)
@@ -45,9 +47,25 @@ The Cluster Back up and Restore Operator resources must be created in the same n
 
 
 ## Design
-The operator defines the `Backup.cluster.open-cluster-management.io` and `Restore.cluster.open-cluster-management.io` resources, used to setup a hub backup and restore configuration.
+The operator defines the `BackupSchedule.cluster.open-cluster-management.io` resource, used to setup acm backup schedules, and `Restore.cluster.open-cluster-management.io` resource, used to process and restore these backups.
 The operator creates corresponding Velero resources and sets the options needed to backup remote clusters and any other hub resources that needs to be restored.
 
+## Scheduling a cluster backup 
+
+After you create a `backupschedule.cluster.open-cluster-management.io` resource you should be able to run `oc get bsch -n <oadp-operator-ns>` and get the status of the scheduled cluster backups. The `<oadp-operator-ns>` is the namespace where BackupSchedule was created and it should be the same namespace where the OADP Operator was installed.
+
+The  `backupschedule.cluster.open-cluster-management.io` creates 3 `schedule.velero.io` resources:
+- `acm-managed-clusters-schedule`, used to schedule backups for the managed cluster resources. This backup includes the `hive` and `openshift-operator-lifecycle-manager` namespaces and all the namespaces for the managed cluster resources.
+- `acm-credentials-schedule`, used to schedule backups for the user created credentials and any copy of those credentials. These credentials are identified by the `cluster.open-cluster-management.io/type` label selector; all secrets defining the label selector will be included in the backup. <b>Note</b>: If you have any user defined private channels, you can include the channel secrets in this credentials backup if you set the `cluster.open-cluster-management.io/type` label selector to this secret. Without this, channel secrets will not be picked up by the cluster backup and will have to be recreated on the restored cluster.
+- `acm-resources-schedule`, used to schedule backups for the applications and policy resources, including any resource required, such as channels, subscriptions, deployables and placement rules for applications and placementBindings, placement, placementDecisions for policies. No resources are being collected from the `local-cluster` or `open-cluster-management` namespaces.
+
+## Restoring a backup
+
+The restore operation should be run on a different hub then the one where the backup was created.
+
+After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on your new hub that the backed up resources contained by the backup file have been created.
+
+A restore operation is executed only once. If a backup name is specified on the restore resource, the resources from that backup are being restored. If no backup file is specified, the last valid backup file is being used instead.
 
 # Setting up Your Dev Environment
 
@@ -104,25 +122,29 @@ Make sure you follow the OADP Operator installation instructions and create a Ve
 
 The Cluster Back up and Restore Operator resources must be created in the same namespace where the OADP Operator is installed. 
 
-If you are trying to use the Cluster Back up and Restore Operator to backup data, you have to create a `backup.cluster.open-cluster-management.io` resource which will be consumed by the operator and create all the necessary intermediary backup resources.
+If you are trying to use the Cluster Backup and Restore Operator to schedule data backups, you have to create a `backupschedule.cluster.open-cluster-management.io` resource which will be consumed by the operator and create all the necessary intermediary schedule backup resources.
 
 If you are trying to use the Cluster Back up and Restore Operator to restore a backup, then you have to create a `restore.cluster.open-cluster-management.io` resource which will run the restore and execute any other post restore operations, such as registering restored remote clusters with the new hub.
 
-Here you can find an example of a `backup.cluster.open-cluster-management.io` resource definition:
+Here you can find an example of a `backupschedule.cluster.open-cluster-management.io` resource definition:
 
 ```yaml
 apiVersion: cluster.open-cluster-management.io/v1beta1
-kind: Backup
+kind: BackupSchedule
 metadata:
-  name: backup-acm
+  name: schedule-acm
 spec:
-  interval: 20
-  maxBackups: 5
+  maxBackups: 10 # maximum number of backups after which old backups should be removed
+  veleroSchedule: 0 */6 * * * # Create a backup every 6 hours
+  veleroTtl: 72h # deletes scheduled backups after 72h; optional, backups never expire if option not set
 ```
 
 The `interval` value in the `spec` defines the time interval in minutes for running another backup. The interval takes into consideration the time taken to execute the previous backup; for example, if the previous backup took 60 minutes to execute, the next backup will be called after `interval` + 60 minutes. 
 
-The `maxBackup` represents the numbed of backups after which the old backups are being removed.
+The `maxBackup` is a required property and represents the maximum number of backups after which the old backups are being removed.
+The `veleroSchedule` is a required property and defines a cron job for scheduling the backups.
+The `veleroTtl` is an optional property and defines the expiration time for a scheduled backup resource.
+
 
 This is an example of a `restore.cluster.open-cluster-management.io` resource definition
 
@@ -132,51 +154,33 @@ kind: Restore
 metadata:
   name: restore-acm
 spec:
-  backupName: backup-acm-2021-07-30-163327
+  backupName: acm-managed-clusters-schedule-20210902205438
 ```
 
 The `backupName` represents the name of the `backup.velero.io` resource to be restored on the hub where the  `restore.cluster.open-cluster-management.io` resource was created.
 
-In order to create an instance of `backup.cluster.open-cluster-management.io` or `restore.cluster.open-cluster-management.io` in the OADP Operator namespace you can start from one of the [sample configurations](config/samples).
+In order to create an instance of `backupschedule.cluster.open-cluster-management.io` or `restore.cluster.open-cluster-management.io` you can start from one of the [sample configurations](config/samples).
 
 ```shell
-kubectl create -n <oadp-operator-ns> -f config/samples/cluster_v1beta1_backup.yaml
-kubectl create -n <oadp-operator-ns> -f config/samples/cluster_v1beta1_backup.yaml
+kubectl create -n <oadp-operator-ns> -f config/samples/cluster_v1beta1_backupschedule.yaml
+kubectl create -n <oadp-operator-ns> -f config/samples/cluster_v1beta1_restore.yaml
 ```
 
 # Testing
 
-## Backup resources
+## Schedule  a backup 
 
-After you create a `backup.cluster.open-cluster-management.io` resource you should be able to run `oc get cbkp -n <oadp-operator-ns>` and get the status of the backup executions.
+After you create a `backupschedule.cluster.open-cluster-management.io` resource you should be able to run `oc get bsch -n <oadp-operator-ns>` and get the status of the scheduled cluster backups.
+
+In the example below, you have created a `backupschedule.cluster.open-cluster-management.io` resource named schedule-acm.
 Replace the `<oadp-operator-ns>` with the namespace name used to install the OADP Operator (the default value for the OADP Operator install namespace is `oadp-operator`).
 
-In the example below, the last completed backup is `backup-acm-2021-08-10-140404` and a new backup is currently running `backup-acm-2021-08-10-151345`.
-The name of the backup follows this template: `acm-backup-<timestamp>`
-
-Example of a `backup.cluster.open-cluster-management.io` execution with a `backup.velero.io` in progress:
+The resource status shows the definition for the 3 `schedule.velero.io` resources created by this cluster backup scheduler. 
 
 ```
-$ oc get cbkp -n oadp-operator
-NAMESPACE       NAME         PHASE        BACKUP                         LASTBACKUP                     LASTBACKUPTIME         DURATION   MESSAGE
-oadp-operator   backup-acm   InProgress   backup-acm-2021-08-10-151345   backup-acm-2021-08-10-140404   2021-08-10T18:22:07Z   18m3s      Velero Backup [backup-acm-2021-08-10-151345] phase:InProgress ItemsBackedUp[439], TotalItems[1410]
-```
-
-Running the command below returns all `backup.velero.io` resources, created in the same namespace with the OADP Operator. 
-
-You should also be able to see the backup files under the storage location defined when installing the OADP Operator.
-
-```
-$ oc get backup -n <oadp-operator-ns>
-```
-
-
-Example of a Backup execution with no backup in progress:
-
-```
-$ oc get cbkp -A
-NAMESPACE       NAME         PHASE       BACKUP                         LASTBACKUP                     LASTBACKUPTIME         DURATION   MESSAGE
-oadp-operator   backup-acm   Completed   backup-acm-2021-08-10-151345   backup-acm-2021-08-10-151345   2021-08-10T19:21:06Z   7m21s      velero Backup [backup-acm-2021-08-10-151345] phase:Completed ItemsBackedUp[1410], TotalItems[1410]
+$ oc get bsch -n <oadp-operator-ns>
+NAME           PHASE
+schedule-acm   
 ```
 
 ## Restore a backup
@@ -184,6 +188,3 @@ oadp-operator   backup-acm   Completed   backup-acm-2021-08-10-151345   backup-a
 The restore operation should be run on a different hub then the one where the backup was created.
 
 After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on your new hub that the backed up resources contained by the backup file have been created.
-
-A restore operation is executed only once. If a backup name is specified on the restore resource, the resources from that backup are being restored. If no backup file is specified, the last valid backup file is being used instead.
-
