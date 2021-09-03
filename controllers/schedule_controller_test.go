@@ -118,6 +118,22 @@ var _ = Describe("BackupSchedule controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, &rhacmBackupSchedule)).Should(Succeed())
+
+			rhacmBackupScheduleNoTTL := v1beta1.BackupSchedule{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
+					Kind:       "BackupSchedule",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      backupScheduleName + "-nottl",
+					Namespace: veleroNamespaceName,
+				},
+				Spec: v1beta1.BackupScheduleSpec{
+					VeleroSchedule: "0 */6 * * *",
+				},
+			}
+			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleNoTTL)).Should(Succeed())
+
 			backupLookupKey := types.NamespacedName{
 				Name:      backupScheduleName,
 				Namespace: veleroNamespaceName,
