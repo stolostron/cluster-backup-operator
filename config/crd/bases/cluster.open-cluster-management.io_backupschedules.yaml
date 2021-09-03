@@ -22,6 +22,9 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
+    - jsonPath: .status.lastMessage
+      name: Message
+      type: string
     name: v1beta1
     schema:
       openAPIV3Schema:
@@ -56,8 +59,11 @@ spec:
           status:
             description: BackupScheduleStatus defines the observed state of BackupSchedule
             properties:
+              lastMessage:
+                description: Message on the last operation
+                type: string
               phase:
-                description: Phase shows the status for the backup operation
+                description: Phase is the current phase of the schedule
                 type: string
               veleroScheduleCredentials:
                 description: Velero Schedule for backing up credentials

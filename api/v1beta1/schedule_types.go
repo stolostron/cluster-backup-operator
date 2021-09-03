@@ -22,6 +22,27 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 )
 
+// SchedulePhase shows phase of the schedule
+type SchedulePhase string
+
+const (
+	// SchedulePhaseNew means the schedule has been created but not
+	// yet processed by the ScheduleController
+	SchedulePhaseNew SchedulePhase = "New"
+	// SchedulePhaseEnabled means the schedule has been validated and
+	// will now be triggering backups according to the schedule spec.
+	SchedulePhaseEnabled SchedulePhase = "Enabled"
+	// SchedulePhaseFailedValidation means the schedule has failed
+	// the controller's validations and therefore will not trigger backups.
+	SchedulePhaseFailedValidation SchedulePhase = "FailedValidation"
+	// SchedulePhaseFailed means the schedule has been processed by
+	// the ScheduleController but there are some failures
+	SchedulePhaseFailed SchedulePhase = "Failed"
+	// SchedulePhaseUnknown means the schedule has been processed by
+	// the ScheduleController but there are some unknown issues
+	SchedulePhaseUnknown SchedulePhase = "Unknown"
+)
+
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // BackupScheduleSpec defines the desired state of BackupSchedule
@@ -38,9 +59,12 @@ type BackupScheduleSpec struct {
 
 // BackupScheduleStatus defines the observed state of BackupSchedule
 type BackupScheduleStatus struct {
-	// Phase shows the status for the backup operation
+	// Phase is the current phase of the schedule
 	// +kubebuilder:validation:Optional
-	Phase StatusPhase `json:"phase"`
+	Phase SchedulePhase `json:"phase"`
+	// Message on the last operation
+	// +kubebuilder:validation:Optional
+	LastMessage string `json:"lastMessage"`
 	// Velero Schedule for backing up remote clusters
 	// +kubebuilder:validation:Optional
 	VeleroScheduleManagedClusters *veleroapi.Schedule `json:"veleroScheduleManagedClusters,omitempty"`
@@ -57,6 +81,7 @@ type BackupScheduleStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName={"bsch"}
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.lastMessage`
 
 // BackupSchedule is the Schema for the backup schedules API
 type BackupSchedule struct {
