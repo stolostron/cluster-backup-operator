@@ -49,7 +49,7 @@ var (
 
 // returns then name of the last backup resource, or,
 // if this is the first time to run the backup or current backup is not found, a newly generated name
-func (r *BackupReconciler) getActiveBackupName(
+func getActiveBackupName(
 	ctx context.Context,
 	backup *v1beta1.Backup,
 	c client.Client,
@@ -68,7 +68,7 @@ func (r *BackupReconciler) getActiveBackupName(
 	}
 	// get the velero CR using the veleroIdentity
 	veleroBackup := &veleroapi.Backup{}
-	err := r.Get(ctx, veleroIdentity, veleroBackup)
+	err := c.Get(ctx, veleroIdentity, veleroBackup)
 	if err != nil {
 		// unable to get backup resource, create a new one
 		backup.Status.CurrentBackup = ""
@@ -86,12 +86,11 @@ func (r *BackupReconciler) getActiveBackupName(
 }
 
 // clean up old backups if they exceed the maxCount number
-func (r *BackupReconciler) cleanupBackups(
+func cleanupBackups(
 	ctx context.Context,
-	backup *v1beta1.Backup,
+	maxBackups int,
 	c client.Client,
 ) {
-	maxBackups := backup.Spec.MaxBackups * 3 // each backup contains 3 backup files ( for clusters, resources and secrets )
 	backupLogger := log.FromContext(ctx)
 
 	backupLogger.Info(fmt.Sprintf("check if needed to remove backups maxBackups=%d", maxBackups))
@@ -128,7 +127,7 @@ func (r *BackupReconciler) cleanupBackups(
 
 			// delete backup in error first
 			for i := 0; i < min(len(backupsInError), maxBackups); i++ {
-				r.deleteBackup(ctx, &backupsInError[i], c)
+				deleteBackup(ctx, &backupsInError[i], c)
 			}
 
 			for i := 0; i < len(sliceBackups)-maxBackups; i++ {
@@ -136,14 +135,14 @@ func (r *BackupReconciler) cleanupBackups(
 				if sliceBackups[i].Status.Errors > 0 {
 					continue // ignore error status backups, they were processed in the step above
 				}
-				r.deleteBackup(ctx, &sliceBackups[i], c)
+				deleteBackup(ctx, &sliceBackups[i], c)
 			}
 		}
 
 	}
 }
 
-func (r *BackupReconciler) deleteBackup(
+func deleteBackup(
 	ctx context.Context,
 	backup *veleroapi.Backup,
 	c client.Client,
@@ -161,7 +160,7 @@ func (r *BackupReconciler) deleteBackup(
 
 	// get the velero CR using the backupDeleteIdentity
 	veleroDeleteBackup := &veleroapi.DeleteBackupRequest{}
-	err := r.Get(ctx, backupDeleteIdentity, veleroDeleteBackup)
+	err := c.Get(ctx, backupDeleteIdentity, veleroDeleteBackup)
 	if err != nil {
 		// check if this is a  resource NotFound error, in which case create the resource
 		if k8serr.IsNotFound(err) {
@@ -186,7 +185,7 @@ func (r *BackupReconciler) deleteBackup(
 }
 
 // create velero.io.Backup resource for the specified resourceType types
-func (r *BackupReconciler) createBackupForResource(
+func createBackupForResource(
 	resourceType string,
 	backup *v1beta1.Backup,
 	veleroBackup *veleroapi.Backup,
@@ -210,7 +209,7 @@ func (r *BackupReconciler) createBackupForResource(
 	veleroResBackup.Name = veleroResIdentity.Name
 	veleroResBackup.Namespace = veleroResIdentity.Namespace
 
-	err := r.Get(ctx, veleroResIdentity, veleroResBackup)
+	err := c.Get(ctx, veleroResIdentity, veleroResBackup)
 	if err != nil {
 		backupLogger.Info(fmt.Sprintf(
 			"velero.io.Backup [name=%s, namespace=%s] returned error, checking if the resource was not yet created",

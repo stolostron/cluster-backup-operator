@@ -148,7 +148,7 @@ func (r *BackupReconciler) submitAcmBackupSettings(
 
 	veleroIdentity := types.NamespacedName{
 		Namespace: backup.Namespace,
-		Name:      r.getActiveBackupName(ctx, backup, c),
+		Name:      getActiveBackupName(ctx, backup, c),
 	}
 
 	veleroBackup := &veleroapi.Backup{}
@@ -179,7 +179,7 @@ func (r *BackupReconciler) submitAcmBackupSettings(
 			backupLogger.Info(msg)
 
 			// clean up old backups if they exceed the maxCount number
-			r.cleanupBackups(ctx, backup, c)
+			cleanupBackups(ctx, backup.Spec.MaxBackups*3, c)
 
 			// set ACM backup configuration for managed clusters
 			setManagedClustersBackupInfo(ctx, &veleroBackup.Spec, c)
@@ -237,9 +237,9 @@ func (r *BackupReconciler) submitAcmBackupSettings(
 	}
 
 	// create credentials backup
-	r.createBackupForResource("creds", backup, veleroBackup, ctx, c)
+	createBackupForResource("creds", backup, veleroBackup, ctx, c)
 	// create resources backup
-	r.createBackupForResource("resource", backup, veleroBackup, ctx, c)
+	createBackupForResource("resource", backup, veleroBackup, ctx, c)
 
 	updateLastBackupStatus(backup)
 

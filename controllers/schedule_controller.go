@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"time"
 
 	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	"github.com/pkg/errors"
@@ -43,6 +44,11 @@ const (
 	Credentials ResourceType = "credentials"
 	// Resources related to applications and policies
 	Resources ResourceType = "resources"
+)
+
+var (
+	// Time interval to reque delete backups if they exceed maxBackups number
+	deleteBackupRequeueInterval = time.Minute * 60
 )
 
 var (
@@ -109,7 +115,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	// no velero schedules, so create them
 	if len(veleroScheduleList.Items) == 0 {
 		if err := r.initVeleroSchedules(ctx, backupSchedule, r.Client); err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{RequeueAfter: deleteBackupRequeueInterval}, err
 		}
 	}
 	// update schedule status with latest velero schedules
@@ -117,8 +123,11 @@ func (r *BackupScheduleReconciler) Reconcile(
 		updateScheduleStatus(ctx, &veleroScheduleList.Items[i], backupSchedule)
 	}
 
+	// clean up old backups if they exceed the maxBackups number after backupDeleteRequeueInterval
+	cleanupBackups(ctx, backupSchedule.Spec.MaxBackups*len(resourceTypes), r.Client)
+
 	err := r.Client.Status().Update(ctx, backupSchedule)
-	return ctrl.Result{}, errors.Wrap(
+	return ctrl.Result{RequeueAfter: deleteBackupRequeueInterval}, errors.Wrap(
 		err,
 		fmt.Sprintf(
 			"could not update status for schedule %s/%s",

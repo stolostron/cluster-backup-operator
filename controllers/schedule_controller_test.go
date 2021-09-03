@@ -113,6 +113,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					Namespace: veleroNamespaceName,
 				},
 				Spec: v1beta1.BackupScheduleSpec{
+					MaxBackups:     2,
 					VeleroSchedule: "0 */6 * * *",
 					VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
 				},
@@ -130,6 +131,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				},
 				Spec: v1beta1.BackupScheduleSpec{
 					VeleroSchedule: "0 */6 * * *",
+					MaxBackups:     2,
 				},
 			}
 			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleNoTTL)).Should(Succeed())
