@@ -17,8 +17,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -33,22 +31,16 @@ type RestoreSpec struct {
 
 // RestoreStatus defines the observed state of Restore
 type RestoreStatus struct {
-	// Important: Run "make" to regenerate code after modifying this file
-	RestoreProxyReference *corev1.ObjectReference `json:"restoreProxyReference,omitempty"`
-	// Message on the last operation
 	// +kubebuilder:validation:Optional
-	LastMessage string `json:"lastMessage"`
-	// Velero operation status
-	// +kubebuilder:validation:Optional
-	VeleroRestore *veleroapi.Restore `json:"veleroRestore,omitempty"`
+	VeleroRestoreName string `json:"veleroRestoreName,omitempty"`
+	// RestoreCondition
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:validation:Optional
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName={"crst"}
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
-// +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.lastMessage`
 
 // Restore is the Schema for the restores API
 type Restore struct {
@@ -58,6 +50,28 @@ type Restore struct {
 	Spec   RestoreSpec   `json:"spec,omitempty"`
 	Status RestoreStatus `json:"status,omitempty"`
 }
+
+// Valid conditions of a restore
+const (
+	// RstoreStarted means the Restore is running.
+	RstoreStarted = "Started"
+	// RestoreImporting means the Restore is re-attaching the managed clusters
+	RestoreReattaching = "Reattaching"
+	// RestoreComplete means the Restore has completed its execution.
+	RestoreComplete = "Complete"
+	// RestoreFailed means the Restore has failed its execution.
+	RestoreFailed = "Failed"
+)
+
+// Valid Restore Reason
+const (
+	RestoreReasonStarted = "RestoreStarted"
+	RestoreReasonRunning = "RestoreRunning"
+)
+
+const (
+	CSRReasonApprovedReason = "AutoApprovedByClusterBackupController"
+)
 
 //+kubebuilder:object:root=true
 

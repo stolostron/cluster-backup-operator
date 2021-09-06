@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	ocinfrav1 "github.com/openshift/api/config/v1"
+	certsv1 "k8s.io/api/certificates/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -44,6 +45,9 @@ import (
 var k8sClient client.Client
 var testEnv *envtest.Environment
 
+var managedClusterK8sClient client.Client
+var testEnvManagedCluster *envtest.Environment
+
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
@@ -61,6 +65,11 @@ var _ = BeforeSuite(func() {
 		ErrorIfCRDPathMissing: true,
 	}
 
+	testEnvManagedCluster = &envtest.Environment{} // no CRDs for managedcluster
+	managedClusterCfg, err := testEnvManagedCluster.Start()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(managedClusterCfg).NotTo(BeNil())
+
 	cfg, err := testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
@@ -77,12 +86,18 @@ var _ = BeforeSuite(func() {
 	err = ocinfrav1.AddToScheme(scheme.Scheme) // for openshift config infrastructure types
 	Expect(err).NotTo(HaveOccurred())
 
+	err = certsv1.AddToScheme(scheme.Scheme) // for CSR
+	Expect(err).NotTo(HaveOccurred())
+
 	//+kubebuilder:scaffold:scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
-
 	Expect(k8sClient).NotTo(BeNil())
+
+	managedClusterK8sClient, err = client.New(managedClusterCfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(managedClusterK8sClient).NotTo(BeNil())
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
@@ -118,6 +133,9 @@ var _ = BeforeSuite(func() {
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
-	err := testEnv.Stop()
+
+	err := testEnvManagedCluster.Stop()
+	Expect(err).NotTo(HaveOccurred())
+	err = testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })

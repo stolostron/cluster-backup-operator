@@ -2,23 +2,21 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-
-	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 )
 
+/*
 func setVeleroPhase(restore *v1beta1.Restore, phase veleroapi.RestorePhase) {
 	restore.Status.VeleroRestore.Status.Phase = phase
 }
+*/
 
 func initSecret(name, namespace string) corev1.Secret {
 	return corev1.Secret{
@@ -33,52 +31,54 @@ func initSecret(name, namespace string) corev1.Secret {
 	}
 }
 
+/*
 var _ = Describe("For utility functions of Restore", func() {
 	var (
 		restoreName string = "the-restore-name"
 	)
-	Context("When a restore is available", func() {
-		It("isRestoreFinished should return value based on the status", func() {
-			rhacmRestore := v1beta1.Restore{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "Restore",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      restoreName,
-					Namespace: "",
-				},
-				Status: v1beta1.RestoreStatus{
-					VeleroRestore: &veleroapi.Restore{
-						Status: veleroapi.RestoreStatus{
-							Phase: veleroapi.RestorePhaseInProgress,
+		Context("When a restore is available", func() {
+			It("isRestoreFinished should return value based on the status conditions", func() {
+				rhacmRestore := v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      restoreName,
+						Namespace: "",
+					},
+					Status: v1beta1.RestoreStatus{
+						VeleroRestore: &veleroapi.Restore{
+							Status: veleroapi.RestoreStatus{
+								Phase: veleroapi.RestorePhaseInProgress,
+							},
 						},
 					},
-				},
-			}
+				}
 
-			Expect(isRestoreFinished(&rhacmRestore)).Should(BeFalse())
+				Expect(isRestoreFinished(&rhacmRestore)).Should(BeFalse())
 
-			setVeleroPhase(&rhacmRestore, veleroapi.RestorePhaseCompleted)
-			Expect(isRestoreFinished(&rhacmRestore)).Should(BeTrue())
+				setVeleroPhase(&rhacmRestore, veleroapi.RestorePhaseCompleted)
+				Expect(isRestoreFinished(&rhacmRestore)).Should(BeTrue())
 
-			setVeleroPhase(&rhacmRestore, veleroapi.RestorePhaseFailed)
-			Expect(isRestoreFinished(&rhacmRestore)).Should(BeTrue())
+				setVeleroPhase(&rhacmRestore, veleroapi.RestorePhaseFailed)
+				Expect(isRestoreFinished(&rhacmRestore)).Should(BeTrue())
 
-			setVeleroPhase(&rhacmRestore, veleroapi.RestorePhasePartiallyFailed)
-			Expect(isRestoreFinished(&rhacmRestore)).Should(BeTrue())
+				setVeleroPhase(&rhacmRestore, veleroapi.RestorePhasePartiallyFailed)
+				Expect(isRestoreFinished(&rhacmRestore)).Should(BeTrue())
 
-			setVeleroPhase(&rhacmRestore, veleroapi.RestorePhaseFailedValidation)
-			Expect(isRestoreFinished(&rhacmRestore)).Should(BeTrue())
+				setVeleroPhase(&rhacmRestore, veleroapi.RestorePhaseFailedValidation)
+				Expect(isRestoreFinished(&rhacmRestore)).Should(BeTrue())
 
-			Expect(isRestoreFinished(nil)).Should(BeFalse())
+				Expect(isRestoreFinished(nil)).Should(BeFalse())
 
-			rhacmRestore.Status.VeleroRestore = nil
-			Expect(isRestoreFinished(&rhacmRestore)).Should(BeFalse())
+				rhacmRestore.Status.VeleroRestore = nil
+				Expect(isRestoreFinished(&rhacmRestore)).Should(BeFalse())
 
+			})
 		})
-	})
 })
+*/
 
 var _ = Describe("For utility restore functions: to test secret filetering", func() {
 	var (
@@ -271,7 +271,6 @@ var _ = Describe("For utility restore function: getPublicURL", func() {
 		It("should return the right value", func() {
 			publicURL, err := getPublicAPIServerURL(k8sClient)
 			Expect(err).NotTo(HaveOccurred())
-			fmt.Println("-2222>", publicURL)
 			Expect(publicURL == apiName).To(BeTrue())
 		})
 	})

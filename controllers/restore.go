@@ -21,7 +21,9 @@ import (
 	"fmt"
 	"regexp"
 
+	certsv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubeclient "k8s.io/client-go/kubernetes"
@@ -30,28 +32,41 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	ocinfrav1 "github.com/openshift/api/config/v1"
-
-	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+
+	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
+	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 )
+
+func newCondition(conditionType string, status metav1.ConditionStatus, reason, message string) *metav1.Condition {
+	return &metav1.Condition{
+		Type:               conditionType,
+		Status:             status,
+		LastTransitionTime: metav1.Now(),
+		Reason:             reason,
+		Message:            message,
+	}
+}
 
 // isRestoreFinished returns true when Restore is finished
 func isRestoreFinished(restore *v1beta1.Restore) bool {
+	for _, c := range restore.Status.Conditions {
+		if (c.Type == v1beta1.RestoreComplete || c.Type == v1beta1.RestoreFailed) && v1.ConditionStatus(c.Status) == v1.ConditionTrue {
+			return true
+		}
+	}
+	return false
+}
+
+func isVeleroRestoreFinished(restore *veleroapi.Restore) bool {
 	switch {
 	case restore == nil:
 		return false
-	case restore.Status.VeleroRestore == nil:
-		return false
-	case restore.Status.VeleroRestore.Status.Phase == veleroapi.RestorePhaseNew ||
-		restore.Status.VeleroRestore.Status.Phase == veleroapi.RestorePhaseInProgress:
+	case restore.Status.Phase == veleroapi.RestorePhaseNew ||
+		restore.Status.Phase == veleroapi.RestorePhaseInProgress:
 		return false
 	}
 	return true
-}
-
-type FilterSecretBind struct {
-	FilteredSecrets []corev1.Secret
-	Filter          func(secret *corev1.Secret) bool
 }
 
 // redefining const from apimachinery validation
@@ -120,8 +135,8 @@ func newBootstrapHubKubeconfig(ctx context.Context, apiServer string, secret cor
 			Kind:       "Secret",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "bootstrap-hub-kubeconfig",
-			Namespace: "open-cluster-management-agent",
+			Name:      BootstrapHubKubeconfigSecretName,
+			Namespace: OpenClusterManagementAgentNamespaceName,
 		},
 		Data: map[string][]byte{
 			"kubeconfig": data,
@@ -180,4 +195,46 @@ func getPublicAPIServerURL(client client.Client) (string, error) {
 		return "", err
 	}
 	return infraConfig.Status.APIServerURL, nil
+}
+
+// acceptManagedCluster accepts the managed cluster
+func acceptManagedCluster(ctx context.Context, k8sClient client.Client, managedClusterName string) error {
+	managedCluster := clusterv1.ManagedCluster{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: "", Name: managedClusterName}, &managedCluster); err != nil {
+		return fmt.Errorf("unable to retrieve managed cluster during update %s: %v", managedClusterName, err)
+	}
+	managedCluster.Spec.HubAcceptsClient = true
+	if err := k8sClient.Update(ctx, &managedCluster, &client.UpdateOptions{}); err != nil {
+		return fmt.Errorf("unable to update managed cluster , %s: %v", managedClusterName, err)
+	}
+	// generate an event...
+	return nil
+}
+
+// approveManagedClusterCSR approves the CSR for the managed cluster
+func approveManagedClusterCSR(ctx context.Context, k8sClient client.Client, managedClusterName string) error {
+	csrList := certsv1.CertificateSigningRequestList{}
+	if err := k8sClient.List(ctx, &csrList, &client.ListOptions{}); err != nil {
+		return fmt.Errorf("unable to list CSR: %v", err)
+	}
+	clusterNameCSRRegex, err := regexp.Compile("^" + managedClusterName + "-")
+	if err != nil {
+		return fmt.Errorf("unable to initialize REGEX to filter CSR for cluster %s: %v", managedClusterName, err)
+	}
+	for i := range csrList.Items {
+		if clusterNameCSRRegex.Match([]byte(csrList.Items[i].Name)) {
+			csrList.Items[i].Status.Conditions = append(csrList.Items[i].Status.Conditions, certsv1.CertificateSigningRequestCondition{
+				Type:           certsv1.CertificateApproved,
+				Status:         corev1.ConditionTrue,
+				Reason:         v1beta1.CSRReasonApprovedReason,
+				Message:        "cluster-backup-operator approved during restore",
+				LastUpdateTime: metav1.Now(),
+			})
+			if err := k8sClient.Update(ctx, &csrList.Items[i], &client.UpdateOptions{}); err != nil {
+				return fmt.Errorf("unable to update CSR %s for: %v", csrList.Items[i].Name, err)
+			}
+			return nil // we approve only the first one
+		}
+	}
+	return fmt.Errorf("could not approve any csr")
 }

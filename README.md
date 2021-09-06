@@ -188,3 +188,16 @@ schedule-acm
 The restore operation should be run on a different hub then the one where the backup was created.
 
 After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on your new hub that the backed up resources contained by the backup file have been created.
+
+To restore a backup you can select a specific backup specifying the name of the backup inside `veleroBackupName.spec.restore` field or you can leave it blank. If you leave it blank the opeator will select the most recent backup without errors.
+
+Here is an example of resource:
+
+```yaml
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm
+spec:
+  veleroBackupName: backup-acm
+```
