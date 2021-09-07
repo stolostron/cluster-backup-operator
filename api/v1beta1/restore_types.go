@@ -53,8 +53,8 @@ type Restore struct {
 
 // Valid conditions of a restore
 const (
-	// RstoreStarted means the Restore is running.
-	RstoreStarted = "Started"
+	// RestoreStarted means the Restore is running.
+	RestoreStarted = "Started"
 	// RestoreImporting means the Restore is re-attaching the managed clusters
 	RestoreReattaching = "Reattaching"
 	// RestoreComplete means the Restore has completed its execution.
@@ -65,8 +65,9 @@ const (
 
 // Valid Restore Reason
 const (
-	RestoreReasonStarted = "RestoreStarted"
-	RestoreReasonRunning = "RestoreRunning"
+	RestoreReasonStarted  = "RestoreStarted"
+	RestoreReasonRunning  = "RestoreRunning"
+	RestoreReasonFinished = "RestoreFinished"
 )
 
 const (

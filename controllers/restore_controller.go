@@ -109,7 +109,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		restore.Status.VeleroRestoreName = veleroRestore.Name
 		apimeta.SetStatusCondition(&restore.Status.Conditions,
 			metav1.Condition{
-				Type:    v1beta1.RstoreStarted,
+				Type:    v1beta1.RestoreStarted,
 				Status:  metav1.ConditionTrue,
 				Reason:  v1beta1.RestoreReasonStarted,
 				Message: fmt.Sprintf("Velero Restore %s Started", veleroRestore.Name),
@@ -118,26 +118,37 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		veleroRestore := veleroRestoreList.Items[0].DeepCopy()
 		switch {
 		case isRestoreFinished(restore):
-			apimeta.SetStatusCondition(&restore.Status.Conditions,
-				metav1.Condition{
-					Type:    v1beta1.RestoreComplete,
-					Status:  metav1.ConditionTrue,
-					Reason:  v1beta1.RestoreReasonRunning,
-					Message: fmt.Sprintf("Restore Complete %s", restore.Name),
-				})
+			return ctrl.Result{}, nil // won't do more
 		case isVeleroRestoreFinished(veleroRestore):
 			r.Recorder.Event(restore, v1.EventTypeNormal, "Velero Restore finished:", fmt.Sprintf("%s/%s", veleroRestore.Namespace, veleroRestore.Name))
-			update, err := r.reattachManagedClusters(ctx)
+			allAttached, err := r.reattachManagedClusters(ctx)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
-			if !update {
-				return ctrl.Result{RequeueAfter: time.Second * 10}, nil // to wait for managed cluster re-attaching phase...
+			switch {
+			case allAttached:
+				apimeta.SetStatusCondition(&restore.Status.Conditions,
+					metav1.Condition{
+						Type:    v1beta1.RestoreComplete,
+						Status:  metav1.ConditionTrue,
+						Reason:  v1beta1.RestoreReasonRunning,
+						Message: fmt.Sprintf("Restore Complete %s", restore.Name),
+					})
+				return ctrl.Result{}, r.Client.Status().Update(ctx, restore)
+			case !allAttached:
+				apimeta.SetStatusCondition(&restore.Status.Conditions,
+					metav1.Condition{
+						Type:    v1beta1.RestoreReattaching,
+						Status:  metav1.ConditionTrue,
+						Reason:  v1beta1.RestoreReasonRunning,
+						Message: fmt.Sprintf("Restore %s is re-attaching clusters", restore.Name),
+					})
+				return ctrl.Result{RequeueAfter: time.Second * 10}, r.Client.Status().Update(ctx, restore) // to wait for managed cluster re-attaching phase...
 			}
 		default:
 			apimeta.SetStatusCondition(&restore.Status.Conditions,
 				metav1.Condition{
-					Type:    v1beta1.RstoreStarted,
+					Type:    v1beta1.RestoreStarted,
 					Status:  metav1.ConditionTrue,
 					Reason:  v1beta1.RestoreReasonRunning,
 					Message: fmt.Sprintf("Velero Restore %s still running", veleroRestore.Name),
