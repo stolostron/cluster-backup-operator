@@ -310,7 +310,7 @@ func (r *RestoreReconciler) reattachManagedCluster(ctx context.Context, managedC
 
 			currentBoostrapHubKubeconfig, err := managedClusterKubeClient.CoreV1().Secrets(OpenClusterManagementAgentNamespaceName).Get(ctx, BootstrapHubKubeconfigSecretName, metav1.GetOptions{})
 			if err != nil {
-				if apierrors.IsNotFound(err) { // TODO: check if deletion is on going...
+				if apierrors.IsNotFound(err) {
 					// We need to create it...
 					var newBoostrapHubKubeconfigSecret *corev1.Secret = nil
 					for _, s := range bootstrapSATokenSecrets {
@@ -320,6 +320,7 @@ func (r *RestoreReconciler) reattachManagedCluster(ctx context.Context, managedC
 							return attached, utilerrors.NewAggregate(errors)
 						}
 					}
+					//
 					if _, err := managedClusterKubeClient.CoreV1().Secrets(OpenClusterManagementAgentNamespaceName).Create(ctx, newBoostrapHubKubeconfigSecret, metav1.CreateOptions{}); err != nil {
 						return attached, fmt.Errorf("unable to create new boostrap-hub-kubeconfig: %v", err)
 					}
@@ -328,30 +329,39 @@ func (r *RestoreReconciler) reattachManagedCluster(ctx context.Context, managedC
 				return attached, fmt.Errorf("cannot get boostrap-hub-kubeconfig from managedclsuter %s: %v", managedClusterName, err)
 			}
 			if currentBoostrapHubKubeconfig.DeletionTimestamp != nil {
-				return attached, nil // is begin deleted
+				return attached, fmt.Errorf("%s is being deleted", BootstrapHubKubeconfigSecretName) // is begin deleted
 			}
-
-			// Otherwiser the currentBoostrapHubKubeconfig exists and we need to open it
+			// Otherwise the currentBoostrapHubKubeconfig exists and we need to open it
 			// looking if the server is the current one
 			server, err := getDefaultClusterServerFromKubeconfigSecret(currentBoostrapHubKubeconfig)
 			if err != nil {
 				return attached, fmt.Errorf("unable to find server from current boostrap-hub-kubecoinfg: %v", err)
 			}
-			if server == apiServer {
-				if approveManagedClusterCSR(ctx, r.Client, managedClusterName); err != nil { // boostrap-hub-kubeconfig is the same... // checks CSR and approval
-					return attached, err
+			if server != apiServer { // if the curent boostrap-hub-kubeconfig has different server name let's remove it
+				if err = managedClusterKubeClient.CoreV1().Secrets(OpenClusterManagementAgentNamespaceName).Delete(ctx, BootstrapHubKubeconfigSecretName, *metav1.NewDeleteOptions(0)); err != nil {
+					return attached, fmt.Errorf("unable to delete boostrap-hub-kubeconfig for %s: %v", managedClusterName, err)
 				}
-				return attached, nil
 			}
-			// if the server is different remove the bootstrap-hub-kubecoinfg
-			err = managedClusterKubeClient.CoreV1().Secrets(OpenClusterManagementAgentNamespaceName).Delete(ctx, BootstrapHubKubeconfigSecretName, *metav1.NewDeleteOptions(0))
-			if err != nil {
-				return attached, fmt.Errorf("unable to delete boostrap-hub-kubeconfig for %s: %v", managedClusterName, err)
+
+			// check cluster role and cluster role bindings
+			if err := createClusterRoleIfNeeded(ctx, r.Client, initManagedClusterBoostrapClusterRole(managedClusterName)); err != nil {
+				return attached, err
 			}
-			return attached, nil
+			if err := createClusterRoleBindingIfNeeded(ctx, r.Client, initManagedClusterBoostrapClusterRoleBinding(managedClusterName)); err != nil {
+				return attached, err
+			}
+			if err := createClusterRoleIfNeeded(ctx, r.Client, initManagedClusterClusterRole(managedClusterName)); err != nil {
+				return attached, err
+			}
+			if err := createClusterRoleBindingIfNeeded(ctx, r.Client, initManagedClusterClusterRoleBinding(managedClusterName)); err != nil {
+				return attached, err
+			}
+
 		} // end of if IsNotFound(err)
 		return attached, fmt.Errorf("registation error for managed cluster %s: %v", managedClusterName, err)
 	} // end of err!=nil
+
+	// check clusterroles and clusterrolebindings
 
 	// In case managedCluster is already approved we stop here
 	if managedCluster.Spec.HubAcceptsClient {

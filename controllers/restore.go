@@ -24,6 +24,8 @@ import (
 	certsv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubeclient "k8s.io/client-go/kubernetes"
@@ -37,16 +39,6 @@ import (
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 )
-
-func newCondition(conditionType string, status metav1.ConditionStatus, reason, message string) *metav1.Condition {
-	return &metav1.Condition{
-		Type:               conditionType,
-		Status:             status,
-		LastTransitionTime: metav1.Now(),
-		Reason:             reason,
-		Message:            message,
-	}
-}
 
 // isRestoreFinished returns true when Restore is finished
 func isRestoreFinished(restore *v1beta1.Restore) bool {
@@ -237,4 +229,138 @@ func approveManagedClusterCSR(ctx context.Context, k8sClient client.Client, mana
 		}
 	}
 	return fmt.Errorf("could not approve any csr")
+}
+
+func createClusterRoleIfNeeded(ctx context.Context, k8sClient client.Client, clusterRole *rbacv1.ClusterRole) error {
+	t := &rbacv1.ClusterRole{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Name: clusterRole.Name}, t); err != nil {
+		if apierrors.IsNotFound(err) {
+			if err := k8sClient.Create(ctx, clusterRole, &client.CreateOptions{}); err != nil {
+				return fmt.Errorf("couldn't create the clusterrole: %v", err)
+			}
+		}
+		return fmt.Errorf("couldn't verify if cluster ole exists: %v", err)
+	}
+	return nil
+}
+
+func createClusterRoleBindingIfNeeded(ctx context.Context, k8sClient client.Client, clusterRoleBinding *rbacv1.ClusterRoleBinding) error {
+	t := &rbacv1.ClusterRoleBinding{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Name: clusterRoleBinding.Name}, t); err != nil {
+		if apierrors.IsNotFound(err) {
+			if err := k8sClient.Create(ctx, clusterRoleBinding, &client.CreateOptions{}); err != nil {
+				return fmt.Errorf("couldn't create the clusterrole binding: %v", err)
+			}
+		}
+		return fmt.Errorf("couldn't verify if clusterrole binding exists: %v", err)
+	}
+	return nil
+}
+
+func initManagedClusterBoostrapClusterRole(managedClusterName string) *rbacv1.ClusterRole {
+	return &rbacv1.ClusterRole{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "ClusterRole",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf("system:open-cluster-management:managedcluster:bootstrap:%s", managedClusterName),
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{"certificates.k8s.io"},
+				Resources: []string{"certificatesigningrequests"},
+				Verbs:     []string{"create", "get", "list", "watch"},
+			},
+			{
+				APIGroups: []string{"cluster.open-cluster-management.io"},
+				Resources: []string{"managedclusters"},
+				Verbs:     []string{"create", "get"},
+			},
+		},
+	}
+}
+
+func initManagedClusterBoostrapClusterRoleBinding(managedClusterName string) *rbacv1.ClusterRoleBinding {
+	return &rbacv1.ClusterRoleBinding{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "ClusterRoleBinding",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf("osystem:open-cluster-management:managedcluster:bootstrap:%s", managedClusterName),
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "ClusterRole",
+			Name:     fmt.Sprintf("system:open-cluster-management:managedcluster:bootstrap:%s", managedClusterName),
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      fmt.Sprintf("system:open-cluster-management:%s", managedClusterName),
+				Namespace: managedClusterName,
+			},
+		},
+	}
+}
+
+func initManagedClusterClusterRole(managedClusterName string) *rbacv1.ClusterRole {
+	return &rbacv1.ClusterRole{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "ClusterRole",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf("system:open-cluster-management:managedcluster:%s", managedClusterName),
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{"certificates.k8s.io"},
+				Resources: []string{"certificatesigningrequests"},
+				Verbs:     []string{"create", "get", "list", "watch"},
+			},
+			{
+				APIGroups: []string{"register.open-cluster-management.io"},
+				Resources: []string{"managedclusters/clientcertificates"},
+				Verbs:     []string{"renew"},
+			},
+			{
+				APIGroups:     []string{"cluster.open-cluster-management.io"},
+				Resources:     []string{"managedclusters"},
+				ResourceNames: []string{managedClusterName},
+				Verbs:         []string{"get", "list", "update", "watch"},
+			},
+			{
+				APIGroups:     []string{"cluster.open-cluster-management.io"},
+				Resources:     []string{"managedclusters/status"},
+				ResourceNames: []string{managedClusterName},
+				Verbs:         []string{"patch", "update"},
+			},
+		},
+	}
+}
+
+func initManagedClusterClusterRoleBinding(managedClusterName string) *rbacv1.ClusterRoleBinding {
+	return &rbacv1.ClusterRoleBinding{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "ClusterRoleBinding",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf("open-cluster-management:managedcluster:%s", managedClusterName),
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "ClusterRole",
+			Name:     fmt.Sprintf("open-cluster-management:managedcluster:%s", managedClusterName),
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				APIGroup: "rbac.authorization.k8s.io",
+				Kind:     "Group",
+				Name:     fmt.Sprintf("system:open-cluster-management:%s", managedClusterName),
+			},
+		},
+	}
 }
