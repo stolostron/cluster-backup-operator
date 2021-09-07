@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
@@ -95,6 +96,18 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// validate the cron job schedule
+	errs := parseCronSchedule(ctx, backupSchedule)
+	if len(errs) > 0 {
+		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
+		backupSchedule.Status.LastMessage = strings.Join(errs, ",")
+
+		return ctrl.Result{}, errors.Wrap(
+			r.Client.Status().Update(ctx, backupSchedule),
+			"could not update status",
+		)
+	}
+
 	// retrieve the velero schedules (if any)
 	veleroScheduleList := veleroapi.ScheduleList{}
 	if err := r.List(
@@ -114,14 +127,28 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 	// no velero schedules, so create them
 	if len(veleroScheduleList.Items) == 0 {
-		if err := r.initVeleroSchedules(ctx, backupSchedule, r.Client); err != nil {
-			return ctrl.Result{RequeueAfter: deleteBackupRequeueInterval}, err
+		err := r.initVeleroSchedules(ctx, backupSchedule, r.Client)
+		if err != nil {
+			msg := fmt.Errorf(FailedPhaseMsg+": %v", err)
+			scheduleLogger.Error(err, err.Error())
+			backupSchedule.Status.LastMessage = msg.Error()
+			backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailed
+		} else {
+			backupSchedule.Status.LastMessage = NewPhaseMsg
+			backupSchedule.Status.Phase = v1beta1.SchedulePhaseNew
 		}
+
+		return ctrl.Result{RequeueAfter: deleteBackupRequeueInterval}, errors.Wrap(
+			r.Client.Status().Update(ctx, backupSchedule),
+			"could not update status",
+		)
 	}
-	// update schedule status with latest velero schedules
+
+	// velero schedules already exist, update schedule status with latest velero schedules
 	for i := range veleroScheduleList.Items {
 		updateScheduleStatus(ctx, &veleroScheduleList.Items[i], backupSchedule)
 	}
+	setSchedulePhase(&veleroScheduleList, backupSchedule)
 
 	// clean up old backups if they exceed the maxBackups number after backupDeleteRequeueInterval
 	cleanupBackups(ctx, backupSchedule.Spec.MaxBackups*len(resourceTypes), r.Client)
@@ -193,45 +220,9 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		)
 
 		// set veleroSchedule in backupSchedule status
-		setScheduleStatus(key, veleroSchedule, backupSchedule)
+		setVeleroScheduleInStatus(key, veleroSchedule, backupSchedule)
 	}
 	return nil
-}
-
-func updateScheduleStatus(
-	ctx context.Context,
-	veleroSchedule *veleroapi.Schedule,
-	backupSchedule *v1beta1.BackupSchedule,
-) {
-	scheduleLogger := log.FromContext(ctx)
-
-	scheduleLogger.Info(
-		"Updating status with a copy of velero schedule",
-		"name", veleroSchedule.Name,
-		"namespace", veleroSchedule.Namespace,
-	)
-
-	for key, value := range resourceTypes {
-		if veleroSchedule.Name == value {
-			// set veleroSchedule in backupSchedule status
-			setScheduleStatus(key, veleroSchedule, backupSchedule)
-		}
-	}
-}
-
-func setScheduleStatus(
-	resourceType ResourceType,
-	veleroSchedule *veleroapi.Schedule,
-	backupSchedule *v1beta1.BackupSchedule,
-) {
-	switch resourceType {
-	case ManagedClusters:
-		backupSchedule.Status.VeleroScheduleManagedClusters = veleroSchedule.DeepCopy()
-	case Credentials:
-		backupSchedule.Status.VeleroScheduleCredentials = veleroSchedule.DeepCopy()
-	case Resources:
-		backupSchedule.Status.VeleroScheduleResources = veleroSchedule.DeepCopy()
-	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
