@@ -308,6 +308,7 @@ func (r *RestoreReconciler) reattachManagedCluster(ctx context.Context, managedC
 				return attached, fmt.Errorf("unable to get public APIServer ULR: %v", err)
 			}
 
+			// Getting bootstrap-hub-kubeconfig
 			currentBoostrapHubKubeconfig, err := managedClusterKubeClient.CoreV1().Secrets(OpenClusterManagementAgentNamespaceName).Get(ctx, BootstrapHubKubeconfigSecretName, metav1.GetOptions{})
 			if err != nil {
 				if apierrors.IsNotFound(err) {
@@ -320,7 +321,6 @@ func (r *RestoreReconciler) reattachManagedCluster(ctx context.Context, managedC
 							return attached, utilerrors.NewAggregate(errors)
 						}
 					}
-					//
 					if _, err := managedClusterKubeClient.CoreV1().Secrets(OpenClusterManagementAgentNamespaceName).Create(ctx, newBoostrapHubKubeconfigSecret, metav1.CreateOptions{}); err != nil {
 						return attached, fmt.Errorf("unable to create new boostrap-hub-kubeconfig: %v", err)
 					}
@@ -354,6 +354,10 @@ func (r *RestoreReconciler) reattachManagedCluster(ctx context.Context, managedC
 				return attached, err
 			}
 			if err := createClusterRoleBindingIfNeeded(ctx, r.Client, initManagedClusterClusterRoleBinding(managedClusterName)); err != nil {
+				return attached, err
+			}
+
+			if approveManagedClusterCSR(ctx, r.Client, managedClusterName); err != nil {
 				return attached, err
 			}
 

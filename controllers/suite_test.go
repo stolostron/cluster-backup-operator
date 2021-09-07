@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	certsv1 "k8s.io/api/certificates/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -87,6 +88,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = certsv1.AddToScheme(scheme.Scheme) // for CSR
+	Expect(err).NotTo(HaveOccurred())
+
+	err = rbacv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme

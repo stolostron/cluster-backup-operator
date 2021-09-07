@@ -28,6 +28,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
 	kubeclient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -214,7 +215,7 @@ func approveManagedClusterCSR(ctx context.Context, k8sClient client.Client, mana
 		return fmt.Errorf("unable to initialize REGEX to filter CSR for cluster %s: %v", managedClusterName, err)
 	}
 	for i := range csrList.Items {
-		if clusterNameCSRRegex.Match([]byte(csrList.Items[i].Name)) {
+		if clusterNameCSRRegex.Match([]byte(csrList.Items[i].Name)) && !isCertificateRequestApproved(&csrList.Items[i]) {
 			csrList.Items[i].Status.Conditions = append(csrList.Items[i].Status.Conditions, certsv1.CertificateSigningRequestCondition{
 				Type:           certsv1.CertificateApproved,
 				Status:         corev1.ConditionTrue,
@@ -225,10 +226,28 @@ func approveManagedClusterCSR(ctx context.Context, k8sClient client.Client, mana
 			if err := k8sClient.Update(ctx, &csrList.Items[i], &client.UpdateOptions{}); err != nil {
 				return fmt.Errorf("unable to update CSR %s for: %v", csrList.Items[i].Name, err)
 			}
-			return nil // we approve only the first one
+			return nil // we approve the first non approved
 		}
 	}
 	return fmt.Errorf("could not approve any csr")
+}
+
+// IsCertificateRequestApproved returns true if a certificate request has been "Approved" and not Denied
+func isCertificateRequestApproved(csr *certsv1.CertificateSigningRequest) bool {
+	approved, denied := getCertApprovalCondition(&csr.Status)
+	return approved && !denied
+}
+
+func getCertApprovalCondition(status *certsv1.CertificateSigningRequestStatus) (approved bool, denied bool) {
+	for _, c := range status.Conditions {
+		if c.Type == certsv1.CertificateApproved {
+			approved = true
+		}
+		if c.Type == certsv1.CertificateDenied {
+			denied = true
+		}
+	}
+	return
 }
 
 func createClusterRoleIfNeeded(ctx context.Context, k8sClient client.Client, clusterRole *rbacv1.ClusterRole) error {
