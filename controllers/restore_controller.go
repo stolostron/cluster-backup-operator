@@ -75,6 +75,8 @@ type RestoreReconciler struct {
 //+kubebuilder:rbac:groups=velero.io,resources=restores,verbs=get;list;watch;create;update
 //+kubebuilder:rbac:groups=operator.openshift.io,resources=configs,verbs=get;list;watch
 //+kubebuilder:rbac:groups=certificates.k8s.io,resources=certificatesigningrequests,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles,verbs=get;list;watch;create
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings,verbs=get;list;watch;create
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -159,7 +161,6 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		// TODO: handles multiple velero restores:
 		// check if one velero is still running... update status and wait
 		// if all finished handleManagedClusters
-		//for i := range veleroRestoreList.Items {}
 	}
 
 	err := r.Client.Status().Update(ctx, restore)
