@@ -12,12 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-/*
-func setVeleroPhase(restore *v1beta1.Restore, phase veleroapi.RestorePhase) {
-	restore.Status.VeleroRestore.Status.Phase = phase
-}
-*/
-
 func initSecret(name, namespace string) corev1.Secret {
 	return corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
