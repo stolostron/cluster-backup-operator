@@ -136,14 +136,14 @@ metadata:
 spec:
   maxBackups: 10 # maximum number of backups after which old backups should be removed
   veleroSchedule: 0 */6 * * * # Create a backup every 6 hours
-  veleroTtl: 72h # deletes scheduled backups after 72h; optional, backups never expire if option not set
+  veleroTtl: 72h # deletes scheduled backups after 72h; optional, backups never expires if option not set
 ```
 
-The `interval` value in the `spec` defines the time interval in minutes for running another backup. The interval takes into consideration the time taken to execute the previous backup; for example, if the previous backup took 60 minutes to execute, the next backup will be called after `interval` + 60 minutes. 
+- `maxBackup` is a required property and represents the maximum number of backups after which old backups are being removed.
 
-The `maxBackup` is a required property and represents the maximum number of backups after which the old backups are being removed.
-The `veleroSchedule` is a required property and defines a cron job for scheduling the backups.
-The `veleroTtl` is an optional property and defines the expiration time for a scheduled backup resource.
+- `veleroSchedule` is a required property and defines a cron job for scheduling the backups.
+
+- `veleroTtl` is an optional property and defines the expiration time for a scheduled backup resource. A backup never expires if this property is not set.
 
 
 This is an example of a `restore.cluster.open-cluster-management.io` resource definition
@@ -160,6 +160,8 @@ spec:
 The `backupName` represents the name of the `backup.velero.io` resource to be restored on the hub where the  `restore.cluster.open-cluster-management.io` resource was created.
 
 In order to create an instance of `backupschedule.cluster.open-cluster-management.io` or `restore.cluster.open-cluster-management.io` you can start from one of the [sample configurations](config/samples).
+Replace the `<oadp-operator-ns>` with the namespace name used to install the OADP Operator (the default value for the OADP Operator install namespace is `oadp-operator`).
+
 
 ```shell
 kubectl create -n <oadp-operator-ns> -f config/samples/cluster_v1beta1_backupschedule.yaml
@@ -173,7 +175,6 @@ kubectl create -n <oadp-operator-ns> -f config/samples/cluster_v1beta1_restore.y
 After you create a `backupschedule.cluster.open-cluster-management.io` resource you should be able to run `oc get bsch -n <oadp-operator-ns>` and get the status of the scheduled cluster backups.
 
 In the example below, you have created a `backupschedule.cluster.open-cluster-management.io` resource named schedule-acm.
-Replace the `<oadp-operator-ns>` with the namespace name used to install the OADP Operator (the default value for the OADP Operator install namespace is `oadp-operator`).
 
 The resource status shows the definition for the 3 `schedule.velero.io` resources created by this cluster backup scheduler. 
 
@@ -187,11 +188,11 @@ schedule-acm
 
 The restore operation should be run on a different hub then the one where the backup was created.
 
-After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on your new hub that the backed up resources contained by the backup file have been created.
+After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on the new hub that the backed up resources contained by the backup file have been created.
 
 To restore a backup you can select a specific backup specifying the name of the backup inside `veleroBackupName.spec.restore` field or you can leave it blank. If you leave it blank the operator will select the most recent backup without errors.
 
-Here is an example of resource:
+Here is an example of a `restore.cluster.open-cluster-management.io` resource:
 
 ```yaml
 apiVersion: cluster.open-cluster-management.io/v1beta1
