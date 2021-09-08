@@ -17,42 +17,30 @@ limitations under the License.
 package v1beta1
 
 import (
-	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // RestoreSpec defines the desired state of Restore
 type RestoreSpec struct {
-	// Important: Run "make" to regenerate code after modifying this file
-	BackupName   string                    `json:"backupName,omitempty"`
-	VeleroConfig *VeleroConfigRestoreProxy `json:"veleroConfigRestoreProxy,omitempty"`
+	// VeleroBackupName is the name of the velero back-up used to restore ACM Hub.
+	// Is optional, in case no VeleroBackupName is supplied the backup name will be selected
+	// from the available backups in the current namespace
+	// +kubebuilder:validation:Optional
+	VeleroBackupName *string `json:"veleroBackupName,omitempty"`
 }
 
 // RestoreStatus defines the observed state of Restore
 type RestoreStatus struct {
-	// Phase shows the status for the restore operation
 	// +kubebuilder:validation:Optional
-	Phase StatusPhase `json:"phase"`
-	// Important: Run "make" to regenerate code after modifying this file
-	RestoreProxyReference *corev1.ObjectReference `json:"restoreProxyReference,omitempty"`
-	// Message on the last operation
-	// +kubebuilder:validation:Optional
-	LastMessage string `json:"lastMessage"`
-	// Velero operation status
-	// +kubebuilder:validation:Optional
-	VeleroRestore *veleroapi.Restore `json:"veleroRestore,omitempty"`
+	VeleroRestoreName string `json:"veleroRestoreName,omitempty"`
+	// RestoreCondition
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:validation:Optional
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName={"crst"}
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
-// +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.lastMessage`
 
 // Restore is the Schema for the restores API
 type Restore struct {
@@ -63,6 +51,29 @@ type Restore struct {
 	Status RestoreStatus `json:"status,omitempty"`
 }
 
+// Valid conditions of a restore
+const (
+	// RestoreStarted means the Restore is running.
+	RestoreStarted = "Started"
+	// RestoreImporting means the Restore is re-attaching the managed clusters
+	RestoreReattaching = "Reattaching"
+	// RestoreComplete means the Restore has completed its execution.
+	RestoreComplete = "Complete"
+	// RestoreFailed means the Restore has failed its execution.
+	RestoreFailed = "Failed"
+)
+
+// Valid Restore Reason
+const (
+	RestoreReasonStarted  = "RestoreStarted"
+	RestoreReasonRunning  = "RestoreRunning"
+	RestoreReasonFinished = "RestoreFinished"
+)
+
+const (
+	CSRReasonApprovedReason = "AutoApprovedByClusterBackupController"
+)
+
 //+kubebuilder:object:root=true
 
 // RestoreList contains a list of Restore
@@ -70,16 +81,6 @@ type RestoreList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Restore `json:"items"`
-}
-
-// VeleroConfigRestoreProxy defines the configuration information for velero configuration to restore ACM through Velero
-type VeleroConfigRestoreProxy struct {
-	// Namespace defines the namespace where velero is installed
-	Namespace string `json:"metadata"`
-	// DetachManagedCluster will detach managedcluster  from backedHub. backedHub has to be available and BackedUpSecreName must be supplied
-	DetachManagedCluster bool `json:"detachManagedClusters,omitempty"`
-	// BackedUpHubSecretName contains the secret name to access the backed up HUB
-	BackedUpHubSecretName string `json:"BackedUpHubSecretName,omitempty"`
 }
 
 func init() {

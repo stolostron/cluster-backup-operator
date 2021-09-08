@@ -3,6 +3,4 @@ kind: Restore
 metadata:
   name: restore-acm
 spec:
-  backupName: backup-acm
-  veleroConfigRestoreProxy:
-    metadata: oadp-operator
+  veleroBackupName: backup-acm
