@@ -50,6 +50,8 @@ The Cluster Back up and Restore Operator resources must be created in the same n
 The operator defines the `BackupSchedule.cluster.open-cluster-management.io` resource, used to setup acm backup schedules, and `Restore.cluster.open-cluster-management.io` resource, used to process and restore these backups.
 The operator creates corresponding Velero resources and sets the options needed to backup remote clusters and any other hub resources that needs to be restored.
 
+![Cluster Backup Controller Dataflow](images/cluster-backup-controller-dataflow.png)
+
 ## Scheduling a cluster backup 
 
 After you create a `backupschedule.cluster.open-cluster-management.io` resource you should be able to run `oc get bsch -n <oadp-operator-ns>` and get the status of the scheduled cluster backups. The `<oadp-operator-ns>` is the namespace where BackupSchedule was created and it should be the same namespace where the OADP Operator was installed.
