@@ -1,7 +1,0 @@
-apiVersion: cluster.open-cluster-management.io/v1beta1
-kind: Backup
-metadata:
-  name: backup-acm
-spec:
-  interval: 60
-  maxBackups: 5
