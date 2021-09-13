@@ -25,9 +25,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 
 	kubeclient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -37,45 +37,103 @@ import (
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 
-	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 )
 
-// isRestoreFinished returns true when Restore is finished
-func isRestoreFinished(restore *v1beta1.Restore) bool {
-	for _, c := range restore.Status.Conditions {
-		if (c.Type == v1beta1.RestoreComplete || c.Type == v1beta1.RestoreFailed) && v1.ConditionStatus(c.Status) == v1.ConditionTrue {
-			return true
-		}
+type ManagedClusterHandler struct {
+	Client kubeclient.Interface
+
+	adminKubeconfigSecrets  *[]corev1.Secret
+	bootstrapSATokenSecrets *[]corev1.Secret
+}
+
+func NewManagedClusterHandler(ctx context.Context,
+	managedClusterName string,
+	secrets *v1.SecretList) (*ManagedClusterHandler, error) {
+	adminKubeconfigSecrets := []corev1.Secret{}
+	bootstrapSATokenSecrets := []corev1.Secret{}
+	if err := filterSecrets(ctx, secrets, &adminKubeconfigSecrets, &bootstrapSATokenSecrets); err != nil {
+		return nil, fmt.Errorf("unable to get kubeconfig secrets for managed cluster %s: %v",
+			managedClusterName, err)
 	}
-	return false
+
+	var (
+		managedClusterKubeClient kubeclient.Interface = nil
+		errors                                        = []error{}
+		err                      error
+	)
+	for _, s := range adminKubeconfigSecrets {
+		if managedClusterKubeClient, err = getKubeClientFromSecret(&s); err == nil {
+			break // for the moment we get the first one
+		}
+		errors = append(errors, fmt.Errorf("unable to get kubernetes client: %v", err))
+	}
+	if managedClusterKubeClient == nil {
+		return nil, utilerrors.NewAggregate(errors)
+	}
+	// TODO retrieve operatorv1.Klusterlet
+
+	return &ManagedClusterHandler{
+		Client:                  managedClusterKubeClient,
+		bootstrapSATokenSecrets: &bootstrapSATokenSecrets,
+		adminKubeconfigSecrets:  &adminKubeconfigSecrets,
+	}, nil
+}
+
+func (mc *ManagedClusterHandler) GetNewBoostrapHubKubeconfigSecret(ctx context.Context) (*corev1.Secret, error) {
+	var (
+		errors []error
+	)
+	for _, s := range *mc.bootstrapSATokenSecrets {
+		newBoostrapHubKubeconfigSecret, err := newBootstrapHubKubeconfig(ctx, PublicAPIServerURL, s)
+		if err == nil {
+			return newBoostrapHubKubeconfigSecret, nil
+		}
+		errors = append(errors, fmt.Errorf("unable to create new boostrap-hub-kubeconfig: %v", err))
+	}
+	return nil, utilerrors.NewAggregate(errors)
 }
 
 func isVeleroRestoreFinished(restore *veleroapi.Restore) bool {
 	switch {
 	case restore == nil:
 		return false
-	case restore.Status.Phase == veleroapi.RestorePhaseNew ||
+	case len(restore.Status.Phase) == 0 || // if no restore exists
+		restore.Status.Phase == veleroapi.RestorePhaseNew ||
 		restore.Status.Phase == veleroapi.RestorePhaseInProgress:
 		return false
 	}
 	return true
 }
 
+func isVeleroRestoreRunning(restore *veleroapi.Restore) bool {
+	switch {
+	case restore == nil:
+		return false
+	case
+		restore.Status.Phase == veleroapi.RestorePhaseNew ||
+			restore.Status.Phase == veleroapi.RestorePhaseInProgress:
+		return true
+	}
+	return false
+}
+
 // redefining const from apimachinery validation
-const dns1123LabelFmt string = "[a-z0-9]([-a-z0-9]*[a-z0-9])?"
-const dns1123SubdomainFmt string = dns1123LabelFmt + "(\\." + dns1123LabelFmt + ")*"
+const (
+	dns1123LabelFmt          string = "[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+	dns1123SubdomainFmt      string = dns1123LabelFmt + "(\\." + dns1123LabelFmt + ")*"
+	adminKubeconfigSecretFmt string = dns1123SubdomainFmt + "(-admin-kubeconfig)"
+	boostrapSATokenFmnt      string = dns1123SubdomainFmt + "-bootstrap-sa-token" + "([-a-z0-9]*[a-z0-9])?"
+)
 
-const adminKubeconfigSecretFmt string = dns1123SubdomainFmt + "(-admin-kubeconfig)"
-
-var adminKubeconfigSecretRegex = regexp.MustCompile("^" + adminKubeconfigSecretFmt + "$")
-
-const boostrapSATokenFmnt string = dns1123SubdomainFmt + "-bootstrap-sa-token" + "([-a-z0-9]*[a-z0-9])?"
-
-var boostrapSATokenRegex = regexp.MustCompile("^" + boostrapSATokenFmnt + "$")
+var (
+	adminKubeconfigSecretRegex = regexp.MustCompile("^" + adminKubeconfigSecretFmt + "$")
+	boostrapSATokenRegex       = regexp.MustCompile("^" + boostrapSATokenFmnt + "$")
+)
 
 // filterSecrets filters a list of secrets getting
-func filterSecrets(ctx context.Context, secrets *corev1.SecretList, adminKubeConfigSecrets *[]corev1.Secret, bootstrapSASecrets *[]corev1.Secret) error {
+func filterSecrets(ctx context.Context, secrets *corev1.SecretList, adminKubeConfigSecrets *[]corev1.Secret,
+	bootstrapSASecrets *[]corev1.Secret) error {
 	for _, secret := range secrets.Items {
 		if adminKubeconfigSecretRegex.Match([]byte(secret.Name)) {
 			*adminKubeConfigSecrets = append(*adminKubeConfigSecrets, secret)
@@ -121,7 +179,6 @@ func newBootstrapHubKubeconfig(ctx context.Context, apiServer string, secret cor
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kubeconfig: %v", err)
 	}
-
 	return &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -137,15 +194,18 @@ func newBootstrapHubKubeconfig(ctx context.Context, apiServer string, secret cor
 	}, nil
 }
 
-// getKubeClientFromSecret initialize a kubernetes client from Secret containing a 'kubeconfig' data field
+// getKubeClientFromSecret initialize a kubernetes client from
+// Secret containing a 'kubeconfig' data field
 func getKubeClientFromSecret(kubeconfigSecret *corev1.Secret) (kubeclient.Interface, error) {
 	kubeconfigData, ok := kubeconfigSecret.Data["kubeconfig"]
 	if !ok {
-		return nil, fmt.Errorf("secret %s/%s does not contain kubeconfig data", kubeconfigSecret.Namespace, kubeconfigSecret.Name)
+		return nil, fmt.Errorf("secret %s/%s does not contain kubeconfig data",
+			kubeconfigSecret.Namespace, kubeconfigSecret.Name)
 	}
 	apiConfig, err := clientcmd.Load(kubeconfigData)
 	if err != nil {
-		return nil, fmt.Errorf("unable to load kubeconfig from secret %s/%s: %v", kubeconfigSecret.Namespace, kubeconfigSecret.Name, err)
+		return nil, fmt.Errorf("unable to load kubeconfig from secret %s/%s: %v",
+			kubeconfigSecret.Namespace, kubeconfigSecret.Name, err)
 	}
 	kubeconfig := clientcmd.NewDefaultClientConfig(*apiConfig, &clientcmd.ConfigOverrides{})
 	restConfig, err := kubeconfig.ClientConfig()
@@ -153,22 +213,24 @@ func getKubeClientFromSecret(kubeconfigSecret *corev1.Secret) (kubeclient.Interf
 		return nil, err
 	}
 	return kubeclient.NewForConfig(restConfig)
-
 }
 
 func getDefaultClusterServerFromKubeconfigSecret(kubeconfigSecret *corev1.Secret) (string, error) {
 	kubeconfigData, ok := kubeconfigSecret.Data["kubeconfig"]
 	if !ok {
-		return "", fmt.Errorf("secret %s/%s does not contain kubeconfig data", kubeconfigSecret.Namespace, kubeconfigSecret.Name)
+		return "", fmt.Errorf("secret %s/%s does not contain kubeconfig data",
+			kubeconfigSecret.Namespace, kubeconfigSecret.Name)
 	}
 	apiConfig, err := clientcmd.Load(kubeconfigData)
 	if err != nil {
-		return "", fmt.Errorf("unable to load kubeconfig from secret %s/%s: %v", kubeconfigSecret.Namespace, kubeconfigSecret.Name, err)
+		return "", fmt.Errorf("unable to load kubeconfig from secret %s/%s: %v",
+			kubeconfigSecret.Namespace, kubeconfigSecret.Name, err)
 	}
 	if value, ok := apiConfig.Clusters["default-cluster"]; ok {
 		return value.Server, nil
 	}
-	return "", fmt.Errorf("unable to fetch server from default-cluster data form secret %s/%s: %v", kubeconfigSecret.Namespace, kubeconfigSecret.Name, err)
+	return "", fmt.Errorf("unable to fetch server from default-cluster data form secret %s/%s: %v",
+		kubeconfigSecret.Namespace, kubeconfigSecret.Name, err)
 }
 
 const (
@@ -178,8 +240,11 @@ const (
 )
 
 // getPublicAPIServerURL retrieve the public URL for the current APIServer
-// oc get infrastructure cluster -o jsonpath='{.status.apiServerURL}'
+// simlar to `oc get infrastructure cluster -o jsonpath='{.status.apiServerURL}'`` shell command
 func getPublicAPIServerURL(client client.Client) (string, error) {
+	if PublicAPIServerURL != "" {
+		return PublicAPIServerURL, nil
+	}
 	infraConfig := &ocinfrav1.Infrastructure{}
 	if err := client.Get(context.TODO(),
 		types.NamespacedName{
@@ -187,49 +252,10 @@ func getPublicAPIServerURL(client client.Client) (string, error) {
 		}, infraConfig); err != nil {
 		return "", err
 	}
-	return infraConfig.Status.APIServerURL, nil
-}
-
-// acceptManagedCluster accepts the managed cluster
-func acceptManagedCluster(ctx context.Context, k8sClient client.Client, managedClusterName string) error {
-	managedCluster := clusterv1.ManagedCluster{}
-	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: "", Name: managedClusterName}, &managedCluster); err != nil {
-		return fmt.Errorf("unable to retrieve managed cluster during update %s: %v", managedClusterName, err)
+	if infraConfig.Status.APIServerURL != "" {
+		PublicAPIServerURL = infraConfig.Status.APIServerURL
 	}
-	managedCluster.Spec.HubAcceptsClient = true
-	if err := k8sClient.Update(ctx, &managedCluster, &client.UpdateOptions{}); err != nil {
-		return fmt.Errorf("unable to update managed cluster , %s: %v", managedClusterName, err)
-	}
-	// generate an event...
-	return nil
-}
-
-// approveManagedClusterCSR approves the CSR for the managed cluster
-func approveManagedClusterCSR(ctx context.Context, k8sClient client.Client, managedClusterName string) error {
-	csrList := certsv1.CertificateSigningRequestList{}
-	if err := k8sClient.List(ctx, &csrList, &client.ListOptions{}); err != nil {
-		return fmt.Errorf("unable to list CSR: %v", err)
-	}
-	clusterNameCSRRegex, err := regexp.Compile("^" + managedClusterName + "-")
-	if err != nil {
-		return fmt.Errorf("unable to initialize REGEX to filter CSR for cluster %s: %v", managedClusterName, err)
-	}
-	for i := range csrList.Items {
-		if clusterNameCSRRegex.Match([]byte(csrList.Items[i].Name)) && !isCertificateRequestApproved(&csrList.Items[i]) {
-			csrList.Items[i].Status.Conditions = append(csrList.Items[i].Status.Conditions, certsv1.CertificateSigningRequestCondition{
-				Type:           certsv1.CertificateApproved,
-				Status:         corev1.ConditionTrue,
-				Reason:         v1beta1.CSRReasonApprovedReason,
-				Message:        "cluster-backup-operator approved during restore",
-				LastUpdateTime: metav1.Now(),
-			})
-			if err := k8sClient.Update(ctx, &csrList.Items[i], &client.UpdateOptions{}); err != nil {
-				return fmt.Errorf("unable to update CSR %s for: %v", csrList.Items[i].Name, err)
-			}
-			return nil // we approve the first non approved
-		}
-	}
-	return fmt.Errorf("could not approve any csr")
+	return PublicAPIServerURL, nil
 }
 
 // IsCertificateRequestApproved returns true if a certificate request has been "Approved" and not Denied
@@ -250,40 +276,14 @@ func getCertApprovalCondition(status *certsv1.CertificateSigningRequestStatus) (
 	return
 }
 
-func createClusterRoleIfNeeded(ctx context.Context, k8sClient client.Client, clusterRole *rbacv1.ClusterRole) error {
-	t := &rbacv1.ClusterRole{}
-	if err := k8sClient.Get(ctx, types.NamespacedName{Name: clusterRole.Name}, t); err != nil {
-		if apierrors.IsNotFound(err) {
-			if err := k8sClient.Create(ctx, clusterRole, &client.CreateOptions{}); err != nil {
-				return fmt.Errorf("couldn't create the clusterrole: %v", err)
-			}
-		}
-		return fmt.Errorf("couldn't verify if cluster ole exists: %v", err)
-	}
-	return nil
-}
-
-func createClusterRoleBindingIfNeeded(ctx context.Context, k8sClient client.Client, clusterRoleBinding *rbacv1.ClusterRoleBinding) error {
-	t := &rbacv1.ClusterRoleBinding{}
-	if err := k8sClient.Get(ctx, types.NamespacedName{Name: clusterRoleBinding.Name}, t); err != nil {
-		if apierrors.IsNotFound(err) {
-			if err := k8sClient.Create(ctx, clusterRoleBinding, &client.CreateOptions{}); err != nil {
-				return fmt.Errorf("couldn't create the clusterrole binding: %v", err)
-			}
-		}
-		return fmt.Errorf("couldn't verify if clusterrole binding exists: %v", err)
-	}
-	return nil
-}
-
-func initManagedClusterBoostrapClusterRole(managedClusterName string) *rbacv1.ClusterRole {
+func initManagedClusterBootstrapClusterRole(managedClusterName string) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
 			Kind:       "ClusterRole",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: fmt.Sprintf("system:open-cluster-management:managedcluster:bootstrap:%s", managedClusterName),
+			Name: "system:open-cluster-management:managedcluster:bootstrap:" + managedClusterName,
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -292,7 +292,7 @@ func initManagedClusterBoostrapClusterRole(managedClusterName string) *rbacv1.Cl
 				Verbs:     []string{"create", "get", "list", "watch"},
 			},
 			{
-				APIGroups: []string{"cluster.open-cluster-management.io"},
+				APIGroups: []string{v1beta1.GroupVersion.Group},
 				Resources: []string{"managedclusters"},
 				Verbs:     []string{"create", "get"},
 			},
@@ -300,24 +300,24 @@ func initManagedClusterBoostrapClusterRole(managedClusterName string) *rbacv1.Cl
 	}
 }
 
-func initManagedClusterBoostrapClusterRoleBinding(managedClusterName string) *rbacv1.ClusterRoleBinding {
+func initManagedClusterBootstrapClusterRoleBinding(managedClusterName string) *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
 			Kind:       "ClusterRoleBinding",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: fmt.Sprintf("osystem:open-cluster-management:managedcluster:bootstrap:%s", managedClusterName),
+			Name: "system:open-cluster-management:managedcluster:bootstrap:" + managedClusterName,
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
 			Kind:     "ClusterRole",
-			Name:     fmt.Sprintf("system:open-cluster-management:managedcluster:bootstrap:%s", managedClusterName),
+			Name:     "system:open-cluster-management:managedcluster:bootstrap:" + managedClusterName,
 		},
 		Subjects: []rbacv1.Subject{
 			{
 				Kind:      "ServiceAccount",
-				Name:      fmt.Sprintf("system:open-cluster-management:%s", managedClusterName),
+				Name:      managedClusterName + "-bootstrap-sa",
 				Namespace: managedClusterName,
 			},
 		},
@@ -331,7 +331,7 @@ func initManagedClusterClusterRole(managedClusterName string) *rbacv1.ClusterRol
 			Kind:       "ClusterRole",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: fmt.Sprintf("system:open-cluster-management:managedcluster:%s", managedClusterName),
+			Name: "open-cluster-management:managedcluster:" + managedClusterName,
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -345,13 +345,13 @@ func initManagedClusterClusterRole(managedClusterName string) *rbacv1.ClusterRol
 				Verbs:     []string{"renew"},
 			},
 			{
-				APIGroups:     []string{"cluster.open-cluster-management.io"},
+				APIGroups:     []string{v1beta1.GroupVersion.Group},
 				Resources:     []string{"managedclusters"},
 				ResourceNames: []string{managedClusterName},
 				Verbs:         []string{"get", "list", "update", "watch"},
 			},
 			{
-				APIGroups:     []string{"cluster.open-cluster-management.io"},
+				APIGroups:     []string{v1beta1.GroupVersion.Group},
 				Resources:     []string{"managedclusters/status"},
 				ResourceNames: []string{managedClusterName},
 				Verbs:         []string{"patch", "update"},
@@ -367,18 +367,68 @@ func initManagedClusterClusterRoleBinding(managedClusterName string) *rbacv1.Clu
 			Kind:       "ClusterRoleBinding",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: fmt.Sprintf("open-cluster-management:managedcluster:%s", managedClusterName),
+			Name: "open-cluster-management:managedcluster:" + managedClusterName,
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
 			Kind:     "ClusterRole",
-			Name:     fmt.Sprintf("open-cluster-management:managedcluster:%s", managedClusterName),
+			Name:     "open-cluster-management:managedcluster:" + managedClusterName,
 		},
 		Subjects: []rbacv1.Subject{
 			{
 				APIGroup: "rbac.authorization.k8s.io",
 				Kind:     "Group",
-				Name:     fmt.Sprintf("system:open-cluster-management:%s", managedClusterName),
+				Name:     "system:open-cluster-management:" + managedClusterName,
+			},
+		},
+	}
+}
+
+func initManagedClusterAdminClusterRole(managedClusterName string) *rbacv1.ClusterRole {
+	return &rbacv1.ClusterRole{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "ClusterRole",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "open-cluster-management:admin:" + managedClusterName,
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups:     []string{v1beta1.GroupVersion.Group},
+				Resources:     []string{"managedclusters"},
+				ResourceNames: []string{managedClusterName},
+				Verbs:         []string{"create", "delete", "get", "list", "patch", "update", "watch"},
+			},
+			{
+				APIGroups: []string{"clusterview.open-cluster-management.io"},
+				Resources: []string{"managedclusters"},
+				Verbs:     []string{"get", "list", "watch"},
+			},
+		},
+	}
+}
+
+func initManagedClusterViewClusterRole(managedClusterName string) *rbacv1.ClusterRole {
+	return &rbacv1.ClusterRole{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "ClusterRole",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "open-cluster-management:view:" + managedClusterName,
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups:     []string{v1beta1.GroupVersion.Group},
+				Resources:     []string{"managedclusters"},
+				ResourceNames: []string{managedClusterName},
+				Verbs:         []string{"get", "list", "watch"},
+			},
+			{
+				APIGroups: []string{"clusterview.open-cluster-management.io"},
+				Resources: []string{"managedclusters"},
+				Verbs:     []string{"get", "list", "watch"},
 			},
 		},
 	}
