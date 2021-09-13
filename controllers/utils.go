@@ -19,8 +19,6 @@ package controllers
 import (
 	"fmt"
 	"time"
-
-	"github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 )
 
 // find takes a slice and looks for an element in it. If found it will
@@ -63,14 +61,6 @@ func getFormattedDuration(duration time.Duration) string {
 // name used by the velero backup resource, created by the backup acm controller
 func getVeleroBackupName(backupName, backupNamesapce string) string {
 	return backupName + "-" + getFormattedTimeCRD(time.Now())
-}
-
-func isBackupPhaseFinished(phase v1beta1.StatusPhase) bool {
-
-	return phase == v1beta1.CompletedStatusPhase ||
-		phase == v1beta1.FailedStatusPhase ||
-		phase == v1beta1.PartiallyFailedStatusPhase
-
 }
 
 // min returns the smallest of x or y.

@@ -109,12 +109,6 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(mgr).NotTo(BeNil())
 
-	err = (&BackupReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr)
-	Expect(err).ToNot(HaveOccurred())
-
 	err = (&RestoreReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
