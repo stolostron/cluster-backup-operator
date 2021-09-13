@@ -309,6 +309,9 @@ func (r *RestoreReconciler) attachManagedCluster(ctx context.Context, restore *v
 			if err != nil {
 				return attached, fmt.Errorf("unable to handle managedcluster %s: %v", managedClusterName, err)
 			}
+			if mcHandler == nil {
+				return attached, fmt.Errorf("unable to handle managedcluster %s, admin secret not found", managedClusterName)
+			}
 			currentBoostrapHubKubeconfig, err := mcHandler.Client.CoreV1().Secrets(OpenClusterManagementAgentNamespaceName).Get(ctx,
 				BootstrapHubKubeconfigSecretName, metav1.GetOptions{}) // Getting bootstrap-hub-kubeconfig
 			if err != nil {
