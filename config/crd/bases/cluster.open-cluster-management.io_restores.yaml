@@ -119,6 +119,7 @@ spec:
                   type: object
                 type: array
               veleroRestoreName:
+                description: 'TODO: replace with core/v1 TypedLocalObjectReference'
                 type: string
             type: object
         type: object

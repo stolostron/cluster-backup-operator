@@ -276,7 +276,7 @@ func getCertApprovalCondition(status *certsv1.CertificateSigningRequestStatus) (
 	return
 }
 
-func initManagedClusterBoostrapClusterRole(managedClusterName string) *rbacv1.ClusterRole {
+func initManagedClusterBootstrapClusterRole(managedClusterName string) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -300,7 +300,7 @@ func initManagedClusterBoostrapClusterRole(managedClusterName string) *rbacv1.Cl
 	}
 }
 
-func initManagedClusterBoostrapClusterRoleBinding(managedClusterName string) *rbacv1.ClusterRoleBinding {
+func initManagedClusterBootstrapClusterRoleBinding(managedClusterName string) *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",

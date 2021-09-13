@@ -55,7 +55,7 @@ var (
 )
 
 const (
-	managedClusterImportInterval            = 10 * time.Second // as soon restore is finished we start to poll for managedcluster registration
+	managedClusterImportInterval            = 20 * time.Second // as soon restore is finished we start to poll for managedcluster registration
 	BootstrapHubKubeconfigSecretName        = "bootstrap-hub-kubeconfig"
 	OpenClusterManagementAgentNamespaceName = "open-cluster-management-agent" // TODO: this can change. Get the klusterlet.spec
 	OCMManagedClusterNamespaceLabelKey      = "cluster.open-cluster-management.io/managedCluster"
@@ -154,7 +154,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 						Message: fmt.Sprintf("Restore %s is attaching clusters", restore.Name),
 					})
 				// to wait for managed cluster re-attaching phase
-				return ctrl.Result{RequeueAfter: time.Second * 10}, r.Client.Status().Update(ctx, restore)
+				return ctrl.Result{RequeueAfter: managedClusterImportInterval}, r.Client.Status().Update(ctx, restore)
 			}
 		case isVeleroRestoreRunning(veleroRestore):
 			apimeta.SetStatusCondition(&restore.Status.Conditions,
@@ -173,8 +173,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 					Message: fmt.Sprintf("Velero Restore %s is running", veleroRestore.Name),
 				})
 		}
-	default:
-		// (should never happen)
+	default: // (should never happen)
 	}
 
 	err := r.Client.Status().Update(ctx, restore)
@@ -194,8 +193,6 @@ func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		if owner.APIVersion != apiGVStr || owner.Kind != "Restore" {
 			return nil
 		}
-
-		// ...and if so, return it
 		return []string{owner.Name}
 	}); err != nil {
 		return err
@@ -227,15 +224,25 @@ func (backups mostRecentWithLessErrors) Less(i, j int) bool {
 
 // getVeleroBackupName returns the name of velero backup will be restored
 func (r *RestoreReconciler) getVeleroBackupName(ctx context.Context, restore *v1beta1.Restore) (string, error) {
-	if restore.Spec.VeleroBackupName != nil {
-		return *restore.Spec.VeleroBackupName, nil
+	// TODO: check whether name is valid
+	if restore.Spec.VeleroBackupName != nil && len(*restore.Spec.VeleroBackupName) > 0 {
+		veleroBackup := veleroapi.Backup{}
+		err := r.Get(ctx,
+			types.NamespacedName{Name: *restore.Spec.VeleroBackupName,
+				Namespace: restore.Namespace},
+			&veleroBackup)
+		if err == nil {
+			return *restore.Spec.VeleroBackupName, nil
+		}
+		return "", fmt.Errorf("cannot find %s Velero Backup: %v",
+			*restore.Spec.VeleroBackupName, err)
 	}
 	veleroBackups := &veleroapi.BackupList{}
 	if err := r.Client.List(ctx, veleroBackups, client.InNamespace(restore.Namespace)); err != nil {
 		return "", fmt.Errorf("unable to list velero backups: %v", err)
 	}
 	if len(veleroBackups.Items) == 0 {
-		return "", fmt.Errorf("not available backups found")
+		return "", fmt.Errorf("no backups found")
 	}
 	sort.Sort(mostRecentWithLessErrors(veleroBackups.Items))
 	return veleroBackups.Items[0].Name, nil
@@ -243,11 +250,11 @@ func (r *RestoreReconciler) getVeleroBackupName(ctx context.Context, restore *v1
 
 func (r *RestoreReconciler) initVeleroRestore(ctx context.Context, restore *v1beta1.Restore) (*veleroapi.Restore, error) {
 	veleroRestore := &veleroapi.Restore{}
-
 	veleroBackupName, err := r.getVeleroBackupName(ctx, restore)
 	if err != nil {
 		return nil, err
 	}
+	// TODO check length of produced name
 	veleroRestore.Name = restore.Name + "-" + veleroBackupName
 
 	veleroRestore.Namespace = restore.Namespace
@@ -317,7 +324,7 @@ func (r *RestoreReconciler) attachManagedCluster(ctx context.Context, restore *v
 						return attached, fmt.Errorf("unable to create new boostrap-hub-kubeconfig: %v", err)
 					}
 					restoreLogger.V(4).Info("New bootstrap-hub-kubeconfig created", "cluster", managedClusterName)
-					return attached, nil // new boostrap-hub-kubeconfig created
+					return attached, nil
 				}
 				return attached, fmt.Errorf("cannot get boostrap-hub-kubeconfig from managedclsuter %s: %v", managedClusterName, err)
 			}
@@ -353,13 +360,12 @@ func (r *RestoreReconciler) attachManagedCluster(ctx context.Context, restore *v
 			if err := r.createClusterRoleIfNeeded(ctx, restore, initManagedClusterViewClusterRole(managedClusterName)); err != nil {
 				return attached, err
 			}
-
 			if err := r.createClusterRoleIfNeeded(ctx, restore,
-				initManagedClusterBoostrapClusterRole(managedClusterName)); err != nil {
+				initManagedClusterBootstrapClusterRole(managedClusterName)); err != nil {
 				return attached, err
 			}
 			if err := r.createClusterRoleBindingIfNeeded(ctx, restore,
-				initManagedClusterBoostrapClusterRoleBinding(managedClusterName)); err != nil {
+				initManagedClusterBootstrapClusterRoleBinding(managedClusterName)); err != nil {
 				return attached, err
 			}
 			if err := r.createClusterRoleIfNeeded(ctx, restore, initManagedClusterClusterRole(managedClusterName)); err != nil {
