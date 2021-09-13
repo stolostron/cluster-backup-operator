@@ -24,6 +24,8 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	ocinfrav1 "github.com/openshift/api/config/v1"
+	certsv1 "k8s.io/api/certificates/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -31,11 +33,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	backupv1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	"github.com/open-cluster-management/cluster-backup-operator/controllers"
-
-	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
+	libgoclient "github.com/open-cluster-management/library-go/pkg/client"
 	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
+
+	//operatorapiv1 "open-cluster-management.io/api/operator/v1"
 
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	//+kubebuilder:scaffold:imports
@@ -48,13 +52,14 @@ var (
 
 func init() {
 
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
 	utilruntime.Must(backupv1beta1.AddToScheme(scheme))
-
-	utilruntime.Must(veleroapi.AddToScheme(scheme))
-	utilruntime.Must(clusterv1.AddToScheme(scheme))
 	utilruntime.Must(chnv1.AddToScheme(scheme))
+	utilruntime.Must(certsv1.AddToScheme(scheme))
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(clusterv1.AddToScheme(scheme))
+	utilruntime.Must(ocinfrav1.AddToScheme(scheme))
+	//utilruntime.Must(operatorapiv1.AddToScheme(scheme)) Not adding since client it's remote
+	utilruntime.Must(veleroapi.AddToScheme(scheme))
 
 	//+kubebuilder:scaffold:scheme
 }
@@ -99,13 +104,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.BackupReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create Backup controller")
-		os.Exit(1)
-	}
 	if err = (&controllers.BackupScheduleReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -113,9 +111,15 @@ func main() {
 		setupLog.Error(err, "unable to create Schedule controller")
 		os.Exit(1)
 	}
+	kubeClient, err := libgoclient.NewDefaultKubeClient("")
+	if err != nil {
+		kubeClient = nil
+	}
 	if err = (&controllers.RestoreReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:     mgr.GetClient(),
+		KubeClient: kubeClient,
+		Scheme:     mgr.GetScheme(),
+		Recorder:   mgr.GetEventRecorderFor("Restore controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create Restore controller")
 		os.Exit(1)

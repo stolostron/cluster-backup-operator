@@ -35,6 +35,7 @@ import (
 
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	backupv1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
+	operatorapiv1 "open-cluster-management.io/api/operator/v1"
 
 	valeroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	//+kubebuilder:scaffold:imports
@@ -81,16 +82,19 @@ var _ = BeforeSuite(func() {
 	err = clusterv1.AddToScheme(scheme.Scheme) // for managedclusters
 	Expect(err).NotTo(HaveOccurred())
 
-	err = valeroapi.AddToScheme(scheme.Scheme) // for velero types
+	err = certsv1.AddToScheme(scheme.Scheme) // for CSR
 	Expect(err).NotTo(HaveOccurred())
 
 	err = ocinfrav1.AddToScheme(scheme.Scheme) // for openshift config infrastructure types
 	Expect(err).NotTo(HaveOccurred())
 
-	err = certsv1.AddToScheme(scheme.Scheme) // for CSR
+	err = operatorapiv1.AddToScheme(scheme.Scheme) // for Klusterlet CRD
 	Expect(err).NotTo(HaveOccurred())
 
-	err = rbacv1.AddToScheme(scheme.Scheme)
+	err = rbacv1.AddToScheme(scheme.Scheme) // for clusterroles and clusterrolebindings
+	Expect(err).NotTo(HaveOccurred())
+
+	err = valeroapi.AddToScheme(scheme.Scheme) // for velero types
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme
@@ -109,16 +113,11 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(mgr).NotTo(BeNil())
 
-	err = (&BackupReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr)
-	Expect(err).ToNot(HaveOccurred())
-
 	err = (&RestoreReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("restore reconciler"),
+		KubeClient: nil,
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Recorder:   mgr.GetEventRecorderFor("restore reconciler"),
 	}).SetupWithManager(mgr)
 	Expect(err).ToNot(HaveOccurred())
 

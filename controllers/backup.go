@@ -20,10 +20,8 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"time"
 
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
-	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -46,44 +44,6 @@ var (
 	}
 	backupCredsResources = [...]string{"secret"}
 )
-
-// returns then name of the last backup resource, or,
-// if this is the first time to run the backup or current backup is not found, a newly generated name
-func getActiveBackupName(
-	ctx context.Context,
-	backup *v1beta1.Backup,
-	c client.Client,
-) string {
-
-	if backup.Status.CurrentBackup == "" || isBackupPhaseFinished(backup.Status.Phase) {
-
-		// no active backup, return newyly generated backup name
-		return getVeleroBackupName(backup.Name, backup.Namespace)
-	}
-
-	// check if current backup resource exists
-	veleroIdentity := types.NamespacedName{
-		Namespace: backup.Namespace,
-		Name:      backup.Status.CurrentBackup,
-	}
-	// get the velero CR using the veleroIdentity
-	veleroBackup := &veleroapi.Backup{}
-	err := c.Get(ctx, veleroIdentity, veleroBackup)
-	if err != nil {
-		// unable to get backup resource, create a new one
-		backup.Status.CurrentBackup = ""
-		return getVeleroBackupName(backup.Name, backup.Namespace)
-	}
-
-	if !isBackupFinished(backup.Status.VeleroBackups) {
-		//if an active backup, return the CurrentBackup value
-		return backup.Status.CurrentBackup
-	}
-
-	// no active backup, return newyly generated backup name
-	return getVeleroBackupName(backup.Name, backup.Namespace)
-
-}
 
 // clean up old backups if they exceed the maxCount number
 func cleanupBackups(
@@ -181,87 +141,6 @@ func deleteBackup(
 		}
 	} else {
 		backupLogger.Info(fmt.Sprintf("DeleteBackupRequest already exists, skip request creation %s", backupName))
-	}
-}
-
-// create velero.io.Backup resource for the specified resourceType types
-func createBackupForResource(
-	resourceType string,
-	backup *v1beta1.Backup,
-	veleroBackup *veleroapi.Backup,
-	ctx context.Context,
-	c client.Client,
-) {
-
-	if resourceType != "creds" && resourceType != "resource" {
-		// skip if unknown backup type
-		return
-	}
-
-	backupLogger := log.FromContext(ctx)
-	// create resources backup
-	veleroResIdentity := types.NamespacedName{
-		Namespace: veleroBackup.Namespace,
-		Name:      fmt.Sprintf("%s-%s", veleroBackup.Name, resourceType),
-	}
-
-	veleroResBackup := &veleroapi.Backup{}
-	veleroResBackup.Name = veleroResIdentity.Name
-	veleroResBackup.Namespace = veleroResIdentity.Namespace
-
-	err := c.Get(ctx, veleroResIdentity, veleroResBackup)
-	if err != nil {
-		backupLogger.Info(fmt.Sprintf(
-			"velero.io.Backup [name=%s, namespace=%s] returned error, checking if the resource was not yet created",
-			veleroResIdentity.Name,
-			veleroResIdentity.Namespace,
-		))
-		// check if this is a  resource NotFound error, in which case create the resource
-		if k8serr.IsNotFound(err) {
-			// create backup based on resource type
-			switch resourceType {
-			case "resource":
-				setResourcesBackupInfo(ctx, &veleroResBackup.Spec, c)
-			case "creds":
-				setCredsBackupInfo(ctx, &veleroResBackup.Spec, c)
-			}
-
-			err = c.Create(ctx, veleroResBackup, &client.CreateOptions{})
-			if veleroResBackup != nil {
-				// add backup to list of backups
-				backup.Status.VeleroBackups = append(backup.Status.VeleroBackups, veleroResBackup)
-			}
-
-			if err != nil {
-				backupLogger.Error(err, "create backup error")
-				return
-			}
-		}
-	} else {
-		if resourceType == "creds" {
-			if len(backup.Status.VeleroBackups) <= 1 {
-				backup.Status.VeleroBackups = append(backup.Status.VeleroBackups, veleroResBackup)
-			} else {
-				backup.Status.VeleroBackups[1] = veleroResBackup
-			}
-		} else {
-			if len(backup.Status.VeleroBackups) <= 2 {
-				backup.Status.VeleroBackups = append(backup.Status.VeleroBackups, veleroResBackup)
-			} else {
-				backup.Status.VeleroBackups[2] = veleroResBackup
-			}
-		}
-	}
-
-	if veleroResBackup.Status.Progress != nil {
-		msg := fmt.Sprintf(
-			"%s ; [%s: ItemsBackedUp[%d], TotalItems[%d]]",
-			backup.Status.LastMessage,
-			resourceType,
-			veleroResBackup.Status.Progress.ItemsBackedUp,
-			veleroResBackup.Status.Progress.TotalItems,
-		)
-		backup.Status.LastMessage = msg
 	}
 }
 
@@ -381,30 +260,6 @@ func setManagedClustersBackupInfo(
 	}
 }
 
-// update status for the last executed backup
-func updateLastBackupStatus(backup *v1beta1.Backup) {
-
-	if backup.Status.VeleroBackups != nil && len(backup.Status.VeleroBackups) > 0 {
-
-		backup.Status.Phase = v1beta1.StatusPhase(getBackupPhase(backup.Status.VeleroBackups))
-		if isBackupFinished(backup.Status.VeleroBackups) {
-			backup.Status.LastBackup = backup.Status.CurrentBackup
-
-			completedTime := getLastBackupCompletionTime(backup)
-			if completedTime != nil {
-				backup.Status.CompletionTimestamp = completedTime
-
-				startTime := backup.Status.VeleroBackups[0].Status.StartTimestamp
-				if startTime != nil {
-					duration := completedTime.Time.Sub(startTime.Time)
-					backup.Status.LastBackupDuration = getFormattedDuration(duration)
-
-				}
-			}
-		}
-	}
-}
-
 func isBackupFinished(backups []*veleroapi.Backup) bool {
 
 	if backups == nil || len(backups) <= 0 {
@@ -421,77 +276,6 @@ func isBackupFinished(backups []*veleroapi.Backup) bool {
 	}
 
 	return true
-}
-
-// return cumulative status of backups
-func getBackupPhase(backups []*veleroapi.Backup) veleroapi.BackupPhase {
-
-	if backups == nil || len(backups) <= 0 {
-		return ""
-	}
-
-	// get all backups and check status for each
-	for i := 0; i < len(backups); i++ {
-
-		if backups[i].Status.Phase == veleroapi.BackupPhase(v1beta1.InProgressStatusPhase) {
-			return backups[i].Status.Phase // some backup is not ready, show that
-		}
-		if backups[i].Status.Phase == veleroapi.BackupPhase(v1beta1.FailedStatusPhase) {
-			return backups[i].Status.Phase // show failed first
-		}
-		if backups[i].Status.Phase == veleroapi.BackupPhase(v1beta1.PartiallyFailedStatusPhase) {
-			return backups[i].Status.Phase // show PartiallyFailed second
-		}
-	}
-
-	//if here, return the state of the first backup
-	return backups[0].Status.Phase
-}
-
-// return the completion time for the last backup in this list of backups ( creds, res, cluster)
-func getLastBackupCompletionTime(backup *v1beta1.Backup) *v1.Time {
-
-	if backup.Status.VeleroBackups == nil || len(backup.Status.VeleroBackups) <= 0 {
-		// no previous completed backup, can start one now
-		return nil
-	}
-
-	lastBackup := backup.Status.VeleroBackups[len(backup.Status.VeleroBackups)-1]
-	if lastBackup.Status.CompletionTimestamp != nil {
-		return lastBackup.Status.CompletionTimestamp
-	}
-
-	return nil
-}
-
-// returns true if the interval required to wait for a backup has passed since the last backup execution
-// or if there is no previous backup execution
-func canStartBackup(backup *v1beta1.Backup) bool {
-
-	if backup.Status.VeleroBackups == nil || len(backup.Status.VeleroBackups) <= 0 {
-		// no previous completed backup, can start one now
-		return true
-	}
-
-	var completedTime int64
-	lastBackup := backup.Status.VeleroBackups[len(backup.Status.VeleroBackups)-1]
-
-	if lastBackup.Status.CompletionTimestamp != nil {
-		completedTime = lastBackup.Status.CompletionTimestamp.Time.Unix()
-	}
-
-	if completedTime < 0 {
-		// completion time not set, wait for it to be set
-		return false
-	}
-
-	// interval in minutes, between backups
-	interval := backup.Spec.Interval
-	currentTime := time.Now().Unix()
-
-	//can run another backup if current time - completed backup time is bigger then the interval in seconds
-	return currentTime-completedTime >= int64(interval*60)
-
 }
 
 // filter backup list based on a boolean function

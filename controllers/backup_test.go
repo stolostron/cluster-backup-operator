@@ -5,7 +5,6 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -13,8 +12,7 @@ import (
 var _ = Describe("Backup", func() {
 
 	var (
-		veleroNamespaceName string = "velero-backup-ns"
-		backupName          string = "the-backup-name"
+		backupName string = "the-backup-name"
 	)
 
 	Context("For utility functions of Backup", func() {
@@ -54,46 +52,6 @@ var _ = Describe("Backup", func() {
 			formatted := "10m0s"
 
 			Expect(getFormattedDuration(duration)).Should(Equal(formatted))
-		})
-
-		It("canStartBackup should return the expected value", func() {
-			veleroBackups := make([]*veleroapi.Backup, 0)
-			veleroBackup := veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      backupName,
-					Namespace: "",
-				},
-			}
-			veleroBackups = append(veleroBackups, &veleroBackup)
-
-			rhacmBackup := v1beta1.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      backupName,
-					Namespace: veleroNamespaceName,
-				},
-				Spec: v1beta1.BackupSpec{
-					Interval:   60,
-					MaxBackups: 2,
-				},
-				Status: v1beta1.BackupStatus{
-					VeleroBackups: veleroBackups,
-				},
-			}
-
-			Expect(canStartBackup(&rhacmBackup)).Should(BeTrue())
-
-			t := metav1.Now()
-			veleroBackup.Status.CompletionTimestamp = &t
-
-			Expect(canStartBackup(&rhacmBackup)).Should(BeFalse())
 		})
 
 		It("min should return the expected value", func() {

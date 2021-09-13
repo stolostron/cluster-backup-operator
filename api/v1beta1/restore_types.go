@@ -31,6 +31,7 @@ type RestoreSpec struct {
 
 // RestoreStatus defines the observed state of Restore
 type RestoreStatus struct {
+	// TODO: replace with core/v1 TypedLocalObjectReference
 	// +kubebuilder:validation:Optional
 	VeleroRestoreName string `json:"veleroRestoreName,omitempty"`
 	// RestoreCondition
@@ -55,8 +56,8 @@ type Restore struct {
 const (
 	// RestoreStarted means the Restore is running.
 	RestoreStarted = "Started"
-	// RestoreImporting means the Restore is re-attaching the managed clusters
-	RestoreReattaching = "Reattaching"
+	// RestoreAttaching means the Restore is attaching the managed clusters
+	RestoreAttaching = "Attaching"
 	// RestoreComplete means the Restore has completed its execution.
 	RestoreComplete = "Complete"
 	// RestoreFailed means the Restore has failed its execution.

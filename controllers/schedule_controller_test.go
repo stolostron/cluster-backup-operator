@@ -94,7 +94,8 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			createdVeleroNamespace := corev1.Namespace{}
 			Eventually(func() bool {
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: veleroNamespaceName, Namespace: ""}, &createdVeleroNamespace); err != nil {
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: veleroNamespaceName,
+					Namespace: ""}, &createdVeleroNamespace); err != nil {
 					return false
 				}
 				if createdVeleroNamespace.Status.Phase == "Active" {
