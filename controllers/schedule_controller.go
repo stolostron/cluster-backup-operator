@@ -146,6 +146,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 	// Velero doesn't watch modifications to its schedules
 	// delete velero schedules if their spec needs to be updated
+	// New velero schedules will be created in the next reconcile triggerd by the deletion
 	if isScheduleSpecUpdated(&veleroScheduleList, backupSchedule) {
 		if err := r.deleteVeleroSchedules(ctx, backupSchedule, &veleroScheduleList); err != nil {
 			return ctrl.Result{}, err
@@ -209,7 +210,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 
 		veleroSchedule.Spec.Template = *veleroBackupTemplate
 		veleroSchedule.Spec.Schedule = backupSchedule.Spec.VeleroSchedule
-		if backupSchedule.Spec.VeleroTTL.Truncate(time.Second) != 0 {
+		if backupSchedule.Spec.VeleroTTL.Duration != 0 {
 			veleroSchedule.Spec.Template.TTL = backupSchedule.Spec.VeleroTTL
 		}
 
@@ -246,13 +247,6 @@ func (r *BackupScheduleReconciler) deleteVeleroSchedules(
 	schedules *veleroapi.ScheduleList,
 ) error {
 	scheduleLogger := log.FromContext(ctx)
-
-	// err := r.DeleteAllOf(
-	// 	ctx,
-	// 	&veleroapi.Schedule{},
-	// 	client.InNamespace(backupSchedule.Namespace),
-	// 	client.MatchingFields{scheduleOwnerKey: backupSchedule.Name},
-	// )
 
 	if schedules == nil || len(schedules.Items) <= 0 {
 		return nil

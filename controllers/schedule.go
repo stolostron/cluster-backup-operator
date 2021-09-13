@@ -122,11 +122,7 @@ func isScheduleSpecUpdated(
 	for i := range schedules.Items {
 		veleroSchedule := &schedules.Items[i]
 
-		if getFormattedDuration(
-			veleroSchedule.Spec.Template.TTL.Duration,
-		) != getFormattedDuration(
-			backupSchedule.Spec.VeleroTTL.Duration,
-		) {
+		if veleroSchedule.Spec.Template.TTL.Duration != backupSchedule.Spec.VeleroTTL.Duration {
 			return true
 		}
 		if veleroSchedule.Spec.Schedule != backupSchedule.Spec.VeleroSchedule {
