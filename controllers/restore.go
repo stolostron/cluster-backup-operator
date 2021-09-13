@@ -62,8 +62,8 @@ func NewManagedClusterHandler(ctx context.Context,
 		errors                                        = []error{}
 		err                      error
 	)
-	for _, s := range adminKubeconfigSecrets {
-		if managedClusterKubeClient, err = getKubeClientFromSecret(&s); err == nil {
+	for i := range adminKubeconfigSecrets {
+		if managedClusterKubeClient, err = getKubeClientFromSecret(&adminKubeconfigSecrets[i]); err == nil {
 			break // for the moment we get the first one
 		}
 		errors = append(errors, fmt.Errorf("unable to get kubernetes client: %v", err))

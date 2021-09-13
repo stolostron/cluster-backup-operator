@@ -55,8 +55,8 @@ var (
 )
 
 const (
-	managedClusterImportInterval            = 20 * time.Second // as soon restore is finished we start to poll for managedcluster registration
-	BootstrapHubKubeconfigSecretName        = "bootstrap-hub-kubeconfig"
+	managedClusterImportInterval            = 20 * time.Second                // as soon restore is finished we start to poll for managedcluster registration
+	BootstrapHubKubeconfigSecretName        = "bootstrap-hub-kubeconfig"      /* #nosec G101 */
 	OpenClusterManagementAgentNamespaceName = "open-cluster-management-agent" // TODO: this can change. Get the klusterlet.spec
 	OCMManagedClusterNamespaceLabelKey      = "cluster.open-cluster-management.io/managedCluster"
 )
