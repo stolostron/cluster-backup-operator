@@ -110,6 +110,29 @@ func setSchedulePhase(
 	backupSchedule.Status.LastMessage = EnabledPhaseMsg
 }
 
+func isScheduleSpecUpdated(
+	schedules *veleroapi.ScheduleList,
+	backupSchedule *v1beta1.BackupSchedule,
+) bool {
+
+	if schedules == nil || len(schedules.Items) <= 0 {
+		return false
+	}
+
+	for i := range schedules.Items {
+		veleroSchedule := &schedules.Items[i]
+
+		if veleroSchedule.Spec.Template.TTL.Duration != backupSchedule.Spec.VeleroTTL.Duration {
+			return true
+		}
+		if veleroSchedule.Spec.Schedule != backupSchedule.Spec.VeleroSchedule {
+			return true
+		}
+	}
+
+	return false
+}
+
 func parseCronSchedule(
 	ctx context.Context,
 	backupSchedule *v1beta1.BackupSchedule,

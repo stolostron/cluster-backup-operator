@@ -153,6 +153,7 @@ rules:
   - schedules
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
