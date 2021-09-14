@@ -47,6 +47,8 @@ const (
 	Resources ResourceType = "resources"
 )
 
+const updateStatusFailedMsg = "Could not update status"
+
 var (
 	// Time interval to reque delete backups if they exceed maxBackups number
 	deleteBackupRequeueInterval = time.Minute * 60
@@ -75,7 +77,7 @@ type BackupScheduleReconciler struct {
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules/finalizers,verbs=update
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=managedclusters,verbs=get;list;watch
 //+kubebuilder:rbac:groups=apps.open-cluster-management.io,resources=channels,verbs=get;list;watch
-//+kubebuilder:rbac:groups=velero.io,resources=schedules,verbs=get;list;watch;create;update;patch
+//+kubebuilder:rbac:groups=velero.io,resources=schedules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=velero.io,resources=backups,verbs=get;list;watch;create;update;patch
 //+kubebuilder:rbac:groups=velero.io,resources=deletebackuprequests,verbs=create;list;watch
 
@@ -100,36 +102,36 @@ func (r *BackupScheduleReconciler) Reconcile(
 		veleroStorageLocations == nil || len(veleroStorageLocations.Items) == 0 {
 
 		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = "velero.io.BackupStorageLocation resources not found. Verify you have created a konveyor.openshift.io.Velero resource."
+		backupSchedule.Status.LastMessage = "velero.io.BackupStorageLocation resources not found. " +
+			"Verify you have created a konveyor.openshift.io.Velero resource."
 
 		// retry after failureInterval
 		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
 			r.Client.Status().Update(ctx, backupSchedule),
-			"could not update status",
+			updateStatusFailedMsg,
 		)
-	} else {
-		var isValidStorageLocation bool = false
-		for i := 0; i < len(veleroStorageLocations.Items); i++ {
-			if veleroStorageLocations.Items[i].Status.Phase == veleroapi.BackupStorageLocationPhaseAvailable {
-				// one valid storage location found, assume storage is accessible
-				isValidStorageLocation = true
-				break
+	}
 
-			}
+	var isValidStorageLocation bool = false
+	for i := 0; i < len(veleroStorageLocations.Items); i++ {
+		if veleroStorageLocations.Items[i].Status.Phase == veleroapi.BackupStorageLocationPhaseAvailable {
+			// one valid storage location found, assume storage is accessible
+			isValidStorageLocation = true
+			break
 		}
+	}
 
-		// if no valid storage location found wait for valid value
-		if !isValidStorageLocation {
-			backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-			backupSchedule.Status.LastMessage = "Backup storage location is not available. Check velero.io.BackupStorageLocation and validate storage credentials."
+	// if no valid storage location found wait for valid value
+	if !isValidStorageLocation {
+		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
+		backupSchedule.Status.LastMessage = "Backup storage location is not available. " +
+			"Check velero.io.BackupStorageLocation and validate storage credentials."
 
-			// retry after failureInterval
-			return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
-				r.Client.Status().Update(ctx, backupSchedule),
-				"could not update status",
-			)
-		}
-
+		// retry after failureInterval
+		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
+			r.Client.Status().Update(ctx, backupSchedule),
+			updateStatusFailedMsg,
+		)
 	}
 
 	// validate the cron job schedule
@@ -140,7 +142,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 		return ctrl.Result{}, errors.Wrap(
 			r.Client.Status().Update(ctx, backupSchedule),
-			"could not update status",
+			updateStatusFailedMsg,
 		)
 	}
 
@@ -176,7 +178,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 		return ctrl.Result{RequeueAfter: deleteBackupRequeueInterval}, errors.Wrap(
 			r.Client.Status().Update(ctx, backupSchedule),
-			"could not update status",
+			updateStatusFailedMsg,
 		)
 	}
 
@@ -190,7 +192,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 		return ctrl.Result{RequeueAfter: deleteBackupRequeueInterval}, errors.Wrap(
 			r.Client.Status().Update(ctx, backupSchedule),
-			"could not update status",
+			updateStatusFailedMsg,
 		)
 	}
 
