@@ -132,6 +132,14 @@ rules:
 - apiGroups:
   - velero.io
   resources:
+  - backupstoragelocations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - velero.io
+  resources:
   - deletebackuprequests
   verbs:
   - create
