@@ -33,7 +33,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -58,7 +57,6 @@ const (
 	managedClusterImportInterval            = 20 * time.Second                // as soon restore is finished we start to poll for managedcluster registration
 	BootstrapHubKubeconfigSecretName        = "bootstrap-hub-kubeconfig"      /* #nosec G101 */
 	OpenClusterManagementAgentNamespaceName = "open-cluster-management-agent" // TODO: this can change. Get the klusterlet.spec
-	OCMManagedClusterNamespaceLabelKey      = "cluster.open-cluster-management.io/managedCluster"
 )
 
 type GetKubeClientFromSecretFunc func(*corev1.Secret) (kubeclient.Interface, error)
@@ -128,7 +126,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			r.Recorder.Event(restore, v1.EventTypeNormal,
 				"Velero Restore finished",
 				fmt.Sprintf("%s finished", veleroRestore.Name)) // TODO add check on conditions to avoid multiple events
-			allAttached, err := r.attachManagedClusters(ctx, restore)
+			allAttached, err := r.attachManagedClusters(ctx, restore, veleroRestore.Name)
 			if err != nil {
 				restoreLogger.Error(err, "unable to attach managed clusters ")
 				return ctrl.Result{}, err
@@ -268,20 +266,36 @@ func (r *RestoreReconciler) initVeleroRestore(ctx context.Context, restore *v1be
 
 // attachManagedClusters is the entry points for all the managed clusters to be re-attached
 // currently it loops across all the managed cluster namespaces
-func (r *RestoreReconciler) attachManagedClusters(ctx context.Context, restore *v1beta1.Restore) (bool, error) {
+func (r *RestoreReconciler) attachManagedClusters(ctx context.Context, restore *v1beta1.Restore, restoreName string) (bool, error) {
 	allAttached := false
-	namespaceList := v1.NamespaceList{}
-	labelSelector, _ := labels.Parse(OCMManagedClusterNamespaceLabelKey)
-	if err := r.Client.List(ctx, &namespaceList, &client.ListOptions{LabelSelector: labelSelector}); err != nil {
-		return allAttached, fmt.Errorf("unable to list managed cluster namespaces: %v", err)
+
+	// find all hive.openshift.io kubeconfig secrets found with the current restore file
+	// this gives the list of managed clusters namespaces to be processed by this restore op
+	kubeAdminSecrets := getAllKubeAdminSecrets(ctx, r.Client, restoreName)
+
+	if kubeAdminSecrets == nil {
+		return allAttached, fmt.Errorf("unable to retrieve managed cluster admin secrets")
 	}
+
 	var errors []error
 	allAttached = true
-	for i := range namespaceList.Items {
-		if namespaceList.Items[i].Name == "local-cluster" {
+
+	proccessedClusters := []string{}
+	for i := range kubeAdminSecrets.Items {
+		// ignore local cluster
+		if kubeAdminSecrets.Items[i].Namespace == "local-cluster" {
 			continue
 		}
-		attached, err := r.attachManagedCluster(ctx, restore, namespaceList.Items[i].Name)
+
+		// ignore already processed namespaces, assuming we have more then one kube admin secret in the same ns
+		_, ok := find(proccessedClusters, kubeAdminSecrets.Items[i].Namespace)
+		if ok {
+			// this namespace was already processed, ignore it
+			continue
+		}
+		proccessedClusters = append(proccessedClusters, kubeAdminSecrets.Items[i].Namespace)
+
+		attached, err := r.attachManagedCluster(ctx, restore, kubeAdminSecrets.Items[i].Namespace)
 		if err != nil {
 			attached = false
 			errors = append(errors, err)

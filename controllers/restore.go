@@ -26,6 +26,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 
@@ -130,6 +131,22 @@ var (
 	adminKubeconfigSecretRegex = regexp.MustCompile("^" + adminKubeconfigSecretFmt + "$")
 	boostrapSATokenRegex       = regexp.MustCompile("^" + boostrapSATokenFmnt + "$")
 )
+
+// returns all kube admin secrets
+//these secrets must have the label hive.openshift.io/secret-type=kubeconfig
+// and be from the current restore file, label: velero.io/restore-name=restoreName
+func getAllKubeAdminSecrets(ctx context.Context, c client.Client, restoreName string) *v1.SecretList {
+
+	hiveLabel := "hive.openshift.io/secret-type=kubeconfig"
+	restoreFileLabel := "velero.io/restore-name=" + restoreName
+	labelSelector, _ := labels.Parse(hiveLabel + "," + restoreFileLabel)
+	secretsList := v1.SecretList{} // fetch all secrets matching the labelSelector
+	if err := c.List(ctx, &secretsList, &client.ListOptions{LabelSelector: labelSelector}); err != nil {
+		return nil
+	}
+
+	return &secretsList
+}
 
 // filterSecrets filters a list of secrets getting
 func filterSecrets(ctx context.Context, secrets *corev1.SecretList, adminKubeConfigSecrets *[]corev1.Secret,
