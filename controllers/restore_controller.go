@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
@@ -49,12 +50,12 @@ import (
 )
 
 var (
-	restoreOwnerKey    = ".metadata.controller"
 	apiGVStr           = v1beta1.GroupVersion.String()
 	PublicAPIServerURL = ""
 )
 
 const (
+	restoreOwnerKey                         = ".metadata.controller"
 	managedClusterImportInterval            = 20 * time.Second                // as soon restore is finished we start to poll for managedcluster registration
 	BootstrapHubKubeconfigSecretName        = "bootstrap-hub-kubeconfig"      /* #nosec G101 */
 	OpenClusterManagementAgentNamespaceName = "open-cluster-management-agent" // TODO: this can change. Get the klusterlet.spec
@@ -96,88 +97,117 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// retrieve the velero restore (if any)
 	veleroRestoreList := veleroapi.RestoreList{}
 	if err := r.List(ctx, &veleroRestoreList, client.InNamespace(req.Namespace), client.MatchingFields{restoreOwnerKey: req.Name}); err != nil {
-		restoreLogger.Error(err, "unable to list velero restores for restore %s/%s", req.Namespace, req.Name)
+		restoreLogger.Error(
+			err,
+			"unable to list velero restores for restore %s/%s",
+			req.Namespace,
+			req.Name,
+		)
 		return ctrl.Result{}, err
 	}
 
 	switch {
 	case len(veleroRestoreList.Items) == 0:
-		veleroRestore, err := r.initVeleroRestore(ctx, restore)
-		if err != nil {
-			restoreLogger.Error(err, "unable to initialize Velero restore for restore %s/%s", req.Namespace, req.Name)
+		if err := r.initVeleroRestores(ctx, restore); err != nil {
+			restoreLogger.Error(
+				err,
+				"unable to initialize Velero restores for restore %s/%s",
+				req.Namespace,
+				req.Name,
+			)
 			return ctrl.Result{}, err
 		}
-		if err = r.Create(ctx, veleroRestore, &client.CreateOptions{}); err != nil {
-			restoreLogger.Error(err, "unable to create Velero restore for restore %s/%s", req.Namespace, req.Name)
-			return ctrl.Result{}, err
-		}
-		r.Recorder.Event(restore, v1.EventTypeNormal, "Velero restore created:", veleroRestore.Name)
-		restore.Status.VeleroRestoreName = veleroRestore.Name
-		apimeta.SetStatusCondition(&restore.Status.Conditions,
-			metav1.Condition{
-				Type:    v1beta1.RestoreStarted,
-				Status:  metav1.ConditionTrue,
-				Reason:  v1beta1.RestoreReasonStarted,
-				Message: fmt.Sprintf("Velero restore %s started", veleroRestore.Name),
-			})
 
-	case len(veleroRestoreList.Items) == 1:
-		veleroRestore := veleroRestoreList.Items[0].DeepCopy()
-		switch {
-		case isVeleroRestoreFinished(veleroRestore):
-			r.Recorder.Event(restore, v1.EventTypeNormal,
-				"Velero Restore finished",
-				fmt.Sprintf("%s finished", veleroRestore.Name)) // TODO add check on conditions to avoid multiple events
-			allAttached, err := r.attachManagedClusters(ctx, restore)
-			if err != nil {
-				restoreLogger.Error(err, "unable to attach managed clusters ")
-				return ctrl.Result{}, err
-			}
+	case len(veleroRestoreList.Items) > 0:
+		for i := range veleroRestoreList.Items {
+			veleroRestore := veleroRestoreList.Items[i].DeepCopy()
 			switch {
-			case allAttached:
-				restoreLogger.Info("All managed cluster attached") // TODO generate event when all managedcluster attached
+			case isVeleroRestoreFinished(veleroRestore):
+				r.Recorder.Event(
+					restore,
+					v1.EventTypeNormal,
+					"Velero Restore finished",
+					fmt.Sprintf(
+						"%s finished",
+						veleroRestore.Name,
+					),
+				) // TODO add check on conditions to avoid multiple events
+				// the rest of this case is related only to managedclusters restores
+				if !strings.Contains(
+					veleroRestore.Name,
+					veleroScheduleNames[ManagedClusters],
+				) {
+					apimeta.SetStatusCondition(&restore.Status.Conditions,
+						metav1.Condition{
+							Type:    v1beta1.RestoreComplete,
+							Status:  metav1.ConditionTrue,
+							Reason:  v1beta1.RestoreReasonFinished,
+							Message: fmt.Sprintf("Restore Complete %s", veleroRestore.Name),
+						})
+					break
+				}
+
+				allAttached, err := r.attachManagedClusters(ctx, restore)
+				if err != nil {
+					restoreLogger.Error(err, "unable to attach managed clusters")
+					return ctrl.Result{}, err
+				}
+				switch {
+				case allAttached:
+					restoreLogger.Info(
+						"All managed cluster attached",
+					) // TODO generate event when all managedcluster attached
+					apimeta.SetStatusCondition(&restore.Status.Conditions,
+						metav1.Condition{
+							Type:    v1beta1.RestoreComplete,
+							Status:  metav1.ConditionTrue,
+							Reason:  v1beta1.RestoreReasonFinished,
+							Message: fmt.Sprintf("Restore Complete %s", veleroRestore.Name),
+						})
+				case !allAttached:
+					restoreLogger.V(4).Info("Not all managed clusters attached... Rescheduling")
+					apimeta.SetStatusCondition(&restore.Status.Conditions,
+						metav1.Condition{
+							Type:   v1beta1.RestoreAttaching,
+							Status: metav1.ConditionTrue,
+							Reason: v1beta1.RestoreReasonRunning,
+							Message: fmt.Sprintf(
+								"Restore %s is attaching clusters",
+								veleroRestore.Name,
+							),
+						})
+					// to wait for managed cluster re-attaching phase
+					return ctrl.Result{
+							RequeueAfter: managedClusterImportInterval,
+						}, r.Client.Status().
+							Update(ctx, restore)
+				}
+			case isVeleroRestoreRunning(veleroRestore):
 				apimeta.SetStatusCondition(&restore.Status.Conditions,
 					metav1.Condition{
-						Type:    v1beta1.RestoreComplete,
+						Type:    v1beta1.RestoreStarted,
 						Status:  metav1.ConditionTrue,
 						Reason:  v1beta1.RestoreReasonRunning,
-						Message: fmt.Sprintf("Restore Complete %s", restore.Name),
+						Message: fmt.Sprintf("Velero Restore %s is running", veleroRestore.Name),
 					})
-				return ctrl.Result{}, r.Client.Status().Update(ctx, restore)
-			case !allAttached:
-				restoreLogger.V(4).Info("Not all managed clsuter attached... Rescheduling")
+			default:
 				apimeta.SetStatusCondition(&restore.Status.Conditions,
 					metav1.Condition{
-						Type:    v1beta1.RestoreAttaching,
-						Status:  metav1.ConditionTrue,
+						Type:    v1beta1.RestoreStarted,
+						Status:  metav1.ConditionFalse,
 						Reason:  v1beta1.RestoreReasonRunning,
-						Message: fmt.Sprintf("Restore %s is attaching clusters", restore.Name),
+						Message: fmt.Sprintf("Velero Restore %s is running", veleroRestore.Name),
 					})
-				// to wait for managed cluster re-attaching phase
-				return ctrl.Result{RequeueAfter: managedClusterImportInterval}, r.Client.Status().Update(ctx, restore)
 			}
-		case isVeleroRestoreRunning(veleroRestore):
-			apimeta.SetStatusCondition(&restore.Status.Conditions,
-				metav1.Condition{
-					Type:    v1beta1.RestoreStarted,
-					Status:  metav1.ConditionTrue,
-					Reason:  v1beta1.RestoreReasonRunning,
-					Message: fmt.Sprintf("Velero Restore %s is running", veleroRestore.Name),
-				})
-		default:
-			apimeta.SetStatusCondition(&restore.Status.Conditions,
-				metav1.Condition{
-					Type:    v1beta1.RestoreStarted,
-					Status:  metav1.ConditionFalse,
-					Reason:  v1beta1.RestoreReasonRunning,
-					Message: fmt.Sprintf("Velero Restore %s is running", veleroRestore.Name),
-				})
 		}
 	default: // (should never happen)
 	}
 
 	err := r.Client.Status().Update(ctx, restore)
-	return ctrl.Result{}, errors.Wrap(err, fmt.Sprintf("could not update status for restore %s/%s", restore.Namespace, restore.Name))
+	return ctrl.Result{}, errors.Wrap(
+		err,
+		fmt.Sprintf("could not update status for restore %s/%s", restore.Namespace, restore.Name),
+	)
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -223,20 +253,34 @@ func (backups mostRecentWithLessErrors) Less(i, j int) bool {
 }
 
 // getVeleroBackupName returns the name of velero backup will be restored
-func (r *RestoreReconciler) getVeleroBackupName(ctx context.Context, restore *v1beta1.Restore) (string, error) {
+func (r *RestoreReconciler) getVeleroBackupName(
+	ctx context.Context,
+	restore *v1beta1.Restore,
+	resourceType ResourceType,
+) (string, error) {
+	var veleroBackupName *string
+	switch resourceType {
+	case ManagedClusters:
+		veleroBackupName = restore.Spec.VeleroManagedClustersBackupName
+	case Credentials:
+		veleroBackupName = restore.Spec.VeleroCredentialsBackupName
+	case Resources:
+		veleroBackupName = restore.Spec.VeleroResourcesBackupName
+	}
 	// TODO: check whether name is valid
-	if restore.Spec.VeleroBackupName != nil && len(*restore.Spec.VeleroBackupName) > 0 {
+	if veleroBackupName != nil && len(*veleroBackupName) > 0 {
 		veleroBackup := veleroapi.Backup{}
 		err := r.Get(ctx,
-			types.NamespacedName{Name: *restore.Spec.VeleroBackupName,
+			types.NamespacedName{Name: *veleroBackupName,
 				Namespace: restore.Namespace},
 			&veleroBackup)
 		if err == nil {
-			return *restore.Spec.VeleroBackupName, nil
+			return *veleroBackupName, nil
 		}
 		return "", fmt.Errorf("cannot find %s Velero Backup: %v",
-			*restore.Spec.VeleroBackupName, err)
+			*veleroBackupName, err)
 	}
+	// backup name not available, find a proper backup
 	veleroBackups := &veleroapi.BackupList{}
 	if err := r.Client.List(ctx, veleroBackups, client.InNamespace(restore.Namespace)); err != nil {
 		return "", fmt.Errorf("unable to list velero backups: %v", err)
@@ -244,31 +288,77 @@ func (r *RestoreReconciler) getVeleroBackupName(ctx context.Context, restore *v1
 	if len(veleroBackups.Items) == 0 {
 		return "", fmt.Errorf("no backups found")
 	}
-	sort.Sort(mostRecentWithLessErrors(veleroBackups.Items))
-	return veleroBackups.Items[0].Name, nil
+	// filter available backups to get only the ones related to this resource type
+	relatedBackups := filterBackups(veleroBackups.Items, func(bkp veleroapi.Backup) bool {
+		return strings.Contains(bkp.Name, veleroScheduleNames[resourceType])
+	})
+	sort.Sort(mostRecentWithLessErrors(relatedBackups))
+	return relatedBackups[0].Name, nil
 }
 
-func (r *RestoreReconciler) initVeleroRestore(ctx context.Context, restore *v1beta1.Restore) (*veleroapi.Restore, error) {
-	veleroRestore := &veleroapi.Restore{}
-	veleroBackupName, err := r.getVeleroBackupName(ctx, restore)
-	if err != nil {
-		return nil, err
-	}
-	// TODO check length of produced name
-	veleroRestore.Name = restore.Name + "-" + veleroBackupName
+// create velero.io.Restore resource for each resource type
+func (r *RestoreReconciler) initVeleroRestores(
+	ctx context.Context,
+	restore *v1beta1.Restore,
+) error {
+	restoreLogger := log.FromContext(ctx)
 
-	veleroRestore.Namespace = restore.Namespace
-	veleroRestore.Spec.BackupName = veleroBackupName
+	// loop through resourceTypes to create a Velero restore per type
+	for key := range veleroScheduleNames {
+		veleroRestore := &veleroapi.Restore{}
+		veleroBackupName, err := r.getVeleroBackupName(ctx, restore, key)
+		if err != nil {
+			return err
+		}
+		// TODO check length of produced name
+		veleroRestore.Name = restore.Name + "-" + veleroBackupName
 
-	if err := ctrl.SetControllerReference(restore, veleroRestore, r.Scheme); err != nil {
-		return nil, err
+		veleroRestore.Namespace = restore.Namespace
+		veleroRestore.Spec.BackupName = veleroBackupName
+
+		if err := ctrl.SetControllerReference(restore, veleroRestore, r.Scheme); err != nil {
+			return err
+		}
+
+		if err = r.Create(ctx, veleroRestore, &client.CreateOptions{}); err != nil {
+			restoreLogger.Error(
+				err,
+				"unable to create Velero restore for restore %s/%s",
+				veleroRestore.Namespace,
+				veleroRestore.Name,
+			)
+			return err
+		}
+
+		r.Recorder.Event(restore, v1.EventTypeNormal, "Velero restore created:", veleroRestore.Name)
+
+		switch key {
+		case ManagedClusters:
+			restore.Status.VeleroManagedClustersRestoreName = veleroRestore.Name
+		case Credentials:
+			restore.Status.VeleroCredentialsRestoreName = veleroRestore.Name
+		case Resources:
+			restore.Status.VeleroResourcesRestoreName = veleroRestore.Name
+		}
+
+		apimeta.SetStatusCondition(&restore.Status.Conditions,
+			metav1.Condition{
+				Type:    v1beta1.RestoreStarted,
+				Status:  metav1.ConditionTrue,
+				Reason:  v1beta1.RestoreReasonStarted,
+				Message: fmt.Sprintf("Velero restore %s started", veleroRestore.Name),
+			})
 	}
-	return veleroRestore, nil
+
+	return nil
 }
 
 // attachManagedClusters is the entry points for all the managed clusters to be re-attached
 // currently it loops across all the managed cluster namespaces
-func (r *RestoreReconciler) attachManagedClusters(ctx context.Context, restore *v1beta1.Restore) (bool, error) {
+func (r *RestoreReconciler) attachManagedClusters(
+	ctx context.Context,
+	restore *v1beta1.Restore,
+) (bool, error) {
 	allAttached := false
 	namespaceList := v1.NamespaceList{}
 	labelSelector, _ := labels.Parse(OCMManagedClusterNamespaceLabelKey)
@@ -292,7 +382,11 @@ func (r *RestoreReconciler) attachManagedClusters(ctx context.Context, restore *
 }
 
 // attachManagedCluster handles the registration of the managed cluster
-func (r *RestoreReconciler) attachManagedCluster(ctx context.Context, restore *v1beta1.Restore, managedClusterName string) (bool, error) {
+func (r *RestoreReconciler) attachManagedCluster(
+	ctx context.Context,
+	restore *v1beta1.Restore,
+	managedClusterName string,
+) (bool, error) {
 	restoreLogger := log.FromContext(ctx).WithName(managedClusterName)
 	restoreLogger.V(4).Info("Attaching managedcluster")
 	managedCluster := clusterv1.ManagedCluster{}
@@ -303,43 +397,78 @@ func (r *RestoreReconciler) attachManagedCluster(ctx context.Context, restore *v
 		if apierrors.IsNotFound(err) {
 			secrets := v1.SecretList{} // fetch secrets from managedcluster namespace
 			if err = r.Client.List(ctx, &secrets, client.InNamespace(managedClusterName)); err != nil {
-				return attached, fmt.Errorf("cannot list secrets in namespace %s: %v", managedClusterName, err)
+				return attached, fmt.Errorf(
+					"cannot list secrets in namespace %s: %v",
+					managedClusterName,
+					err,
+				)
 			}
 			mcHandler, err := NewManagedClusterHandler(ctx, managedClusterName, &secrets)
 			if err != nil {
-				return attached, fmt.Errorf("unable to handle managedcluster %s: %v", managedClusterName, err)
+				return attached, fmt.Errorf(
+					"unable to handle managedcluster %s: %v",
+					managedClusterName,
+					err,
+				)
 			}
 			if mcHandler == nil {
-				return attached, fmt.Errorf("unable to handle managedcluster %s, admin secret not found", managedClusterName)
+				return attached, fmt.Errorf(
+					"unable to handle managedcluster %s, admin secret not found",
+					managedClusterName,
+				)
 			}
-			currentBoostrapHubKubeconfig, err := mcHandler.Client.CoreV1().Secrets(OpenClusterManagementAgentNamespaceName).Get(ctx,
-				BootstrapHubKubeconfigSecretName, metav1.GetOptions{}) // Getting bootstrap-hub-kubeconfig
+			currentBoostrapHubKubeconfig, err := mcHandler.Client.CoreV1().
+				Secrets(OpenClusterManagementAgentNamespaceName).
+				Get(ctx,
+					BootstrapHubKubeconfigSecretName, metav1.GetOptions{})
+			// Getting bootstrap-hub-kubeconfig
 			if err != nil {
 				if apierrors.IsNotFound(err) { // cannot find, create it
-					restoreLogger.V(4).Info("Current Boostrap HUB Kubeconfiig not found", "cluster", managedClusterName)
-					newBoostrapHubKubeconfigSecret, err := mcHandler.GetNewBoostrapHubKubeconfigSecret(ctx)
+					restoreLogger.V(4).
+						Info("Current Boostrap HUB Kubeconfiig not found", "cluster", managedClusterName)
+					newBoostrapHubKubeconfigSecret, err := mcHandler.GetNewBoostrapHubKubeconfigSecret(
+						ctx,
+					)
 					if err != nil {
-						return attached, fmt.Errorf("unable to instantiate new boostrap-hub-kubeconfig: %v", err)
+						return attached, fmt.Errorf(
+							"unable to instantiate new boostrap-hub-kubeconfig: %v",
+							err,
+						)
 					}
-					restoreLogger.V(4).Info("To create boostrap-hub-kubeconfig ", "cluster", managedClusterName)
+					restoreLogger.V(4).
+						Info("To create boostrap-hub-kubeconfig ", "cluster", managedClusterName)
 					if _, err := mcHandler.Client.CoreV1().Secrets(OpenClusterManagementAgentNamespaceName).Create(ctx,
 						newBoostrapHubKubeconfigSecret, metav1.CreateOptions{}); err != nil {
-						return attached, fmt.Errorf("unable to create new boostrap-hub-kubeconfig: %v", err)
+						return attached, fmt.Errorf(
+							"unable to create new boostrap-hub-kubeconfig: %v",
+							err,
+						)
 					}
-					restoreLogger.V(4).Info("New bootstrap-hub-kubeconfig created", "cluster", managedClusterName)
+					restoreLogger.V(4).
+						Info("New bootstrap-hub-kubeconfig created", "cluster", managedClusterName)
 					return attached, nil
 				}
-				return attached, fmt.Errorf("cannot get boostrap-hub-kubeconfig from managedclsuter %s: %v", managedClusterName, err)
+				return attached, fmt.Errorf(
+					"cannot get boostrap-hub-kubeconfig from managedclsuter %s: %v",
+					managedClusterName,
+					err,
+				)
 			}
 
 			if currentBoostrapHubKubeconfig.DeletionTimestamp != nil {
-				return attached, fmt.Errorf("%s is being deleted", BootstrapHubKubeconfigSecretName) // is begin deleted
+				return attached, fmt.Errorf(
+					"%s is being deleted",
+					BootstrapHubKubeconfigSecretName,
+				) // is begin deleted
 			}
 			// The currentBoostrapHubKubeconfig exists. We need to open it
 			// looking if the server is the current one
 			server, err := getDefaultClusterServerFromKubeconfigSecret(currentBoostrapHubKubeconfig)
 			if err != nil {
-				return attached, fmt.Errorf("unable to find server from current boostrap-hub-kubecoinfg: %v", err)
+				return attached, fmt.Errorf(
+					"unable to find server from current boostrap-hub-kubecoinfg: %v",
+					err,
+				)
 			}
 			apiServer, err := getPublicAPIServerURL(r.Client)
 			if err != nil {
@@ -352,7 +481,11 @@ func (r *RestoreReconciler) attachManagedCluster(ctx context.Context, restore *v
 					"cluster", managedClusterName)
 				if err = mcHandler.Client.CoreV1().Secrets(OpenClusterManagementAgentNamespaceName).Delete(ctx,
 					BootstrapHubKubeconfigSecretName, *metav1.NewDeleteOptions(0)); err != nil {
-					return attached, fmt.Errorf("unable to delete boostrap-hub-kubeconfig for %s: %v", managedClusterName, err)
+					return attached, fmt.Errorf(
+						"unable to delete boostrap-hub-kubeconfig for %s: %v",
+						managedClusterName,
+						err,
+					)
 				}
 			}
 
@@ -382,7 +515,11 @@ func (r *RestoreReconciler) attachManagedCluster(ctx context.Context, restore *v
 			}
 			return attached, nil // no error but not attached yet
 		} // end of if IsNotFound(err)
-		return attached, fmt.Errorf("registation error for managed cluster %s: %v", managedClusterName, err)
+		return attached, fmt.Errorf(
+			"registation error for managed cluster %s: %v",
+			managedClusterName,
+			err,
+		)
 	} // end of err!=nil
 
 	// In case managedCluster is already approved we stop here.
@@ -402,7 +539,11 @@ func (r *RestoreReconciler) attachManagedCluster(ctx context.Context, restore *v
 }
 
 // approveManagedClusterCSRIfNeeded approves the CSR for the managed cluster
-func (r *RestoreReconciler) approveCSRIfNeeded(ctx context.Context, restore *v1beta1.Restore, managedClusterName string) error {
+func (r *RestoreReconciler) approveCSRIfNeeded(
+	ctx context.Context,
+	restore *v1beta1.Restore,
+	managedClusterName string,
+) error {
 	restoreLogger := log.FromContext(ctx).WithName(restore.Name)
 	csrList := certsv1.CertificateSigningRequestList{}
 	if err := r.List(ctx, &csrList, &client.ListOptions{}); err != nil {
@@ -416,10 +557,15 @@ func (r *RestoreReconciler) approveCSRIfNeeded(ctx context.Context, restore *v1b
 		if clusterNameCSRRegex == nil {
 			clusterNameCSRRegex, err = regexp.Compile("^" + managedClusterName + "-")
 			if err != nil {
-				return fmt.Errorf("unable to initialize REGEX to filter CSR for cluster %s: %v", managedClusterName, err)
+				return fmt.Errorf(
+					"unable to initialize REGEX to filter CSR for cluster %s: %v",
+					managedClusterName,
+					err,
+				)
 			}
 		}
-		if clusterNameCSRRegex.Match([]byte(csrList.Items[i].Name)) && !isCertificateRequestApproved(&csrList.Items[i]) {
+		if clusterNameCSRRegex.Match([]byte(csrList.Items[i].Name)) &&
+			!isCertificateRequestApproved(&csrList.Items[i]) {
 			restoreLogger.V(4).Info("About to approve CSR", "Name", csrList.Items[i].Name)
 			csrList.Items[i].Status.Conditions = append(csrList.Items[i].Status.Conditions,
 				certsv1.CertificateSigningRequestCondition{
@@ -435,7 +581,12 @@ func (r *RestoreReconciler) approveCSRIfNeeded(ctx context.Context, restore *v1b
 				restoreLogger.Error(err, "unable to approve", "CSR", csrList.Items[i].Name)
 				return fmt.Errorf("unable to approve CSR %s for: %v", csrList.Items[i].Name, err)
 			}
-			r.Recorder.Event(restore, v1.EventTypeNormal, "CSR approved", fmt.Sprintf("approved %s", csrList.Items[i].Name))
+			r.Recorder.Event(
+				restore,
+				v1.EventTypeNormal,
+				"CSR approved",
+				fmt.Sprintf("approved %s", csrList.Items[i].Name),
+			)
 
 			restoreLogger.V(4).Info("Approved", "CSR", csrList.Items[i].Name)
 			return nil
@@ -445,11 +596,19 @@ func (r *RestoreReconciler) approveCSRIfNeeded(ctx context.Context, restore *v1b
 }
 
 // acceptManagedCluster accepts the managed clsuter
-func (r *RestoreReconciler) acceptManagedCluster(ctx context.Context, restore *v1beta1.Restore, managedClusterName string) error {
+func (r *RestoreReconciler) acceptManagedCluster(
+	ctx context.Context,
+	restore *v1beta1.Restore,
+	managedClusterName string,
+) error {
 	managedCluster := clusterv1.ManagedCluster{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: "",
 		Name: managedClusterName}, &managedCluster); err != nil {
-		return fmt.Errorf("unable to retrieve managed cluster during update %s: %v", managedClusterName, err)
+		return fmt.Errorf(
+			"unable to retrieve managed cluster during update %s: %v",
+			managedClusterName,
+			err,
+		)
 	}
 	managedCluster.Spec.HubAcceptsClient = true
 	if err := r.Update(ctx, &managedCluster, &client.UpdateOptions{}); err != nil {
@@ -460,7 +619,11 @@ func (r *RestoreReconciler) acceptManagedCluster(ctx context.Context, restore *v
 }
 
 //createClusterRoleIfNeeded creates a ClusterRole
-func (r *RestoreReconciler) createClusterRoleIfNeeded(ctx context.Context, restore *v1beta1.Restore, clusterRole *rbacv1.ClusterRole) error {
+func (r *RestoreReconciler) createClusterRoleIfNeeded(
+	ctx context.Context,
+	restore *v1beta1.Restore,
+	clusterRole *rbacv1.ClusterRole,
+) error {
 	restoreLogger := log.FromContext(ctx).WithName(restore.Name)
 	t := &rbacv1.ClusterRole{}
 	if err := r.Get(ctx, types.NamespacedName{Name: clusterRole.Name}, t); err != nil {
@@ -477,8 +640,11 @@ func (r *RestoreReconciler) createClusterRoleIfNeeded(ctx context.Context, resto
 }
 
 // createClusterRoleBindingIfNeeded creates a ClusterRoleBinding
-func (r *RestoreReconciler) createClusterRoleBindingIfNeeded(ctx context.Context, restore *v1beta1.Restore,
-	clusterRoleBinding *rbacv1.ClusterRoleBinding) error {
+func (r *RestoreReconciler) createClusterRoleBindingIfNeeded(
+	ctx context.Context,
+	restore *v1beta1.Restore,
+	clusterRoleBinding *rbacv1.ClusterRoleBinding,
+) error {
 	restoreLogger := log.FromContext(ctx).WithName(restore.Name)
 	t := &rbacv1.ClusterRoleBinding{}
 	if err := r.Get(ctx, types.NamespacedName{Name: clusterRoleBinding.Name}, t); err != nil {
