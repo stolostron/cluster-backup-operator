@@ -16,11 +16,6 @@ limitations under the License.
 
 package controllers
 
-import (
-	"fmt"
-	"time"
-)
-
 // find takes a slice and looks for an element in it. If found it will
 // return it's key, otherwise it will return -1 and a bool of false.
 func find(slice []string, val string) (int, bool) {
@@ -34,33 +29,12 @@ func find(slice []string, val string) (int, bool) {
 
 //append unique value to a list
 func appendUnique(slice []string, value string) []string {
-
 	// check if the NS exists
 	_, ok := find(slice, value)
 	if !ok {
 		slice = append(slice, value)
 	}
 	return slice
-}
-
-// return current time formatted to validate k8s names
-func getFormattedTimeCRD(t time.Time) string {
-	formatted := fmt.Sprintf("%d-%02d-%02d-%02d%02d%02d",
-		t.Year(), t.Month(), t.Day(),
-		t.Hour(), t.Minute(), t.Second())
-	return formatted
-}
-
-// return Duration in format 1h15m30s
-func getFormattedDuration(duration time.Duration) string {
-
-	formatted := duration.Truncate(time.Second).String()
-	return formatted
-}
-
-// name used by the velero backup resource, created by the backup acm controller
-func getVeleroBackupName(backupName, backupNamesapce string) string {
-	return backupName + "-" + getFormattedTimeCRD(time.Now())
 }
 
 // min returns the smallest of x or y.

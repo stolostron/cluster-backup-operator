@@ -38,11 +38,23 @@ spec:
           spec:
             description: RestoreSpec defines the desired state of Restore
             properties:
-              veleroBackupName:
-                description: VeleroBackupName is the name of the velero back-up used
-                  to restore ACM Hub. Is optional, in case no VeleroBackupName is
-                  supplied the backup name will be selected from the available backups
-                  in the current namespace
+              veleroCredentialsBackupName:
+                description: VeleroCredentialsBackupName is the name of the velero
+                  back-up used to restore credentials. Is optional, if not supplied,
+                  the backup name will be selected from the available backups in the
+                  current namespace
+                type: string
+              veleroManagedClustersBackupName:
+                description: VeleroManagedClustersBackupName is the name of the velero
+                  back-up used to restore managed clusters. Is optional, if not supplied,
+                  the backup name will be selected from the available backups in the
+                  current namespace
+                type: string
+              veleroResourcesBackupName:
+                description: VeleroResourcesBackupName is the name of the velero back-up
+                  used to restore resources. Is optional, if not supplied, the backup
+                  name will be selected from the available backups in the current
+                  namespace
                 type: string
             type: object
           status:
@@ -118,8 +130,12 @@ spec:
                   - type
                   type: object
                 type: array
-              veleroRestoreName:
+              veleroCredentialsRestoreName:
+                type: string
+              veleroManagedClustersRestoreName:
                 description: 'TODO: replace with core/v1 TypedLocalObjectReference'
+                type: string
+              veleroResourcesRestoreName:
                 type: string
             type: object
         type: object

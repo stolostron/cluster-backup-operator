@@ -22,20 +22,34 @@ import (
 
 // RestoreSpec defines the desired state of Restore
 type RestoreSpec struct {
-	// VeleroBackupName is the name of the velero back-up used to restore ACM Hub.
-	// Is optional, in case no VeleroBackupName is supplied the backup name will be selected
+	// VeleroManagedClustersBackupName is the name of the velero back-up used to restore managed clusters.
+	// Is optional, if not supplied, the backup name will be selected
 	// from the available backups in the current namespace
 	// +kubebuilder:validation:Optional
-	VeleroBackupName *string `json:"veleroBackupName,omitempty"`
+	VeleroManagedClustersBackupName *string `json:"veleroManagedClustersBackupName,omitempty"`
+	// VeleroResourcesBackupName is the name of the velero back-up used to restore resources.
+	// Is optional, if not supplied, the backup name will be selected
+	// from the available backups in the current namespace
+	// +kubebuilder:validation:Optional
+	VeleroResourcesBackupName *string `json:"veleroResourcesBackupName,omitempty"`
+	// VeleroCredentialsBackupName is the name of the velero back-up used to restore credentials.
+	// Is optional, if not supplied, the backup name will be selected
+	// from the available backups in the current namespace
+	// +kubebuilder:validation:Optional
+	VeleroCredentialsBackupName *string `json:"veleroCredentialsBackupName,omitempty"`
 }
 
 // RestoreStatus defines the observed state of Restore
 type RestoreStatus struct {
 	// TODO: replace with core/v1 TypedLocalObjectReference
 	// +kubebuilder:validation:Optional
-	VeleroRestoreName string `json:"veleroRestoreName,omitempty"`
+	VeleroManagedClustersRestoreName string `json:"veleroManagedClustersRestoreName,omitempty"`
+	// +kubebuilder:validation:Optional
+	VeleroResourcesRestoreName string `json:"veleroResourcesRestoreName,omitempty"`
+	// +kubebuilder:validation:Optional
+	VeleroCredentialsRestoreName string `json:"veleroCredentialsRestoreName,omitempty"`
 	// RestoreCondition
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"                       patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 // +kubebuilder:object:root=true
@@ -79,8 +93,8 @@ const (
 
 // RestoreList contains a list of Restore
 type RestoreList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
+	metav1.TypeMeta `          json:",inline"`
+	metav1.ListMeta `          json:"metadata,omitempty"`
 	Items           []Restore `json:"items"`
 }
 

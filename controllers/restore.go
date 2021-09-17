@@ -40,6 +40,7 @@ import (
 	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 )
 
+// ManagedClusterHandler is handler for attaching managed clusters
 type ManagedClusterHandler struct {
 	Client kubeclient.Interface
 
@@ -47,6 +48,7 @@ type ManagedClusterHandler struct {
 	bootstrapSATokenSecrets *[]corev1.Secret
 }
 
+// NewManagedClusterHandler returns ManagedClusterHandler
 func NewManagedClusterHandler(ctx context.Context,
 	managedClusterName string,
 	secrets *v1.SecretList) (*ManagedClusterHandler, error) {
@@ -80,7 +82,10 @@ func NewManagedClusterHandler(ctx context.Context,
 	}, nil
 }
 
-func (mc *ManagedClusterHandler) GetNewBoostrapHubKubeconfigSecret(ctx context.Context) (*corev1.Secret, error) {
+// GetNewBoostrapHubKubeconfigSecret is the function to get new boostrap-hub-kubeconfig
+func (mc *ManagedClusterHandler) GetNewBoostrapHubKubeconfigSecret(
+	ctx context.Context,
+) (*corev1.Secret, error) {
 	var (
 		errors []error
 	)
@@ -132,8 +137,12 @@ var (
 )
 
 // filterSecrets filters a list of secrets getting
-func filterSecrets(ctx context.Context, secrets *corev1.SecretList, adminKubeConfigSecrets *[]corev1.Secret,
-	bootstrapSASecrets *[]corev1.Secret) error {
+func filterSecrets(
+	ctx context.Context,
+	secrets *corev1.SecretList,
+	adminKubeConfigSecrets *[]corev1.Secret,
+	bootstrapSASecrets *[]corev1.Secret,
+) error {
 	for _, secret := range secrets.Items {
 		if adminKubeconfigSecretRegex.Match([]byte(secret.Name)) {
 			*adminKubeConfigSecrets = append(*adminKubeConfigSecrets, secret)
@@ -147,7 +156,11 @@ func filterSecrets(ctx context.Context, secrets *corev1.SecretList, adminKubeCon
 }
 
 // newBootstrapHubKubeconfig initialize a bootstrap-hub-kubeconfig secret to point to apiServer
-func newBootstrapHubKubeconfig(ctx context.Context, apiServer string, secret corev1.Secret) (*corev1.Secret, error) {
+func newBootstrapHubKubeconfig(
+	ctx context.Context,
+	apiServer string,
+	secret corev1.Secret,
+) (*corev1.Secret, error) {
 	caCrt, ok := secret.Data["ca.crt"]
 	if !ok {
 		return nil, fmt.Errorf("unable to find ca.crt data in secret")
@@ -264,7 +277,9 @@ func isCertificateRequestApproved(csr *certsv1.CertificateSigningRequest) bool {
 	return approved && !denied
 }
 
-func getCertApprovalCondition(status *certsv1.CertificateSigningRequestStatus) (approved bool, denied bool) {
+func getCertApprovalCondition(
+	status *certsv1.CertificateSigningRequestStatus,
+) (approved bool, denied bool) {
 	for _, c := range status.Conditions {
 		if c.Type == certsv1.CertificateApproved {
 			approved = true
@@ -300,7 +315,9 @@ func initManagedClusterBootstrapClusterRole(managedClusterName string) *rbacv1.C
 	}
 }
 
-func initManagedClusterBootstrapClusterRoleBinding(managedClusterName string) *rbacv1.ClusterRoleBinding {
+func initManagedClusterBootstrapClusterRoleBinding(
+	managedClusterName string,
+) *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -398,7 +415,15 @@ func initManagedClusterAdminClusterRole(managedClusterName string) *rbacv1.Clust
 				APIGroups:     []string{v1beta1.GroupVersion.Group},
 				Resources:     []string{"managedclusters"},
 				ResourceNames: []string{managedClusterName},
-				Verbs:         []string{"create", "delete", "get", "list", "patch", "update", "watch"},
+				Verbs: []string{
+					"create",
+					"delete",
+					"get",
+					"list",
+					"patch",
+					"update",
+					"watch",
+				},
 			},
 			{
 				APIGroups: []string{"clusterview.open-cluster-management.io"},
