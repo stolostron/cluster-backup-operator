@@ -23,6 +23,7 @@ import (
 
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,8 +33,14 @@ import (
 )
 
 var (
-	backupNamespacesACM = [...]string{"hive", "openshift-operator-lifecycle-manager"}
-	backupResources     = [...]string{
+	backupNamespacesACM           = [...]string{"hive", "openshift-operator-lifecycle-manager"}
+	backupManagedClusterResources = [...]string{"secret", "configmap",
+		"ManagedCluster.cluster.open-cluster-management.io", "ManagedClusterAddon", "ServiceAccount",
+		"ManagedClusterInfo", "ManagedClusterSet", "ManagedClusterSetBindings", "KlusterletAddonConfig",
+		"ManagedClusterView", "ManagedCluster.clusterview.open-cluster-management.io",
+		"ClusterPool", "ClusterDeployment", "MachinePool", "ClusterProvision",
+		"ClusterState", "ClusterSyncLease", "ClusterSync"}
+	backupResources = [...]string{
 		"applications.app.k8s.io",
 		"channel", "subscription",
 		"application", "deployable",
@@ -228,14 +235,39 @@ func setManagedClustersBackupInfo(
 ) {
 
 	backupLogger := log.FromContext(ctx)
-	var clusterResource bool = false
+	var clusterResource bool = true // include cluster level managed cluster resources
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
+
+	for i := range backupManagedClusterResources { // managed clusters required resources, from namespace or cluster level
+		veleroBackupTemplate.IncludedResources = appendUnique(
+			veleroBackupTemplate.IncludedResources,
+			backupManagedClusterResources[i],
+		)
+	}
 
 	for i := range backupNamespacesACM { // acm ns
 		veleroBackupTemplate.IncludedNamespaces = appendUnique(
 			veleroBackupTemplate.IncludedNamespaces,
 			backupNamespacesACM[i],
 		)
+	}
+
+	// add cluster pool namespaces
+	clusterPools := hivev1.ClusterPoolList{}
+	if err := c.List(ctx, &clusterPools, &client.ListOptions{}); err != nil {
+		// if NotFound error
+		if !k8serr.IsNotFound(err) {
+			backupLogger.Info("no cluster pool resource")
+		} else {
+			backupLogger.Error(err, "failed to get hivev1.ClusterPoolList")
+		}
+	} else {
+		for i := range clusterPools.Items {
+			veleroBackupTemplate.IncludedNamespaces = appendUnique(
+				veleroBackupTemplate.IncludedNamespaces,
+				clusterPools.Items[i].Namespace,
+			)
+		}
 	}
 
 	// get managed clusters namespaces

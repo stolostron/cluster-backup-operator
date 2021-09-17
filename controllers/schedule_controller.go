@@ -59,10 +59,11 @@ var (
 	scheduleOwnerKey = ".metadata.controller"
 	apiGVString      = v1beta1.GroupVersion.String()
 	// mapping ResourceTypes to Velero schedule names
+	// create credentials schedule first since this is the fastest one, followed by resources
 	resourceTypes = map[ResourceType]string{
-		ManagedClusters: "acm-managed-clusters-schedule",
 		Credentials:     "acm-credentials-schedule",
 		Resources:       "acm-resources-schedule",
+		ManagedClusters: "acm-managed-clusters-schedule",
 	}
 )
 

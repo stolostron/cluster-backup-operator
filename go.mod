@@ -9,6 +9,7 @@ require (
 	github.com/open-cluster-management/library-go v0.0.0-20210805092456-f9c5ab6c4fc1 // indirect
 	github.com/open-cluster-management/multicloud-operators-channel v1.2.2-2-20201130-37b47
 	github.com/openshift/api v0.0.0-20210521075222-e273a339932a //Openshift 4.6
+	github.com/openshift/hive/apis v0.0.0-20210915004009-18827f64c00e // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/robfig/cron/v3 v3.0.0
 	github.com/vmware-tanzu/velero v1.6.1

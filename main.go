@@ -38,6 +38,7 @@ import (
 	"github.com/open-cluster-management/cluster-backup-operator/controllers"
 	libgoclient "github.com/open-cluster-management/library-go/pkg/client"
 	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
 
 	//operatorapiv1 "open-cluster-management.io/api/operator/v1"
 
@@ -60,6 +61,7 @@ func init() {
 	utilruntime.Must(ocinfrav1.AddToScheme(scheme))
 	//utilruntime.Must(operatorapiv1.AddToScheme(scheme)) Not adding since client it's remote
 	utilruntime.Must(veleroapi.AddToScheme(scheme))
+	utilruntime.Must(hivev1.AddToScheme(scheme))
 
 	//+kubebuilder:scaffold:scheme
 }
