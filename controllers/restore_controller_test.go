@@ -55,7 +55,7 @@ var _ = Describe("Basic Restore controller", func() {
 	BeforeEach(func() { // default values
 		ctx = context.Background()
 		veleroNamespaceName = "velero-restore-ns-1"
-		veleroBackupName = "velero-backup"
+		veleroBackupName = "acm-managed-clusters-schedule-20210910181336"
 		restoreName = "rhacm-restore-1"
 
 		veleroNamespace = &corev1.Namespace{
@@ -175,7 +175,7 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "bad-very-recent-backup",
+						Name:      "acm-managed-clusters-schedule-bad-very-recent-backup",
 						Namespace: veleroNamespaceName,
 					},
 					Spec: veleroapi.BackupSpec{
@@ -193,7 +193,7 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "good-old-backup",
+						Name:      "acm-managed-clusters-schedule-good-old-backup",
 						Namespace: veleroNamespaceName,
 					},
 					Spec: veleroapi.BackupSpec{
@@ -211,7 +211,7 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "good-recent-backup",
+						Name:      "acm-managed-clusters-schedule-good-recent-backup",
 						Namespace: veleroNamespaceName,
 					},
 					Spec: veleroapi.BackupSpec{
@@ -229,7 +229,7 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "bad-old-backup",
+						Name:      "acm-managed-clusters-schedule-bad-old-backup",
 						Namespace: veleroNamespaceName,
 					},
 					Spec: veleroapi.BackupSpec{
@@ -261,7 +261,7 @@ var _ = Describe("Basic Restore controller", func() {
 					ctx,
 					types.NamespacedName{
 						Namespace: veleroNamespaceName,
-						Name:      restoreName + "-good-recent-backup",
+						Name:      restoreName + "-acm-managed-clusters-schedule-good-recent-backup",
 					},
 					&veleroRestore,
 				),

@@ -50,18 +50,23 @@ import (
 )
 
 var (
-	apiGVStr           = v1beta1.GroupVersion.String()
+	apiGVStr = v1beta1.GroupVersion.String()
+	// PublicAPIServerURL the public URL for the APIServer
 	PublicAPIServerURL = ""
 )
 
 const (
-	restoreOwnerKey                         = ".metadata.controller"
-	managedClusterImportInterval            = 20 * time.Second                // as soon restore is finished we start to poll for managedcluster registration
-	BootstrapHubKubeconfigSecretName        = "bootstrap-hub-kubeconfig"      /* #nosec G101 */
+	restoreOwnerKey              = ".metadata.controller"
+	managedClusterImportInterval = 20 * time.Second // as soon restore is finished we start to poll for managedcluster registration
+	// BootstrapHubKubeconfigSecretName boostrap-hub-kubeconfig secret name
+	BootstrapHubKubeconfigSecretName = "bootstrap-hub-kubeconfig" /* #nosec G101 */
+	// OpenClusterManagementAgentNamespaceName namespace name for OpenClusterManagementAgent
 	OpenClusterManagementAgentNamespaceName = "open-cluster-management-agent" // TODO: this can change. Get the klusterlet.spec
-	OCMManagedClusterNamespaceLabelKey      = "cluster.open-cluster-management.io/managedCluster"
+	// OCMManagedClusterNamespaceLabelKey OCM managedcluster namespace label key
+	OCMManagedClusterNamespaceLabelKey = "cluster.open-cluster-management.io/managedCluster"
 )
 
+// GetKubeClientFromSecretFunc is the function to get kubeclient from secret
 type GetKubeClientFromSecretFunc func(*corev1.Secret) (kubeclient.Interface, error)
 
 // RestoreReconciler reconciles a Restore object
@@ -99,9 +104,9 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err := r.List(ctx, &veleroRestoreList, client.InNamespace(req.Namespace), client.MatchingFields{restoreOwnerKey: req.Name}); err != nil {
 		restoreLogger.Error(
 			err,
-			"unable to list velero restores for restore %s/%s",
-			req.Namespace,
-			req.Name,
+			"unable to list velero restores for restore",
+			"namespace", req.Namespace,
+			"name", req.Name,
 		)
 		return ctrl.Result{}, err
 	}
@@ -111,9 +116,9 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if err := r.initVeleroRestores(ctx, restore); err != nil {
 			restoreLogger.Error(
 				err,
-				"unable to initialize Velero restores for restore %s/%s",
-				req.Namespace,
-				req.Name,
+				"unable to initialize Velero restores for restore",
+				"namespace", req.Namespace,
+				"name", req.Name,
 			)
 			return ctrl.Result{}, err
 		}
@@ -132,7 +137,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 						veleroRestore.Name,
 					),
 				) // TODO add check on conditions to avoid multiple events
-				// the rest of this case is related only to managedclusters restores
+				// the restore is complete now if not a managedcluster restore type
 				if !strings.Contains(
 					veleroRestore.Name,
 					veleroScheduleNames[ManagedClusters],
@@ -144,7 +149,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 							Reason:  v1beta1.RestoreReasonFinished,
 							Message: fmt.Sprintf("Restore Complete %s", veleroRestore.Name),
 						})
-					break
+					continue
 				}
 
 				allAttached, err := r.attachManagedClusters(ctx, restore)
@@ -292,6 +297,9 @@ func (r *RestoreReconciler) getVeleroBackupName(
 	relatedBackups := filterBackups(veleroBackups.Items, func(bkp veleroapi.Backup) bool {
 		return strings.Contains(bkp.Name, veleroScheduleNames[resourceType])
 	})
+	if relatedBackups == nil || len(relatedBackups) == 0 {
+		return "", fmt.Errorf("no backups found")
+	}
 	sort.Sort(mostRecentWithLessErrors(relatedBackups))
 	return relatedBackups[0].Name, nil
 }
@@ -308,7 +316,13 @@ func (r *RestoreReconciler) initVeleroRestores(
 		veleroRestore := &veleroapi.Restore{}
 		veleroBackupName, err := r.getVeleroBackupName(ctx, restore, key)
 		if err != nil {
-			return err
+			restoreLogger.Info(
+				"backup name not found, skipping restore for",
+				"name", restore.Name,
+				"namespace", restore.Namespace,
+				"type", key,
+			)
+			continue
 		}
 		// TODO check length of produced name
 		veleroRestore.Name = restore.Name + "-" + veleroBackupName
