@@ -1,8 +1,6 @@
 package controllers
 
 import (
-	"time"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
@@ -45,13 +43,6 @@ var _ = Describe("Backup", func() {
 
 			veleroBackup.Status.Phase = "InvalidStatus"
 			Expect(isBackupFinished(veleroBackups)).Should(BeFalse())
-		})
-
-		It("getFormattedDuration should return the expected value", func() {
-			duration := time.Minute * 10
-			formatted := "10m0s"
-
-			Expect(getFormattedDuration(duration)).Should(Equal(formatted))
 		})
 
 		It("min should return the expected value", func() {

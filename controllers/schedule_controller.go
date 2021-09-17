@@ -49,18 +49,18 @@ const (
 
 const updateStatusFailedMsg = "Could not update status"
 
-var (
+const (
 	// Time interval to reque delete backups if they exceed maxBackups number
 	deleteBackupRequeueInterval = time.Minute * 60
 	failureInterval             = time.Second * 10
+	scheduleOwnerKey            = ".metadata.controller"
 )
 
 var (
-	scheduleOwnerKey = ".metadata.controller"
-	apiGVString      = v1beta1.GroupVersion.String()
-	// mapping ResourceTypes to Velero schedule names
+	apiGVString = v1beta1.GroupVersion.String()
 	// create credentials schedule first since this is the fastest one, followed by resources
-	resourceTypes = map[ResourceType]string{
+	// mapping ResourceTypes to Velero schedule names
+	veleroScheduleNames = map[ResourceType]string{
 		Credentials:     "acm-credentials-schedule",
 		Resources:       "acm-resources-schedule",
 		ManagedClusters: "acm-managed-clusters-schedule",
@@ -205,7 +205,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	setSchedulePhase(&veleroScheduleList, backupSchedule)
 
 	// clean up old backups if they exceed the maxBackups number after backupDeleteRequeueInterval
-	cleanupBackups(ctx, backupSchedule.Spec.MaxBackups*len(resourceTypes), r.Client)
+	cleanupBackups(ctx, backupSchedule.Spec.MaxBackups*len(veleroScheduleNames), r.Client)
 
 	err := r.Client.Status().Update(ctx, backupSchedule)
 	return ctrl.Result{RequeueAfter: deleteBackupRequeueInterval}, errors.Wrap(
@@ -225,8 +225,8 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 ) error {
 	scheduleLogger := log.FromContext(ctx)
 
-	// loop through resourceTypes to create a schedule per type
-	for key, value := range resourceTypes {
+	// loop through resourceTypes to create a Velero schedule per type
+	for key, value := range veleroScheduleNames {
 		veleroScheduleIdentity := types.NamespacedName{
 			Namespace: backupSchedule.Namespace,
 			Name:      value,
