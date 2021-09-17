@@ -39,15 +39,16 @@ var (
 		"ManagedClusterInfo", "ManagedClusterSet", "ManagedClusterSetBindings", "KlusterletAddonConfig",
 		"ManagedClusterView", "ManagedCluster.clusterview.open-cluster-management.io",
 		"ClusterPool", "ClusterDeployment", "MachinePool", "ClusterProvision",
-		"ClusterState", "ClusterSyncLease", "ClusterSync"}
+		"ClusterState", "ClusterSyncLease", "ClusterSync", "ClusterCurator"}
 	backupResources = [...]string{
+		"applications.argoprj.io", "applicationset.argoprj.io",
+		"appprojects.argoproj.io", "argocds.argoproj.io",
 		"applications.app.k8s.io",
 		"channel", "subscription",
-		"application", "deployable",
+		"deployable",
 		"placementrule", "placement", "placementdecisions",
 		"PlacementBinding.policy.open-cluster-management.io",
 		"policy",
-		//"multiclusterobservability"
 	}
 	backupCredsResources = [...]string{"secret"}
 )
