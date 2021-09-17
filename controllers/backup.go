@@ -41,7 +41,7 @@ var (
 		"ClusterPool", "ClusterDeployment", "MachinePool", "ClusterProvision",
 		"ClusterState", "ClusterSyncLease", "ClusterSync", "ClusterCurator"}
 	backupResources = [...]string{
-		"applications.argoprj.io", "applicationset.argoprj.io",
+		"applications.argoproj.io", "applicationset.argoproj.io",
 		"appprojects.argoproj.io", "argocds.argoproj.io",
 		"applications.app.k8s.io",
 		"channel", "subscription",
