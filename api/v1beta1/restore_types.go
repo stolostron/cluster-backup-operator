@@ -25,18 +25,18 @@ type RestoreSpec struct {
 	// VeleroManagedClustersBackupName is the name of the velero back-up used to restore managed clusters.
 	// Is optional, if not supplied, the backup name will be selected
 	// from the available backups in the current namespace
-	// +kubebuilder:validation:Optional
-	VeleroManagedClustersBackupName *string `json:"veleroManagedClustersBackupName,omitempty"`
+	// +kubebuilder:validation:Required
+	VeleroManagedClustersBackupName *string `json:"veleroManagedClustersBackupName"`
 	// VeleroResourcesBackupName is the name of the velero back-up used to restore resources.
 	// Is optional, if not supplied, the backup name will be selected
 	// from the available backups in the current namespace
-	// +kubebuilder:validation:Optional
-	VeleroResourcesBackupName *string `json:"veleroResourcesBackupName,omitempty"`
+	// +kubebuilder:validation:Required
+	VeleroResourcesBackupName *string `json:"veleroResourcesBackupName"`
 	// VeleroCredentialsBackupName is the name of the velero back-up used to restore credentials.
 	// Is optional, if not supplied, the backup name will be selected
 	// from the available backups in the current namespace
-	// +kubebuilder:validation:Optional
-	VeleroCredentialsBackupName *string `json:"veleroCredentialsBackupName,omitempty"`
+	// +kubebuilder:validation:Required
+	VeleroCredentialsBackupName *string `json:"veleroCredentialsBackupName"`
 }
 
 // RestoreStatus defines the observed state of Restore
@@ -83,10 +83,6 @@ const (
 	RestoreReasonStarted  = "RestoreStarted"
 	RestoreReasonRunning  = "RestoreRunning"
 	RestoreReasonFinished = "RestoreFinished"
-)
-
-const (
-	CSRReasonApprovedReason = "AutoApprovedByClusterBackupController"
 )
 
 //+kubebuilder:object:root=true
