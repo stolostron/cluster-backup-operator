@@ -57,9 +57,17 @@ The operator creates corresponding Velero resources and sets the options needed 
 After you create a `backupschedule.cluster.open-cluster-management.io` resource you should be able to run `oc get bsch -n <oadp-operator-ns>` and get the status of the scheduled cluster backups. The `<oadp-operator-ns>` is the namespace where BackupSchedule was created and it should be the same namespace where the OADP Operator was installed.
 
 The  `backupschedule.cluster.open-cluster-management.io` creates 3 `schedule.velero.io` resources:
-- `acm-managed-clusters-schedule`, used to schedule backups for the managed cluster resources. This backup includes the `hive` and `openshift-operator-lifecycle-manager` namespaces and all the namespaces for the managed cluster resources.
-- `acm-credentials-schedule`, used to schedule backups for the user created credentials and any copy of those credentials. These credentials are identified by the `cluster.open-cluster-management.io/type` label selector; all secrets defining the label selector will be included in the backup. <b>Note</b>: If you have any user defined private channels, you can include the channel secrets in this credentials backup if you set the `cluster.open-cluster-management.io/type` label selector to this secret. Without this, channel secrets will not be picked up by the cluster backup and will have to be recreated on the restored cluster.
-- `acm-resources-schedule`, used to schedule backups for the applications and policy resources, including any resource required, such as channels, subscriptions, deployables and placement rules for applications and placementBindings, placement, placementDecisions for policies. No resources are being collected from the `local-cluster` or `open-cluster-management` namespaces.
+- `acm-managed-clusters-schedule`, used to schedule backups for the managed cluster resources, including: managed clusters, cluster pools and cluster sets. 
+  - <b>Note</b>:
+    - Only managed clusters created using the hive api will be automatically imported when the backup is restored on another hub. All other managed clusters will show up as `Pending Import` and must be imported back on the new hub.
+    - When restoring a backup on a new hub, make sure the old hub from where the backup was created is shut down, otherwise the old hub will try to reimport the managed clusters as soon as the managed cluster reconciliation finds the managed clusters are no longer available.
+    - The following resources are being picked up by this backup; they are required for restoring all managed clusters information on the new hub: 
+      - Secrets and config maps from the `hive` and `openshift-operator-lifecycle-manager` namespaces and from all the `ManagedClusters` resources namespaces created on the hub.
+      - Cluster level resource `ManagedCluster`.
+      - Other namespaced scoped resources used to restore the managed cluster details: `ServiceAccount`, `ManagedClusterInfo`, `ManagedClusterSet`, `ManagedClusterSetBindings`, `KlusterletAddonConfig`, `ManagedClusterView`, `ClusterPool`, `ClusterProvision`, `ClusterDeployment`, `ClusterSyncLease`, `ClusterSync`, `ClusterCurator`.
+- `acm-credentials-schedule`, used to schedule backups for the user created credentials and any copy of those credentials. These credentials are identified by the `cluster.open-cluster-management.io/type` label selector; all secrets defining the label selector will be included in the backup.
+  - <b>Note</b>: If you have any user defined private channels, you can include the channel secrets in this credentials backup if you set the `cluster.open-cluster-management.io/type` label selector to this secret. Without this, channel secrets will not be picked up by the cluster backup and will have to be recreated on the restored cluster.
+- `acm-resources-schedule`, used to schedule backups for the applications and policy resources, including any  required resources, such as `channels`, `subscriptions`, `deployables` and `placementRules` for applications and `placementBindings`, `placement`, `placementDecisions` for `policies`. No resources are being collected from the `local-cluster` or `open-cluster-management` namespaces.
 
 ## Restoring a backup
 
@@ -67,7 +75,30 @@ The restore operation should be run on a different hub then the one where the ba
 
 After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on your new hub that the backed up resources contained by the backup file have been created.
 
-A restore operation is executed only once. If a backup name is specified on the restore resource, the resources from that backup are being restored. If no backup file is specified, the last valid backup file is being used instead.
+The restore operation allows to restore all 3 backup types created by the backup operation, although you can choose to install only a certain type (only managed clusters or only user credentials or only hub resources). 
+
+The restore defines 3 required spec properties, defining the restore logic for the 3 type of backed up files. 
+- `veleroManagedClustersBackupName` is used to define the restore option for the managed clusters. 
+- `veleroCredentialsBackupName` is used to define the restore option for the user credentials. 
+- `veleroResourcesBackupName` is used to define the restore option for the hub resources (applications and policies). 
+
+The valid options for the above properties are : 
+  - `latest` - restore the last available backup file for managed clusters
+  - `skip` - do not attempt to restore the managed clusters with this restore operation
+  - `<backup_name>` - restore the specified backup pointing to it by name
+
+Below you can see the sample available with the operator.
+
+```yaml
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm
+spec:
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
+```
 
 # Setting up Your Dev Environment
 
@@ -192,9 +223,17 @@ The restore operation should be run on a different hub then the one where the ba
 
 After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on the new hub that the backed up resources contained by the backup file have been created.
 
-To restore a backup you can select a specific backup specifying the name of the backup inside `veleroBackupName.spec.restore` field or you can leave it blank. If you leave it blank the operator will select the most recent backup without errors.
+The restore defines 3 required spec properties, defining the restore logic for the 3 type of backed up files. 
+- `veleroManagedClustersBackupName` is used to define the restore option for the managed clusters. 
+- `veleroCredentialsBackupName` is used to define the restore option for the user credentials. 
+- `veleroResourcesBackupName` is used to define the restore option for the hub resources (applications and policies). 
 
-Here is an example of a `restore.cluster.open-cluster-management.io` resource:
+The valid options for the above properties are : 
+  - `latest` - restore the last available backup file for managed clusters
+  - `skip` - do not attempt to restore the managed clusters with this restore operation
+  - `<backup_name>` - restore the specified backup pointing to it by name
+
+Below is an example of a `restore.cluster.open-cluster-management.io` resource, restoring all 3 types of backed up files, using the latest available backups:
 
 ```yaml
 apiVersion: cluster.open-cluster-management.io/v1beta1
@@ -202,5 +241,33 @@ kind: Restore
 metadata:
   name: restore-acm
 spec:
-  veleroBackupName: acm-managed-clusters-schedule-20210902205438
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
+```
+
+You can define a restore operation where you only restore the managed clusters:
+
+```yaml
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm
+spec:
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: skip
+  veleroResourcesBackupName: skip
+```
+
+The sample below restores the managed clusters from backup `acm-managed-clusters-schedule-20210902205438` :
+
+```yaml
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm
+spec:
+  veleroManagedClustersBackupName: acm-managed-clusters-schedule-20210902205438
+  veleroCredentialsBackupName: skip
+  veleroResourcesBackupName: skip
 ```
