@@ -13,17 +13,20 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 )
 
 var _ = Describe("BackupSchedule controller", func() {
 
 	var (
-		ctx                 context.Context
-		managedClusters     []clusterv1.ManagedCluster
-		veleroNamespaceName string
-		veleroNamespace     *corev1.Namespace
-		backupScheduleName  string = "the-backup-schedule-name"
-		backupSchedule      string = "0 */6 * * *"
+		ctx                   context.Context
+		managedClusters       []clusterv1.ManagedCluster
+		backupStorageLocation *veleroapi.BackupStorageLocation
+		veleroNamespaceName   string
+		veleroNamespace       *corev1.Namespace
+		backupScheduleName    string = "the-backup-schedule-name"
+		backupSchedule        string = "0 */6 * * *"
 
 		timeout  = time.Second * 70
 		interval = time.Millisecond * 250
@@ -67,6 +70,26 @@ var _ = Describe("BackupSchedule controller", func() {
 				Name: veleroNamespaceName,
 			},
 		}
+		backupStorageLocation = &veleroapi.BackupStorageLocation{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "velero/v1",
+				Kind:       "BackupStorageLocation",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "default",
+				Namespace: veleroNamespaceName,
+			},
+			Spec: veleroapi.BackupStorageLocationSpec{
+				AccessMode: "ReadWrite",
+				StorageType: veleroapi.StorageType{
+					ObjectStorage: &veleroapi.ObjectStorageLocation{
+						Bucket: "velero-backup-acm-dr",
+						Prefix: "velero",
+					},
+				},
+				Provider: "aws",
+			},
+		}
 
 	})
 
@@ -75,6 +98,7 @@ var _ = Describe("BackupSchedule controller", func() {
 			Expect(k8sClient.Delete(ctx, &managedClusters[i])).Should(Succeed())
 		}
 		Expect(k8sClient.Delete(ctx, veleroNamespace)).Should(Succeed())
+		Expect(k8sClient.Delete(ctx, backupStorageLocation)).Should(Succeed())
 	})
 
 	JustBeforeEach(func() {
@@ -82,6 +106,9 @@ var _ = Describe("BackupSchedule controller", func() {
 			Expect(k8sClient.Create(ctx, &managedClusters[i])).Should(Succeed())
 		}
 		Expect(k8sClient.Create(ctx, veleroNamespace)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, backupStorageLocation)).Should(Succeed())
+		backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
+		Expect(k8sClient.Status().Update(ctx, backupStorageLocation)).Should(Succeed())
 	})
 	Context("When creating a BackupSchedule", func() {
 		It("Should be creating a Velero Schedule updating the Status", func() {
@@ -151,7 +178,7 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			Expect(createdBackupSchedule.Spec.VeleroSchedule).Should(Equal(backupSchedule))
 
-			//By("created backup schedule should contain velero schedules in status")
+			By("created backup schedule should contain velero schedules in status")
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
 				if err != nil {
@@ -160,7 +187,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				return createdBackupSchedule.Status.VeleroScheduleCredentials != nil &&
 					createdBackupSchedule.Status.VeleroScheduleManagedClusters != nil &&
 					createdBackupSchedule.Status.VeleroScheduleResources != nil
-			}, timeout, interval).ShouldNot(BeNil())
+			}, timeout, interval).Should(BeTrue())
 		})
 
 	})

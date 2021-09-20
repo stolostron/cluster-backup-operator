@@ -49,6 +49,7 @@ var _ = Describe("Basic Restore controller", func() {
 		veleroBackups                   []veleroapi.Backup
 		rhacmRestore                    v1beta1.Restore
 		managedClusterNamespaces        []corev1.Namespace
+		backupStorageLocation           *veleroapi.BackupStorageLocation
 
 		skipRestore   string
 		latestBackup  string
@@ -67,6 +68,13 @@ var _ = Describe("Basic Restore controller", func() {
 			Expect(k8sClient.Create(ctx, &veleroBackups[i])).Should(Succeed())
 		}
 		Expect(k8sClient.Create(ctx, &rhacmRestore)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, backupStorageLocation)).Should(Succeed())
+		backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
+		Expect(k8sClient.Status().Update(ctx, backupStorageLocation)).Should(Succeed())
+	})
+
+	JustAfterEach(func() {
+		Expect(k8sClient.Delete(ctx, backupStorageLocation)).Should(Succeed())
 	})
 
 	BeforeEach(func() { // default values
@@ -87,6 +95,27 @@ var _ = Describe("Basic Restore controller", func() {
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name: veleroNamespaceName,
+			},
+		}
+
+		backupStorageLocation = &veleroapi.BackupStorageLocation{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "velero/v1",
+				Kind:       "BackupStorageLocation",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "default",
+				Namespace: veleroNamespaceName,
+			},
+			Spec: veleroapi.BackupStorageLocationSpec{
+				AccessMode: "ReadWrite",
+				StorageType: veleroapi.StorageType{
+					ObjectStorage: &veleroapi.ObjectStorageLocation{
+						Bucket: "velero-backup-acm-dr",
+						Prefix: "velero",
+					},
+				},
+				Provider: "aws",
 			},
 		}
 
