@@ -3,4 +3,6 @@ kind: Restore
 metadata:
   name: restore-acm
 spec:
-  veleroBackupName: backup-acm
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
