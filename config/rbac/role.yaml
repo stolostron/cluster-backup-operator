@@ -7,6 +7,13 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
   - apps.open-cluster-management.io
   resources:
   - channels
@@ -14,22 +21,6 @@ rules:
   - get
   - list
   - watch
-- apiGroups:
-  - certificates.k8s.io
-  resources:
-  - certificatesigningrequests
-  verbs:
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - certificates.k8s.io
-  resources:
-  - certificatesigningrequests/approval
-  verbs:
-  - update
 - apiGroups:
   - cluster.open-cluster-management.io
   resources:
@@ -63,8 +54,6 @@ rules:
   verbs:
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - cluster.open-cluster-management.io
@@ -92,32 +81,6 @@ rules:
   - get
   - patch
   - update
-- apiGroups:
-  - operator.openshift.io
-  resources:
-  - configs
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - rbac.authorization.k8s.io
-  resources:
-  - clusterrolebindings
-  verbs:
-  - create
-  - get
-  - list
-  - watch
-- apiGroups:
-  - rbac.authorization.k8s.io
-  resources:
-  - clusterroles
-  verbs:
-  - create
-  - get
-  - list
-  - watch
 - apiGroups:
   - velero.io
   resources:
