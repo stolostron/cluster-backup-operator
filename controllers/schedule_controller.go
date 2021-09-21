@@ -56,17 +56,6 @@ const (
 	scheduleOwnerKey            = ".metadata.controller"
 )
 
-var (
-	apiGVString = v1beta1.GroupVersion.String()
-	// create credentials schedule first since this is the fastest one, followed by resources
-	// mapping ResourceTypes to Velero schedule names
-	veleroScheduleNames = map[ResourceType]string{
-		Credentials:     "acm-credentials-schedule",
-		Resources:       "acm-resources-schedule",
-		ManagedClusters: "acm-managed-clusters-schedule",
-	}
-)
-
 // BackupScheduleReconciler reconciles a BackupSchedule object
 type BackupScheduleReconciler struct {
 	client.Client

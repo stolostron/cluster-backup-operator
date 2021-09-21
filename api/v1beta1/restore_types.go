@@ -44,7 +44,6 @@ type RestoreSpec struct {
 
 // RestoreStatus defines the observed state of Restore
 type RestoreStatus struct {
-	// TODO: replace with core/v1 TypedLocalObjectReference
 	// +kubebuilder:validation:Optional
 	VeleroManagedClustersRestoreName string `json:"veleroManagedClustersRestoreName,omitempty"`
 	// +kubebuilder:validation:Optional
