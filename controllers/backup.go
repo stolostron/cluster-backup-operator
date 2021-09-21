@@ -88,9 +88,9 @@ func cleanupBackups(
 
 		// get acm backups only when counting existing backups
 		sliceBackups := filterBackups(veleroBackupList.Items[:], func(bkp veleroapi.Backup) bool {
-			return strings.Contains(veleroScheduleNames[Credentials], bkp.Name) ||
-				strings.Contains(veleroScheduleNames[ManagedClusters], bkp.Name) ||
-				strings.Contains(veleroScheduleNames[Resources], bkp.Name)
+			return strings.HasPrefix(bkp.Name, veleroScheduleNames[Credentials]) ||
+				strings.HasPrefix(bkp.Name, veleroScheduleNames[ManagedClusters]) ||
+				strings.HasPrefix(bkp.Name, veleroScheduleNames[Resources])
 		})
 
 		if maxBackups < len(sliceBackups) {
