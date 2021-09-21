@@ -109,10 +109,6 @@ func cleanupBackups(
 			})
 
 			for i := 0; i < len(sliceBackups)-maxBackups; i++ {
-				// delete extra backups now
-				if sliceBackups[i].Status.Errors > 0 {
-					continue // ignore error status backups, they were processed in the step above
-				}
 				deleteBackup(ctx, &sliceBackups[i], c)
 			}
 		}
