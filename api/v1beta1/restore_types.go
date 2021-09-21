@@ -83,9 +83,10 @@ const (
 
 // Valid Restore Reason
 const (
-	RestoreReasonStarted  = "RestoreStarted"
-	RestoreReasonRunning  = "RestoreRunning"
-	RestoreReasonFinished = "RestoreFinished"
+	RestoreReasonNotStarted = "RestoreNotStarted"
+	RestoreReasonStarted    = "RestoreStarted"
+	RestoreReasonRunning    = "RestoreRunning"
+	RestoreReasonFinished   = "RestoreFinished"
 )
 
 //+kubebuilder:object:root=true

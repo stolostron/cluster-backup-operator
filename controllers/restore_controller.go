@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 
@@ -49,17 +48,7 @@ var (
 )
 
 const (
-	restoreOwnerKey              = ".metadata.controller"
-	managedClusterImportInterval = 20 * time.Second // as soon restore is finished we start to poll for managedcluster registration
-	// BootstrapHubKubeconfigSecretName boostrap-hub-kubeconfig secret name
-	BootstrapHubKubeconfigSecretName = "bootstrap-hub-kubeconfig" /* #nosec G101 */
-	// OpenClusterManagementAgentNamespaceName namespace name for OpenClusterManagementAgent
-	OpenClusterManagementAgentNamespaceName = "open-cluster-management-agent" // TODO: this can change. Get the klusterlet.spec
-	// OCMManagedClusterNamespaceLabelKey OCM managedcluster namespace label key
-	OCMManagedClusterNamespaceLabelKey = "cluster.open-cluster-management.io/managedCluster"
-)
-
-const (
+	restoreOwnerKey        = ".metadata.controller"
 	skipRestoreStr  string = "skip"
 	latestBackupStr string = "latest"
 )
@@ -81,6 +70,7 @@ type RestoreReconciler struct {
 //+kubebuilder:rbac:groups=velero.io,resources=backups,verbs=get;list
 //+kubebuilder:rbac:groups=velero.io,resources=restores,verbs=get;list;watch;create;update
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+//+kubebuilder:rbac:groups=velero.io,resources=backupstoragelocations,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -92,9 +82,62 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// don't create restores if backup storage location doesn't exist or is not avaialble
+	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
+	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
+		veleroStorageLocations == nil || len(veleroStorageLocations.Items) == 0 {
+
+		apimeta.SetStatusCondition(&restore.Status.Conditions,
+			metav1.Condition{
+				Type:   v1beta1.RestoreFailed,
+				Status: metav1.ConditionFalse,
+				Reason: v1beta1.RestoreReasonNotStarted,
+				Message: "velero.io.BackupStorageLocation resources not found. " +
+					"Verify you have created a konveyor.openshift.io.Velero resource.",
+			})
+
+		// retry after failureInterval
+		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
+			r.Client.Status().Update(ctx, restore),
+			updateStatusFailedMsg,
+		)
+	}
+
+	var isValidStorageLocation bool = false
+	for i := 0; i < len(veleroStorageLocations.Items); i++ {
+		if veleroStorageLocations.Items[i].Status.Phase == veleroapi.BackupStorageLocationPhaseAvailable {
+			// one valid storage location found, assume storage is accessible
+			isValidStorageLocation = true
+			break
+		}
+	}
+
+	// if no valid storage location found wait for valid value
+	if !isValidStorageLocation {
+		apimeta.SetStatusCondition(&restore.Status.Conditions,
+			metav1.Condition{
+				Type:   v1beta1.RestoreFailed,
+				Status: metav1.ConditionFalse,
+				Reason: v1beta1.RestoreReasonNotStarted,
+				Message: "Backup storage location is not available. " +
+					"Check velero.io.BackupStorageLocation and validate storage credentials.",
+			})
+
+		// retry after failureInterval
+		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
+			r.Client.Status().Update(ctx, restore),
+			updateStatusFailedMsg,
+		)
+	}
+
 	// retrieve the velero restore (if any)
 	veleroRestoreList := veleroapi.RestoreList{}
-	if err := r.List(ctx, &veleroRestoreList, client.InNamespace(req.Namespace), client.MatchingFields{restoreOwnerKey: req.Name}); err != nil {
+	if err := r.List(
+		ctx,
+		&veleroRestoreList,
+		client.InNamespace(req.Namespace),
+		client.MatchingFields{restoreOwnerKey: req.Name},
+	); err != nil {
 		restoreLogger.Error(
 			err,
 			"unable to list velero restores for restore",
@@ -104,8 +147,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	switch {
-	case len(veleroRestoreList.Items) == 0:
+	if len(veleroRestoreList.Items) == 0 {
 		if err := r.initVeleroRestores(ctx, restore); err != nil {
 			restoreLogger.Error(
 				err,
@@ -115,47 +157,45 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			)
 			return ctrl.Result{}, err
 		}
+	}
 
-	case len(veleroRestoreList.Items) > 0:
-		for i := range veleroRestoreList.Items {
-			veleroRestore := veleroRestoreList.Items[i].DeepCopy()
-			switch {
-			case isVeleroRestoreFinished(veleroRestore):
-				r.Recorder.Event(
-					restore,
-					v1.EventTypeNormal,
-					"Velero Restore finished",
-					fmt.Sprintf(
-						"%s finished",
-						veleroRestore.Name,
-					),
-				)
-				apimeta.SetStatusCondition(&restore.Status.Conditions,
-					metav1.Condition{
-						Type:    v1beta1.RestoreComplete,
-						Status:  metav1.ConditionTrue,
-						Reason:  v1beta1.RestoreReasonFinished,
-						Message: fmt.Sprintf("Restore Complete %s", veleroRestore.Name),
-					})
-			case isVeleroRestoreRunning(veleroRestore):
-				apimeta.SetStatusCondition(&restore.Status.Conditions,
-					metav1.Condition{
-						Type:    v1beta1.RestoreStarted,
-						Status:  metav1.ConditionTrue,
-						Reason:  v1beta1.RestoreReasonRunning,
-						Message: fmt.Sprintf("Velero Restore %s is running", veleroRestore.Name),
-					})
-			default:
-				apimeta.SetStatusCondition(&restore.Status.Conditions,
-					metav1.Condition{
-						Type:    v1beta1.RestoreStarted,
-						Status:  metav1.ConditionFalse,
-						Reason:  v1beta1.RestoreReasonRunning,
-						Message: fmt.Sprintf("Velero Restore %s is running", veleroRestore.Name),
-					})
-			}
+	for i := range veleroRestoreList.Items {
+		veleroRestore := veleroRestoreList.Items[i].DeepCopy()
+		switch {
+		case isVeleroRestoreFinished(veleroRestore):
+			r.Recorder.Event(
+				restore,
+				v1.EventTypeNormal,
+				"Velero Restore finished",
+				fmt.Sprintf(
+					"%s finished",
+					veleroRestore.Name,
+				),
+			)
+			apimeta.SetStatusCondition(&restore.Status.Conditions,
+				metav1.Condition{
+					Type:    v1beta1.RestoreComplete,
+					Status:  metav1.ConditionTrue,
+					Reason:  v1beta1.RestoreReasonFinished,
+					Message: fmt.Sprintf("Restore Complete %s", veleroRestore.Name),
+				})
+		case isVeleroRestoreRunning(veleroRestore):
+			apimeta.SetStatusCondition(&restore.Status.Conditions,
+				metav1.Condition{
+					Type:    v1beta1.RestoreStarted,
+					Status:  metav1.ConditionTrue,
+					Reason:  v1beta1.RestoreReasonRunning,
+					Message: fmt.Sprintf("Velero Restore %s is running", veleroRestore.Name),
+				})
+		default:
+			apimeta.SetStatusCondition(&restore.Status.Conditions,
+				metav1.Condition{
+					Type:    v1beta1.RestoreStarted,
+					Status:  metav1.ConditionFalse,
+					Reason:  v1beta1.RestoreReasonRunning,
+					Message: fmt.Sprintf("Velero Restore %s is running", veleroRestore.Name),
+				})
 		}
-	default: // (should never happen)
 	}
 
 	err := r.Client.Status().Update(ctx, restore)
@@ -167,19 +207,23 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &veleroapi.Restore{}, restoreOwnerKey, func(rawObj client.Object) []string {
-		// grab the job object, extract the owner...
-		job := rawObj.(*veleroapi.Restore)
-		owner := metav1.GetControllerOf(job)
-		if owner == nil {
-			return nil
-		}
-		// ..should be a Restore in Group cluster.open-cluster-management.io
-		if owner.APIVersion != apiGVStr || owner.Kind != "Restore" {
-			return nil
-		}
-		return []string{owner.Name}
-	}); err != nil {
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&veleroapi.Restore{},
+		restoreOwnerKey,
+		func(rawObj client.Object) []string {
+			// grab the job object, extract the owner...
+			job := rawObj.(*veleroapi.Restore)
+			owner := metav1.GetControllerOf(job)
+			if owner == nil {
+				return nil
+			}
+			// ..should be a Restore in Group cluster.open-cluster-management.io
+			if owner.APIVersion != apiGVStr || owner.Kind != "Restore" {
+				return nil
+			}
+			return []string{owner.Name}
+		}); err != nil {
 		return err
 	}
 	return ctrl.NewControllerManagedBy(mgr).
@@ -189,7 +233,8 @@ func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// mostRecentWithLessErrors defines type and code to sort velero backups according to number of errors and start timestamp
+// mostRecentWithLessErrors defines type and code to sort velero backups
+// according to number of errors and start timestamp
 type mostRecentWithLessErrors []veleroapi.Backup
 
 func (backups mostRecentWithLessErrors) Len() int { return len(backups) }
