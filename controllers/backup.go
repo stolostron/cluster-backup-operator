@@ -20,8 +20,10 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
+	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
@@ -53,6 +55,17 @@ var (
 	backupCredsResources = [...]string{"secret"}
 )
 
+var (
+	apiGVString = v1beta1.GroupVersion.String()
+	// create credentials schedule first since this is the fastest one, followed by resources
+	// mapping ResourceTypes to Velero schedule names
+	veleroScheduleNames = map[ResourceType]string{
+		Credentials:     "acm-credentials-schedule",
+		Resources:       "acm-resources-schedule",
+		ManagedClusters: "acm-managed-clusters-schedule",
+	}
+)
+
 // clean up old backups if they exceed the maxCount number
 func cleanupBackups(
 	ctx context.Context,
@@ -73,7 +86,13 @@ func cleanupBackups(
 		}
 	} else {
 
-		sliceBackups := veleroBackupList.Items[:]
+		// get acm backups only when counting existing backups
+		sliceBackups := filterBackups(veleroBackupList.Items[:], func(bkp veleroapi.Backup) bool {
+			return strings.HasPrefix(bkp.Name, veleroScheduleNames[Credentials]) ||
+				strings.HasPrefix(bkp.Name, veleroScheduleNames[ManagedClusters]) ||
+				strings.HasPrefix(bkp.Name, veleroScheduleNames[Resources])
+		})
+
 		if maxBackups < len(sliceBackups) {
 			// need to delete backups
 			// sort backups by create time
@@ -89,20 +108,7 @@ func cleanupBackups(
 				return timeA < timeB
 			})
 
-			backupsInError := filterBackups(sliceBackups, func(bkp veleroapi.Backup) bool {
-				return bkp.Status.Errors > 0
-			})
-
-			// delete backup in error first
-			for i := 0; i < min(len(backupsInError), maxBackups); i++ {
-				deleteBackup(ctx, &backupsInError[i], c)
-			}
-
 			for i := 0; i < len(sliceBackups)-maxBackups; i++ {
-				// delete extra backups now
-				if sliceBackups[i].Status.Errors > 0 {
-					continue // ignore error status backups, they were processed in the step above
-				}
 				deleteBackup(ctx, &sliceBackups[i], c)
 			}
 		}

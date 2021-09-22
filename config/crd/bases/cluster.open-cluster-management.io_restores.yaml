@@ -140,7 +140,6 @@ spec:
               veleroCredentialsRestoreName:
                 type: string
               veleroManagedClustersRestoreName:
-                description: 'TODO: replace with core/v1 TypedLocalObjectReference'
                 type: string
               veleroResourcesRestoreName:
                 type: string
