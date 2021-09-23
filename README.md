@@ -71,9 +71,13 @@ The  `backupschedule.cluster.open-cluster-management.io` creates 3 `schedule.vel
 
 ## Restoring a backup
 
-The restore operation should be run on a different hub then the one where the backup was created.
+In a usual restore scenario, the hub where the backups have been executed becomes unavailable and data backed up needs to be moved to a new hub. This is done by running the cluster restore operation on the hub where the backed up data needs to be moved to. In this case, the restore operation is executed on a different hub than the one where the backup was created. 
 
-After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on your new hub that the backed up resources contained by the backup file have been created.
+There are also cases where you want to restore the data on the same hub where the backup was collected, in order to recover data from a previous snapshot. In this case both restore and backup operations are executed on the same hub.
+
+After you create a `restore.cluster.open-cluster-management.io` resource on the hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on your  hub that the backed up resources contained by the backup file have been created.
+
+<b>Note:</b> The `restore.cluster.open-cluster-management.io` resource is executed once. After the restore operation is completed, if you want to run another restore operation on the same hub, you have to create a new `restore.cluster.open-cluster-management.io` resource.
 
 The restore operation allows to restore all 3 backup types created by the backup operation, although you can choose to install only a certain type (only managed clusters or only user credentials or only hub resources). 
 
@@ -219,8 +223,6 @@ schedule-acm
 
 ## Restore a backup
 
-The restore operation should be run on a different hub then the one where the backup was created.
-
 After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on the new hub that the backed up resources contained by the backup file have been created.
 
 The restore defines 3 required spec properties, defining the restore logic for the 3 type of backed up files. 
@@ -232,6 +234,9 @@ The valid options for the above properties are :
   - `latest` - restore the last available backup file for managed clusters
   - `skip` - do not attempt to restore the managed clusters with this restore operation
   - `<backup_name>` - restore the specified backup pointing to it by name
+
+<b>Note:</b> The `restore.cluster.open-cluster-management.io` resource is executed once. After the restore operation is completed, if you want to run another restore operation on the same hub, you have to create a new `restore.cluster.open-cluster-management.io` resource.
+
 
 Below is an example of a `restore.cluster.open-cluster-management.io` resource, restoring all 3 types of backed up files, using the latest available backups:
 
