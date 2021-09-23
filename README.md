@@ -71,7 +71,7 @@ The  `backupschedule.cluster.open-cluster-management.io` creates 3 `schedule.vel
 
 ## Restoring a backup
 
-In an usual restore scenario, the hub where the backups have been executed becomes unavailable and data backed up needs to be moved to a new hub. This is done by running the cluster restore operation on the hub where the backed up data needs to be moved to. In this case, the restore operation is executed on a different hub then the one where the backup was created. 
+In a usual restore scenario, the hub where the backups have been executed becomes unavailable and data backed up needs to be moved to a new hub. This is done by running the cluster restore operation on the hub where the backed up data needs to be moved to. In this case, the restore operation is executed on a different hub than the one where the backup was created. 
 
 There are also cases where you want to restore the data on the same hub where the backup was collected, in order to recover data from a previous snapshot. In this case both restore and backup operations are executed on the same hub.
 
