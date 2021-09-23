@@ -87,8 +87,8 @@ The restore defines 3 required spec properties, defining the restore logic for t
 - `veleroResourcesBackupName` is used to define the restore option for the hub resources (applications and policies). 
 
 The valid options for the above properties are : 
-  - `latest` - restore the last available backup file for managed clusters
-  - `skip` - do not attempt to restore the managed clusters with this restore operation
+  - `latest` - restore the last available backup file for this type of backup
+  - `skip` - do not attempt to restore this type of backup with the current restore operation
   - `<backup_name>` - restore the specified backup pointing to it by name
 
 Below you can see the sample available with the operator.
@@ -231,8 +231,8 @@ The restore defines 3 required spec properties, defining the restore logic for t
 - `veleroResourcesBackupName` is used to define the restore option for the hub resources (applications and policies). 
 
 The valid options for the above properties are : 
-  - `latest` - restore the last available backup file for managed clusters
-  - `skip` - do not attempt to restore the managed clusters with this restore operation
+  - `latest` - restore the last available backup file for this type of backup
+  - `skip` - do not attempt to restore this type of backup with the current restore operation
   - `<backup_name>` - restore the specified backup pointing to it by name
 
 <b>Note:</b> The `restore.cluster.open-cluster-management.io` resource is executed once. After the restore operation is completed, if you want to run another restore operation on the same hub, you have to create a new `restore.cluster.open-cluster-management.io` resource.
