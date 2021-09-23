@@ -82,6 +82,14 @@ rules:
   - patch
   - update
 - apiGroups:
+  - hive.openshift.io
+  resources:
+  - clusterpools
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - velero.io
   resources:
   - backups
