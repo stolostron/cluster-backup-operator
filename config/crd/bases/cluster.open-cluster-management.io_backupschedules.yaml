@@ -55,7 +55,8 @@ spec:
                 type: string
               veleroTtl:
                 description: TTL is a time.Duration-parseable string describing how
-                  long the Velero Backup should be retained for.
+                  long the Velero Backup should be retained for. If not specified
+                  the maximum default value set by velero is used - 720h
                 type: string
             required:
             - maxBackups
