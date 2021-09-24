@@ -40,7 +40,7 @@ This project is licensed under the *Apache License 2.0*. A copy of the license c
 ## Getting Started
 The Cluster Back up and Restore Operator runs on the hub and depends on the [OADP Operator](https://github.com/openshift/oadp-operator) to install [Velero](https://velero.io/) on the ACM hub, which is then used to backup and restore ACM hub resources. 
 
-Before you can use the cluster operator, you first need to install the OADP Operator as described [here](https://github.com/openshift/oadp-operator#installing-operator).
+Before you can use the cluster operator, you first need to install the OADP Operator as described [here](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md).
 Make sure you follow the steps to create the [secret for the cloud storage](https://github.com/openshift/oadp-operator#creating-credentials-secret) where the backups are going to be saved, then use that secret when creating the [Velero resource](https://github.com/openshift/oadp-operator#creating-velero-cr).
 
 The Cluster Back up and Restore Operator resources must be created in the same namespace where the OADP Operator is installed. 
