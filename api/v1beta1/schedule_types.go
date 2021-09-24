@@ -52,7 +52,8 @@ type BackupScheduleSpec struct {
 	// +kubebuilder:validation:Required
 	VeleroSchedule string `json:"veleroSchedule"`
 	// TTL is a time.Duration-parseable string describing how long
-	// the Velero Backup should be retained for.
+	// the Velero Backup should be retained for. If not specified
+	// the maximum default value set by velero is used - 720h
 	// +kubebuilder:validation:Optional
 	VeleroTTL metav1.Duration `json:"veleroTtl,omitempty"`
 	// Maximum number of scheduled backups after which the old backups are being removed
