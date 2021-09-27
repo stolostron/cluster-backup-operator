@@ -87,17 +87,47 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
 		veleroStorageLocations == nil || len(veleroStorageLocations.Items) == 0 {
 
+		msg := "velero.io.BackupStorageLocation resources not found. " +
+			"Verify you have created a konveyor.openshift.io.Velero resource."
+		restoreLogger.Info(msg)
+
 		apimeta.SetStatusCondition(&restore.Status.Conditions,
 			metav1.Condition{
-				Type:   v1beta1.RestoreFailed,
-				Status: metav1.ConditionFalse,
-				Reason: v1beta1.RestoreReasonNotStarted,
-				Message: "velero.io.BackupStorageLocation resources not found. " +
-					"Verify you have created a konveyor.openshift.io.Velero resource.",
+				Type:    v1beta1.RestoreFailed,
+				Status:  metav1.ConditionFalse,
+				Reason:  v1beta1.RestoreReasonNotStarted,
+				Message: msg,
 			})
 
 		// retry after failureInterval
 		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
+			r.Client.Status().Update(ctx, restore),
+			updateStatusFailedMsg,
+		)
+	}
+
+	//keep track of the velero oadp namespace
+	veleroNamespace := veleroStorageLocations.Items[0].Namespace
+
+	// return error if the cluster restore file is not in the same namespace with velero
+	if veleroNamespace != req.Namespace {
+
+		msg := fmt.Sprintf(
+			"Restore resource [%s/%s] must be created in the velero namespace [%s]",
+			req.Namespace,
+			req.Name,
+			veleroNamespace,
+		)
+		restoreLogger.Info(msg)
+		apimeta.SetStatusCondition(&restore.Status.Conditions,
+			metav1.Condition{
+				Type:    v1beta1.RestoreFailed,
+				Status:  metav1.ConditionFalse,
+				Reason:  v1beta1.RestoreReasonNotStarted,
+				Message: msg,
+			})
+
+		return ctrl.Result{}, errors.Wrap(
 			r.Client.Status().Update(ctx, restore),
 			updateStatusFailedMsg,
 		)
@@ -114,13 +144,16 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// if no valid storage location found wait for valid value
 	if !isValidStorageLocation {
+
+		msg := "Backup storage location is not available. " +
+			"Check velero.io.BackupStorageLocation and validate storage credentials."
+		restoreLogger.Info(msg)
 		apimeta.SetStatusCondition(&restore.Status.Conditions,
 			metav1.Condition{
-				Type:   v1beta1.RestoreFailed,
-				Status: metav1.ConditionFalse,
-				Reason: v1beta1.RestoreReasonNotStarted,
-				Message: "Backup storage location is not available. " +
-					"Check velero.io.BackupStorageLocation and validate storage credentials.",
+				Type:    v1beta1.RestoreFailed,
+				Status:  metav1.ConditionFalse,
+				Reason:  v1beta1.RestoreReasonNotStarted,
+				Message: msg,
 			})
 
 		// retry after failureInterval
@@ -138,12 +171,24 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		client.InNamespace(req.Namespace),
 		client.MatchingFields{restoreOwnerKey: req.Name},
 	); err != nil {
+
+		msg := "unable to list velero restores for restore" +
+			"namespace:" + req.Namespace +
+			"name:" + req.Name
+
 		restoreLogger.Error(
 			err,
-			"unable to list velero restores for restore",
-			"namespace", req.Namespace,
-			"name", req.Name,
+			msg,
 		)
+
+		apimeta.SetStatusCondition(&restore.Status.Conditions,
+			metav1.Condition{
+				Type:    v1beta1.RestoreFailed,
+				Status:  metav1.ConditionFalse,
+				Reason:  v1beta1.RestoreReasonNotStarted,
+				Message: msg,
+			})
+
 		return ctrl.Result{}, err
 	}
 
@@ -273,7 +318,7 @@ func (r *RestoreReconciler) getVeleroBackupName(
 		relatedBackups := filterBackups(veleroBackups.Items, func(bkp veleroapi.Backup) bool {
 			return strings.Contains(bkp.Name, veleroScheduleNames[resourceType])
 		})
-		if relatedBackups == nil || len(relatedBackups) == 0 {
+		if len(relatedBackups) == 0 {
 			return "", fmt.Errorf("no backups found")
 		}
 		sort.Sort(mostRecentWithLessErrors(relatedBackups))
@@ -301,14 +346,21 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 	// loop through resourceTypes to create a Velero restore per type
 	for key := range veleroScheduleNames {
-		var backupName string
+		backupName := latestBackupStr
+
 		switch key {
 		case ManagedClusters:
-			backupName = *restore.Spec.VeleroManagedClustersBackupName
+			if restore.Spec.VeleroManagedClustersBackupName != nil {
+				backupName = *restore.Spec.VeleroManagedClustersBackupName
+			}
 		case Credentials:
-			backupName = *restore.Spec.VeleroCredentialsBackupName
+			if restore.Spec.VeleroCredentialsBackupName != nil {
+				backupName = *restore.Spec.VeleroCredentialsBackupName
+			}
 		case Resources:
-			backupName = *restore.Spec.VeleroResourcesBackupName
+			if restore.Spec.VeleroResourcesBackupName != nil {
+				backupName = *restore.Spec.VeleroResourcesBackupName
+			}
 		}
 
 		backupName = strings.ToLower(strings.TrimSpace(backupName))
@@ -349,6 +401,17 @@ func (r *RestoreReconciler) initVeleroRestores(
 				veleroRestore.Namespace,
 				veleroRestore.Name,
 			)
+			apimeta.SetStatusCondition(&restore.Status.Conditions,
+				metav1.Condition{
+					Type:   v1beta1.RestoreFailed,
+					Status: metav1.ConditionFalse,
+					Reason: v1beta1.RestoreReasonNotStarted,
+					Message: fmt.Sprintf("Cannot create velero restore resource %s/%s",
+						veleroRestore.Namespace,
+						veleroRestore.Name,
+					),
+				})
+
 			return err
 		}
 
