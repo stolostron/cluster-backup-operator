@@ -93,9 +93,12 @@ func (r *BackupScheduleReconciler) Reconcile(
 	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
 		veleroStorageLocations == nil || len(veleroStorageLocations.Items) == 0 {
 
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = "velero.io.BackupStorageLocation resources not found. " +
+		msg := "velero.io.BackupStorageLocation resources not found. " +
 			"Verify you have created a konveyor.openshift.io.Velero resource."
+		scheduleLogger.Info(msg)
+
+		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
+		backupSchedule.Status.LastMessage = msg
 
 		// retry after failureInterval
 		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
@@ -115,12 +118,38 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 	// if no valid storage location found wait for valid value
 	if !isValidStorageLocation {
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = "Backup storage location is not available. " +
+		msg := "Backup storage location is not available. " +
 			"Check velero.io.BackupStorageLocation and validate storage credentials."
+		scheduleLogger.Info(msg)
+
+		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
+		backupSchedule.Status.LastMessage = msg
 
 		// retry after failureInterval
 		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
+			r.Client.Status().Update(ctx, backupSchedule),
+			updateStatusFailedMsg,
+		)
+	}
+
+	//keep track of the velero oadp namespace
+	veleroNamespace := veleroStorageLocations.Items[0].Namespace
+
+	// return error if the cluster restore file is not in the same namespace with velero
+	if veleroNamespace != req.Namespace {
+
+		msg := fmt.Sprintf(
+			"Schedule resource [%s/%s] must be created in the velero namespace [%s]",
+			req.Namespace,
+			req.Name,
+			veleroNamespace,
+		)
+		scheduleLogger.Info(msg)
+
+		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
+		backupSchedule.Status.LastMessage = msg
+
+		return ctrl.Result{}, errors.Wrap(
 			r.Client.Status().Update(ctx, backupSchedule),
 			updateStatusFailedMsg,
 		)

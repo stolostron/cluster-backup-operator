@@ -246,6 +246,28 @@ var _ = Describe("Basic Restore controller", func() {
 					Name: veleroNamespaceName,
 				},
 			}
+			backupStorageLocation = &veleroapi.BackupStorageLocation{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "BackupStorageLocation",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "default",
+					Namespace: veleroNamespaceName,
+				},
+				Spec: veleroapi.BackupStorageLocationSpec{
+					AccessMode: "ReadWrite",
+					StorageType: veleroapi.StorageType{
+						ObjectStorage: &veleroapi.ObjectStorageLocation{
+							Bucket: "velero-backup-acm-dr",
+							Prefix: "velero",
+						},
+					},
+					Provider: "aws",
+				},
+			}
+			backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
+
 			rhacmRestore = v1beta1.Restore{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "cluster.open-cluster-management.io/v1beta1",
@@ -655,5 +677,4 @@ var _ = Describe("Basic Restore controller", func() {
 			}, timeout, interval).Should(BeTrue())
 		})
 	})
-
 })
