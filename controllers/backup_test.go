@@ -1,11 +1,31 @@
 package controllers
 
 import (
+	"math/rand"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const (
+	letterIdxBits = 6                    // 6 bits to represent a letter index
+	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
+)
+
+// gerenates a random string with specified length
+func RandStringBytesMask(n int) string {
+	b := make([]byte, n)
+	for i := 0; i < n; {
+		if idx := int(rand.Int63() & letterIdxMask); idx < len(letterBytes) {
+			b[i] = letterBytes[idx]
+			i++
+		}
+	}
+	return string(b)
+}
 
 var _ = Describe("Backup", func() {
 
@@ -15,6 +35,14 @@ var _ = Describe("Backup", func() {
 
 	Context("For utility functions of Backup", func() {
 		It("isBackupFinished should return correct value based on the status", func() {
+
+			//returns the concatenated strings, no trimming
+			Expect(getValidKsRestoreName("a", "b")).Should(Equal("a-b"))
+
+			//returns substring of length 252
+			longName := RandStringBytesMask(260)
+			Expect(getValidKsRestoreName(longName, "b")).Should(Equal(longName[:252]))
+
 			Expect(isBackupFinished(nil)).Should(BeFalse())
 
 			veleroBackups := make([]*veleroapi.Backup, 0)
