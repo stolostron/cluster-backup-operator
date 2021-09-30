@@ -501,13 +501,38 @@ var _ = Describe("BackupSchedule controller", func() {
 				return createdBackupScheduleACM.Status.Phase == v1beta1.SchedulePhaseFailedValidation
 			}, timeout, interval).Should(BeTrue())
 
-			// count schedules
+			// count acm schedules
 			acmSchedulesList := v1beta1.BackupScheduleList{}
 			Eventually(func() bool {
 				err := k8sClient.List(ctx, &acmSchedulesList, &client.ListOptions{})
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 			Expect(len(acmSchedulesList.Items)).To(BeNumerically("==", 4))
+
+			// count velero schedules
+			veleroScheduleList := veleroapi.ScheduleList{}
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, &veleroScheduleList, &client.ListOptions{})
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
+			Expect(len(veleroScheduleList.Items)).To(BeNumerically("==", 3))
+
+			// delete existing acm schedules
+			for i := range acmSchedulesList.Items {
+				Eventually(func() bool {
+					scheduleObj := acmSchedulesList.Items[i].DeepCopy()
+					err := k8sClient.Delete(ctx, scheduleObj)
+					return err == nil
+				}, timeout, interval).Should(BeTrue())
+			}
+
+			// acm schedules are 0 now
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, &acmSchedulesList, &client.ListOptions{})
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
+			Expect(len(acmSchedulesList.Items)).To(BeNumerically("==", 0))
+
 		})
 
 	})
