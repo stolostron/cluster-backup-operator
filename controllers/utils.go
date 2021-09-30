@@ -44,3 +44,15 @@ func min(x, y int) int {
 	}
 	return y
 }
+
+// returns a valid name for the velero restore kubernetes resource
+// by trimming the concatenated cluster restore and backup names
+func getValidKsRestoreName(clusterRestoreName string, backupName string) string {
+	//max name for ns or resources is 253 chars
+	fullName := clusterRestoreName + "-" + backupName
+
+	if len(fullName) > 252 {
+		return fullName[:252]
+	}
+	return fullName
+}

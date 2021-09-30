@@ -24,7 +24,9 @@ var _ = Describe("BackupSchedule controller", func() {
 		managedClusters       []clusterv1.ManagedCluster
 		backupStorageLocation *veleroapi.BackupStorageLocation
 		veleroNamespaceName   string
+		acmNamespaceName      string
 		veleroNamespace       *corev1.Namespace
+		acmNamespace          *corev1.Namespace
 		backupScheduleName    string = "the-backup-schedule-name"
 		backupSchedule        string = "0 */6 * * *"
 
@@ -35,6 +37,7 @@ var _ = Describe("BackupSchedule controller", func() {
 	BeforeEach(func() {
 		ctx = context.Background()
 		veleroNamespaceName = "velero-ns"
+		acmNamespaceName = "acm-ns"
 		managedClusters = []clusterv1.ManagedCluster{
 			{
 				TypeMeta: metav1.TypeMeta{
@@ -70,6 +73,16 @@ var _ = Describe("BackupSchedule controller", func() {
 				Name: veleroNamespaceName,
 			},
 		}
+		acmNamespace = &corev1.Namespace{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Namespace",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: acmNamespaceName,
+			},
+		}
+
 		backupStorageLocation = &veleroapi.BackupStorageLocation{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: "velero/v1",
@@ -98,6 +111,8 @@ var _ = Describe("BackupSchedule controller", func() {
 			Expect(k8sClient.Delete(ctx, &managedClusters[i])).Should(Succeed())
 		}
 		Expect(k8sClient.Delete(ctx, veleroNamespace)).Should(Succeed())
+		Expect(k8sClient.Delete(ctx, acmNamespace)).Should(Succeed())
+
 		Expect(k8sClient.Delete(ctx, backupStorageLocation)).Should(Succeed())
 	})
 
@@ -106,6 +121,8 @@ var _ = Describe("BackupSchedule controller", func() {
 			Expect(k8sClient.Create(ctx, &managedClusters[i])).Should(Succeed())
 		}
 		Expect(k8sClient.Create(ctx, veleroNamespace)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, acmNamespace)).Should(Succeed())
+
 		Expect(k8sClient.Create(ctx, backupStorageLocation)).Should(Succeed())
 		backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
 		Expect(k8sClient.Status().Update(ctx, backupStorageLocation)).Should(Succeed())
@@ -131,6 +148,18 @@ var _ = Describe("BackupSchedule controller", func() {
 				return false
 			}, timeout, interval).Should(BeTrue())
 
+			createdACMNamespace := corev1.Namespace{}
+			Eventually(func() bool {
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: acmNamespaceName,
+					Namespace: ""}, &createdACMNamespace); err != nil {
+					return false
+				}
+				if createdACMNamespace.Status.Phase == "Active" {
+					return true
+				}
+				return false
+			}, timeout, interval).Should(BeTrue())
+
 			rhacmBackupSchedule := v1beta1.BackupSchedule{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "cluster.open-cluster-management.io/v1beta1",
@@ -147,22 +176,6 @@ var _ = Describe("BackupSchedule controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, &rhacmBackupSchedule)).Should(Succeed())
-
-			rhacmBackupScheduleNoTTL := v1beta1.BackupSchedule{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "BackupSchedule",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      backupScheduleName + "-nottl",
-					Namespace: veleroNamespaceName,
-				},
-				Spec: v1beta1.BackupScheduleSpec{
-					VeleroSchedule: "0 */6 * * *",
-					MaxBackups:     2,
-				},
-			}
-			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleNoTTL)).Should(Succeed())
 
 			backupLookupKey := types.NamespacedName{
 				Name:      backupScheduleName,
@@ -188,7 +201,109 @@ var _ = Describe("BackupSchedule controller", func() {
 					createdBackupSchedule.Status.VeleroScheduleManagedClusters != nil &&
 					createdBackupSchedule.Status.VeleroScheduleResources != nil
 			}, timeout, interval).Should(BeTrue())
+
+			// new backup
+			backupScheduleNameNoTTL := backupScheduleName + "-nottl"
+			rhacmBackupScheduleNoTTL := v1beta1.BackupSchedule{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
+					Kind:       "BackupSchedule",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      backupScheduleNameNoTTL,
+					Namespace: veleroNamespaceName,
+				},
+				Spec: v1beta1.BackupScheduleSpec{
+					VeleroSchedule: "0 */6 * * *",
+					MaxBackups:     2,
+				},
+			}
+			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleNoTTL)).Should(Succeed())
+
+			// new schedule backup to trigger backup delete routine
+			backupScheduleName3 := backupScheduleName + "-3"
+			backupSchedule3 := v1beta1.BackupSchedule{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
+					Kind:       "BackupSchedule",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      backupScheduleName3,
+					Namespace: veleroNamespaceName,
+				},
+				Spec: v1beta1.BackupScheduleSpec{
+					VeleroSchedule: "0 */6 * * *",
+					MaxBackups:     1,
+				},
+			}
+			Expect(k8sClient.Create(ctx, &backupSchedule3)).Should(Succeed())
+
+			backupLookupKeyNoTTL := types.NamespacedName{
+				Name:      backupScheduleNameNoTTL,
+				Namespace: veleroNamespaceName,
+			}
+			createdBackupScheduleNoTTL := v1beta1.BackupSchedule{}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, backupLookupKeyNoTTL, &createdBackupScheduleNoTTL)
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
+
+			Expect(createdBackupScheduleNoTTL.CreationTimestamp.Time).NotTo(BeNil())
+
+			Expect(createdBackupScheduleNoTTL.Spec.VeleroSchedule).Should(Equal(backupSchedule))
+
+			// schedules cannot be created because there already some running from the above schedule
+			By("created backup schedule should NOT contain velero schedules, acm-credentials-schedule already exists error")
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, backupLookupKeyNoTTL, &createdBackupScheduleNoTTL)
+				if err != nil {
+					return false
+				}
+				return createdBackupScheduleNoTTL.Status.VeleroScheduleCredentials != nil &&
+					createdBackupScheduleNoTTL.Status.VeleroScheduleManagedClusters != nil &&
+					createdBackupScheduleNoTTL.Status.VeleroScheduleResources != nil
+			}, timeout, interval).ShouldNot(BeTrue())
+
+			//
+			acmBackupName := backupScheduleName
+			rhacmBackupScheduleACM := v1beta1.BackupSchedule{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
+					Kind:       "BackupSchedule",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      acmBackupName,
+					Namespace: acmNamespaceName,
+				},
+				Spec: v1beta1.BackupScheduleSpec{
+					MaxBackups:     2,
+					VeleroSchedule: "0 */6 * * *",
+					VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleACM)).Should(Succeed())
+
+			backupLookupKeyACM := types.NamespacedName{
+				Name:      acmBackupName,
+				Namespace: acmNamespaceName,
+			}
+			createdBackupScheduleACM := v1beta1.BackupSchedule{}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, backupLookupKeyACM, &createdBackupScheduleACM)
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
+
+			By("backup schedule in acm ns should be in failed validation status - since it must be in the velero ns")
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, backupLookupKeyACM, &createdBackupScheduleACM)
+				if err != nil {
+					return false
+				}
+				return createdBackupScheduleACM.Status.Phase == v1beta1.SchedulePhaseFailedValidation
+			}, timeout, interval).Should(BeTrue())
+
 		})
 
 	})
+
 })

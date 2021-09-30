@@ -384,8 +384,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			)
 			return err
 		}
-		// TODO check length of produced name
-		veleroRestore.Name = restore.Name + "-" + veleroBackupName
+		veleroRestore.Name = getValidKsRestoreName(restore.Name, veleroBackupName)
 
 		veleroRestore.Namespace = restore.Namespace
 		veleroRestore.Spec.BackupName = veleroBackupName
@@ -397,9 +396,9 @@ func (r *RestoreReconciler) initVeleroRestores(
 		if err = r.Create(ctx, veleroRestore, &client.CreateOptions{}); err != nil {
 			restoreLogger.Error(
 				err,
-				"unable to create Velero restore for restore %s/%s",
-				veleroRestore.Namespace,
-				veleroRestore.Name,
+				"unable to create Velero restore for restore",
+				"namespace", veleroRestore.Namespace,
+				"name", veleroRestore.Name,
 			)
 			apimeta.SetStatusCondition(&restore.Status.Conditions,
 				metav1.Condition{

@@ -45,6 +45,7 @@ var _ = Describe("Basic Restore controller", func() {
 		veleroResourcesBackupName       string
 		veleroCredentialsBackupName     string
 		veleroNamespaceName             string
+		acmNamespaceName                string
 		restoreName                     string
 		veleroBackups                   []veleroapi.Backup
 		rhacmRestore                    v1beta1.Restore
@@ -668,6 +669,80 @@ var _ = Describe("Basic Restore controller", func() {
 			}
 		})
 		It("Should not create any restore", func() {
+			veleroRestores := veleroapi.RestoreList{}
+			Eventually(func() bool {
+				if err := k8sClient.List(ctx, &veleroRestores, client.InNamespace(veleroNamespaceName)); err != nil {
+					return false
+				}
+				return len(veleroRestores.Items) == 0
+			}, timeout, interval).Should(BeTrue())
+		})
+	})
+
+	Context("When creating a Restore in a ns different then velero ns", func() {
+		BeforeEach(func() {
+
+			veleroNamespaceName = "velero-restore-ns-5"
+			veleroNamespace = &corev1.Namespace{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Namespace",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: veleroNamespaceName,
+				},
+			}
+			backupStorageLocation = &veleroapi.BackupStorageLocation{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "BackupStorageLocation",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "default-5",
+					Namespace: veleroNamespaceName,
+				},
+				Spec: veleroapi.BackupStorageLocationSpec{
+					AccessMode: "ReadWrite",
+					StorageType: veleroapi.StorageType{
+						ObjectStorage: &veleroapi.ObjectStorageLocation{
+							Bucket: "velero-backup-acm-dr",
+							Prefix: "velero",
+						},
+					},
+					Provider: "aws",
+				},
+			}
+			acmNamespaceName = "acm-ns-1"
+			acmNamespace := &corev1.Namespace{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Namespace",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: acmNamespaceName,
+				},
+			}
+			Expect(k8sClient.Create(ctx, acmNamespace)).Should(Succeed())
+
+			veleroBackups = []veleroapi.Backup{}
+			rhacmRestore = v1beta1.Restore{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
+					Kind:       "Restore",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      restoreName + "-new",
+					Namespace: acmNamespaceName,
+				},
+				Spec: v1beta1.RestoreSpec{
+					VeleroManagedClustersBackupName: &latestBackup,
+					VeleroCredentialsBackupName:     &skipRestore,
+					VeleroResourcesBackupName:       &skipRestore,
+				},
+			}
+
+		})
+		It("Should not create any velero restore resources, restore object created in the wrong ns", func() {
 			veleroRestores := veleroapi.RestoreList{}
 			Eventually(func() bool {
 				if err := k8sClient.List(ctx, &veleroRestores, client.InNamespace(veleroNamespaceName)); err != nil {
