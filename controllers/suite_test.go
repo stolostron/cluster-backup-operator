@@ -35,6 +35,7 @@ import (
 
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	backupv1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
+	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
 	operatorapiv1 "open-cluster-management.io/api/operator/v1"
 
 	valeroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
@@ -80,6 +81,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = clusterv1.AddToScheme(scheme.Scheme) // for managedclusters
+	Expect(err).NotTo(HaveOccurred())
+
+	err = chnv1.AddToScheme(scheme.Scheme) // for channels
 	Expect(err).NotTo(HaveOccurred())
 
 	err = certsv1.AddToScheme(scheme.Scheme) // for CSR

@@ -173,14 +173,14 @@ metadata:
 spec:
   maxBackups: 10 # maximum number of backups after which old backups should be removed
   veleroSchedule: 0 */6 * * * # Create a backup every 6 hours
-  veleroTtl: 72h # deletes scheduled backups after 72h; optional, backups never expires if option not set
+  veleroTtl: 72h # deletes scheduled backups after 72h; optional, if not specified, the maximum default value set by velero is used - 720h
 ```
 
 - `maxBackup` is a required property and represents the maximum number of backups after which old backups are being removed.
 
 - `veleroSchedule` is a required property and defines a cron job for scheduling the backups.
 
-- `veleroTtl` is an optional property and defines the expiration time for a scheduled backup resource. A backup never expires if this property is not set.
+- `veleroTtl` is an optional property and defines the expiration time for a scheduled backup resource. If not specified, the maximum default value set by velero is used, which is 720h.
 
 
 This is an example of a `restore.cluster.open-cluster-management.io` resource definition

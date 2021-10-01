@@ -14,21 +14,30 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 )
 
 var _ = Describe("BackupSchedule controller", func() {
 
 	var (
-		ctx                   context.Context
-		managedClusters       []clusterv1.ManagedCluster
-		backupStorageLocation *veleroapi.BackupStorageLocation
-		veleroNamespaceName   string
-		acmNamespaceName      string
-		veleroNamespace       *corev1.Namespace
-		acmNamespace          *corev1.Namespace
-		backupScheduleName    string = "the-backup-schedule-name"
-		backupSchedule        string = "0 */6 * * *"
+		ctx                             context.Context
+		managedClusters                 []clusterv1.ManagedCluster
+		channels                        []chnv1.Channel
+		backupStorageLocation           *veleroapi.BackupStorageLocation
+		veleroBackups                   []veleroapi.Backup
+		veleroNamespaceName             string
+		acmNamespaceName                string
+		chartsv1NSName                  string
+		veleroNamespace                 *corev1.Namespace
+		acmNamespace                    *corev1.Namespace
+		chartsv1NS                      *corev1.Namespace
+		backupScheduleName              string = "the-backup-schedule-name"
+		veleroManagedClustersBackupName        = "acm-managed-clusters-schedule-20210910181336"
+		veleroResourcesBackupName              = "acm-resources-schedule-20210910181336"
+		veleroCredentialsBackupName            = "acm-credentials-schedule-20210910181336"
+
+		backupSchedule string = "0 */6 * * *"
 
 		timeout  = time.Second * 70
 		interval = time.Millisecond * 250
@@ -38,6 +47,7 @@ var _ = Describe("BackupSchedule controller", func() {
 		ctx = context.Background()
 		veleroNamespaceName = "velero-ns"
 		acmNamespaceName = "acm-ns"
+		chartsv1NSName = "acm-channel-ns"
 		managedClusters = []clusterv1.ManagedCluster{
 			{
 				TypeMeta: metav1.TypeMeta{
@@ -62,6 +72,15 @@ var _ = Describe("BackupSchedule controller", func() {
 				Spec: clusterv1.ManagedClusterSpec{
 					HubAcceptsClient: true,
 				},
+			},
+		}
+		chartsv1NS = &corev1.Namespace{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Namespace",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: chartsv1NSName,
 			},
 		}
 		veleroNamespace = &corev1.Namespace{
@@ -103,6 +122,158 @@ var _ = Describe("BackupSchedule controller", func() {
 				Provider: "aws",
 			},
 		}
+		channels = []chnv1.Channel{
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "apps.open-cluster-management.io/v1",
+					Kind:       "Channel",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "charts-v1",
+					Namespace: chartsv1NSName,
+				},
+				Spec: chnv1.ChannelSpec{
+					Type:     chnv1.ChannelTypeHelmRepo,
+					Pathname: "http://test.svc.cluster.local:3000/charts",
+				},
+			},
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "apps.open-cluster-management.io/v1",
+					Kind:       "Channel",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "user-channel",
+					Namespace: "default",
+				},
+				Spec: chnv1.ChannelSpec{
+					Type:     chnv1.ChannelTypeGit,
+					Pathname: "https://github.com/test/app-samples",
+				},
+			},
+		}
+
+		veleroBackups = []veleroapi.Backup{
+			veleroapi.Backup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "Backup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      veleroManagedClustersBackupName,
+					Namespace: veleroNamespaceName,
+				},
+				Spec: veleroapi.BackupSpec{
+					IncludedNamespaces: []string{"please-keep-this-one"},
+				},
+				Status: veleroapi.BackupStatus{
+					Phase:  veleroapi.BackupPhaseCompleted,
+					Errors: 0,
+				},
+			},
+			veleroapi.Backup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "Backup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      veleroResourcesBackupName,
+					Namespace: veleroNamespaceName,
+				},
+				Spec: veleroapi.BackupSpec{
+					IncludedNamespaces: []string{"please-keep-this-one"},
+				},
+				Status: veleroapi.BackupStatus{
+					Phase:  veleroapi.BackupPhaseCompleted,
+					Errors: 0,
+				},
+			},
+			veleroapi.Backup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "Backup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      veleroCredentialsBackupName,
+					Namespace: veleroNamespaceName,
+				},
+				Spec: veleroapi.BackupSpec{
+					IncludedNamespaces: []string{"please-keep-this-one"},
+				},
+				Status: veleroapi.BackupStatus{
+					Phase:  veleroapi.BackupPhaseCompleted,
+					Errors: 0,
+				},
+			},
+			veleroapi.Backup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "Backup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      veleroManagedClustersBackupName + "-new",
+					Namespace: veleroNamespaceName,
+				},
+				Spec: veleroapi.BackupSpec{
+					IncludedNamespaces: []string{"please-keep-this-one"},
+				},
+				Status: veleroapi.BackupStatus{
+					Phase:  veleroapi.BackupPhaseCompleted,
+					Errors: 0,
+				},
+			},
+			veleroapi.Backup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "Backup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      veleroResourcesBackupName + "-new",
+					Namespace: veleroNamespaceName,
+				},
+				Spec: veleroapi.BackupSpec{
+					IncludedNamespaces: []string{"please-keep-this-one"},
+				},
+				Status: veleroapi.BackupStatus{
+					Phase:  veleroapi.BackupPhaseCompleted,
+					Errors: 0,
+				},
+			},
+			veleroapi.Backup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "Backup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      veleroCredentialsBackupName + "-new",
+					Namespace: veleroNamespaceName,
+				},
+				Spec: veleroapi.BackupSpec{
+					IncludedNamespaces: []string{"please-keep-this-one"},
+				},
+				Status: veleroapi.BackupStatus{
+					Phase:  veleroapi.BackupPhaseCompleted,
+					Errors: 0,
+				},
+			},
+			veleroapi.Backup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "Backup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "some-other-new",
+					Namespace: veleroNamespaceName,
+				},
+				Spec: veleroapi.BackupSpec{
+					IncludedNamespaces: []string{"please-keep-this-one"},
+				},
+				Status: veleroapi.BackupStatus{
+					Phase:  veleroapi.BackupPhaseCompleted,
+					Errors: 0,
+				},
+			},
+		}
 
 	})
 
@@ -110,10 +281,18 @@ var _ = Describe("BackupSchedule controller", func() {
 		for i := range managedClusters {
 			Expect(k8sClient.Delete(ctx, &managedClusters[i])).Should(Succeed())
 		}
+		for i := range channels {
+			Expect(k8sClient.Delete(ctx, &channels[i])).Should(Succeed())
+		}
 		Expect(k8sClient.Delete(ctx, veleroNamespace)).Should(Succeed())
 		Expect(k8sClient.Delete(ctx, acmNamespace)).Should(Succeed())
+		Expect(k8sClient.Delete(ctx, chartsv1NS)).Should(Succeed())
 
 		Expect(k8sClient.Delete(ctx, backupStorageLocation)).Should(Succeed())
+
+		for i := range veleroBackups {
+			Expect(k8sClient.Delete(ctx, &veleroBackups[i])).Should(Succeed())
+		}
 	})
 
 	JustBeforeEach(func() {
@@ -122,10 +301,20 @@ var _ = Describe("BackupSchedule controller", func() {
 		}
 		Expect(k8sClient.Create(ctx, veleroNamespace)).Should(Succeed())
 		Expect(k8sClient.Create(ctx, acmNamespace)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, chartsv1NS)).Should(Succeed())
 
 		Expect(k8sClient.Create(ctx, backupStorageLocation)).Should(Succeed())
 		backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
 		Expect(k8sClient.Status().Update(ctx, backupStorageLocation)).Should(Succeed())
+
+		for i := range channels {
+			Expect(k8sClient.Create(ctx, &channels[i])).Should(Succeed())
+		}
+
+		for i := range veleroBackups {
+			Expect(k8sClient.Create(ctx, &veleroBackups[i])).Should(Succeed())
+		}
+
 	})
 	Context("When creating a BackupSchedule", func() {
 		It("Should be creating a Velero Schedule updating the Status", func() {
@@ -170,7 +359,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					Namespace: veleroNamespaceName,
 				},
 				Spec: v1beta1.BackupScheduleSpec{
-					MaxBackups:     2,
+					MaxBackups:     1,
 					VeleroSchedule: "0 */6 * * *",
 					VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
 				},
@@ -197,9 +386,19 @@ var _ = Describe("BackupSchedule controller", func() {
 				if err != nil {
 					return false
 				}
-				return createdBackupSchedule.Status.VeleroScheduleCredentials != nil &&
+
+				schedulesCreated := createdBackupSchedule.Status.VeleroScheduleCredentials != nil &&
 					createdBackupSchedule.Status.VeleroScheduleManagedClusters != nil &&
 					createdBackupSchedule.Status.VeleroScheduleResources != nil
+
+				if schedulesCreated {
+					// verify the acm charts channel ns is excluded
+					_, ok := find(createdBackupSchedule.Status.VeleroScheduleResources.Spec.Template.ExcludedNamespaces, chartsv1NSName)
+					return ok
+
+				}
+				return schedulesCreated
+
 			}, timeout, interval).Should(BeTrue())
 
 			// new backup
@@ -215,7 +414,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				},
 				Spec: v1beta1.BackupScheduleSpec{
 					VeleroSchedule: "0 */6 * * *",
-					MaxBackups:     2,
+					MaxBackups:     1,
 				},
 			}
 			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleNoTTL)).Should(Succeed())
@@ -276,7 +475,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					Namespace: acmNamespaceName,
 				},
 				Spec: v1beta1.BackupScheduleSpec{
-					MaxBackups:     2,
+					MaxBackups:     1,
 					VeleroSchedule: "0 */6 * * *",
 					VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
 				},
@@ -301,6 +500,38 @@ var _ = Describe("BackupSchedule controller", func() {
 				}
 				return createdBackupScheduleACM.Status.Phase == v1beta1.SchedulePhaseFailedValidation
 			}, timeout, interval).Should(BeTrue())
+
+			// count acm schedules
+			acmSchedulesList := v1beta1.BackupScheduleList{}
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, &acmSchedulesList, &client.ListOptions{})
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
+			Expect(len(acmSchedulesList.Items)).To(BeNumerically("==", 4))
+
+			// count velero schedules
+			veleroScheduleList := veleroapi.ScheduleList{}
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, &veleroScheduleList, &client.ListOptions{})
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
+			Expect(len(veleroScheduleList.Items)).To(BeNumerically("==", 3))
+
+			// delete existing acm schedules
+			for i := range acmSchedulesList.Items {
+				Eventually(func() bool {
+					scheduleObj := acmSchedulesList.Items[i].DeepCopy()
+					err := k8sClient.Delete(ctx, scheduleObj)
+					return err == nil
+				}, timeout, interval).Should(BeTrue())
+			}
+
+			// acm schedules are 0 now
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, &acmSchedulesList, &client.ListOptions{})
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
+			Expect(len(acmSchedulesList.Items)).To(BeNumerically("==", 0))
 
 		})
 
