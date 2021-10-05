@@ -48,6 +48,7 @@ var (
 		"applications.app.k8s.io",
 		"channel", "subscription",
 		"deployable",
+		"helmrelease",
 		"placementrule", "placement", "placementdecisions",
 		"PlacementBinding.policy.open-cluster-management.io",
 		"policy",
