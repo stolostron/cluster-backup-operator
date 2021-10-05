@@ -26,7 +26,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -91,75 +90,40 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			"Verify you have created a konveyor.openshift.io.Velero resource."
 		restoreLogger.Info(msg)
 
-		apimeta.SetStatusCondition(&restore.Status.Conditions,
-			metav1.Condition{
-				Type:    v1beta1.RestoreFailed,
-				Status:  metav1.ConditionFalse,
-				Reason:  v1beta1.RestoreReasonNotStarted,
-				Message: msg,
-			})
+		restore.Status.Phase = v1beta1.RestorePhaseError
+		restore.Status.LastMessage = msg
 
 		// retry after failureInterval
 		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
 			r.Client.Status().Update(ctx, restore),
-			updateStatusFailedMsg,
+			msg,
 		)
 	}
 
-	//keep track of the velero oadp namespace
-	veleroNamespace := veleroStorageLocations.Items[0].Namespace
-
-	// return error if the cluster restore file is not in the same namespace with velero
-	if veleroNamespace != req.Namespace {
-
-		msg := fmt.Sprintf(
-			"Restore resource [%s/%s] must be created in the velero namespace [%s]",
-			req.Namespace,
-			req.Name,
-			veleroNamespace,
-		)
-		restoreLogger.Info(msg)
-		apimeta.SetStatusCondition(&restore.Status.Conditions,
-			metav1.Condition{
-				Type:    v1beta1.RestoreFailed,
-				Status:  metav1.ConditionFalse,
-				Reason:  v1beta1.RestoreReasonNotStarted,
-				Message: msg,
-			})
-
-		return ctrl.Result{}, errors.Wrap(
-			r.Client.Status().Update(ctx, restore),
-			updateStatusFailedMsg,
-		)
-	}
-
-	var isValidStorageLocation bool = false
-	for i := 0; i < len(veleroStorageLocations.Items); i++ {
-		if veleroStorageLocations.Items[i].Status.Phase == veleroapi.BackupStorageLocationPhaseAvailable {
-			// one valid storage location found, assume storage is accessible
+	// look for available VeleroStorageLocation in the same namespace
+	isValidStorageLocation := false
+	for i := range veleroStorageLocations.Items {
+		if veleroStorageLocations.Items[i].Namespace == req.Namespace &&
+			veleroStorageLocations.Items[i].Status.Phase == veleroapi.BackupStorageLocationPhaseAvailable {
 			isValidStorageLocation = true
 			break
 		}
+
 	}
 
 	// if no valid storage location found wait for valid value
 	if !isValidStorageLocation {
-
-		msg := "Backup storage location is not available. " +
-			"Check velero.io.BackupStorageLocation and validate storage credentials."
+		msg := "Backup storage location not available in namespace " + req.Namespace +
+			". Check velero.io.BackupStorageLocation and validate storage credentials."
 		restoreLogger.Info(msg)
-		apimeta.SetStatusCondition(&restore.Status.Conditions,
-			metav1.Condition{
-				Type:    v1beta1.RestoreFailed,
-				Status:  metav1.ConditionFalse,
-				Reason:  v1beta1.RestoreReasonNotStarted,
-				Message: msg,
-			})
+
+		restore.Status.Phase = v1beta1.RestorePhaseError
+		restore.Status.LastMessage = msg
 
 		// retry after failureInterval
 		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
 			r.Client.Status().Update(ctx, restore),
-			updateStatusFailedMsg,
+			msg,
 		)
 	}
 
@@ -180,27 +144,21 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			err,
 			msg,
 		)
-
-		apimeta.SetStatusCondition(&restore.Status.Conditions,
-			metav1.Condition{
-				Type:    v1beta1.RestoreFailed,
-				Status:  metav1.ConditionFalse,
-				Reason:  v1beta1.RestoreReasonNotStarted,
-				Message: msg,
-			})
-
 		return ctrl.Result{}, err
 	}
 
 	if len(veleroRestoreList.Items) == 0 {
 		if err := r.initVeleroRestores(ctx, restore); err != nil {
+			msg := fmt.Sprintf("unable to initialize Velero restores for restore %s/%s: %v", req.Namespace, req.Name, err)
 			restoreLogger.Error(
 				err,
-				"unable to initialize Velero restores for restore",
-				"namespace", req.Namespace,
-				"name", req.Name,
+				msg,
 			)
-			return ctrl.Result{}, err
+
+			return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
+				r.Client.Status().Update(ctx, restore),
+				msg,
+			)
 		}
 	}
 
@@ -217,29 +175,16 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 					veleroRestore.Name,
 				),
 			)
-			apimeta.SetStatusCondition(&restore.Status.Conditions,
-				metav1.Condition{
-					Type:    v1beta1.RestoreComplete,
-					Status:  metav1.ConditionTrue,
-					Reason:  v1beta1.RestoreReasonFinished,
-					Message: fmt.Sprintf("Restore Complete %s", veleroRestore.Name),
-				})
+			restore.Status.Phase = v1beta1.RestorePhaseFinished
+			restore.Status.LastMessage = fmt.Sprintf("Restore Complete %s", veleroRestore.Name)
+
 		case isVeleroRestoreRunning(veleroRestore):
-			apimeta.SetStatusCondition(&restore.Status.Conditions,
-				metav1.Condition{
-					Type:    v1beta1.RestoreStarted,
-					Status:  metav1.ConditionTrue,
-					Reason:  v1beta1.RestoreReasonRunning,
-					Message: fmt.Sprintf("Velero Restore %s is running", veleroRestore.Name),
-				})
+			restore.Status.Phase = v1beta1.RestorePhaseRunning
+			restore.Status.LastMessage = fmt.Sprintf("Velero Restore %s is running", veleroRestore.Name)
+
 		default:
-			apimeta.SetStatusCondition(&restore.Status.Conditions,
-				metav1.Condition{
-					Type:    v1beta1.RestoreStarted,
-					Status:  metav1.ConditionFalse,
-					Reason:  v1beta1.RestoreReasonRunning,
-					Message: fmt.Sprintf("Velero Restore %s is running", veleroRestore.Name),
-				})
+			restore.Status.Phase = v1beta1.RestorePhaseUnknown
+			restore.Status.LastMessage = fmt.Sprintf("Unknown status for  %s Velero Restore", veleroRestore.Name)
 		}
 	}
 
@@ -344,6 +289,8 @@ func (r *RestoreReconciler) initVeleroRestores(
 ) error {
 	restoreLogger := log.FromContext(ctx)
 
+	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, 3)
+
 	// loop through resourceTypes to create a Velero restore per type
 	for key := range veleroScheduleNames {
 		backupName := latestBackupStr
@@ -382,6 +329,9 @@ func (r *RestoreReconciler) initVeleroRestores(
 				"namespace", restore.Namespace,
 				"type", key,
 			)
+			restore.Status.Phase = v1beta1.RestorePhaseError
+			restore.Status.LastMessage = fmt.Sprintf("Backup %s Not found", backupName)
+
 			return err
 		}
 		veleroRestore.Name = getValidKsRestoreName(restore.Name, veleroBackupName)
@@ -392,47 +342,44 @@ func (r *RestoreReconciler) initVeleroRestores(
 		if err := ctrl.SetControllerReference(restore, veleroRestore, r.Scheme); err != nil {
 			return err
 		}
+		veleroRestoresToCreate[key] = veleroRestore
+	}
 
-		if err = r.Create(ctx, veleroRestore, &client.CreateOptions{}); err != nil {
+	if len(veleroRestoresToCreate) == 0 {
+		restore.Status.Phase = v1beta1.RestorePhaseFinished
+		restore.Status.LastMessage = fmt.Sprintf("Nothing to do for restore %s", restore.Name)
+		return nil
+	}
+
+	for key := range veleroRestoresToCreate {
+		if err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{}); err != nil {
 			restoreLogger.Error(
 				err,
 				"unable to create Velero restore for restore",
-				"namespace", veleroRestore.Namespace,
-				"name", veleroRestore.Name,
+				"namespace", veleroRestoresToCreate[key].Namespace,
+				"name", veleroRestoresToCreate[key].Name,
 			)
-			apimeta.SetStatusCondition(&restore.Status.Conditions,
-				metav1.Condition{
-					Type:   v1beta1.RestoreFailed,
-					Status: metav1.ConditionFalse,
-					Reason: v1beta1.RestoreReasonNotStarted,
-					Message: fmt.Sprintf("Cannot create velero restore resource %s/%s",
-						veleroRestore.Namespace,
-						veleroRestore.Name,
-					),
-				})
-
+			restore.Status.Phase = v1beta1.RestorePhaseError
+			restore.Status.LastMessage = fmt.Sprintf("Cannot create velero restore resource %s/%s: %v",
+				veleroRestoresToCreate[key].Namespace,
+				veleroRestoresToCreate[key].Name,
+				err)
 			return err
 		}
 
-		r.Recorder.Event(restore, v1.EventTypeNormal, "Velero restore created:", veleroRestore.Name)
+		r.Recorder.Event(restore, v1.EventTypeNormal, "Velero restore created:", veleroRestoresToCreate[key].Name)
 
 		switch key {
 		case ManagedClusters:
-			restore.Status.VeleroManagedClustersRestoreName = veleroRestore.Name
+			restore.Status.VeleroManagedClustersRestoreName = veleroRestoresToCreate[key].Name
 		case Credentials:
-			restore.Status.VeleroCredentialsRestoreName = veleroRestore.Name
+			restore.Status.VeleroCredentialsRestoreName = veleroRestoresToCreate[key].Name
 		case Resources:
-			restore.Status.VeleroResourcesRestoreName = veleroRestore.Name
+			restore.Status.VeleroResourcesRestoreName = veleroRestoresToCreate[key].Name
 		}
-
-		apimeta.SetStatusCondition(&restore.Status.Conditions,
-			metav1.Condition{
-				Type:    v1beta1.RestoreStarted,
-				Status:  metav1.ConditionTrue,
-				Reason:  v1beta1.RestoreReasonStarted,
-				Message: fmt.Sprintf("Velero restore %s started", veleroRestore.Name),
-			})
 	}
+	restore.Status.Phase = v1beta1.RestorePhaseStarted
+	restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
 
 	return nil
 }

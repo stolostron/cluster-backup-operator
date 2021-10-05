@@ -20,6 +20,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// RestorePhase contains the phase of the restore
+type RestorePhase string
+
+const (
+	// RestorePhaseStarted means the restore has been initialized and started
+	RestorePhaseStarted = "Started"
+	// RestorePhaseRunning means the restore is running and not yet finished
+	RestorePhaseRunning = "Running"
+	// RestorePhasedFinished means the restore finsihed
+	RestorePhaseFinished = "Finished"
+	// RestorePhaseError means the restore is in error phase.
+	RestorePhaseError = "Error"
+	// RestorePhaseUnknown means the restore is in error phase.
+	RestorePhaseUnknown = "Unknown"
+)
+
 // RestoreSpec defines the desired state of Restore
 type RestoreSpec struct {
 	// VeleroManagedClustersBackupName is the name of the velero back-up used to restore managed clusters.
@@ -50,14 +66,20 @@ type RestoreStatus struct {
 	VeleroResourcesRestoreName string `json:"veleroResourcesRestoreName,omitempty"`
 	// +kubebuilder:validation:Optional
 	VeleroCredentialsRestoreName string `json:"veleroCredentialsRestoreName,omitempty"`
-	// RestoreCondition
-	Conditions []metav1.Condition `json:"conditions,omitempty"                       patchStrategy:"merge" patchMergeKey:"type"`
+	// Phase is the current phase of the restore
+	// +kubebuilder:validation:Optional
+	Phase RestorePhase `json:"phase"`
+	// Message on the last operation
+	// +kubebuilder:validation:Optional
+	LastMessage string `json:"lastMessage"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:validation:Optional
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName={"crst"}
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.lastMessage`
 
 // Restore is the Schema for the restores API
 type Restore struct {
@@ -68,16 +90,10 @@ type Restore struct {
 	Status RestoreStatus `json:"status,omitempty"`
 }
 
-// Valid conditions of a restore
+// Restore condition type
 const (
-	// RestoreStarted means the Restore is running.
-	RestoreStarted = "Started"
-	// RestoreAttaching means the Restore is attaching the managed clusters
-	RestoreAttaching = "Attaching"
-	// RestoreComplete means the Restore has completed its execution.
+	// RestoreComplete means the restore runs to completion
 	RestoreComplete = "Complete"
-	// RestoreFailed means the Restore has failed its execution.
-	RestoreFailed = "Failed"
 )
 
 // Valid Restore Reason
