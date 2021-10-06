@@ -100,15 +100,24 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		)
 	}
 
-	// look for available VeleroStorageLocation in the same namespace
+	// look for available VeleroStorageLocation owned by Velero instance
+	// and keep track of the velero oadp namespace
+	veleroNamespace := ""
 	isValidStorageLocation := false
 	for i := range veleroStorageLocations.Items {
-		if veleroStorageLocations.Items[i].Namespace == req.Namespace &&
+		if veleroStorageLocations.Items[i].OwnerReferences != nil &&
 			veleroStorageLocations.Items[i].Status.Phase == veleroapi.BackupStorageLocationPhaseAvailable {
-			isValidStorageLocation = true
+			for _, ref := range veleroStorageLocations.Items[i].OwnerReferences {
+				if ref.Kind == "Velero" {
+					isValidStorageLocation = true
+					veleroNamespace = veleroStorageLocations.Items[i].Namespace
+					break
+				}
+			}
+		}
+		if isValidStorageLocation {
 			break
 		}
-
 	}
 
 	// if no valid storage location found wait for valid value
@@ -122,6 +131,25 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 		// retry after failureInterval
 		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
+			r.Client.Status().Update(ctx, restore),
+			msg,
+		)
+	}
+
+	// return error if the cluster restore file is not in the same namespace with velero
+	if veleroNamespace != req.Namespace {
+		msg := fmt.Sprintf(
+			"Restore resource [%s/%s] must be created in the velero namespace [%s]",
+			req.Namespace,
+			req.Name,
+			veleroNamespace,
+		)
+		restoreLogger.Info(msg)
+
+		restore.Status.Phase = v1beta1.RestorePhaseError
+		restore.Status.LastMessage = msg
+
+		return ctrl.Result{}, errors.Wrap(
 			r.Client.Status().Update(ctx, restore),
 			msg,
 		)
@@ -149,7 +177,12 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	if len(veleroRestoreList.Items) == 0 {
 		if err := r.initVeleroRestores(ctx, restore); err != nil {
-			msg := fmt.Sprintf("unable to initialize Velero restores for restore %s/%s: %v", req.Namespace, req.Name, err)
+			msg := fmt.Sprintf(
+				"unable to initialize Velero restores for restore %s/%s: %v",
+				req.Namespace,
+				req.Name,
+				err,
+			)
 			restoreLogger.Error(
 				err,
 				msg,
@@ -180,11 +213,17 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 		case isVeleroRestoreRunning(veleroRestore):
 			restore.Status.Phase = v1beta1.RestorePhaseRunning
-			restore.Status.LastMessage = fmt.Sprintf("Velero Restore %s is running", veleroRestore.Name)
+			restore.Status.LastMessage = fmt.Sprintf(
+				"Velero Restore %s is running",
+				veleroRestore.Name,
+			)
 
 		default:
 			restore.Status.Phase = v1beta1.RestorePhaseUnknown
-			restore.Status.LastMessage = fmt.Sprintf("Unknown status for  %s Velero Restore", veleroRestore.Name)
+			restore.Status.LastMessage = fmt.Sprintf(
+				"Unknown status for  %s Velero Restore",
+				veleroRestore.Name,
+			)
 		}
 	}
 
@@ -360,14 +399,21 @@ func (r *RestoreReconciler) initVeleroRestores(
 				"name", veleroRestoresToCreate[key].Name,
 			)
 			restore.Status.Phase = v1beta1.RestorePhaseError
-			restore.Status.LastMessage = fmt.Sprintf("Cannot create velero restore resource %s/%s: %v",
+			restore.Status.LastMessage = fmt.Sprintf(
+				"Cannot create velero restore resource %s/%s: %v",
 				veleroRestoresToCreate[key].Namespace,
 				veleroRestoresToCreate[key].Name,
-				err)
+				err,
+			)
 			return err
 		}
 
-		r.Recorder.Event(restore, v1.EventTypeNormal, "Velero restore created:", veleroRestoresToCreate[key].Name)
+		r.Recorder.Event(
+			restore,
+			v1.EventTypeNormal,
+			"Velero restore created:",
+			veleroRestoresToCreate[key].Name,
+		)
 
 		switch key {
 		case ManagedClusters:

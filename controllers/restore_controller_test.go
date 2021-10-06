@@ -110,6 +110,14 @@ var _ = Describe("Basic Restore controller", func() {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "default",
 				Namespace: veleroNamespaceName,
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "oadp.openshift.io/v1alpha1",
+						Kind:       "Velero",
+						Name:       "velero-instnace",
+						UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
+					},
+				},
 			},
 			Spec: veleroapi.BackupStorageLocationSpec{
 				AccessMode: "ReadWrite",
@@ -258,6 +266,14 @@ var _ = Describe("Basic Restore controller", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "default",
 					Namespace: veleroNamespaceName,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "oadp.openshift.io/v1alpha1",
+							Kind:       "Velero",
+							Name:       "velero-instnace",
+							UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
+						},
+					},
 				},
 				Spec: veleroapi.BackupStorageLocationSpec{
 					AccessMode: "ReadWrite",
@@ -678,6 +694,14 @@ var _ = Describe("Basic Restore controller", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "default",
 					Namespace: veleroNamespaceName,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "oadp.openshift.io/v1alpha1",
+							Kind:       "Velero",
+							Name:       "velero-instnace",
+							UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
+						},
+					},
 				},
 				Spec: veleroapi.BackupStorageLocationSpec{
 					AccessMode: "ReadWrite",
@@ -749,7 +773,9 @@ var _ = Describe("Basic Restore controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				return createdRestore.Status.Phase
 			}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
-			Expect(createdRestore.Status.LastMessage).Should(BeIdenticalTo("Backup invalid-backup-name Not found"))
+			Expect(
+				createdRestore.Status.LastMessage,
+			).Should(BeIdenticalTo("Backup invalid-backup-name Not found"))
 		})
 	})
 
@@ -774,6 +800,14 @@ var _ = Describe("Basic Restore controller", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "default-5",
 					Namespace: veleroNamespaceName,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "oadp.openshift.io/v1alpha1",
+							Kind:       "Velero",
+							Name:       "velero-instnace",
+							UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
+						},
+					},
 				},
 				Spec: veleroapi.BackupStorageLocationSpec{
 					AccessMode: "ReadWrite",
@@ -837,14 +871,104 @@ var _ = Describe("Basic Restore controller", func() {
 			}
 
 		})
-		It("Should not create any velero restore resources, restore object created in the wrong ns", func() {
-			veleroRestores := veleroapi.RestoreList{}
-			Eventually(func() bool {
-				if err := k8sClient.List(ctx, &veleroRestores, client.InNamespace(veleroNamespaceName)); err != nil {
-					return false
-				}
-				return len(veleroRestores.Items) == 0
-			}, timeout, interval).Should(BeTrue())
+		It(
+			"Should not create any velero restore resources, restore object created in the wrong ns",
+			func() {
+				veleroRestores := veleroapi.RestoreList{}
+				Eventually(func() bool {
+					if err := k8sClient.List(ctx, &veleroRestores, client.InNamespace(veleroNamespaceName)); err != nil {
+						return false
+					}
+					return len(veleroRestores.Items) == 0
+				}, timeout, interval).Should(BeTrue())
+			},
+		)
+	})
+
+	Context("When BackupStorageLocation without OwnerReference is invalid", func() {
+		BeforeEach(func() {
+
+			veleroNamespaceName = "velero-restore-ns-6"
+			veleroNamespace = &corev1.Namespace{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Namespace",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: veleroNamespaceName,
+				},
+			}
+			backupStorageLocation = &veleroapi.BackupStorageLocation{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "BackupStorageLocation",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "default-6",
+					Namespace: veleroNamespaceName,
+				},
+				Spec: veleroapi.BackupStorageLocationSpec{
+					AccessMode: "ReadWrite",
+					StorageType: veleroapi.StorageType{
+						ObjectStorage: &veleroapi.ObjectStorageLocation{
+							Bucket: "velero-backup-acm-dr",
+							Prefix: "velero",
+						},
+					},
+					Provider: "aws",
+				},
+			}
+
+			veleroBackups = []veleroapi.Backup{}
+			rhacmRestore = v1beta1.Restore{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
+					Kind:       "Restore",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      restoreName + "-new",
+					Namespace: veleroNamespaceName,
+				},
+				Spec: v1beta1.RestoreSpec{
+					VeleroManagedClustersBackupName: &latestBackup,
+					VeleroCredentialsBackupName:     &skipRestore,
+					VeleroResourcesBackupName:       &skipRestore,
+				},
+			}
+			oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
+			veleroBackups = []veleroapi.Backup{
+				veleroapi.Backup{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "velero/v1",
+						Kind:       "Backup",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-managed-clusters-schedule-bad-very-recent-backup",
+						Namespace: veleroNamespaceName,
+					},
+					Spec: veleroapi.BackupSpec{
+						IncludedNamespaces: []string{"please-keep-this-one"},
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseCompleted,
+						Errors:         10,
+						StartTimestamp: &oneHourAgo,
+					},
+				},
+			}
+
 		})
+		It(
+			"Should not create any velero restore resources, BackupStorageLocation is invalid",
+			func() {
+				veleroRestores := veleroapi.RestoreList{}
+				Eventually(func() bool {
+					if err := k8sClient.List(ctx, &veleroRestores, client.InNamespace(veleroNamespaceName)); err != nil {
+						return false
+					}
+					return len(veleroRestores.Items) == 0
+				}, timeout, interval).Should(BeTrue())
+			},
+		)
 	})
 })

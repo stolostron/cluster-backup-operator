@@ -103,15 +103,26 @@ func (r *BackupScheduleReconciler) Reconcile(
 		// retry after failureInterval
 		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
 			r.Client.Status().Update(ctx, backupSchedule),
-			updateStatusFailedMsg,
+			msg,
 		)
 	}
 
-	var isValidStorageLocation bool = false
-	for i := 0; i < len(veleroStorageLocations.Items); i++ {
-		if veleroStorageLocations.Items[i].Status.Phase == veleroapi.BackupStorageLocationPhaseAvailable {
-			// one valid storage location found, assume storage is accessible
-			isValidStorageLocation = true
+	// look for available VeleroStorageLocation owned by Velero instance
+	// and keep track of the velero oadp namespace
+	veleroNamespace := ""
+	isValidStorageLocation := false
+	for i := range veleroStorageLocations.Items {
+		if veleroStorageLocations.Items[i].OwnerReferences != nil &&
+			veleroStorageLocations.Items[i].Status.Phase == veleroapi.BackupStorageLocationPhaseAvailable {
+			for _, ref := range veleroStorageLocations.Items[i].OwnerReferences {
+				if ref.Kind == "Velero" {
+					isValidStorageLocation = true
+					veleroNamespace = veleroStorageLocations.Items[i].Namespace
+					break
+				}
+			}
+		}
+		if isValidStorageLocation {
 			break
 		}
 	}
@@ -128,16 +139,12 @@ func (r *BackupScheduleReconciler) Reconcile(
 		// retry after failureInterval
 		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
 			r.Client.Status().Update(ctx, backupSchedule),
-			updateStatusFailedMsg,
+			msg,
 		)
 	}
 
-	//keep track of the velero oadp namespace
-	veleroNamespace := veleroStorageLocations.Items[0].Namespace
-
 	// return error if the cluster restore file is not in the same namespace with velero
 	if veleroNamespace != req.Namespace {
-
 		msg := fmt.Sprintf(
 			"Schedule resource [%s/%s] must be created in the velero namespace [%s]",
 			req.Namespace,
@@ -151,7 +158,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 		return ctrl.Result{}, errors.Wrap(
 			r.Client.Status().Update(ctx, backupSchedule),
-			updateStatusFailedMsg,
+			msg,
 		)
 	}
 

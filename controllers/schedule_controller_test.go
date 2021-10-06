@@ -110,6 +110,14 @@ var _ = Describe("BackupSchedule controller", func() {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "default",
 				Namespace: veleroNamespaceName,
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "oadp.openshift.io/v1alpha1",
+						Kind:       "Velero",
+						Name:       "velero-instnace",
+						UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
+					},
+				},
 			},
 			Spec: veleroapi.BackupStorageLocationSpec{
 				AccessMode: "ReadWrite",
@@ -393,7 +401,10 @@ var _ = Describe("BackupSchedule controller", func() {
 
 				if schedulesCreated {
 					// verify the acm charts channel ns is excluded
-					_, ok := find(createdBackupSchedule.Status.VeleroScheduleResources.Spec.Template.ExcludedNamespaces, chartsv1NSName)
+					_, ok := find(
+						createdBackupSchedule.Status.VeleroScheduleResources.Spec.Template.ExcludedNamespaces,
+						chartsv1NSName,
+					)
 					return ok
 
 				}
@@ -452,7 +463,9 @@ var _ = Describe("BackupSchedule controller", func() {
 			Expect(createdBackupScheduleNoTTL.Spec.VeleroSchedule).Should(Equal(backupSchedule))
 
 			// schedules cannot be created because there already some running from the above schedule
-			By("created backup schedule should NOT contain velero schedules, acm-credentials-schedule already exists error")
+			By(
+				"created backup schedule should NOT contain velero schedules, acm-credentials-schedule already exists error",
+			)
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, backupLookupKeyNoTTL, &createdBackupScheduleNoTTL)
 				if err != nil {
@@ -492,7 +505,9 @@ var _ = Describe("BackupSchedule controller", func() {
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
-			By("backup schedule in acm ns should be in failed validation status - since it must be in the velero ns")
+			By(
+				"backup schedule in acm ns should be in failed validation status - since it must be in the velero ns",
+			)
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, backupLookupKeyACM, &createdBackupScheduleACM)
 				if err != nil {
