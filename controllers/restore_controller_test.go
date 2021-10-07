@@ -369,6 +369,24 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-managed-clusters-schedule-not-completed-recent-backup",
+						Namespace: veleroNamespaceName,
+					},
+					Spec: veleroapi.BackupSpec{
+						IncludedNamespaces: []string{"please-keep-this-one"},
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseFailed,
+						Errors:         0,
+						StartTimestamp: &oneHourAgo,
+					},
+				},
+				veleroapi.Backup{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "velero/v1",
+						Kind:       "Backup",
+					},
+					ObjectMeta: metav1.ObjectMeta{
 						Name:      "acm-managed-clusters-schedule-bad-old-backup",
 						Namespace: veleroNamespaceName,
 					},
@@ -442,6 +460,24 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-resources-schedule-not-completed-recent-backup",
+						Namespace: veleroNamespaceName,
+					},
+					Spec: veleroapi.BackupSpec{
+						IncludedNamespaces: []string{"please-keep-this-one"},
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhasePartiallyFailed,
+						Errors:         0,
+						StartTimestamp: &oneHourAgo,
+					},
+				},
+				veleroapi.Backup{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "velero/v1",
+						Kind:       "Backup",
+					},
+					ObjectMeta: metav1.ObjectMeta{
 						Name:      "acm-resources-schedule-bad-old-backup",
 						Namespace: veleroNamespaceName,
 					},
@@ -507,6 +543,24 @@ var _ = Describe("Basic Restore controller", func() {
 						Phase:          veleroapi.BackupPhaseCompleted,
 						Errors:         0,
 						StartTimestamp: &twoHoursAgo,
+					},
+				},
+				veleroapi.Backup{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "velero/v1",
+						Kind:       "Backup",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-credentials-schedule-not-completed-recent-backup",
+						Namespace: veleroNamespaceName,
+					},
+					Spec: veleroapi.BackupSpec{
+						IncludedNamespaces: []string{"please-keep-this-one"},
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseInProgress,
+						Errors:         0,
+						StartTimestamp: &oneHourAgo,
 					},
 				},
 				veleroapi.Backup{
@@ -603,6 +657,34 @@ var _ = Describe("Basic Restore controller", func() {
 					Name: veleroNamespaceName,
 				},
 			}
+			backupStorageLocation = &veleroapi.BackupStorageLocation{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "BackupStorageLocation",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "default",
+					Namespace: veleroNamespaceName,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "oadp.openshift.io/v1alpha1",
+							Kind:       "Velero",
+							Name:       "velero-instnace",
+							UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
+						},
+					},
+				},
+				Spec: veleroapi.BackupStorageLocationSpec{
+					AccessMode: "ReadWrite",
+					StorageType: veleroapi.StorageType{
+						ObjectStorage: &veleroapi.ObjectStorageLocation{
+							Bucket: "velero-backup-acm-dr",
+							Prefix: "velero",
+						},
+					},
+					Provider: "aws",
+				},
+			}
 			veleroBackups = []veleroapi.Backup{}
 			rhacmRestore = v1beta1.Restore{
 				TypeMeta: metav1.TypeMeta{
@@ -655,6 +737,15 @@ var _ = Describe("Basic Restore controller", func() {
 				}
 				return len(veleroRestores.Items) == 0
 			}, timeout, interval).Should(BeTrue())
+			Eventually(func() v1beta1.RestorePhase {
+				restoreLookupKey := types.NamespacedName{
+					Name:      restoreName,
+					Namespace: veleroNamespaceName,
+				}
+				err := k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+				Expect(err).NotTo(HaveOccurred())
+				return createdRestore.Status.Phase
+			}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseFinished))
 		})
 	})
 
@@ -881,6 +972,20 @@ var _ = Describe("Basic Restore controller", func() {
 					}
 					return len(veleroRestores.Items) == 0
 				}, timeout, interval).Should(BeTrue())
+				createdRestore := v1beta1.Restore{}
+				Eventually(func() v1beta1.RestorePhase {
+					restoreLookupKey := types.NamespacedName{
+						Name:      restoreName + "-new",
+						Namespace: acmNamespaceName,
+					}
+					err := k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+					Expect(err).NotTo(HaveOccurred())
+					return createdRestore.Status.Phase
+				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
+				Expect(
+					createdRestore.Status.LastMessage,
+				).Should(BeIdenticalTo("Restore resource [acm-ns-1/rhacm-restore-1-new] " +
+					"must be created in the velero namespace [velero-restore-ns-5]"))
 			},
 		)
 	})
@@ -968,6 +1073,20 @@ var _ = Describe("Basic Restore controller", func() {
 					}
 					return len(veleroRestores.Items) == 0
 				}, timeout, interval).Should(BeTrue())
+				createdRestore := v1beta1.Restore{}
+				Eventually(func() v1beta1.RestorePhase {
+					restoreLookupKey := types.NamespacedName{
+						Name:      restoreName + "-new",
+						Namespace: veleroNamespaceName,
+					}
+					err := k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+					Expect(err).NotTo(HaveOccurred())
+					return createdRestore.Status.Phase
+				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
+				Expect(
+					createdRestore.Status.LastMessage,
+				).Should(BeIdenticalTo("Backup storage location not available in namespace velero-restore-ns-6. " +
+					"Check velero.io.BackupStorageLocation and validate storage credentials."))
 			},
 		)
 	})
