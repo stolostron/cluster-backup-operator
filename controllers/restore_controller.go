@@ -300,7 +300,8 @@ func (r *RestoreReconciler) getVeleroBackupName(
 		}
 		// filter available backups to get only the ones related to this resource type
 		relatedBackups := filterBackups(veleroBackups.Items, func(bkp veleroapi.Backup) bool {
-			return strings.Contains(bkp.Name, veleroScheduleNames[resourceType])
+			return strings.Contains(bkp.Name, veleroScheduleNames[resourceType]) &&
+				bkp.Status.Phase == veleroapi.BackupPhaseCompleted
 		})
 		if len(relatedBackups) == 0 {
 			return "", fmt.Errorf("no backups found")
