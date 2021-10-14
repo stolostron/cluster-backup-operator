@@ -37,7 +37,11 @@ func initManagedClusterNamespace(name string) corev1.Namespace {
 
 }
 
-func updateVeleroRestoreStatus(name, namespace string, status veleroapi.RestorePhase, timeout, interval time.Duration) {
+func updateVeleroRestoreStatus(
+	name, namespace string,
+	status veleroapi.RestorePhase,
+	timeout, interval time.Duration,
+) {
 	createdVeleroRestore := &veleroapi.Restore{}
 	Eventually(func() error {
 		return k8sClient.Get(context.Background(),
@@ -47,7 +51,10 @@ func updateVeleroRestoreStatus(name, namespace string, status veleroapi.RestoreP
 	}, timeout, interval).Should(Succeed())
 
 	createdVeleroRestore.Status.Phase = status
-	Expect(k8sClient.Status().Update(context.Background(), createdVeleroRestore, &client.UpdateOptions{})).Should(Succeed())
+	Expect(
+		k8sClient.Status().
+			Update(context.Background(), createdVeleroRestore, &client.UpdateOptions{}),
+	).Should(Succeed())
 }
 
 var _ = Describe("Basic Restore controller", func() {
@@ -93,7 +100,13 @@ var _ = Describe("Basic Restore controller", func() {
 	JustAfterEach(func() {
 		Expect(k8sClient.Delete(ctx, backupStorageLocation)).Should(Succeed())
 		var zero int64 = 0
-		Expect(k8sClient.Delete(ctx, veleroNamespace, &client.DeleteOptions{GracePeriodSeconds: &zero})).Should(Succeed())
+		Expect(
+			k8sClient.Delete(
+				ctx,
+				veleroNamespace,
+				&client.DeleteOptions{GracePeriodSeconds: &zero},
+			),
+		).Should(Succeed())
 
 		backupStorageLocation = nil
 	})
@@ -1188,12 +1201,18 @@ var _ = Describe("Basic Restore controller", func() {
 				return createdRestore.Status.VeleroManagedClustersRestoreName
 			}, timeout, interval).ShouldNot(BeEmpty())
 
-			By("Setting "+createdRestore.Status.VeleroManagedClustersRestoreName+" in progress", func() {
-				updateVeleroRestoreStatus(createdRestore.Status.VeleroManagedClustersRestoreName,
-					createdRestore.Namespace,
-					veleroapi.RestorePhaseInProgress,
-					timeout, interval)
-			})
+			By(
+				"Setting "+createdRestore.Status.VeleroManagedClustersRestoreName+" in progress",
+				func() {
+					updateVeleroRestoreStatus(
+						createdRestore.Status.VeleroManagedClustersRestoreName,
+						createdRestore.Namespace,
+						veleroapi.RestorePhaseInProgress,
+						timeout,
+						interval,
+					)
+				},
+			)
 
 			By("Checking ACM restore phase when velero restore is in progress", func() {
 				Eventually(func() v1beta1.RestorePhase {
@@ -1206,12 +1225,18 @@ var _ = Describe("Basic Restore controller", func() {
 				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseRunning))
 			})
 
-			By("Setting "+createdRestore.Status.VeleroManagedClustersRestoreName+" completed", func() {
-				updateVeleroRestoreStatus(createdRestore.Status.VeleroManagedClustersRestoreName,
-					createdRestore.Namespace,
-					veleroapi.RestorePhaseCompleted,
-					timeout, interval)
-			})
+			By(
+				"Setting "+createdRestore.Status.VeleroManagedClustersRestoreName+" completed",
+				func() {
+					updateVeleroRestoreStatus(
+						createdRestore.Status.VeleroManagedClustersRestoreName,
+						createdRestore.Namespace,
+						veleroapi.RestorePhaseCompleted,
+						timeout,
+						interval,
+					)
+				},
+			)
 
 			By("Checking ACM restore phase when velero restore finished", func() {
 				Eventually(func() v1beta1.RestorePhase {
