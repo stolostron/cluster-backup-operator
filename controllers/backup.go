@@ -264,7 +264,7 @@ func setManagedClustersBackupInfo(
 	clusterPools := hivev1.ClusterPoolList{}
 	if err := c.List(ctx, &clusterPools, &client.ListOptions{}); err != nil {
 		// if NotFound error
-		if !k8serr.IsNotFound(err) {
+		if k8serr.IsNotFound(err) {
 			backupLogger.Info("no cluster pool resource")
 		} else {
 			backupLogger.Error(err, "failed to get hivev1.ClusterPoolList")

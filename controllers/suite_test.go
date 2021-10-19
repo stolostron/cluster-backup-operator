@@ -36,6 +36,7 @@ import (
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	backupv1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	operatorapiv1 "open-cluster-management.io/api/operator/v1"
 
 	valeroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
@@ -86,6 +87,9 @@ var _ = BeforeSuite(func() {
 	err = chnv1.AddToScheme(scheme.Scheme) // for channels
 	Expect(err).NotTo(HaveOccurred())
 
+	err = hivev1.AddToScheme(scheme.Scheme) // for clusterpools
+	Expect(err).NotTo(HaveOccurred())
+
 	err = certsv1.AddToScheme(scheme.Scheme) // for CSR
 	Expect(err).NotTo(HaveOccurred())
 
@@ -107,7 +111,10 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
-	managedClusterK8sClient, err = client.New(managedClusterCfg, client.Options{Scheme: scheme.Scheme})
+	managedClusterK8sClient, err = client.New(
+		managedClusterCfg,
+		client.Options{Scheme: scheme.Scheme},
+	)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(managedClusterK8sClient).NotTo(BeNil())
 
