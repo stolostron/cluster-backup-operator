@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/openshift/hive/apis/hive/v1/aws"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -15,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 )
 
@@ -24,14 +27,17 @@ var _ = Describe("BackupSchedule controller", func() {
 		ctx                             context.Context
 		managedClusters                 []clusterv1.ManagedCluster
 		channels                        []chnv1.Channel
+		clusterPools                    []hivev1.ClusterPool
 		backupStorageLocation           *veleroapi.BackupStorageLocation
 		veleroBackups                   []veleroapi.Backup
 		veleroNamespaceName             string
 		acmNamespaceName                string
 		chartsv1NSName                  string
+		clusterPoolNSName               string
 		veleroNamespace                 *corev1.Namespace
 		acmNamespace                    *corev1.Namespace
 		chartsv1NS                      *corev1.Namespace
+		clusterPoolNS                   *corev1.Namespace
 		backupScheduleName              string = "the-backup-schedule-name"
 		veleroManagedClustersBackupName        = "acm-managed-clusters-schedule-20210910181336"
 		veleroResourcesBackupName              = "acm-resources-schedule-20210910181336"
@@ -48,6 +54,7 @@ var _ = Describe("BackupSchedule controller", func() {
 		veleroNamespaceName = "velero-ns"
 		acmNamespaceName = "acm-ns"
 		chartsv1NSName = "acm-channel-ns"
+		clusterPoolNSName = "app"
 		managedClusters = []clusterv1.ManagedCluster{
 			{
 				TypeMeta: metav1.TypeMeta{
@@ -83,6 +90,15 @@ var _ = Describe("BackupSchedule controller", func() {
 				Name: chartsv1NSName,
 			},
 		}
+		clusterPoolNS = &corev1.Namespace{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Namespace",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: clusterPoolNSName,
+			},
+		}
 		veleroNamespace = &corev1.Namespace{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: "v1",
@@ -99,6 +115,27 @@ var _ = Describe("BackupSchedule controller", func() {
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name: acmNamespaceName,
+			},
+		}
+		clusterPools = []hivev1.ClusterPool{
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "hive.openshift.io/v1",
+					Kind:       "ClusterPool",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "app-prow-47",
+					Namespace: clusterPoolNSName,
+				},
+				Spec: hivev1.ClusterPoolSpec{
+					Platform: hivev1.Platform{
+						AWS: &aws.Platform{
+							Region: "us-east-2",
+						},
+					},
+					Size:       4,
+					BaseDomain: "dev06.red-chesterfield.com",
+				},
 			},
 		}
 		channels = []chnv1.Channel{
@@ -269,6 +306,19 @@ var _ = Describe("BackupSchedule controller", func() {
 		Expect(k8sClient.Delete(ctx, backupStorageLocation)).Should(Succeed())
 
 		var zero int64 = 0
+
+		if clusterPoolNS != nil {
+			for i := range clusterPools {
+				Expect(k8sClient.Delete(ctx, &clusterPools[i])).Should(Succeed())
+			}
+			Expect(
+				k8sClient.Delete(
+					ctx,
+					clusterPoolNS,
+					&client.DeleteOptions{GracePeriodSeconds: &zero},
+				),
+			).Should(Succeed())
+		}
 		Expect(
 			k8sClient.Delete(
 				ctx,
@@ -299,6 +349,14 @@ var _ = Describe("BackupSchedule controller", func() {
 		Expect(k8sClient.Create(ctx, veleroNamespace)).Should(Succeed())
 		Expect(k8sClient.Create(ctx, acmNamespace)).Should(Succeed())
 		Expect(k8sClient.Create(ctx, chartsv1NS)).Should(Succeed())
+
+		if clusterPoolNS != nil {
+			Expect(k8sClient.Create(ctx, clusterPoolNS)).Should(Succeed())
+
+			for i := range clusterPools {
+				Expect(k8sClient.Create(ctx, &clusterPools[i])).Should(Succeed())
+			}
+		}
 
 		for i := range channels {
 			Expect(k8sClient.Create(ctx, &channels[i])).Should(Succeed())
@@ -422,13 +480,18 @@ var _ = Describe("BackupSchedule controller", func() {
 
 				if schedulesCreated {
 					// verify the acm charts channel ns is excluded
-					_, ok := find(
+					_, chartsNSOK := find(
 						createdBackupSchedule.Status.VeleroScheduleResources.Spec.Template.ExcludedNamespaces,
 						chartsv1NSName,
 					)
-					return ok
-
+					// verify the cluster pool ns is included
+					_, clusterPoolsNSOK := find(
+						createdBackupSchedule.Status.VeleroScheduleManagedClusters.Spec.Template.IncludedNamespaces,
+						clusterPoolNSName,
+					)
+					return chartsNSOK && clusterPoolsNSOK
 				}
+
 				return schedulesCreated
 
 			}, timeout, interval).Should(BeTrue())
@@ -721,6 +784,7 @@ var _ = Describe("BackupSchedule controller", func() {
 		var newAcmNamespace = "acm-ns-new"
 		var newChartsv1NSName = "acm-channel-ns-new"
 		BeforeEach(func() {
+			clusterPoolNS = nil
 			chartsv1NS = &corev1.Namespace{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "v1",
