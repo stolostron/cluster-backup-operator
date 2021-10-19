@@ -89,16 +89,21 @@ var _ = Describe("Basic Restore controller", func() {
 			Expect(k8sClient.Create(ctx, &veleroBackups[i])).Should(Succeed())
 		}
 
-		Expect(k8sClient.Create(ctx, backupStorageLocation)).Should(Succeed())
-		backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-		Expect(k8sClient.Status().Update(ctx, backupStorageLocation)).Should(Succeed())
+		if backupStorageLocation != nil {
+			Expect(k8sClient.Create(ctx, backupStorageLocation)).Should(Succeed())
+			backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
+			Expect(k8sClient.Status().Update(ctx, backupStorageLocation)).Should(Succeed())
+		}
 
 		Expect(k8sClient.Create(ctx, &rhacmRestore)).Should(Succeed())
 
 	})
 
 	JustAfterEach(func() {
-		Expect(k8sClient.Delete(ctx, backupStorageLocation)).Should(Succeed())
+
+		if backupStorageLocation != nil {
+			Expect(k8sClient.Delete(ctx, backupStorageLocation)).Should(Succeed())
+		}
 		var zero int64 = 0
 		Expect(
 			k8sClient.Delete(
@@ -1252,4 +1257,93 @@ var _ = Describe("Basic Restore controller", func() {
 
 	})
 
+	Context("When creating a Restore and no storage location is available", func() {
+		BeforeEach(func() {
+			restoreName = "my-restore"
+			veleroNamespace = &corev1.Namespace{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Namespace",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "velero-restore-ns-8",
+				},
+			}
+			backupStorageLocation = nil
+
+			rhacmRestore = v1beta1.Restore{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
+					Kind:       "Restore",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      restoreName,
+					Namespace: veleroNamespace.Name,
+				},
+				Spec: v1beta1.RestoreSpec{
+					VeleroManagedClustersBackupName: &latestBackup,
+					VeleroCredentialsBackupName:     &skipRestore,
+					VeleroResourcesBackupName:       &skipRestore,
+				},
+			}
+			oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
+			veleroBackups = []veleroapi.Backup{
+				veleroapi.Backup{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "velero/v1",
+						Kind:       "Backup",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-managed-clusters-schedule-good-very-recent-backup",
+						Namespace: veleroNamespace.Name,
+					},
+					Spec: veleroapi.BackupSpec{
+						IncludedNamespaces: []string{"please-keep-this-one"},
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseCompleted,
+						Errors:         0,
+						StartTimestamp: &oneHourAgo,
+					},
+				},
+			}
+		})
+
+		It("Should track the status evolution", func() {
+			createdRestore := v1beta1.Restore{}
+			By("created restore should does not contain velero restores in status")
+			Eventually(func() string {
+				k8sClient.Get(ctx,
+					types.NamespacedName{
+						Name:      restoreName,
+						Namespace: veleroNamespace.Name,
+					}, &createdRestore)
+				return createdRestore.Status.VeleroManagedClustersRestoreName
+			}, timeout, interval).Should(BeEmpty())
+
+			By("Checking ACM restore phase when velero restore is in error", func() {
+				Eventually(func() v1beta1.RestorePhase {
+					k8sClient.Get(ctx,
+						types.NamespacedName{
+							Name:      restoreName,
+							Namespace: veleroNamespace.Name,
+						}, &createdRestore)
+					return createdRestore.Status.Phase
+				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
+			})
+
+			By("Checking ACM restore message", func() {
+				Eventually(func() string {
+					k8sClient.Get(ctx,
+						types.NamespacedName{
+							Name:      restoreName,
+							Namespace: veleroNamespace.Name,
+						}, &createdRestore)
+					return createdRestore.Status.LastMessage
+				}, timeout, interval).Should(BeIdenticalTo("velero.io.BackupStorageLocation resources not found. " +
+					"Verify you have created a konveyor.openshift.io.Velero resource."))
+			})
+		})
+
+	})
 })
