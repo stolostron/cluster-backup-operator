@@ -441,6 +441,22 @@ var _ = Describe("BackupSchedule controller", func() {
 				createdBackupSchedule.Status.VeleroScheduleResources.Spec.Template.TTL,
 			).Should(Equal(metav1.Duration{Duration: time.Hour * 72}))
 
+			// update schedule, it should trigger velero schedules deletion
+			createdBackupSchedule.Spec.VeleroTTL = metav1.Duration{Duration: time.Hour * 150}
+			Expect(
+				k8sClient.
+					Update(context.Background(), &createdBackupSchedule, &client.UpdateOptions{}),
+			).Should(Succeed())
+
+			Eventually(func() metav1.Duration {
+				err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
+				if err != nil {
+					return metav1.Duration{Duration: time.Hour * 0}
+				}
+				return createdBackupSchedule.Spec.VeleroTTL
+			}, timeout, interval).Should(BeIdenticalTo(metav1.Duration{Duration: time.Hour * 150}))
+			//
+
 			// new backup with no TTL
 			backupScheduleNameNoTTL := backupScheduleName + "-nottl"
 			rhacmBackupScheduleNoTTL := v1beta1.BackupSchedule{
