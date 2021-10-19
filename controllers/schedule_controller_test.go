@@ -12,6 +12,7 @@ import (
 	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
@@ -132,6 +133,12 @@ var _ = Describe("BackupSchedule controller", func() {
 			},
 		}
 
+		now := time.Time{}
+		startTime1 := v1.Time{}
+		startTime1.Time = now.Local().Add(4)
+		startTime2 := v1.Time{}
+		startTime2.Time = now.Local().Add(6)
+
 		veleroBackups = []veleroapi.Backup{
 			veleroapi.Backup{
 				TypeMeta: metav1.TypeMeta{
@@ -146,8 +153,9 @@ var _ = Describe("BackupSchedule controller", func() {
 					IncludedNamespaces: []string{"please-keep-this-one"},
 				},
 				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
+					StartTimestamp: &startTime1,
+					Phase:          veleroapi.BackupPhaseCompleted,
+					Errors:         0,
 				},
 			},
 			veleroapi.Backup{
@@ -163,8 +171,9 @@ var _ = Describe("BackupSchedule controller", func() {
 					IncludedNamespaces: []string{"please-keep-this-one"},
 				},
 				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
+					StartTimestamp: &startTime2,
+					Phase:          veleroapi.BackupPhaseCompleted,
+					Errors:         0,
 				},
 			},
 			veleroapi.Backup{
@@ -190,7 +199,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					Kind:       "Backup",
 				},
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      veleroManagedClustersBackupName + "-new",
+					Name:      "new-" + veleroManagedClustersBackupName,
 					Namespace: veleroNamespaceName,
 				},
 				Spec: veleroapi.BackupSpec{
@@ -207,7 +216,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					Kind:       "Backup",
 				},
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      veleroResourcesBackupName + "-new",
+					Name:      "new-" + veleroResourcesBackupName,
 					Namespace: veleroNamespaceName,
 				},
 				Spec: veleroapi.BackupSpec{
@@ -440,6 +449,14 @@ var _ = Describe("BackupSchedule controller", func() {
 			Expect(
 				createdBackupSchedule.Status.VeleroScheduleResources.Spec.Template.TTL,
 			).Should(Equal(metav1.Duration{Duration: time.Hour * 72}))
+
+			backupList := veleroapi.BackupList{}
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, &backupList, &client.ListOptions{})
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
+			// should keep the backups not starting with acm-etc, which are 4, + the 3 newly created ones = 7
+			Expect(len(backupList.Items)).To(BeNumerically(">", 7))
 
 			// update schedule, it should trigger velero schedules deletion
 			createdBackupSchedule.Spec.VeleroTTL = metav1.Duration{Duration: time.Hour * 150}
