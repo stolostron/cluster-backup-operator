@@ -441,6 +441,39 @@ var _ = Describe("BackupSchedule controller", func() {
 				createdBackupSchedule.Status.VeleroScheduleResources.Spec.Template.TTL,
 			).Should(Equal(metav1.Duration{Duration: time.Hour * 72}))
 
+			// update schedule, it should trigger velero schedules deletion
+			createdBackupSchedule.Spec.VeleroTTL = metav1.Duration{Duration: time.Hour * 150}
+			Expect(
+				k8sClient.
+					Update(context.Background(), &createdBackupSchedule, &client.UpdateOptions{}),
+			).Should(Succeed())
+
+			Eventually(func() metav1.Duration {
+				err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
+				if err != nil {
+					return metav1.Duration{Duration: time.Hour * 0}
+				}
+				return createdBackupSchedule.Spec.VeleroTTL
+			}, timeout, interval).Should(BeIdenticalTo(metav1.Duration{Duration: time.Hour * 150}))
+
+			// check that the velero schedules are new - have now 150h for ttl
+			Eventually(func() metav1.Duration {
+				err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
+				if err != nil {
+					return metav1.Duration{Duration: time.Hour * 0}
+				}
+				return createdBackupSchedule.Status.VeleroScheduleManagedClusters.Spec.Template.TTL
+			}, timeout, interval).Should(BeIdenticalTo(metav1.Duration{Duration: time.Hour * 150}))
+
+			// count velero schedules, should be still just 3
+			veleroSchedulesList := veleroapi.ScheduleList{}
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, &veleroSchedulesList, &client.ListOptions{})
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
+			Expect(len(veleroSchedulesList.Items)).To(BeNumerically("==", 3))
+			//
+
 			// new backup with no TTL
 			backupScheduleNameNoTTL := backupScheduleName + "-nottl"
 			rhacmBackupScheduleNoTTL := v1beta1.BackupSchedule{
