@@ -78,13 +78,7 @@ func cleanupBackups(
 	backupLogger.Info(fmt.Sprintf("check if needed to remove backups maxBackups=%d", maxBackups))
 	veleroBackupList := veleroapi.BackupList{}
 	if err := c.List(ctx, &veleroBackupList, &client.ListOptions{}); err != nil {
-
-		// this is a NotFound error
-		if !k8serr.IsNotFound(err) {
-			backupLogger.Info("no backups found")
-		} else {
-			backupLogger.Error(err, "failed to get veleroapi.BackupList")
-		}
+		backupLogger.Error(err, "failed to get veleroapi.BackupList")
 	} else {
 
 		// get acm backups only when counting existing backups
@@ -263,12 +257,7 @@ func setManagedClustersBackupInfo(
 	// add cluster pool namespaces
 	clusterPools := hivev1.ClusterPoolList{}
 	if err := c.List(ctx, &clusterPools, &client.ListOptions{}); err != nil {
-		// if NotFound error
-		if k8serr.IsNotFound(err) {
-			backupLogger.Info("no cluster pool resource")
-		} else {
-			backupLogger.Error(err, "failed to get hivev1.ClusterPoolList")
-		}
+		backupLogger.Error(err, "failed to get hivev1.ClusterPoolList")
 	} else {
 		for i := range clusterPools.Items {
 			veleroBackupTemplate.IncludedNamespaces = appendUnique(
@@ -281,12 +270,7 @@ func setManagedClustersBackupInfo(
 	// get managed clusters namespaces
 	managedClusterList := clusterv1.ManagedClusterList{}
 	if err := c.List(ctx, &managedClusterList, &client.ListOptions{}); err != nil {
-		// if NotFound error
-		if !k8serr.IsNotFound(err) {
-			backupLogger.Info("managed clusters resources NOT FOUND")
-		} else {
-			backupLogger.Error(err, "failed to get clusterv1.ManagedClusterList")
-		}
+		backupLogger.Error(err, "failed to get clusterv1.ManagedClusterList")
 	} else {
 		for i := range managedClusterList.Items {
 			if managedClusterList.Items[i].Name == "local-cluster" {
