@@ -178,12 +178,7 @@ func setResourcesBackupInfo(
 	// exclude acm channel namespaces
 	channels := chnv1.ChannelList{}
 	if err := c.List(ctx, &channels, &client.ListOptions{}); err != nil {
-		// if NotFound error
-		if !k8serr.IsNotFound(err) {
-			backupLogger.Info("channel resources NOT FOUND")
-		} else {
-			backupLogger.Error(err, "failed to get chnv1.ChannelList")
-		}
+		backupLogger.Error(err, "failed to get chnv1.ChannelList")
 	} else {
 		for i := range channels.Items {
 			if channels.Items[i].Name == "charts-v1" {
