@@ -211,9 +211,10 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 
 	// Velero doesn't watch modifications to its schedules
-	// delete velero schedules if their spec needs to be updated
+	// delete velero schedules if their spec needs to be updated or any of them is missing
 	// New velero schedules will be created in the next reconcile triggerd by the deletion
-	if isScheduleSpecUpdated(&veleroScheduleList, backupSchedule) {
+	if isScheduleSpecUpdated(&veleroScheduleList, backupSchedule) ||
+		len(veleroScheduleList.Items) < 3 {
 		if err := r.deleteVeleroSchedules(ctx, backupSchedule, &veleroScheduleList); err != nil {
 			return ctrl.Result{}, err
 		}
