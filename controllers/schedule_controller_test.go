@@ -759,6 +759,23 @@ var _ = Describe("BackupSchedule controller", func() {
 			}, timeout, interval).Should(BeTrue())
 			Expect(len(veleroScheduleList.Items)).To(BeNumerically("==", 3))
 
+			// delete existing velero schedule
+			Eventually(func() bool {
+				scheduleObj := veleroScheduleList.Items[0].DeepCopy()
+				err := k8sClient.Delete(ctx, scheduleObj)
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
+
+			// count velero schedules, should still be 3
+			veleroScheduleList = veleroapi.ScheduleList{}
+			Eventually(func() int {
+				err := k8sClient.List(ctx, &veleroScheduleList, &client.ListOptions{})
+				if err != nil {
+					return 0
+				}
+				return len(veleroScheduleList.Items)
+			}, timeout, interval).Should(BeNumerically("==", 3))
+
 			// delete existing acm schedules
 			for i := range acmSchedulesList.Items {
 				Eventually(func() bool {
