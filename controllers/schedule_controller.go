@@ -107,7 +107,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 		)
 	}
 
-	// look for available VeleroStorageLocation owned by Velero instance
+	// look for available VeleroStorageLocation
 	// and keep track of the velero oadp namespace
 	veleroNamespace := ""
 	isValidStorageLocation := false
@@ -115,7 +115,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 		if veleroStorageLocations.Items[i].OwnerReferences != nil &&
 			veleroStorageLocations.Items[i].Status.Phase == veleroapi.BackupStorageLocationPhaseAvailable {
 			for _, ref := range veleroStorageLocations.Items[i].OwnerReferences {
-				if ref.Kind == "Velero" {
+				if ref.Kind != "" {
 					isValidStorageLocation = true
 					veleroNamespace = veleroStorageLocations.Items[i].Namespace
 					break
