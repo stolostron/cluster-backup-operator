@@ -38,10 +38,10 @@ This project is licensed under the *Apache License 2.0*. A copy of the license c
 
 
 ## Getting Started
-The Cluster Back up and Restore Operator runs on the hub and depends on the [OADP Operator](https://github.com/openshift/oadp-operator) to create an instance of a resource on the ACM hub, which is then used to backup and restore ACM hub resources. 
+The Cluster Back up and Restore Operator runs on the hub and depends on the [OADP Operator](https://github.com/openshift/oadp-operator) to create a connection to a backup storage location on the ACM hub, which is then used to backup and restore ACM hub resources. 
 
-Before you can use the cluster backup operator, you first need to install the OADP Operator as described [here](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md) for the stable version or [here] (https://github.com/openshift/oadp-operator/blob/oadp-0.4.2/docs/install_olm.md) for the beta version.
-Make sure you follow the steps to create the [secret for the cloud storage](https://github.com/openshift/oadp-operator#creating-credentials-secret) where the backups are going to be saved, then use that secret when creating the [Velero resource](https://github.com/openshift/oadp-operator#creating-velero-cr) if you are using the 0.4.2 (beta channel) or creating the [DataProtectionApplication resource] (https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) if you are using the 0.5 release (stable channel).
+Before you can use the cluster backup operator, you first need to install the OADP Operator as described [here](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md) for the latest version or [here](https://github.com/openshift/oadp-operator/blob/oadp-0.4.2/docs/install_olm.md) for the 0.4.2 version, available on the beta channel.
+Make sure you follow the steps to create the [secret for the cloud storage](https://github.com/openshift/oadp-operator#creating-credentials-secret) where the backups are going to be saved, then use that secret when creating the [Velero resource](https://github.com/openshift/oadp-operator#creating-velero-cr) if you are using the 0.4.2 (beta channel) or creating the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) if you are using the latest version.
 
 The Cluster Back up and Restore Operator resources must be created in the same namespace where the OADP Operator is installed. 
 
@@ -155,7 +155,7 @@ registry service like [quay.io](https://quay.io).
 
 Before using Cluster Back up and Restore Operator backup or restore support you have to install the [OADP Operator](https://github.com/openshift/oadp-operator).
 
-Make sure you follow the OADP Operator installation instructions and create either a Velero resource if using the OADP Operator from beta channel or a DataProtectionApplication resource if using the OADP Operator from stable channel and a valid connection to a backup storage location where backups will be stored. Check the install and setup steps [here](https://github.com/openshift/oadp-operator#installing-operator).
+Make sure you follow the OADP Operator installation instructions and create either a Velero resource if using the 0.4.2 OADP Operator available on the beta channel or a DataProtectionApplication resource if using the latest OADP Operator and a valid connection to a backup storage location where backups will be stored. Check the install and setup steps [here](https://github.com/openshift/oadp-operator#installing-operator).
 
 The Cluster Back up and Restore Operator resources must be created in the same namespace where the OADP Operator is installed. 
 
