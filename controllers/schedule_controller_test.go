@@ -921,7 +921,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				Expect(
 					createdSchedule.Status.LastMessage,
 				).Should(BeIdenticalTo("velero.io.BackupStorageLocation resources not found. " +
-					"Verify you have created a konveyor.openshift.io.Velero resource."))
+					"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."))
 
 				// create the storage location now but in the wrong ns
 				Expect(k8sClient.Create(ctx, backupStorageLocation)).Should(Succeed())
