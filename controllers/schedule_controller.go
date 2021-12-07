@@ -229,7 +229,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	// delete velero schedules if their spec needs to be updated or any of them is missing
 	// New velero schedules will be created in the next reconcile triggerd by the deletion
 	if isScheduleSpecUpdated(&veleroScheduleList, backupSchedule) ||
-		len(veleroScheduleList.Items) < 3 {
+		len(veleroScheduleList.Items) < 5 {
 		if err := r.deleteVeleroSchedules(ctx, backupSchedule, &veleroScheduleList); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -290,7 +290,6 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client, string(HiveSecret))
 		case CredentialsCluster:
 			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client, string(ClusterSecret))
-
 		case Resources:
 			setResourcesBackupInfo(ctx, veleroBackupTemplate, r.Client)
 		}
