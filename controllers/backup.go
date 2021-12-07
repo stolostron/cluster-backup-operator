@@ -22,10 +22,8 @@ import (
 	"sort"
 	"strings"
 
-	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
-	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,13 +33,23 @@ import (
 )
 
 var (
-	backupNamespacesACM           = [...]string{"hive", "openshift-operator-lifecycle-manager"}
-	backupManagedClusterResources = [...]string{"secret", "configmap",
-		"ManagedCluster.cluster.open-cluster-management.io", "ManagedClusterAddon", "ServiceAccount",
-		"ManagedClusterInfo", "ManagedClusterSet", "ManagedClusterSetBindings", "KlusterletAddonConfig",
-		"ManagedClusterView", "ManagedCluster.clusterview.open-cluster-management.io",
-		"ClusterPool", "ClusterDeployment", "MachinePool", "ClusterProvision",
-		"ClusterState", "ClusterSyncLease", "ClusterSync", "ClusterCurator"}
+	// resources used to activate the connection between hub and managed clusters - activation resources
+	backupManagedClusterResources = [...]string{
+		"ManagedCluster.cluster.open-cluster-management.io", //global
+		"KlusterletAddonConfig",
+		"ManagedClusterAddon",
+		"ManagedClusterInfo",
+		"ManagedClusterSet",
+		"ManagedClusterSetBindings",
+		"ClusterPool",
+		"ClusterCurator",
+		"ManagedCluster.clusterview.open-cluster-management.io",
+		"ManagedClusterView",
+		"MultiClusterObservability", // global resource, observability
+		"Observatorium",             // observability
+	}
+
+	// all backup resources, except secrets, configmaps and managed cluster activation resources
 	backupResources = [...]string{
 		"applications.argoproj.io", "applicationset.argoproj.io",
 		"appprojects.argoproj.io", "argocds.argoproj.io",
@@ -52,8 +60,20 @@ var (
 		"placementrule", "placement", "placementdecisions",
 		"PlacementBinding.policy.open-cluster-management.io",
 		"policy",
+		"ClusterDeployment",
+		"MachinePool",
+		"ClusterSyncLease",
+		"ClusterSync",
 	}
-	backupCredsResources = [...]string{"secret"}
+	backupCredsResources = [...]string{
+		"secret",
+		"configmap",
+	}
+
+	// credentials labels
+	backupCredsUserLabel    = "cluster.open-cluster-management.io/type"
+	backupCredsHiveLabel    = "hive.openshift.io/secret-type"
+	backupCredsClusterLabel = "cluster.open-cluster-management.io/copiedFromNamespace"
 )
 
 var (
@@ -61,9 +81,11 @@ var (
 	// create credentials schedule first since this is the fastest one, followed by resources
 	// mapping ResourceTypes to Velero schedule names
 	veleroScheduleNames = map[ResourceType]string{
-		Credentials:     "acm-credentials-schedule",
-		Resources:       "acm-resources-schedule",
-		ManagedClusters: "acm-managed-clusters-schedule",
+		Credentials:        "acm-credentials-schedule",
+		CredentialsHive:    "acm-credentials-hive-schedule",
+		CredentialsCluster: "acm-credentials-cluster-schedule",
+		Resources:          "acm-resources-schedule",
+		ManagedClusters:    "acm-managed-clusters-schedule",
 	}
 )
 
@@ -84,6 +106,8 @@ func cleanupBackups(
 		// get acm backups only when counting existing backups
 		sliceBackups := filterBackups(veleroBackupList.Items[:], func(bkp veleroapi.Backup) bool {
 			return strings.HasPrefix(bkp.Name, veleroScheduleNames[Credentials]) ||
+				strings.HasPrefix(bkp.Name, veleroScheduleNames[CredentialsHive]) ||
+				strings.HasPrefix(bkp.Name, veleroScheduleNames[CredentialsCluster]) ||
 				strings.HasPrefix(bkp.Name, veleroScheduleNames[ManagedClusters]) ||
 				strings.HasPrefix(bkp.Name, veleroScheduleNames[Resources])
 		})
@@ -196,7 +220,18 @@ func setCredsBackupInfo(
 	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
 	c client.Client,
+	credentialType string,
 ) {
+
+	var labelKey string
+	switch credentialType {
+	case string(HiveSecret):
+		labelKey = backupCredsHiveLabel
+	case string(ClusterSecret):
+		labelKey = backupCredsClusterLabel
+	default:
+		labelKey = backupCredsUserLabel
+	}
 
 	var clusterResource bool = false
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
@@ -216,7 +251,7 @@ func setCredsBackupInfo(
 		veleroBackupTemplate.LabelSelector.MatchExpressions = requirements
 	}
 	req := &v1.LabelSelectorRequirement{}
-	req.Key = "cluster.open-cluster-management.io/type"
+	req.Key = labelKey
 	req.Operator = "Exists"
 	veleroBackupTemplate.LabelSelector.MatchExpressions = append(
 		veleroBackupTemplate.LabelSelector.MatchExpressions,
@@ -230,9 +265,7 @@ func setManagedClustersBackupInfo(
 	veleroBackupTemplate *veleroapi.BackupSpec,
 	c client.Client,
 ) {
-
-	backupLogger := log.FromContext(ctx)
-	var clusterResource bool = true // include cluster level managed cluster resources
+	var clusterResource bool = true // include cluster level resources
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 
 	for i := range backupManagedClusterResources { // managed clusters required resources, from namespace or cluster level
@@ -240,42 +273,6 @@ func setManagedClustersBackupInfo(
 			veleroBackupTemplate.IncludedResources,
 			backupManagedClusterResources[i],
 		)
-	}
-
-	for i := range backupNamespacesACM { // acm ns
-		veleroBackupTemplate.IncludedNamespaces = appendUnique(
-			veleroBackupTemplate.IncludedNamespaces,
-			backupNamespacesACM[i],
-		)
-	}
-
-	// add cluster pool namespaces
-	clusterPools := hivev1.ClusterPoolList{}
-	if err := c.List(ctx, &clusterPools, &client.ListOptions{}); err != nil {
-		backupLogger.Error(err, "failed to get hivev1.ClusterPoolList")
-	} else {
-		for i := range clusterPools.Items {
-			veleroBackupTemplate.IncludedNamespaces = appendUnique(
-				veleroBackupTemplate.IncludedNamespaces,
-				clusterPools.Items[i].Namespace,
-			)
-		}
-	}
-
-	// get managed clusters namespaces
-	managedClusterList := clusterv1.ManagedClusterList{}
-	if err := c.List(ctx, &managedClusterList, &client.ListOptions{}); err != nil {
-		backupLogger.Error(err, "failed to get clusterv1.ManagedClusterList")
-	} else {
-		for i := range managedClusterList.Items {
-			if managedClusterList.Items[i].Name == "local-cluster" {
-				continue
-			}
-			veleroBackupTemplate.IncludedNamespaces = appendUnique(
-				veleroBackupTemplate.IncludedNamespaces,
-				managedClusterList.Items[i].Name,
-			)
-		}
 	}
 }
 

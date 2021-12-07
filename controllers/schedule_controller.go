@@ -41,12 +41,27 @@ type ResourceType string
 const (
 	// ManagedClusters resource type
 	ManagedClusters ResourceType = "managedClusters"
-	// Credentials resource type
+	// Credentials resource type for user created credentials
 	Credentials ResourceType = "credentials"
+	// Credentials resource type for hive secrets
+	CredentialsHive ResourceType = "credentialsHive"
+	// Credentials resource type for managed cluster secrets
+	CredentialsCluster ResourceType = "credentialsCluster"
 	// Resources related to applications and policies
 	Resources ResourceType = "resources"
 )
 
+// SecretType is the type of secret
+type SecretType string
+
+const (
+	// hive created secrets
+	HiveSecret SecretType = "hive"
+	// managed cluster secrets
+	ClusterSecret SecretType = "cluster"
+	// user defined secrets
+	UserSecret SecretType = "user"
+)
 const updateStatusFailedMsg = "Could not update status"
 
 const (
@@ -270,7 +285,12 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		case ManagedClusters:
 			setManagedClustersBackupInfo(ctx, veleroBackupTemplate, r.Client)
 		case Credentials:
-			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client)
+			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client, string(UserSecret))
+		case CredentialsHive:
+			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client, string(HiveSecret))
+		case CredentialsCluster:
+			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client, string(ClusterSecret))
+
 		case Resources:
 			setResourcesBackupInfo(ctx, veleroBackupTemplate, r.Client)
 		}
