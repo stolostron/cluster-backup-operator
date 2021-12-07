@@ -329,7 +329,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 ) error {
 	restoreLogger := log.FromContext(ctx)
 
-	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, 3)
+	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, 5)
 
 	// loop through resourceTypes to create a Velero restore per type
 	for key := range veleroScheduleNames {
@@ -340,7 +340,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			if restore.Spec.VeleroManagedClustersBackupName != nil {
 				backupName = *restore.Spec.VeleroManagedClustersBackupName
 			}
-		case Credentials:
+		case Credentials, CredentialsHive, CredentialsCluster:
 			if restore.Spec.VeleroCredentialsBackupName != nil {
 				backupName = *restore.Spec.VeleroCredentialsBackupName
 			}
