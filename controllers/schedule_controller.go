@@ -109,7 +109,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 		veleroStorageLocations == nil || len(veleroStorageLocations.Items) == 0 {
 
 		msg := "velero.io.BackupStorageLocation resources not found. " +
-			"Verify you have created a konveyor.openshift.io.Velero resource."
+			"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."
 		scheduleLogger.Info(msg)
 
 		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation

@@ -1341,7 +1341,7 @@ var _ = Describe("Basic Restore controller", func() {
 						}, &createdRestore)
 					return createdRestore.Status.LastMessage
 				}, timeout, interval).Should(BeIdenticalTo("velero.io.BackupStorageLocation resources not found. " +
-					"Verify you have created a konveyor.openshift.io.Velero resource."))
+					"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."))
 			})
 		})
 
