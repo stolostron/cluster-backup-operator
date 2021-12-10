@@ -976,7 +976,7 @@ var _ = Describe("Basic Restore controller", func() {
 			}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
 			Expect(
 				createdRestore.Status.LastMessage,
-			).Should(BeIdenticalTo("Backup invalid-backup-name Not found"))
+			).Should(BeIdenticalTo("Backup invalid-backup-name Not found for resource type: credentials"))
 		})
 	})
 

@@ -370,19 +370,25 @@ func (r *RestoreReconciler) initVeleroRestores(
 				"type", key,
 			)
 			restore.Status.Phase = v1beta1.RestorePhaseError
-			restore.Status.LastMessage = fmt.Sprintf("Backup %s Not found", backupName)
+			restore.Status.LastMessage = fmt.Sprintf("Backup %s Not found for resource type: %s", backupName, key)
 
-			return err
+			if key != CredentialsHive && key != CredentialsCluster {
+				// ignore missing hive or cluster key backup files
+				// for the case when the backups were created with an older controller version
+				return err
+			}
+		} else {
+
+			veleroRestore.Name = getValidKsRestoreName(restore.Name, veleroBackupName)
+
+			veleroRestore.Namespace = restore.Namespace
+			veleroRestore.Spec.BackupName = veleroBackupName
+
+			if err := ctrl.SetControllerReference(restore, veleroRestore, r.Scheme); err != nil {
+				return err
+			}
+			veleroRestoresToCreate[key] = veleroRestore
 		}
-		veleroRestore.Name = getValidKsRestoreName(restore.Name, veleroBackupName)
-
-		veleroRestore.Namespace = restore.Namespace
-		veleroRestore.Spec.BackupName = veleroBackupName
-
-		if err := ctrl.SetControllerReference(restore, veleroRestore, r.Scheme); err != nil {
-			return err
-		}
-		veleroRestoresToCreate[key] = veleroRestore
 	}
 
 	if len(veleroRestoresToCreate) == 0 {

@@ -71,9 +71,9 @@ var (
 	}
 
 	// credentials labels
-	backupCredsUserLabel    = "cluster.open-cluster-management.io/type"
-	backupCredsHiveLabel    = "hive.openshift.io/secret-type"
-	backupCredsClusterLabel = "cluster.open-cluster-management.io/copiedFromNamespace"
+	backupCredsUserLabel    = "cluster.open-cluster-management.io/type"   // user defined
+	backupCredsHiveLabel    = "hive.openshift.io/secret-type"             // hive
+	backupCredsClusterLabel = "cluster.open-cluster-management.io/backup" // generic
 )
 
 var (

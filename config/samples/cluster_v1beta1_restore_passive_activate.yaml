@@ -1,0 +1,14 @@
+
+# apply this resource to activate a passive configuration
+# this resource can be applied after the restore-acm-passive configuration was applied on this hub
+# after this resource is applied, all restored managed clusters 
+# will resume connection on the current hub; hive clusters will automatically switch to this cluster
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-passive-activate
+  namespace: openshift-adp
+spec:
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: skip
+  veleroResourcesBackupName: skip
