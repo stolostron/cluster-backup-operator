@@ -484,12 +484,7 @@ var _ = Describe("BackupSchedule controller", func() {
 						createdBackupSchedule.Status.VeleroScheduleResources.Spec.Template.ExcludedNamespaces,
 						chartsv1NSName,
 					)
-					// verify the cluster pool ns is included
-					_, clusterPoolsNSOK := find(
-						createdBackupSchedule.Status.VeleroScheduleManagedClusters.Spec.Template.IncludedNamespaces,
-						clusterPoolNSName,
-					)
-					return chartsNSOK && clusterPoolsNSOK
+					return chartsNSOK
 				}
 
 				return schedulesCreated
@@ -534,7 +529,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				err := k8sClient.List(ctx, &veleroSchedulesList, &client.ListOptions{})
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
-			Expect(len(veleroSchedulesList.Items)).To(BeNumerically("==", 3))
+			Expect(len(veleroSchedulesList.Items)).To(BeNumerically("==", 5))
 			//
 
 			// new backup with no TTL
@@ -757,7 +752,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				err := k8sClient.List(ctx, &veleroScheduleList, &client.ListOptions{})
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
-			Expect(len(veleroScheduleList.Items)).To(BeNumerically("==", 3))
+			Expect(len(veleroScheduleList.Items)).To(BeNumerically("==", 5))
 
 			// delete existing velero schedule
 			Eventually(func() bool {
@@ -766,7 +761,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
-			// count velero schedules, should still be 3
+			// count velero schedules, should still be 5
 			veleroScheduleList = veleroapi.ScheduleList{}
 			Eventually(func() int {
 				err := k8sClient.List(ctx, &veleroScheduleList, &client.ListOptions{})
@@ -774,7 +769,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					return 0
 				}
 				return len(veleroScheduleList.Items)
-			}, timeout, interval).Should(BeNumerically("==", 3))
+			}, timeout, interval).Should(BeNumerically("==", 5))
 
 			// delete existing acm schedules
 			for i := range acmSchedulesList.Items {
@@ -926,7 +921,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				Expect(
 					createdSchedule.Status.LastMessage,
 				).Should(BeIdenticalTo("velero.io.BackupStorageLocation resources not found. " +
-					"Verify you have created a konveyor.openshift.io.Velero resource."))
+					"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."))
 
 				// create the storage location now but in the wrong ns
 				Expect(k8sClient.Create(ctx, backupStorageLocation)).Should(Succeed())
