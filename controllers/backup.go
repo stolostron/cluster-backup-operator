@@ -70,10 +70,10 @@ var (
 		"configmap",
 	}
 
-	// credentials labels
-	backupCredsUserLabel    = "cluster.open-cluster-management.io/type"   // user defined
+	// secrets and configmaps labels
+	backupCredsUserLabel    = "cluster.open-cluster-management.io/type"   // #nosec G101 -- This is a false positive
 	backupCredsHiveLabel    = "hive.openshift.io/secret-type"             // hive
-	backupCredsClusterLabel = "cluster.open-cluster-management.io/backup" // generic
+	backupCredsClusterLabel = "cluster.open-cluster-management.io/backup" // #nosec G101 -- This is a false positive
 )
 
 var (
