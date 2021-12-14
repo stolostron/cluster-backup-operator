@@ -38,7 +38,6 @@ var (
 		"ManagedCluster.cluster.open-cluster-management.io", //global
 		"KlusterletAddonConfig",
 		"ManagedClusterAddon",
-		"ManagedClusterInfo",
 		"ManagedClusterSet",
 		"ManagedClusterSetBindings",
 		"ClusterPool",
@@ -62,8 +61,6 @@ var (
 		"policy",
 		"ClusterDeployment",
 		"MachinePool",
-		"ClusterSyncLease",
-		"ClusterSync",
 	}
 	backupCredsResources = [...]string{
 		"secret",
