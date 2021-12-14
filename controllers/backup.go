@@ -33,10 +33,6 @@ import (
 )
 
 var (
-	// specifically exclude resources from these api groups
-	excludedAPIGroups = [...]string{
-		"work.open-cluster-management.io",
-	}
 	// resources used to activate the connection between hub and managed clusters - activation resources
 	backupManagedClusterResources = [...]string{
 		"ManagedCluster.cluster.open-cluster-management.io", //global
