@@ -28,28 +28,65 @@ import (
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 var (
+	// include resources from these api groups
+	includedAPIGroupsSuffix = []string{
+		".open-cluster-management.io",
+	}
+	includedAPIGroupsByName = []string{
+		"argoproj.io",
+		"app.k8s.io",
+		//"hive.openshift.io",
+	}
+
+	// exclude resources from these api groups
+	excludedAPIGroups = []string{
+		"admission.cluster.open-cluster-management.io",
+		"admission.work.open-cluster-management.io",
+		"internal.open-cluster-management.io",
+		"operator.open-cluster-management.io",
+		"search.open-cluster-management.io",
+		"work.open-cluster-management.io",
+	}
+	// exclude these CRDs
+	// they are part of the included api groups but are either not needed
+	// or they are being recreated by owner resources, which are also backed up
+	excludedCRDs = []string{
+		"clustermanagementaddon",
+		"applicationmanager",
+		"certpolicycontroller",
+		"iampolicycontroller",
+		"policycontroller",
+		"searchcollector",
+		"workmanager",
+		"backupschedule",
+		"restore",
+	}
+
 	// resources used to activate the connection between hub and managed clusters - activation resources
-	backupManagedClusterResources = [...]string{
-		"ManagedCluster.cluster.open-cluster-management.io", //global
-		"KlusterletAddonConfig",
-		"ManagedClusterAddon",
-		"ManagedClusterSet",
-		"ManagedClusterSetBindings",
-		"ClusterPool",
-		"ClusterCurator",
-		"ManagedCluster.clusterview.open-cluster-management.io",
-		"ManagedClusterView",
-		"MultiClusterObservability", // global resource, observability
-		"Observatorium",             // observability
+	backupManagedClusterResources = []string{
+		"managedcluster", //global
+		"klusterletaddonconfig",
+		"managedclusteraddon",
+		"managedclusterset",
+		"managecclustersetbindings",
+		"clusterpool",
+		"clusterclaim",
+		"clustercurator",
+		"managedclusterview",
 	}
 
 	// all backup resources, except secrets, configmaps and managed cluster activation resources
-	backupResources = [...]string{
+	backupResources = []string{
+		"clusterdeployment",
+		"machinepool",
+	}
+	/*backupResources = []string{
 		"applications.argoproj.io", "applicationset.argoproj.io",
 		"appprojects.argoproj.io", "argocds.argoproj.io",
 		"applications.app.k8s.io",
@@ -62,9 +99,10 @@ var (
 		"ClusterDeployment",
 		"MachinePool",
 	}
-	backupCredsResources = [...]string{
+	*/
+
+	backupCredsResources = []string{
 		"secret",
-		"configmap",
 	}
 
 	// secrets and configmaps labels
@@ -178,21 +216,22 @@ func deleteBackup(
 func setResourcesBackupInfo(
 	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
+	resourcesToBackup []string,
 	c client.Client,
 ) {
 
 	backupLogger := log.FromContext(ctx)
-	var clusterResource bool = false
+	var clusterResource bool = true
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
 		veleroBackupTemplate.ExcludedNamespaces,
 		"local-cluster",
 	)
 
-	for i := range backupResources { // acm resources
+	for i := range resourcesToBackup { // acm resources
 		veleroBackupTemplate.IncludedResources = appendUnique(
 			veleroBackupTemplate.IncludedResources,
-			backupResources[i],
+			resourcesToBackup[i],
 		)
 	}
 
@@ -210,6 +249,7 @@ func setResourcesBackupInfo(
 			}
 		}
 	}
+
 }
 
 // set credentials backup info
@@ -300,4 +340,76 @@ func filterBackups(vs []veleroapi.Backup, f func(veleroapi.Backup) bool) []veler
 		}
 	}
 	return filtered
+}
+
+// get server resources that needs backup
+func getResourcesToBackup(
+	ctx context.Context,
+	dc discovery.DiscoveryInterface,
+) ([]string, error) {
+	backupLogger := log.FromContext(ctx)
+
+	backupGroupVersions := []string{}
+	backupResourceNames := backupResources
+	backupResourceNamesPlural := []string{}
+
+	groupList, err := dc.ServerGroups()
+	if err != nil {
+		return backupResourceNames, fmt.Errorf("failed to get server groups: %v", err)
+	}
+	if groupList != nil {
+		for _, group := range groupList.Groups {
+			if shouldBackupAPIGroup(group.Name) {
+				for _, version := range group.Versions {
+					backupGroupVersions = appendUnique(backupGroupVersions, version.GroupVersion)
+				}
+			}
+		}
+	}
+
+	ignoreCRDs := append(excludedCRDs, backupManagedClusterResources...)
+	for _, groupVersion := range backupGroupVersions {
+		resourceList, err := dc.ServerResourcesForGroupVersion(groupVersion)
+		if err != nil {
+			return backupResourceNames, fmt.Errorf("failed to get server resources: %v", err)
+		}
+		if resourceList != nil {
+			for _, resource := range resourceList.APIResources {
+
+				if resource.SingularName != "" {
+
+					_, ok := find(ignoreCRDs, resource.SingularName)
+					if !ok {
+						backupResourceNames = appendUnique(backupResourceNames, resource.SingularName)
+					}
+				} else {
+					backupResourceNamesPlural = append(backupResourceNamesPlural, resource.Name)
+					backupLogger.Info("INFO", "No singular name", resource.Kind)
+				}
+			}
+		}
+	}
+
+	backupLogger.Info("INFO", "BackupResourceNames", backupResourceNames)
+	backupLogger.Info("INFO", "backupResourceNamesPlural", backupResourceNamesPlural)
+
+	return backupResourceNames, nil
+}
+
+// returns true if this api group needs to be backed up
+func shouldBackupAPIGroup(groupStr string) bool {
+
+	_, ok := find(excludedAPIGroups, groupStr)
+	if ok {
+		// this has to be excluded
+		return false
+	}
+
+	_, ok = find(includedAPIGroupsByName, groupStr)
+	if !ok {
+		_, ok = findSuffix(includedAPIGroupsSuffix, groupStr)
+
+	}
+
+	return ok
 }
