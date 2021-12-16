@@ -79,6 +79,7 @@ var (
 		"clusterclaim",
 		"clustercurator",
 		"managedclusterview",
+		"clusterstatus",
 	}
 
 	// all backup resources, except secrets, configmaps and managed cluster activation resources
@@ -336,9 +337,11 @@ func getResourcesToBackup(
 ) ([]string, error) {
 	backupLogger := log.FromContext(ctx)
 
-	backupGroupVersions := []string{}
 	backupResourceNames := backupResources
 	backupResourceNamesPlural := []string{}
+
+	// build the list of excluded resources
+	ignoreCRDs := append(excludedCRDs, backupManagedClusterResources...)
 
 	groupList, err := dc.ServerGroups()
 	if err != nil {
@@ -348,35 +351,31 @@ func getResourcesToBackup(
 		for _, group := range groupList.Groups {
 			if shouldBackupAPIGroup(group.Name) {
 				for _, version := range group.Versions {
-					backupGroupVersions = appendUnique(backupGroupVersions, version.GroupVersion)
-				}
-			}
-		}
-	}
 
-	ignoreCRDs := append(excludedCRDs, backupManagedClusterResources...)
-	for _, groupVersion := range backupGroupVersions {
-		resourceList, err := dc.ServerResourcesForGroupVersion(groupVersion)
-		if err != nil {
-			return backupResourceNames, fmt.Errorf("failed to get server resources: %v", err)
-		}
-		if resourceList != nil {
-			for _, resource := range resourceList.APIResources {
-
-				if resource.SingularName != "" {
-
-					_, ok := find(ignoreCRDs, resource.SingularName)
-					if !ok {
-						backupResourceNames = appendUnique(backupResourceNames, resource.SingularName)
+					//get all resources for each group version
+					resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
+					if err != nil {
+						return backupResourceNames, fmt.Errorf("failed to get server resources: %v", err)
 					}
-				} else {
-					backupResourceNamesPlural = append(backupResourceNamesPlural, resource.Name)
-					backupLogger.Info("INFO", "No singular name", resource.Kind)
+					if resourceList != nil {
+						for _, resource := range resourceList.APIResources {
+							resourceKind := strings.ToLower(resource.Kind)
+							resourceName := resourceKind + "." + group.Name
+							// check if the resource kind is ignored
+							_, ok := find(ignoreCRDs, resourceKind)
+							if !ok {
+								// check if kind.group is used to identify resource to ignore
+								_, ok := find(ignoreCRDs, resourceName)
+								if !ok {
+									backupResourceNames = appendUnique(backupResourceNames, resourceName)
+								}
+							}
+						}
+					}
 				}
 			}
 		}
 	}
-
 	backupLogger.Info("INFO", "BackupResourceNames", backupResourceNames)
 	backupLogger.Info("INFO", "backupResourceNamesPlural", backupResourceNamesPlural)
 
@@ -393,7 +392,9 @@ func shouldBackupAPIGroup(groupStr string) bool {
 	}
 
 	_, ok = find(includedAPIGroupsByName, groupStr)
+	// if not in the included api groups
 	if !ok {
+		// check if is in the included api groups by suffix
 		_, ok = findSuffix(includedAPIGroupsSuffix, groupStr)
 
 	}
