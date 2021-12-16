@@ -24,6 +24,10 @@ import (
 	"github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/version"
+
+	fakediscovery "k8s.io/client-go/discovery/fake"
+	fakeclientset "k8s.io/client-go/kubernetes/fake"
 )
 
 func initBackupSchedule(cronString string) *v1beta1.BackupSchedule {
@@ -62,6 +66,26 @@ func initVeleroScheduleList(phase veleroapi.SchedulePhase, cronSpec string) *vel
 }
 
 func Test_parseCronSchedule(t *testing.T) {
+
+	client := fakeclientset.NewSimpleClientset()
+	fakeDiscovery, ok := client.Discovery().(*fakediscovery.FakeDiscovery)
+	if !ok {
+		t.Fatalf("couldn't convert Discovery() to *FakeDiscovery")
+	}
+
+	testGitCommit := "v1.0.0"
+	fakeDiscovery.FakedServerVersion = &version.Info{
+		GitCommit: testGitCommit,
+	}
+
+	sv, err := client.Discovery().ServerVersion()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sv.GitCommit != testGitCommit {
+		t.Fatalf("unexpected faked discovery return value: %q", sv.GitCommit)
+	}
+
 	type args struct {
 		ctx            context.Context
 		backupSchedule *v1beta1.BackupSchedule

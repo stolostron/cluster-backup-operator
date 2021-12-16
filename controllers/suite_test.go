@@ -25,6 +25,9 @@ import (
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	certsv1 "k8s.io/api/certificates/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/version"
+	fakediscovery "k8s.io/client-go/discovery/fake"
+	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -68,6 +71,22 @@ var _ = BeforeSuite(func() {
 		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
 	}
+
+	fakeclient := fakeclientset.NewSimpleClientset()
+	fakeDiscovery, ok := fakeclient.Discovery().(*fakediscovery.FakeDiscovery)
+	// couldn't convert Discovery() to *FakeDiscovery
+	Expect(ok).NotTo(BeFalse())
+
+	testGitCommit := "v1.0.0"
+	fakeDiscovery.FakedServerVersion = &version.Info{
+		GitCommit: testGitCommit,
+	}
+
+	sv, err := fakeclient.Discovery().ServerVersion()
+	Expect(err).ToNot(HaveOccurred())
+
+	// unexpected faked discovery return value: %q", sv.GitCommit
+	Expect(sv.GitCommit).To(BeIdenticalTo(testGitCommit))
 
 	testEnvManagedCluster = &envtest.Environment{} // no CRDs for managedcluster
 	managedClusterCfg, err := testEnvManagedCluster.Start()
@@ -133,8 +152,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&BackupScheduleReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:          mgr.GetClient(),
+		DiscoveryClient: fakeDiscovery,
+		Scheme:          mgr.GetScheme(),
 	}).SetupWithManager(mgr)
 	Expect(err).ToNot(HaveOccurred())
 

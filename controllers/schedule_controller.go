@@ -28,6 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -74,7 +75,8 @@ const (
 // BackupScheduleReconciler reconciles a BackupSchedule object
 type BackupScheduleReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	DiscoveryClient discovery.DiscoveryInterface
+	Scheme          *runtime.Scheme
 }
 
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules,verbs=get;list;watch;create;update;patch;delete
@@ -267,6 +269,8 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 ) error {
 	scheduleLogger := log.FromContext(ctx)
 
+	resourcesToBackup, _ := getResourcesToBackup(ctx, r.DiscoveryClient)
+
 	// loop through resourceTypes to create a Velero schedule per type
 	for key, value := range veleroScheduleNames {
 		veleroScheduleIdentity := types.NamespacedName{
@@ -291,7 +295,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		case CredentialsCluster:
 			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client, string(ClusterSecret))
 		case Resources:
-			setResourcesBackupInfo(ctx, veleroBackupTemplate, r.Client)
+			setResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
 		}
 
 		veleroSchedule.Spec.Template = *veleroBackupTemplate

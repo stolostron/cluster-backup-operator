@@ -24,21 +24,21 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	ocinfrav1 "github.com/openshift/api/config/v1"
-	certsv1 "k8s.io/api/certificates/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
 	backupv1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	"github.com/open-cluster-management/cluster-backup-operator/controllers"
 	libgoclient "github.com/open-cluster-management/library-go/pkg/client"
 	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
+	ocinfrav1 "github.com/openshift/api/config/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	certsv1 "k8s.io/api/certificates/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/discovery"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	//operatorapiv1 "open-cluster-management.io/api/operator/v1"
 
@@ -106,9 +106,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	cfg := mgr.GetConfig()
+
+	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+	if err != nil {
+		setupLog.Error(err, "unable to set up discovery client")
+		os.Exit(1)
+	}
+
 	if err = (&controllers.BackupScheduleReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:          mgr.GetClient(),
+		DiscoveryClient: dc,
+		Scheme:          mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create Schedule controller")
 		os.Exit(1)
