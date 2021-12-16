@@ -82,24 +82,11 @@ var (
 	}
 
 	// all backup resources, except secrets, configmaps and managed cluster activation resources
+	// backup resources will be generated from the api groups CRDs
 	backupResources = []string{
 		"clusterdeployment",
 		"machinepool",
 	}
-	/*backupResources = []string{
-		"applications.argoproj.io", "applicationset.argoproj.io",
-		"appprojects.argoproj.io", "argocds.argoproj.io",
-		"applications.app.k8s.io",
-		"channel", "subscription",
-		"deployable",
-		"helmrelease",
-		"placementrule", "placement", "placementdecisions",
-		"PlacementBinding.policy.open-cluster-management.io",
-		"policy",
-		"ClusterDeployment",
-		"MachinePool",
-	}
-	*/
 
 	backupCredsResources = []string{
 		"secret",
