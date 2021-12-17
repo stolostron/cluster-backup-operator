@@ -109,6 +109,7 @@ var (
 		CredentialsHive:    "acm-credentials-hive-schedule",
 		CredentialsCluster: "acm-credentials-cluster-schedule",
 		Resources:          "acm-resources-schedule",
+		ResourcesGeneric:   "acm-resources-generic-schedule",
 		ManagedClusters:    "acm-managed-clusters-schedule",
 	}
 )
@@ -133,7 +134,8 @@ func cleanupBackups(
 				strings.HasPrefix(bkp.Name, veleroScheduleNames[CredentialsHive]) ||
 				strings.HasPrefix(bkp.Name, veleroScheduleNames[CredentialsCluster]) ||
 				strings.HasPrefix(bkp.Name, veleroScheduleNames[ManagedClusters]) ||
-				strings.HasPrefix(bkp.Name, veleroScheduleNames[Resources])
+				strings.HasPrefix(bkp.Name, veleroScheduleNames[Resources]) ||
+				strings.HasPrefix(bkp.Name, veleroScheduleNames[ResourcesGeneric])
 		})
 
 		if maxBackups < len(sliceBackups) {
@@ -242,6 +244,39 @@ func setResourcesBackupInfo(
 }
 
 // set credentials backup info
+func setGenericResourcesBackupInfo(
+	ctx context.Context,
+	veleroBackupTemplate *veleroapi.BackupSpec,
+	c client.Client,
+) {
+
+	var clusterResource bool = true // check global resources
+	veleroBackupTemplate.IncludeClusterResources = &clusterResource
+
+	for i := range backupCredsResources { // exclude resources already backed up by creds
+		veleroBackupTemplate.ExcludedResources = appendUnique(
+			veleroBackupTemplate.ExcludedResources,
+			backupCredsResources[i],
+		)
+	}
+
+	if veleroBackupTemplate.LabelSelector == nil {
+		labels := &v1.LabelSelector{}
+		veleroBackupTemplate.LabelSelector = labels
+
+		requirements := make([]v1.LabelSelectorRequirement, 0)
+		veleroBackupTemplate.LabelSelector.MatchExpressions = requirements
+	}
+	req := &v1.LabelSelectorRequirement{}
+	req.Key = backupCredsClusterLabel
+	req.Operator = "Exists"
+	veleroBackupTemplate.LabelSelector.MatchExpressions = append(
+		veleroBackupTemplate.LabelSelector.MatchExpressions,
+		*req,
+	)
+}
+
+// set credentials backup info
 func setCredsBackupInfo(
 	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
@@ -336,10 +371,10 @@ func getResourcesToBackup(
 	ctx context.Context,
 	dc discovery.DiscoveryInterface,
 ) ([]string, error) {
+
 	backupLogger := log.FromContext(ctx)
 
 	backupResourceNames := backupResources
-	backupResourceNamesPlural := []string{}
 
 	// build the list of excluded resources
 	ignoreCRDs := append(excludedCRDs, backupManagedClusterResources...)
@@ -348,38 +383,37 @@ func getResourcesToBackup(
 	if err != nil {
 		return backupResourceNames, fmt.Errorf("failed to get server groups: %v", err)
 	}
-	if groupList != nil {
-		for _, group := range groupList.Groups {
-			if shouldBackupAPIGroup(group.Name) {
-				for _, version := range group.Versions {
-
-					//get all resources for each group version
-					resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
-					if err != nil {
-						return backupResourceNames, fmt.Errorf("failed to get server resources: %v", err)
-					}
-					if resourceList != nil {
-						for _, resource := range resourceList.APIResources {
-							resourceKind := strings.ToLower(resource.Kind)
-							resourceName := resourceKind + "." + group.Name
-							// check if the resource kind is ignored
-							_, ok := find(ignoreCRDs, resourceKind)
-							if !ok {
-								// check if kind.group is used to identify resource to ignore
-								_, ok := find(ignoreCRDs, resourceName)
-								if !ok {
-									backupResourceNames = appendUnique(backupResourceNames, resourceName)
-								}
-							}
+	if groupList == nil {
+		return backupResourceNames, nil
+	}
+	for _, group := range groupList.Groups {
+		if shouldBackupAPIGroup(group.Name) {
+			for _, version := range group.Versions {
+				//get all resources for each group version
+				resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
+				if err != nil {
+					backupLogger.Error(err, "failed to get server resources")
+					continue
+				}
+				if resourceList == nil {
+					continue
+				}
+				for _, resource := range resourceList.APIResources {
+					resourceKind := strings.ToLower(resource.Kind)
+					resourceName := resourceKind + "." + group.Name
+					// check if the resource kind is ignored
+					_, ok := find(ignoreCRDs, resourceKind)
+					if !ok {
+						// check if kind.group is used to identify resource to ignore
+						_, ok := find(ignoreCRDs, resourceName)
+						if !ok {
+							backupResourceNames = appendUnique(backupResourceNames, resourceName)
 						}
 					}
 				}
 			}
 		}
 	}
-	backupLogger.Info("INFO", "BackupResourceNames", backupResourceNames)
-	backupLogger.Info("INFO", "backupResourceNamesPlural", backupResourceNamesPlural)
-
 	return backupResourceNames, nil
 }
 

@@ -523,13 +523,13 @@ var _ = Describe("BackupSchedule controller", func() {
 				return createdBackupSchedule.Status.VeleroScheduleManagedClusters.Spec.Template.TTL
 			}, timeout, interval).Should(BeIdenticalTo(metav1.Duration{Duration: time.Hour * 150}))
 
-			// count velero schedules, should be still just 3
+			// count velero schedules, should be still len(veleroScheduleNames)
 			veleroSchedulesList := veleroapi.ScheduleList{}
 			Eventually(func() bool {
 				err := k8sClient.List(ctx, &veleroSchedulesList, &client.ListOptions{})
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
-			Expect(len(veleroSchedulesList.Items)).To(BeNumerically("==", 5))
+			Expect(len(veleroSchedulesList.Items)).To(BeNumerically("==", len(veleroScheduleNames)))
 			//
 
 			// new backup with no TTL
@@ -738,7 +738,11 @@ var _ = Describe("BackupSchedule controller", func() {
 				createdBackupScheduleValidCronExp.Spec.VeleroSchedule,
 			).Should(BeIdenticalTo(backupSchedule))
 
-			// count acm schedules
+			// count ACM ( NOT velero) schedules, should still be just 5
+			// this nb is NOT the nb of velero backup schedules created from
+			// the acm backupschedule object ( these velero schedules are len(veleroScheduleNames))
+			// acmSchedulesList represents the ACM - BackupSchedule.cluster.open-cluster-management.io - schedules
+			// created by the tests
 			acmSchedulesList := v1beta1.BackupScheduleList{}
 			Eventually(func() bool {
 				err := k8sClient.List(ctx, &acmSchedulesList, &client.ListOptions{})
@@ -752,7 +756,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				err := k8sClient.List(ctx, &veleroScheduleList, &client.ListOptions{})
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
-			Expect(len(veleroScheduleList.Items)).To(BeNumerically("==", 5))
+			Expect(len(veleroScheduleList.Items)).To(BeNumerically("==", len(veleroScheduleNames)))
 
 			// delete existing velero schedule
 			Eventually(func() bool {
@@ -769,7 +773,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					return 0
 				}
 				return len(veleroScheduleList.Items)
-			}, timeout, interval).Should(BeNumerically("==", 5))
+			}, timeout, interval).Should(BeNumerically("==", len(veleroScheduleNames)))
 
 			// delete existing acm schedules
 			for i := range acmSchedulesList.Items {
@@ -854,8 +858,9 @@ var _ = Describe("BackupSchedule controller", func() {
 						IncludedNamespaces: []string{"please-keep-this-one"},
 					},
 					Status: veleroapi.BackupStatus{
-						Phase:  veleroapi.BackupPhaseCompleted,
-						Errors: 0,
+						Phase:          veleroapi.BackupPhaseCompleted,
+						StartTimestamp: &metav1.Time{},
+						Errors:         0,
 					},
 				},
 			}

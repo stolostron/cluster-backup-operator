@@ -63,6 +63,7 @@ var _ = Describe("Basic Restore controller", func() {
 		veleroNamespace                    *corev1.Namespace
 		veleroManagedClustersBackupName    string
 		veleroResourcesBackupName          string
+		veleroResourcesGenericBackupName   string
 		veleroCredentialsBackupName        string
 		veleroCredentialsHiveBackupName    string
 		veleroCredentialsClusterBackupName string
@@ -78,7 +79,7 @@ var _ = Describe("Basic Restore controller", func() {
 		latestBackup  string
 		invalidBackup string
 
-		timeout  = time.Second * 60
+		timeout  = time.Second * 10
 		interval = time.Millisecond * 250
 	)
 
@@ -122,6 +123,7 @@ var _ = Describe("Basic Restore controller", func() {
 		ctx = context.Background()
 		veleroManagedClustersBackupName = "acm-managed-clusters-schedule-20210910181336"
 		veleroResourcesBackupName = "acm-resources-schedule-20210910181336"
+		veleroResourcesGenericBackupName = "acm-resources-generic-schedule-20210910181336"
 		veleroCredentialsBackupName = "acm-credentials-schedule-20210910181336"
 		veleroCredentialsHiveBackupName = "acm-credentials-hive-schedule-20210910181336"
 		veleroCredentialsClusterBackupName = "acm-credentials-cluster-schedule-20210910181336"
@@ -194,6 +196,23 @@ var _ = Describe("Basic Restore controller", func() {
 				},
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      veleroResourcesBackupName,
+					Namespace: veleroNamespace.Name,
+				},
+				Spec: veleroapi.BackupSpec{
+					IncludedNamespaces: []string{"please-keep-this-one"},
+				},
+				Status: veleroapi.BackupStatus{
+					Phase:  veleroapi.BackupPhaseCompleted,
+					Errors: 0,
+				},
+			},
+			veleroapi.Backup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "Backup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      veleroResourcesGenericBackupName,
 					Namespace: veleroNamespace.Name,
 				},
 				Spec: veleroapi.BackupSpec{
@@ -298,15 +317,16 @@ var _ = Describe("Basic Restore controller", func() {
 			}, timeout, interval).ShouldNot(BeEmpty())
 
 			veleroRestores := veleroapi.RestoreList{}
-			Eventually(func() bool {
+			Eventually(func() int {
 				if err := k8sClient.List(ctx, &veleroRestores, client.InNamespace(veleroNamespace.Name)); err != nil {
-					return false
+					return 0
 				}
-				return len(veleroRestores.Items) == 5
-			}, timeout, interval).Should(BeTrue())
+				return len(veleroRestores.Items)
+			}, timeout, interval).Should(Equal(6))
 			backupNames := []string{
 				veleroManagedClustersBackupName,
 				veleroResourcesBackupName,
+				veleroResourcesGenericBackupName,
 				veleroCredentialsBackupName,
 				veleroCredentialsHiveBackupName,
 				veleroCredentialsClusterBackupName,
@@ -320,6 +340,8 @@ var _ = Describe("Basic Restore controller", func() {
 			_, found = find(backupNames, veleroRestores.Items[3].Spec.BackupName)
 			Expect(found).Should(BeTrue())
 			_, found = find(backupNames, veleroRestores.Items[4].Spec.BackupName)
+			Expect(found).Should(BeTrue())
+			_, found = find(backupNames, veleroRestores.Items[5].Spec.BackupName)
 			Expect(found).Should(BeTrue())
 		})
 	})
@@ -518,6 +540,24 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-resources-generic-schedule-good-old-backup",
+						Namespace: veleroNamespace.Name,
+					},
+					Spec: veleroapi.BackupSpec{
+						IncludedNamespaces: []string{"please-keep-this-one"},
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseCompleted,
+						Errors:         0,
+						StartTimestamp: &threeHoursAgo,
+					},
+				},
+				veleroapi.Backup{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "velero/v1",
+						Kind:       "Backup",
+					},
+					ObjectMeta: metav1.ObjectMeta{
 						Name:      "acm-resources-schedule-good-recent-backup",
 						Namespace: veleroNamespace.Name,
 					},
@@ -555,6 +595,24 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "acm-resources-schedule-bad-old-backup",
+						Namespace: veleroNamespace.Name,
+					},
+					Spec: veleroapi.BackupSpec{
+						IncludedNamespaces: []string{"please-keep-this-one"},
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseCompleted,
+						Errors:         10,
+						StartTimestamp: &fourHoursAgo,
+					},
+				},
+				veleroapi.Backup{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "velero/v1",
+						Kind:       "Backup",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-resources-generic-schedule-bad-old-backup",
 						Namespace: veleroNamespace.Name,
 					},
 					Spec: veleroapi.BackupSpec{
@@ -1423,7 +1481,9 @@ var _ = Describe("Basic Restore controller", func() {
 				}, timeout, interval).Should(BeIdenticalTo("velero.io.BackupStorageLocation resources not found. " +
 					"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."))
 			})
+
 		})
 
 	})
+
 })

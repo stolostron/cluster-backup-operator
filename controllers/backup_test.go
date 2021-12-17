@@ -98,6 +98,8 @@ var _ = Describe("Backup", func() {
 		})
 
 		It("filterBackups should work as expected", func() {
+			startTimestamp := &metav1.Time{}
+
 			sliceBackups := []veleroapi.Backup{
 				veleroapi.Backup{
 					TypeMeta: metav1.TypeMeta{
@@ -112,8 +114,9 @@ var _ = Describe("Backup", func() {
 						IncludedNamespaces: []string{"please-keep-this-one"},
 					},
 					Status: veleroapi.BackupStatus{
-						Phase:  veleroapi.BackupPhaseCompleted,
-						Errors: 0,
+						Phase:          veleroapi.BackupPhaseCompleted,
+						StartTimestamp: startTimestamp,
+						Errors:         0,
 					},
 				},
 				veleroapi.Backup{
@@ -129,8 +132,9 @@ var _ = Describe("Backup", func() {
 						IncludedNamespaces: []string{"please-keep-this-one"},
 					},
 					Status: veleroapi.BackupStatus{
-						Phase:  veleroapi.BackupPhaseCompleted,
-						Errors: 0,
+						Phase:          veleroapi.BackupPhaseCompleted,
+						StartTimestamp: startTimestamp,
+						Errors:         0,
 					},
 				},
 				veleroapi.Backup{
@@ -146,8 +150,9 @@ var _ = Describe("Backup", func() {
 						IncludedNamespaces: []string{"please-keep-this-one"},
 					},
 					Status: veleroapi.BackupStatus{
-						Phase:  veleroapi.BackupPhaseCompleted,
-						Errors: 0,
+						Phase:          veleroapi.BackupPhaseCompleted,
+						StartTimestamp: startTimestamp,
+						Errors:         0,
 					},
 				},
 				veleroapi.Backup{

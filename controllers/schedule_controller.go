@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -50,6 +51,10 @@ const (
 	CredentialsCluster ResourceType = "credentialsCluster"
 	// Resources related to applications and policies
 	Resources ResourceType = "resources"
+	// Genric Resources related to applications and policies
+	// these are user resources, except secrets, labeled with cluster.open-cluster-management.io/backup
+	// secrets labeled with cluster.open-cluster-management.io/backup are already backed up under credentialsCluster
+	ResourcesGeneric ResourceType = "resourcesGeneric"
 )
 
 // SecretType is the type of secret
@@ -231,7 +236,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	// delete velero schedules if their spec needs to be updated or any of them is missing
 	// New velero schedules will be created in the next reconcile triggerd by the deletion
 	if isScheduleSpecUpdated(&veleroScheduleList, backupSchedule) ||
-		len(veleroScheduleList.Items) < 5 {
+		len(veleroScheduleList.Items) < len(veleroScheduleNames) {
 		if err := r.deleteVeleroSchedules(ctx, backupSchedule, &veleroScheduleList); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -271,11 +276,18 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 
 	resourcesToBackup, _ := getResourcesToBackup(ctx, r.DiscoveryClient)
 
-	// loop through resourceTypes to create a Velero schedule per type
-	for key, value := range veleroScheduleNames {
+	// sort schedule names to create first the credentials schedules, then clusters, last resources
+	scheduleKeys := make([]ResourceType, 0, len(veleroScheduleNames))
+	for key := range veleroScheduleNames {
+		scheduleKeys = append(scheduleKeys, key)
+	}
+	sort.Sort(SortResourceType(scheduleKeys))
+
+	// loop through schedule names to create a Velero schedule per type
+	for _, scheduleKey := range scheduleKeys {
 		veleroScheduleIdentity := types.NamespacedName{
 			Namespace: backupSchedule.Namespace,
-			Name:      value,
+			Name:      veleroScheduleNames[scheduleKey],
 		}
 
 		veleroSchedule := &veleroapi.Schedule{}
@@ -285,7 +297,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		// create backup based on resource type
 		veleroBackupTemplate := &veleroapi.BackupSpec{}
 
-		switch key {
+		switch scheduleKey {
 		case ManagedClusters:
 			setManagedClustersBackupInfo(ctx, veleroBackupTemplate, r.Client)
 		case Credentials:
@@ -296,6 +308,9 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client, string(ClusterSecret))
 		case Resources:
 			setResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
+		case ResourcesGeneric:
+			setGenericResourcesBackupInfo(ctx, veleroBackupTemplate, r.Client)
+
 		}
 
 		veleroSchedule.Spec.Template = *veleroBackupTemplate
@@ -325,7 +340,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		)
 
 		// set veleroSchedule in backupSchedule status
-		setVeleroScheduleInStatus(key, veleroSchedule, backupSchedule)
+		setVeleroScheduleInStatus(scheduleKey, veleroSchedule, backupSchedule)
 	}
 	return nil
 }
