@@ -738,10 +738,11 @@ var _ = Describe("BackupSchedule controller", func() {
 				createdBackupScheduleValidCronExp.Spec.VeleroSchedule,
 			).Should(BeIdenticalTo(backupSchedule))
 
-			// count ACM ( NOT velero) schedules, should be still just 5
+			// count ACM ( NOT velero) schedules, should still be just 5
 			// this nb is NOT the nb of velero backup schedules created from
-			// the acm backupschdule object ( which is len(acmSchedulesList.Items))
-			// it represents the nb of ACM - BackupSchedule.cluster.open-cluster-management.io - schedules created by the tests
+			// the acm backupschedule object ( these velero schedules are len(veleroScheduleNames))
+			// acmSchedulesList represents the ACM - BackupSchedule.cluster.open-cluster-management.io - schedules
+			// created by the tests
 			acmSchedulesList := v1beta1.BackupScheduleList{}
 			Eventually(func() bool {
 				err := k8sClient.List(ctx, &acmSchedulesList, &client.ListOptions{})
