@@ -50,6 +50,10 @@ const (
 	CredentialsCluster ResourceType = "credentialsCluster"
 	// Resources related to applications and policies
 	Resources ResourceType = "resources"
+	// Genric Resources related to applications and policies
+	// these are user resources, except secrets, labeled with cluster.open-cluster-management.io/backup
+	// secrets labeled with cluster.open-cluster-management.io/backup are already backed up under credentialsCluster
+	ResourcesGeneric ResourceType = "resourcesGeneric"
 )
 
 // SecretType is the type of secret
@@ -296,6 +300,9 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client, string(ClusterSecret))
 		case Resources:
 			setResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
+		case ResourcesGeneric:
+			setGenericResourcesBackupInfo(ctx, veleroBackupTemplate, r.Client)
+
 		}
 
 		veleroSchedule.Spec.Template = *veleroBackupTemplate

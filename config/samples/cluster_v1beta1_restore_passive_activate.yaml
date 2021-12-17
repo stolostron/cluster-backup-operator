@@ -6,7 +6,6 @@ apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Restore
 metadata:
   name: restore-acm-passive-activate
-  namespace: openshift-adp
 spec:
   veleroManagedClustersBackupName: latest
   veleroCredentialsBackupName: skip

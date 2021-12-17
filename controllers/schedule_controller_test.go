@@ -523,13 +523,13 @@ var _ = Describe("BackupSchedule controller", func() {
 				return createdBackupSchedule.Status.VeleroScheduleManagedClusters.Spec.Template.TTL
 			}, timeout, interval).Should(BeIdenticalTo(metav1.Duration{Duration: time.Hour * 150}))
 
-			// count velero schedules, should be still just 3
+			// count velero schedules, should be still just 6
 			veleroSchedulesList := veleroapi.ScheduleList{}
 			Eventually(func() bool {
 				err := k8sClient.List(ctx, &veleroSchedulesList, &client.ListOptions{})
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
-			Expect(len(veleroSchedulesList.Items)).To(BeNumerically("==", 5))
+			Expect(len(veleroSchedulesList.Items)).To(BeNumerically("==", 6))
 			//
 
 			// new backup with no TTL
@@ -752,7 +752,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				err := k8sClient.List(ctx, &veleroScheduleList, &client.ListOptions{})
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
-			Expect(len(veleroScheduleList.Items)).To(BeNumerically("==", 5))
+			Expect(len(veleroScheduleList.Items)).To(BeNumerically("==", 6))
 
 			// delete existing velero schedule
 			Eventually(func() bool {

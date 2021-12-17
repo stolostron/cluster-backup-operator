@@ -289,6 +289,8 @@ func (r *RestoreReconciler) getVeleroBackupName(
 	backupName string,
 ) (string, error) {
 
+	var computedName string
+
 	if backupName == latestBackupStr {
 		// backup name not available, find a proper backup
 		veleroBackups := &veleroapi.BackupList{}
@@ -308,18 +310,24 @@ func (r *RestoreReconciler) getVeleroBackupName(
 		}
 		sort.Sort(mostRecentWithLessErrors(relatedBackups))
 		return relatedBackups[0].Name, nil
+	} else {
+		// get the backup name for this type of resource, based on the requested resource timestamp
+		backupTimestamp := strings.LastIndex(backupName, "-")
+		if backupTimestamp != -1 {
+			computedName = veleroScheduleNames[resourceType] + backupName[backupTimestamp:]
+		}
 	}
 
 	veleroBackup := veleroapi.Backup{}
 	err := r.Get(
 		ctx,
-		types.NamespacedName{Name: backupName, Namespace: restore.Namespace},
+		types.NamespacedName{Name: computedName, Namespace: restore.Namespace},
 		&veleroBackup,
 	)
 	if err == nil {
-		return backupName, nil
+		return computedName, nil
 	}
-	return "", fmt.Errorf("cannot find %s Velero Backup: %v", backupName, err)
+	return "", fmt.Errorf("cannot find %s Velero Backup: %v", computedName, err)
 }
 
 // create velero.io.Restore resource for each resource type
@@ -329,7 +337,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 ) error {
 	restoreLogger := log.FromContext(ctx)
 
-	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, 5)
+	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, 6)
 
 	// loop through resourceTypes to create a Velero restore per type
 	for key := range veleroScheduleNames {
@@ -344,7 +352,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			if restore.Spec.VeleroCredentialsBackupName != nil {
 				backupName = *restore.Spec.VeleroCredentialsBackupName
 			}
-		case Resources:
+		case Resources, ResourcesGeneric:
 			if restore.Spec.VeleroResourcesBackupName != nil {
 				backupName = *restore.Spec.VeleroResourcesBackupName
 			}
@@ -372,7 +380,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			restore.Status.Phase = v1beta1.RestorePhaseError
 			restore.Status.LastMessage = fmt.Sprintf("Backup %s Not found for resource type: %s", backupName, key)
 
-			if key != CredentialsHive && key != CredentialsCluster {
+			if key != CredentialsHive && key != CredentialsCluster && key != ResourcesGeneric {
 				// ignore missing hive or cluster key backup files
 				// for the case when the backups were created with an older controller version
 				return err
