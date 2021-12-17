@@ -383,7 +383,7 @@ func getResourcesToBackup(
 	if err != nil {
 		return backupResourceNames, fmt.Errorf("failed to get server groups: %v", err)
 	}
-	if groupList != nil {
+	if groupList == nil {
 		return backupResourceNames, nil
 	}
 	for _, group := range groupList.Groups {
