@@ -337,7 +337,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 ) error {
 	restoreLogger := log.FromContext(ctx)
 
-	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, 6)
+	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, len(veleroScheduleNames))
 
 	// loop through resourceTypes to create a Velero restore per type
 	for key := range veleroScheduleNames {
