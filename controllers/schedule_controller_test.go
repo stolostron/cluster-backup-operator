@@ -773,7 +773,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					return 0
 				}
 				return len(veleroScheduleList.Items)
-			}, timeout, interval).Should(BeNumerically("==", 5))
+			}, timeout, interval).Should(BeNumerically("==", len(veleroScheduleNames)))
 
 			// delete existing acm schedules
 			for i := range acmSchedulesList.Items {
