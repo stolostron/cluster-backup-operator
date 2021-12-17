@@ -372,6 +372,8 @@ func getResourcesToBackup(
 	dc discovery.DiscoveryInterface,
 ) ([]string, error) {
 
+	backupLogger := log.FromContext(ctx)
+
 	backupResourceNames := backupResources
 
 	// build the list of excluded resources
@@ -382,28 +384,30 @@ func getResourcesToBackup(
 		return backupResourceNames, fmt.Errorf("failed to get server groups: %v", err)
 	}
 	if groupList != nil {
-		for _, group := range groupList.Groups {
-			if shouldBackupAPIGroup(group.Name) {
-				for _, version := range group.Versions {
-
-					//get all resources for each group version
-					resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
-					if err != nil {
-						return backupResourceNames, fmt.Errorf("failed to get server resources: %v", err)
-					}
-					if resourceList != nil {
-						for _, resource := range resourceList.APIResources {
-							resourceKind := strings.ToLower(resource.Kind)
-							resourceName := resourceKind + "." + group.Name
-							// check if the resource kind is ignored
-							_, ok := find(ignoreCRDs, resourceKind)
-							if !ok {
-								// check if kind.group is used to identify resource to ignore
-								_, ok := find(ignoreCRDs, resourceName)
-								if !ok {
-									backupResourceNames = appendUnique(backupResourceNames, resourceName)
-								}
-							}
+		return backupResourceNames, nil
+	}
+	for _, group := range groupList.Groups {
+		if shouldBackupAPIGroup(group.Name) {
+			for _, version := range group.Versions {
+				//get all resources for each group version
+				resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
+				if err != nil {
+					backupLogger.Error(err, "failed to get server resources")
+					continue
+				}
+				if resourceList == nil {
+					continue
+				}
+				for _, resource := range resourceList.APIResources {
+					resourceKind := strings.ToLower(resource.Kind)
+					resourceName := resourceKind + "." + group.Name
+					// check if the resource kind is ignored
+					_, ok := find(ignoreCRDs, resourceKind)
+					if !ok {
+						// check if kind.group is used to identify resource to ignore
+						_, ok := find(ignoreCRDs, resourceName)
+						if !ok {
+							backupResourceNames = appendUnique(backupResourceNames, resourceName)
 						}
 					}
 				}
