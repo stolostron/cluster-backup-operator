@@ -254,7 +254,7 @@ func setGenericResourcesBackupInfo(
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 
 	for i := range backupCredsResources { // exclude resources already backed up by creds
-		veleroBackupTemplate.IncludedResources = appendUnique(
+		veleroBackupTemplate.ExcludedResources = appendUnique(
 			veleroBackupTemplate.ExcludedResources,
 			backupCredsResources[i],
 		)

@@ -67,3 +67,10 @@ func getValidKsRestoreName(clusterRestoreName string, backupName string) string 
 	}
 	return fullName
 }
+
+// SortResourceType implements sort.Interface
+type SortResourceType []ResourceType
+
+func (a SortResourceType) Len() int           { return len(a) }
+func (a SortResourceType) Less(i, j int) bool { return a[i] < a[j] }
+func (a SortResourceType) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
