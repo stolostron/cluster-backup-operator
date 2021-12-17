@@ -858,8 +858,9 @@ var _ = Describe("BackupSchedule controller", func() {
 						IncludedNamespaces: []string{"please-keep-this-one"},
 					},
 					Status: veleroapi.BackupStatus{
-						Phase:  veleroapi.BackupPhaseCompleted,
-						Errors: 0,
+						Phase:          veleroapi.BackupPhaseCompleted,
+						StartTimestamp: &metav1.Time{},
+						Errors:         0,
 					},
 				},
 			}
