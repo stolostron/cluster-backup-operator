@@ -17,7 +17,6 @@ limitations under the License.
 package controllers
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -233,10 +232,6 @@ var _ = BeforeSuite(func() {
 
 	_, err2 := fakeDiscovery.ServerGroups()
 	Expect(err2).To(BeNil())
-
-	resourcesToBackupResult, _ := getResourcesToBackup(context.TODO(), fakeDiscovery)
-	//Expect(resourcesToBackupResult).To(BeIdenticalTo(resourcesToBackup))
-	Expect(reflect.DeepEqual(resourcesToBackup, resourcesToBackupResult)).To(BeTrue())
 
 	testEnvManagedCluster = &envtest.Environment{} // no CRDs for managedcluster
 	managedClusterCfg, err := testEnvManagedCluster.Start()

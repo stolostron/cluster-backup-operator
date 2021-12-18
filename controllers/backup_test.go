@@ -254,7 +254,6 @@ var _ = Describe("Backup", func() {
 			Expect(shouldBackupAPIGroup("admission.cluster.open-cluster-management.io")).Should(BeFalse())
 			Expect(shouldBackupAPIGroup("discovery.open-cluster-management.io")).Should(BeTrue())
 			Expect(shouldBackupAPIGroup("argoproj.io")).Should(BeTrue())
-
 		})
 
 	})
