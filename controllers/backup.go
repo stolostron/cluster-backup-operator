@@ -254,7 +254,7 @@ func setGenericResourcesBackupInfo(
 	var clusterResource bool = true // check global resources
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 
-	for i := range backupCredsResources { // exclude resources already backed up resources backup
+	for i := range resourcesAlreadyBackedup { // exclude resources already backed up resources backup
 		veleroBackupTemplate.ExcludedResources = appendUnique(
 			veleroBackupTemplate.ExcludedResources,
 			resourcesAlreadyBackedup[i],
@@ -265,6 +265,13 @@ func setGenericResourcesBackupInfo(
 		veleroBackupTemplate.ExcludedResources = appendUnique(
 			veleroBackupTemplate.ExcludedResources,
 			backupCredsResources[i],
+		)
+	}
+
+	for i := range backupManagedClusterResources { // exclude resources in managed clusters
+		veleroBackupTemplate.ExcludedResources = appendUnique(
+			veleroBackupTemplate.ExcludedResources,
+			backupManagedClusterResources[i],
 		)
 	}
 
