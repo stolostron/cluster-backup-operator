@@ -17,6 +17,8 @@ limitations under the License.
 package controllers
 
 import (
+	"github.com/go-logr/logr"
+	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 )
 
@@ -42,4 +44,12 @@ func isVeleroRestoreRunning(restore *veleroapi.Restore) bool {
 		return true
 	}
 	return false
+}
+
+func updateRestoreStatus(logger logr.Logger, status v1beta1.RestorePhase, msg string, restore *v1beta1.Restore) {
+	logger.Info(msg)
+
+	restore.Status.Phase = status
+	restore.Status.LastMessage = msg
+
 }

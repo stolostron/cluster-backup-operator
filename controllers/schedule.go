@@ -34,7 +34,9 @@ const (
 	// EnabledPhaseMsg for when Velero schedules are processed by velero and enabled
 	EnabledPhaseMsg string = "Velero schedules are enabled"
 	// UnknownPhaseMsg for when some Velero schedules are not enabled
-	UnknownPhaseMsg string = "Some Velero schedules are not enabled. If the status doesn't change check the velero pod is running and that you have created a Velero resource as documented in the install guide."
+	UnknownPhaseMsg string = "Some Velero schedules are not enabled. " +
+		"If the status doesn't change check the velero pod is running and " +
+		"that you have created a Velero resource as documented in the install guide."
 )
 
 func updateScheduleStatus(
