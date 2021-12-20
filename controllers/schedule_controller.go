@@ -309,7 +309,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		case Resources:
 			setResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
 		case ResourcesGeneric:
-			setGenericResourcesBackupInfo(ctx, veleroBackupTemplate, r.Client)
+			setGenericResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
 
 		}
 

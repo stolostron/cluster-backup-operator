@@ -38,6 +38,13 @@ func find(slice []string, val string) (int, bool) {
 	return -1, false
 }
 
+func findValue(slice []string, val string) bool {
+
+	_, ok := find(slice, val)
+
+	return ok
+}
+
 //append unique value to a list
 func appendUnique(slice []string, value string) []string {
 	// check if the NS exists

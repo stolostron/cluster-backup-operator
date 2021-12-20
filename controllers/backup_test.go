@@ -249,6 +249,11 @@ var _ = Describe("Backup", func() {
 				return bkp.Status.Errors > 0
 			})
 			Expect(backupsInError).Should(Equal([]veleroapi.Backup{failedBackup}))
+
+			Expect(shouldBackupAPIGroup("security.openshift.io")).Should(BeFalse())
+			Expect(shouldBackupAPIGroup("admission.cluster.open-cluster-management.io")).Should(BeFalse())
+			Expect(shouldBackupAPIGroup("discovery.open-cluster-management.io")).Should(BeTrue())
+			Expect(shouldBackupAPIGroup("argoproj.io")).Should(BeTrue())
 		})
 
 	})

@@ -247,16 +247,31 @@ func setResourcesBackupInfo(
 func setGenericResourcesBackupInfo(
 	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
+	resourcesAlreadyBackedup []string,
 	c client.Client,
 ) {
 
 	var clusterResource bool = true // check global resources
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 
+	for i := range resourcesAlreadyBackedup { // exclude resources already backed up resources backup
+		veleroBackupTemplate.ExcludedResources = appendUnique(
+			veleroBackupTemplate.ExcludedResources,
+			resourcesAlreadyBackedup[i],
+		)
+	}
+
 	for i := range backupCredsResources { // exclude resources already backed up by creds
 		veleroBackupTemplate.ExcludedResources = appendUnique(
 			veleroBackupTemplate.ExcludedResources,
 			backupCredsResources[i],
+		)
+	}
+
+	for i := range backupManagedClusterResources { // exclude resources in managed clusters
+		veleroBackupTemplate.ExcludedResources = appendUnique(
+			veleroBackupTemplate.ExcludedResources,
+			backupManagedClusterResources[i],
 		)
 	}
 
@@ -377,7 +392,7 @@ func getResourcesToBackup(
 	backupResourceNames := backupResources
 
 	// build the list of excluded resources
-	ignoreCRDs := append(excludedCRDs, backupManagedClusterResources...)
+	ignoreCRDs := excludedCRDs
 
 	groupList, err := dc.ServerGroups()
 	if err != nil {
@@ -401,14 +416,15 @@ func getResourcesToBackup(
 				for _, resource := range resourceList.APIResources {
 					resourceKind := strings.ToLower(resource.Kind)
 					resourceName := resourceKind + "." + group.Name
-					// check if the resource kind is ignored
-					_, ok := find(ignoreCRDs, resourceKind)
-					if !ok {
-						// check if kind.group is used to identify resource to ignore
-						_, ok := find(ignoreCRDs, resourceName)
-						if !ok {
-							backupResourceNames = appendUnique(backupResourceNames, resourceName)
-						}
+					// if resource kind is not ignored
+					// and kind.group is not used to identify resource to ignore
+					// the resource is not in cluster activation backup group
+					// add it to the generic backup resources
+					if !findValue(ignoreCRDs, resourceKind) &&
+						!findValue(ignoreCRDs, resourceName) &&
+						!findValue(backupManagedClusterResources, resourceKind) &&
+						!findValue(backupManagedClusterResources, resourceName) {
+						backupResourceNames = appendUnique(backupResourceNames, resourceName)
 					}
 				}
 			}

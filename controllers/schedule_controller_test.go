@@ -774,6 +774,32 @@ var _ = Describe("BackupSchedule controller", func() {
 				}
 				return len(veleroScheduleList.Items)
 			}, timeout, interval).Should(BeNumerically("==", len(veleroScheduleNames)))
+			for i := range veleroScheduleList.Items {
+
+				veleroSchedule := veleroScheduleList.Items[i]
+				// validate resources schedule content
+				if veleroSchedule.Name == "acm-resources-schedule" {
+					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
+						"placement.cluster.open-cluster-management.io")).Should(BeTrue())
+					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
+						"clusterdeployment")).Should(BeTrue())
+					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources, //excludedGroup
+						"managedclustermutators.admission.cluster.open-cluster-management.io")).ShouldNot(BeTrue())
+
+				} else
+				// generic resources, using backup label
+				if veleroSchedule.Name == "acm-resources-generic-schedule" {
+
+					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, //secrets are in the creds backup
+						"secret")).Should(BeTrue())
+
+					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, //already in resources backup
+						"placement.cluster.open-cluster-management.io")).Should(BeTrue())
+
+					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, //already in cluster resources backup
+						"klusterletaddonconfig")).Should(BeTrue())
+				}
+			}
 
 			// delete existing acm schedules
 			for i := range acmSchedulesList.Items {

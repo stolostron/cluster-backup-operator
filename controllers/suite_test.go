@@ -17,7 +17,11 @@ limitations under the License.
 package controllers
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	. "github.com/onsi/ginkgo"
@@ -25,9 +29,6 @@ import (
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	certsv1 "k8s.io/api/certificates/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	"k8s.io/apimachinery/pkg/version"
-	fakediscovery "k8s.io/client-go/discovery/fake"
-	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,6 +43,10 @@ import (
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	operatorapiv1 "open-cluster-management.io/api/operator/v1"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	discoveryclient "k8s.io/client-go/discovery"
+	restclient "k8s.io/client-go/rest"
+
 	valeroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	//+kubebuilder:scaffold:imports
 )
@@ -54,6 +59,9 @@ var testEnv *envtest.Environment
 
 var managedClusterK8sClient client.Client
 var testEnvManagedCluster *envtest.Environment
+var fakeDiscovery *discoveryclient.DiscoveryClient
+var server *httptest.Server
+var resourcesToBackup []string
 
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -72,21 +80,159 @@ var _ = BeforeSuite(func() {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	fakeclient := fakeclientset.NewSimpleClientset()
-	fakeDiscovery, ok := fakeclient.Discovery().(*fakediscovery.FakeDiscovery)
-	// couldn't convert Discovery() to *FakeDiscovery
-	Expect(ok).NotTo(BeFalse())
+	stable := metav1.APIResourceList{
+		GroupVersion: "argoproj.io/v1beta1",
+		APIResources: []metav1.APIResource{
+			{Name: "clusterclaims", Namespaced: false, Kind: "ClusterClaim"},
+			{Name: "services", Namespaced: true, Kind: "Service"},
+			{Name: "namespaces", Namespaced: false, Kind: "Namespace"},
+		},
+	}
+	beta := metav1.APIResourceList{
+		GroupVersion: "cluster.open-cluster-management.io/v1beta1",
+		APIResources: []metav1.APIResource{
+			{Name: "placements", Namespaced: true, Kind: "Placement"},
+			{Name: "clustercurators", Namespaced: true, Kind: "ClusterCurator"},
+			{Name: "backupschedules", Namespaced: true, Kind: "BackupSchedule"},
+			{Name: "managedclusters", Namespaced: true, Kind: "ManagedCluster"},
+		},
+	}
+	excluded := metav1.APIResourceList{
+		GroupVersion: "admission.cluster.open-cluster-management.io/v1beta1",
+		APIResources: []metav1.APIResource{
+			{Name: "managedclustermutators", Namespaced: false, Kind: "AdmissionReview"},
+		},
+	}
+	other := metav1.APIResourceList{
+		GroupVersion: "config.openshift.io/v1beta1",
+		APIResources: []metav1.APIResource{
+			{Name: "apiservers", Namespaced: false, Kind: "APIServer"},
+		},
+	}
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		var list interface{}
+		switch req.URL.Path {
+		case "/api/v1":
+			list = &stable
+		case "/apis/extensions/v1beta1":
+			list = &beta
+		case "/apis/cluster.open-cluster-management.io/v1beta1":
+			list = &beta
+		case "/apis/admission.cluster.open-cluster-management.io/v1beta1":
+			list = &excluded
+		case "/apis/config.openshift.io/v1beta1":
+			list = &other
 
-	testGitCommit := "v1.0.0"
-	fakeDiscovery.FakedServerVersion = &version.Info{
-		GitCommit: testGitCommit,
+		case "/api":
+			list = &metav1.APIVersions{
+				Versions: []string{
+					"v1",
+				},
+			}
+		case "/apis":
+			list = &metav1.APIGroupList{
+				Groups: []metav1.APIGroup{
+					{
+						Name: "argoproj.io",
+						Versions: []metav1.GroupVersionForDiscovery{
+							{GroupVersion: "argoproj.io/v1beta1", Version: "v1beta1"},
+						},
+					},
+					{
+						Name: "cluster.open-cluster-management.io",
+						Versions: []metav1.GroupVersionForDiscovery{
+							{GroupVersion: "cluster.open-cluster-management.io/v1beta1", Version: "v1beta1"},
+							{GroupVersion: "cluster.open-cluster-management.io/v1", Version: "v1"},
+						},
+					},
+					{
+						Name: "admission.cluster.open-cluster-management.io",
+						Versions: []metav1.GroupVersionForDiscovery{
+							{GroupVersion: "admission.cluster.open-cluster-management.io/v1beta1", Version: "v1beta1"},
+						},
+					},
+					{
+						Name: "config.openshift.io",
+						Versions: []metav1.GroupVersionForDiscovery{
+							{GroupVersion: "config.openshift.io/v1beta1", Version: "v1beta1"},
+						},
+					},
+					{
+						Name: "extensions",
+						Versions: []metav1.GroupVersionForDiscovery{
+							{GroupVersion: "extensions/v1beta1", Version: "v1beta1"},
+							{GroupVersion: "extensions/v1beta2", Version: "v1beta2"},
+						},
+					},
+				},
+			}
+		default:
+			//t.Logf("unexpected request: %s", req.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		output, err := json.Marshal(list)
+		if err != nil {
+			//t.Errorf("unexpected encoding error: %v", err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(output)
+	}))
+
+	fakeDiscovery = discoveryclient.NewDiscoveryClientForConfigOrDie(&restclient.Config{Host: server.URL})
+
+	tests := []struct {
+		resourcesList *metav1.APIResourceList
+		path          string
+		request       string
+		expectErr     bool
+	}{
+		{
+			resourcesList: &stable,
+			path:          "/api/v1",
+			request:       "v1",
+			expectErr:     false,
+		},
+		{
+			resourcesList: &beta,
+			path:          "/apis/extensions/v1beta1",
+			request:       "extensions/v1beta1",
+			expectErr:     false,
+		},
+		{
+			resourcesList: &beta,
+			path:          "/apis/extensions/v1beta1",
+			request:       "extensions/v1beta1",
+			expectErr:     false,
+		},
+		{
+			resourcesList: &excluded,
+			path:          "/apis/admission.cluster.open-cluster-management.io/v1beta1",
+			request:       "admission.cluster.open-cluster-management.io/v1beta1/v1beta1",
+			expectErr:     false,
+		},
 	}
 
-	sv, err := fakeclient.Discovery().ServerVersion()
-	Expect(err).ToNot(HaveOccurred())
+	resourcesToBackup = []string{
+		"clusterdeployment",
+		"machinepool",
+		"placement.cluster.open-cluster-management.io",
+	}
+	test := tests[1]
+	_, err := fakeDiscovery.ServerResourcesForGroupVersion(test.request)
 
-	// unexpected faked discovery return value: %q", sv.GitCommit
-	Expect(sv.GitCommit).To(BeIdenticalTo(testGitCommit))
+	fakeDiscovery := discoveryclient.NewDiscoveryClientForConfigOrDie(&restclient.Config{Host: server.URL})
+	got, err := fakeDiscovery.ServerResourcesForGroupVersion(test.request)
+
+	if test.expectErr {
+		Expect(err).NotTo(BeNil())
+	}
+	Expect(reflect.DeepEqual(got, test.resourcesList)).To(BeTrue())
+
+	_, err2 := fakeDiscovery.ServerGroups()
+	Expect(err2).To(BeNil())
 
 	testEnvManagedCluster = &envtest.Environment{} // no CRDs for managedcluster
 	managedClusterCfg, err := testEnvManagedCluster.Start()
@@ -172,4 +318,6 @@ var _ = AfterSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	err = testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
+
+	defer server.Close()
 })
