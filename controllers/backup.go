@@ -122,20 +122,17 @@ func cleanupBackups(
 ) {
 	backupLogger := log.FromContext(ctx)
 
-	backupLogger.Info(fmt.Sprintf("check if needed to remove backups maxBackups=%d", maxBackups))
+	backupLogger.Info(fmt.Sprintf("check if needed to remove backups maxBackups!!!!!!!!!!=%d", maxBackups))
 	veleroBackupList := veleroapi.BackupList{}
 	if err := c.List(ctx, &veleroBackupList, &client.ListOptions{}); err != nil {
 		backupLogger.Error(err, "failed to get veleroapi.BackupList")
 	} else {
 
-		// get acm backups only when counting existing backups
+		// get only acm resources backups and not in deleting state
+		// which are backups starting with acm-resources-schedule
 		sliceBackups := filterBackups(veleroBackupList.Items[:], func(bkp veleroapi.Backup) bool {
-			return strings.HasPrefix(bkp.Name, veleroScheduleNames[Credentials]) ||
-				strings.HasPrefix(bkp.Name, veleroScheduleNames[CredentialsHive]) ||
-				strings.HasPrefix(bkp.Name, veleroScheduleNames[CredentialsCluster]) ||
-				strings.HasPrefix(bkp.Name, veleroScheduleNames[ManagedClusters]) ||
-				strings.HasPrefix(bkp.Name, veleroScheduleNames[Resources]) ||
-				strings.HasPrefix(bkp.Name, veleroScheduleNames[ResourcesGeneric])
+			return strings.HasPrefix(bkp.Name, veleroScheduleNames[Resources]) &&
+				bkp.Status.Phase != veleroapi.BackupPhaseDeleting
 		})
 
 		if maxBackups < len(sliceBackups) {
@@ -154,7 +151,22 @@ func cleanupBackups(
 			})
 
 			for i := 0; i < len(sliceBackups)-maxBackups; i++ {
-				deleteBackup(ctx, &sliceBackups[i], c)
+
+				// for each resources backup find all corresponding backups
+				// with the same timestamp and remove them
+				resourcesBackup := &sliceBackups[i]
+				backupTimestamp := strings.LastIndex(resourcesBackup.Name, "-")
+				relatedSuffix := resourcesBackup.Name
+				if backupTimestamp != -1 {
+					relatedSuffix = resourcesBackup.Name[backupTimestamp:]
+				}
+				relatedBackups := filterBackups(veleroBackupList.Items[:], func(bkp veleroapi.Backup) bool {
+					return strings.HasSuffix(bkp.Name, relatedSuffix)
+				})
+				// delete all related backups with the same timestamp
+				for _, relatedBackup := range relatedBackups {
+					deleteBackup(ctx, &relatedBackup, c)
+				}
 			}
 		}
 

@@ -254,7 +254,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	setSchedulePhase(&veleroScheduleList, backupSchedule)
 
 	// clean up old backups if they exceed the maxBackups number after backupDeleteRequeueInterval
-	cleanupBackups(ctx, backupSchedule.Spec.MaxBackups*len(veleroScheduleNames), r.Client)
+	cleanupBackups(ctx, backupSchedule.Spec.MaxBackups, r.Client)
 
 	err := r.Client.Status().Update(ctx, backupSchedule)
 	return ctrl.Result{RequeueAfter: deleteBackupRequeueInterval}, errors.Wrap(
