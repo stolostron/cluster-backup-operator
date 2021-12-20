@@ -88,11 +88,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 		msg := "velero.io.BackupStorageLocation resources not found. " +
 			"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."
-		restoreLogger.Info(msg)
-
-		restore.Status.Phase = v1beta1.RestorePhaseError
-		restore.Status.LastMessage = msg
-
+		updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseError, msg, restore)
 		// retry after failureInterval
 		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
 			r.Client.Status().Update(ctx, restore),
@@ -124,10 +120,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if !isValidStorageLocation {
 		msg := "Backup storage location not available in namespace " + req.Namespace +
 			". Check velero.io.BackupStorageLocation and validate storage credentials."
-		restoreLogger.Info(msg)
-
-		restore.Status.Phase = v1beta1.RestorePhaseError
-		restore.Status.LastMessage = msg
+		updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseError, msg, restore)
 
 		// retry after failureInterval
 		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
@@ -144,10 +137,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			req.Name,
 			veleroNamespace,
 		)
-		restoreLogger.Info(msg)
-
-		restore.Status.Phase = v1beta1.RestorePhaseError
-		restore.Status.LastMessage = msg
+		updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseError, msg, restore)
 
 		return ctrl.Result{}, errors.Wrap(
 			r.Client.Status().Update(ctx, restore),
@@ -208,22 +198,22 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 					veleroRestore.Name,
 				),
 			)
-			restore.Status.Phase = v1beta1.RestorePhaseFinished
-			restore.Status.LastMessage = fmt.Sprintf("Restore Complete %s", veleroRestore.Name)
+			msg := fmt.Sprintf("Restore Complete %s", veleroRestore.Name)
+			updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseFinished, msg, restore)
 
 		case isVeleroRestoreRunning(veleroRestore):
-			restore.Status.Phase = v1beta1.RestorePhaseRunning
-			restore.Status.LastMessage = fmt.Sprintf(
+			msg := fmt.Sprintf(
 				"Velero Restore %s is running",
 				veleroRestore.Name,
 			)
+			updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseRunning, msg, restore)
 
 		default:
-			restore.Status.Phase = v1beta1.RestorePhaseUnknown
-			restore.Status.LastMessage = fmt.Sprintf(
+			msg := fmt.Sprintf(
 				"Unknown status for  %s Velero Restore",
 				veleroRestore.Name,
 			)
+			updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseUnknown, msg, restore)
 		}
 	}
 

@@ -402,30 +402,34 @@ func getResourcesToBackup(
 		return backupResourceNames, nil
 	}
 	for _, group := range groupList.Groups {
-		if shouldBackupAPIGroup(group.Name) {
-			for _, version := range group.Versions {
-				//get all resources for each group version
-				resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
-				if err != nil {
-					backupLogger.Error(err, "failed to get server resources")
-					continue
-				}
-				if resourceList == nil {
-					continue
-				}
-				for _, resource := range resourceList.APIResources {
-					resourceKind := strings.ToLower(resource.Kind)
-					resourceName := resourceKind + "." + group.Name
-					// if resource kind is not ignored
-					// and kind.group is not used to identify resource to ignore
-					// the resource is not in cluster activation backup group
-					// add it to the generic backup resources
-					if !findValue(ignoreCRDs, resourceKind) &&
-						!findValue(ignoreCRDs, resourceName) &&
-						!findValue(backupManagedClusterResources, resourceKind) &&
-						!findValue(backupManagedClusterResources, resourceName) {
-						backupResourceNames = appendUnique(backupResourceNames, resourceName)
-					}
+
+		if !shouldBackupAPIGroup(group.Name) {
+			// ignore excluded api groups
+			continue
+		}
+
+		for _, version := range group.Versions {
+			//get all resources for each group version
+			resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
+			if err != nil {
+				backupLogger.Error(err, "failed to get server resources")
+				continue
+			}
+			if resourceList == nil {
+				continue
+			}
+			for _, resource := range resourceList.APIResources {
+				resourceKind := strings.ToLower(resource.Kind)
+				resourceName := resourceKind + "." + group.Name
+				// if resource kind is not ignored
+				// and kind.group is not used to identify resource to ignore
+				// the resource is not in cluster activation backup group
+				// add it to the generic backup resources
+				if !findValue(ignoreCRDs, resourceKind) &&
+					!findValue(ignoreCRDs, resourceName) &&
+					!findValue(backupManagedClusterResources, resourceKind) &&
+					!findValue(backupManagedClusterResources, resourceName) {
+					backupResourceNames = appendUnique(backupResourceNames, resourceName)
 				}
 			}
 		}
