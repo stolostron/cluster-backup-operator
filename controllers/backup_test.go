@@ -101,7 +101,7 @@ var _ = Describe("Backup", func() {
 			startTimestamp := &metav1.Time{}
 
 			sliceBackups := []veleroapi.Backup{
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -119,7 +119,7 @@ var _ = Describe("Backup", func() {
 						Errors:         0,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -137,7 +137,7 @@ var _ = Describe("Backup", func() {
 						Errors:         0,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -155,7 +155,7 @@ var _ = Describe("Backup", func() {
 						Errors:         0,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -172,7 +172,7 @@ var _ = Describe("Backup", func() {
 						Errors: 0,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -189,7 +189,7 @@ var _ = Describe("Backup", func() {
 						Errors: 0,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -206,7 +206,7 @@ var _ = Describe("Backup", func() {
 						Errors: 0,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",

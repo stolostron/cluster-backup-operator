@@ -172,7 +172,7 @@ var _ = Describe("Basic Restore controller", func() {
 		}
 
 		veleroBackups = []veleroapi.Backup{
-			veleroapi.Backup{
+			{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "velero/v1",
 					Kind:       "Backup",
@@ -189,7 +189,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Errors: 0,
 				},
 			},
-			veleroapi.Backup{
+			{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "velero/v1",
 					Kind:       "Backup",
@@ -206,7 +206,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Errors: 0,
 				},
 			},
-			veleroapi.Backup{
+			{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "velero/v1",
 					Kind:       "Backup",
@@ -223,7 +223,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Errors: 0,
 				},
 			},
-			veleroapi.Backup{
+			{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "velero/v1",
 					Kind:       "Backup",
@@ -240,7 +240,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Errors: 0,
 				},
 			},
-			veleroapi.Backup{
+			{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "velero/v1",
 					Kind:       "Backup",
@@ -257,7 +257,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Errors: 0,
 				},
 			},
-			veleroapi.Backup{
+			{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "velero/v1",
 					Kind:       "Backup",
@@ -407,7 +407,7 @@ var _ = Describe("Basic Restore controller", func() {
 			threeHoursAgo := metav1.NewTime(time.Now().Add(-3 * time.Hour))
 			fourHoursAgo := metav1.NewTime(time.Now().Add(-4 * time.Hour))
 			veleroBackups = []veleroapi.Backup{
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -425,7 +425,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &oneHourAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -443,7 +443,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &threeHoursAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -461,7 +461,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &twoHoursAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -479,7 +479,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &oneHourAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -498,7 +498,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 				},
 				// acm-resources-schedule backups
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -516,7 +516,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &oneHourAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -534,7 +534,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &threeHoursAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -552,7 +552,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &threeHoursAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -570,7 +570,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &twoHoursAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -588,7 +588,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &oneHourAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -606,7 +606,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &fourHoursAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -625,7 +625,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 				},
 				// acm-credentials-schedule backups
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -643,7 +643,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &oneHourAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -661,7 +661,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &threeHoursAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -679,7 +679,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &twoHoursAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -697,7 +697,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &oneHourAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -715,7 +715,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &fourHoursAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -733,7 +733,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &twoHoursAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -976,7 +976,7 @@ var _ = Describe("Basic Restore controller", func() {
 			oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
 			veleroBackups = []veleroapi.Backup{
 				// acm-managed-clusters-schedule backups
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -994,7 +994,7 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &oneHourAgo,
 					},
 				},
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -1107,7 +1107,7 @@ var _ = Describe("Basic Restore controller", func() {
 			}
 			oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
 			veleroBackups = []veleroapi.Backup{
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -1206,7 +1206,7 @@ var _ = Describe("Basic Restore controller", func() {
 			}
 			oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
 			veleroBackups = []veleroapi.Backup{
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -1311,7 +1311,7 @@ var _ = Describe("Basic Restore controller", func() {
 			}
 			oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
 			veleroBackups = []veleroapi.Backup{
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
@@ -1426,7 +1426,7 @@ var _ = Describe("Basic Restore controller", func() {
 			}
 			oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
 			veleroBackups = []veleroapi.Backup{
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",

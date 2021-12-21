@@ -25,3 +25,23 @@ testbin/*
 *~
 __debug_bin
 .vscode
+
+.go/*
+
+/build-harness
+/build-harness-extensions
+.build-harness-bootstrap
+OPENSOURCE.check
+
+
+# override build harness vendoring
+!vbh/.build-harness-vendorized
+!vbh/build-harness
+!vbh/build-harness-extensions
+coverage.html
+report.json
+
+.go
+
+bin
+testbin/*

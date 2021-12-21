@@ -55,6 +55,114 @@ endif
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
+# Github host to use for checking the source tree;
+# Override this variable ue with your own value if you're working on forked repo.
+GIT_HOST ?= github.com/open-cluster-management
+
+PWD := $(shell pwd)
+BASE_DIR := $(shell basename $(PWD))
+export PATH=$(shell echo $$PATH):$(PWD)/bin
+
+# Keep an existing GOPATH, make a private one if it is undefined
+GOPATH_DEFAULT := $(PWD)/.go
+export GOPATH ?= $(GOPATH_DEFAULT)
+GOBIN_DEFAULT := $(GOPATH)/bin
+export GOBIN ?= $(GOBIN_DEFAULT)
+GOARCH = $(shell go env GOARCH)
+GOOS = $(shell go env GOOS)
+TESTARGS_DEFAULT := "-v"
+export TESTARGS ?= $(TESTARGS_DEFAULT)
+DEST ?= $(GOPATH)/src/$(GIT_HOST)/$(BASE_DIR)
+VERSION ?= $(shell cat COMPONENT_VERSION 2> /dev/null)
+IMAGE_NAME_AND_VERSION ?= $(REGISTRY)/$(IMG)
+# Handle KinD configuration
+KIND_NAME ?= test-hub
+KIND_NAMESPACE ?= open-cluster-management
+KIND_VERSION ?= latest
+ifneq ($(KIND_VERSION), latest)
+	KIND_ARGS = --image kindest/node:$(KIND_VERSION)
+else
+	KIND_ARGS =
+endif
+# KubeBuilder configuration
+KBVERSION := 2.3.1
+
+LOCAL_OS := $(shell uname)
+ifeq ($(LOCAL_OS),Linux)
+    TARGET_OS ?= linux
+    XARGS_FLAGS="-r"
+else ifeq ($(LOCAL_OS),Darwin)
+    TARGET_OS ?= darwin
+    XARGS_FLAGS=
+else
+    $(error "This system's OS $(LOCAL_OS) isn't recognized/supported")
+endif
+
+.PHONY: fmt lint test coverage build build-images fmt-dependencies lint-dependencies
+
+USE_VENDORIZED_BUILD_HARNESS ?=
+
+ifndef USE_VENDORIZED_BUILD_HARNESS
+	ifeq ($(TRAVIS_BUILD),1)
+	-include $(shell curl -H 'Accept: application/vnd.github.v4.raw' -L https://api.github.com/repos/open-cluster-management/build-harness-extensions/contents/templates/Makefile.build-harness-bootstrap -o .build-harness-bootstrap; echo .build-harness-bootstrap)
+	endif
+else
+-include vbh/.build-harness-vendorized
+endif
+
+default::
+	@echo "Build Harness Bootstrapped"
+
+include build/common/Makefile.common.mk
+
+############################################################
+# work section
+############################################################
+$(GOBIN):
+	@echo "create gobin"
+	@mkdir -p $(GOBIN)
+
+work: $(GOBIN)
+
+############################################################
+# format section
+############################################################
+
+fmt-dependencies:
+	$(call go-get-tool,$(PWD)/bin/gci,github.com/daixiang0/gci@v0.2.9)
+	$(call go-get-tool,$(PWD)/bin/gofumpt,mvdan.cc/gofumpt@v0.2.0)
+
+# All available format: format-go format-protos format-python
+# Default value will run all formats, override these make target with your requirements:
+#    eg: fmt: format-go format-protos
+fmt: fmt-dependencies
+	find . -not \( -path "./.go" -prune \) -name "*.go" | xargs gofmt -s -w
+	find . -not \( -path "./.go" -prune \) -name "*.go" | xargs gci -w -local "$(shell cat go.mod | head -1 | cut -d " " -f 2)"
+	find . -not \( -path "./.go" -prune \) -name "*.go" | xargs gofumpt -l -w
+
+############################################################
+# check section
+############################################################
+
+check: lint
+
+lint-dependencies:
+	$(call go-get-tool,$(PWD)/bin/golangci-lint,github.com/golangci/golangci-lint/cmd/golangci-lint@v1.41.1)
+
+# All available linters: lint-dockerfiles lint-scripts lint-yaml lint-copyright-banner lint-go lint-python lint-helm lint-markdown lint-sass lint-typescript lint-protos
+# Default value will run all linters, override these make target with your requirements:
+#    eg: lint: lint-go lint-yaml
+lint: lint-dependencies lint-all
+
+############################################################
+# check copyright section
+############################################################
+copyright-check:
+	./build/copyright-check.sh main
+
+############################################################
+
+
 all: build
 
 ##@ General
@@ -81,8 +189,8 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
-fmt: ## Run go fmt against code.
-	go fmt ./...
+#fmt: ## Run go fmt against code.
+#	go fmt ./...
 
 vet: ## Run go vet against code.
 	go vet ./...
@@ -95,7 +203,7 @@ test: manifests generate fmt vet ## Run tests.
 
 ##@ Build
 
-build: generate fmt vet ## Build manager binary.
+build: generate lint vet ## Build manager binary.
 	go build -o bin/manager main.go
 
 run: manifests generate fmt vet ## Run a controller from your host.

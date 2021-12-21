@@ -798,7 +798,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				},
 			}
 			veleroBackups = []veleroapi.Backup{
-				veleroapi.Backup{
+				{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
