@@ -24,24 +24,28 @@ import (
 var _ = Describe("BackupSchedule controller", func() {
 
 	var (
-		ctx                             context.Context
-		managedClusters                 []clusterv1.ManagedCluster
-		channels                        []chnv1.Channel
-		clusterPools                    []hivev1.ClusterPool
-		backupStorageLocation           *veleroapi.BackupStorageLocation
-		veleroBackups                   []veleroapi.Backup
-		veleroNamespaceName             string
-		acmNamespaceName                string
-		chartsv1NSName                  string
-		clusterPoolNSName               string
-		veleroNamespace                 *corev1.Namespace
-		acmNamespace                    *corev1.Namespace
-		chartsv1NS                      *corev1.Namespace
-		clusterPoolNS                   *corev1.Namespace
-		backupScheduleName              string = "the-backup-schedule-name"
-		veleroManagedClustersBackupName        = "acm-managed-clusters-schedule-20210910181336"
-		veleroResourcesBackupName              = "acm-resources-schedule-20210910181336"
-		veleroCredentialsBackupName            = "acm-credentials-schedule-20210910181336"
+		ctx                   context.Context
+		managedClusters       []clusterv1.ManagedCluster
+		channels              []chnv1.Channel
+		clusterPools          []hivev1.ClusterPool
+		backupStorageLocation *veleroapi.BackupStorageLocation
+		veleroBackups         []veleroapi.Backup
+		veleroNamespaceName   string
+		acmNamespaceName      string
+		chartsv1NSName        string
+		clusterPoolNSName     string
+		veleroNamespace       *corev1.Namespace
+		acmNamespace          *corev1.Namespace
+		chartsv1NS            *corev1.Namespace
+		clusterPoolNS         *corev1.Namespace
+
+		backupTimestamps = []string{
+			"20210910181336",
+			"20210910181337",
+			"20210910181338",
+		}
+
+		backupScheduleName string = "the-backup-schedule-name"
 
 		backupSchedule string = "0 */6 * * *"
 
@@ -169,128 +173,51 @@ var _ = Describe("BackupSchedule controller", func() {
 			},
 		}
 
-		veleroBackups = []veleroapi.Backup{
-			veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      veleroManagedClustersBackupName,
-					Namespace: veleroNamespaceName,
-				},
-				Spec: veleroapi.BackupSpec{
-					IncludedNamespaces: []string{"please-keep-this-one"},
-				},
-				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
-				},
-			},
-			veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      veleroResourcesBackupName,
-					Namespace: veleroNamespaceName,
-				},
-				Spec: veleroapi.BackupSpec{
-					IncludedNamespaces: []string{"please-keep-this-one"},
-				},
-				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
-				},
-			},
-			veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      veleroCredentialsBackupName,
-					Namespace: veleroNamespaceName,
-				},
-				Spec: veleroapi.BackupSpec{
-					IncludedNamespaces: []string{"please-keep-this-one"},
-				},
-				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
-				},
-			},
-			veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      veleroManagedClustersBackupName + "-new",
-					Namespace: veleroNamespaceName,
-				},
-				Spec: veleroapi.BackupSpec{
-					IncludedNamespaces: []string{"please-keep-this-one"},
-				},
-				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
-				},
-			},
-			veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      veleroResourcesBackupName + "-new",
-					Namespace: veleroNamespaceName,
-				},
-				Spec: veleroapi.BackupSpec{
-					IncludedNamespaces: []string{"please-keep-this-one"},
-				},
-				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
-				},
-			},
-			veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      veleroCredentialsBackupName + "-new",
-					Namespace: veleroNamespaceName,
-				},
-				Spec: veleroapi.BackupSpec{
-					IncludedNamespaces: []string{"please-keep-this-one"},
-				},
-				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
-				},
-			},
-			veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "some-other-new",
-					Namespace: veleroNamespaceName,
-				},
-				Spec: veleroapi.BackupSpec{
-					IncludedNamespaces: []string{"please-keep-this-one"},
-				},
-				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
-				},
-			},
+		veleroBackups = []veleroapi.Backup{}
+
+		//create 3 sets of backups, for each timestamp
+		for _, timestampStr := range backupTimestamps {
+			for _, value := range veleroScheduleNames {
+				backup := veleroapi.Backup{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "velero/v1",
+						Kind:       "Backup",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      value + "-" + timestampStr,
+						Namespace: veleroNamespaceName,
+					},
+					Spec: veleroapi.BackupSpec{
+						IncludedNamespaces: []string{"please-keep-this-one"},
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:  veleroapi.BackupPhaseCompleted,
+						Errors: 0,
+					},
+				}
+
+				veleroBackups = append(veleroBackups, backup)
+			}
 		}
 
+		// create some dummy backups
+		veleroBackups = append(veleroBackups, veleroapi.Backup{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "velero/v1",
+				Kind:       "Backup",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      veleroScheduleNames[Resources] + "-new",
+				Namespace: veleroNamespaceName,
+			},
+			Spec: veleroapi.BackupSpec{
+				IncludedNamespaces: []string{"please-keep-this-one"},
+			},
+			Status: veleroapi.BackupStatus{
+				Phase:  veleroapi.BackupPhaseCompleted,
+				Errors: 0,
+			},
+		})
 	})
 
 	AfterEach(func() {
@@ -442,7 +369,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					Namespace: veleroNamespaceName,
 				},
 				Spec: v1beta1.BackupScheduleSpec{
-					MaxBackups:     1,
+					MaxBackups:     2, // we have 3 groups of backups
 					VeleroSchedule: backupSchedule,
 					VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
 				},
@@ -877,7 +804,7 @@ var _ = Describe("BackupSchedule controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      veleroManagedClustersBackupName,
+						Name:      veleroScheduleNames[Resources],
 						Namespace: newVeleroNamespace,
 					},
 					Spec: veleroapi.BackupSpec{
