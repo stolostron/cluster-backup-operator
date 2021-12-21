@@ -164,8 +164,8 @@ func cleanupBackups(
 					return strings.HasSuffix(bkp.Name, relatedSuffix)
 				})
 				// delete all related backups with the same timestamp
-				for _, relatedBackup := range relatedBackups {
-					deleteBackup(ctx, &relatedBackup, c)
+				for i := range relatedBackups {
+					deleteBackup(ctx, &relatedBackups[i], c)
 				}
 			}
 		}
