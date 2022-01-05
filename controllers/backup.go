@@ -42,7 +42,6 @@ var (
 		"argoproj.io",
 		"app.k8s.io",
 		"core.observatorium.io",
-		//"hive.openshift.io",
 	}
 
 	// exclude resources from these api groups
