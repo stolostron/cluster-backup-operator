@@ -51,7 +51,6 @@ var (
 		"admission.work.open-cluster-management.io",
 		"internal.open-cluster-management.io",
 		"operator.open-cluster-management.io",
-		"search.open-cluster-management.io",
 		"work.open-cluster-management.io",
 	}
 	// exclude these CRDs
