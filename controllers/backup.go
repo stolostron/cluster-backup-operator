@@ -1,5 +1,5 @@
 /*
-Copyright 2021.
+Copyright 2022.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ var (
 		"argoproj.io",
 		"app.k8s.io",
 		"core.observatorium.io",
-		//"hive.openshift.io",
+		"hive.openshift.io",
 	}
 
 	// exclude resources from these api groups
@@ -51,7 +51,6 @@ var (
 		"admission.work.open-cluster-management.io",
 		"internal.open-cluster-management.io",
 		"operator.open-cluster-management.io",
-		"search.open-cluster-management.io",
 		"work.open-cluster-management.io",
 	}
 	// exclude these CRDs
