@@ -152,15 +152,26 @@ func cleanupBackups(
 			for i := 0; i < len(sliceBackups)-maxBackups; i++ {
 
 				// for each resources backup find all corresponding backups
-				// with the same timestamp and remove them
+				// with the creation timestamp in the +- 2s interval and remove them
 				resourcesBackup := &sliceBackups[i]
-				backupTimestamp := strings.LastIndex(resourcesBackup.Name, "-")
-				relatedSuffix := resourcesBackup.Name
-				if backupTimestamp != -1 {
-					relatedSuffix = resourcesBackup.Name[backupTimestamp:]
-				}
+				creationTimestamp := resourcesBackup.CreationTimestamp
 				relatedBackups := filterBackups(veleroBackupList.Items[:], func(bkp veleroapi.Backup) bool {
-					return strings.HasSuffix(bkp.Name, relatedSuffix)
+					isRelated := false
+					if creationTimestamp.Sub(bkp.CreationTimestamp.Time).Seconds() > 2 ||
+						bkp.CreationTimestamp.Sub(creationTimestamp.Time) > 2 {
+						return isRelated // not related, more then 2s appart
+					}
+
+					// check if the backup name is in the list of acm backups
+					for key := range veleroScheduleNames {
+						if strings.HasPrefix(bkp.Name, veleroScheduleNames[key]) {
+							isRelated = true
+							break
+						}
+					}
+
+					return isRelated
+
 				})
 				// delete all related backups with the same timestamp
 				for i := range relatedBackups {
