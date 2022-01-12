@@ -223,11 +223,18 @@ func setRestorePhase(
 			return
 		}
 		if veleroRestore.Status.Phase == veleroapi.RestorePhaseFailed ||
-			veleroRestore.Status.Phase == veleroapi.RestorePhasePartiallyFailed ||
 			veleroRestore.Status.Phase == veleroapi.RestorePhaseFailedValidation {
 			restore.Status.Phase = v1beta1.RestorePhaseError
 			restore.Status.LastMessage = fmt.Sprintf(
-				"Velero restore %s has failed or encountered errors",
+				"Velero restore %s has failed validation or encountered errors",
+				veleroRestore.Name,
+			)
+			return
+		}
+		if veleroRestore.Status.Phase == veleroapi.RestorePhasePartiallyFailed {
+			restore.Status.Phase = v1beta1.RestorePhaseFinishedWithErrors
+			restore.Status.LastMessage = fmt.Sprintf(
+				"Velero restore %s has run to completion but encountered 1+ errors",
 				veleroRestore.Name,
 			)
 			return

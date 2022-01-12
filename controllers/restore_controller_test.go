@@ -1453,7 +1453,7 @@ var _ = Describe("Basic Restore controller", func() {
 				},
 			)
 
-			By("Checking ACM restore phase when velero restore is in error", func() {
+			By("Checking ACM restore phase when velero restore partially failed", func() {
 				Eventually(func() v1beta1.RestorePhase {
 					k8sClient.Get(ctx,
 						types.NamespacedName{
@@ -1461,7 +1461,7 @@ var _ = Describe("Basic Restore controller", func() {
 							Namespace: veleroNamespace.Name,
 						}, &createdRestore)
 					return createdRestore.Status.Phase
-				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
+				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseFinishedWithErrors))
 			})
 
 			By(
