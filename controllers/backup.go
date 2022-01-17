@@ -22,13 +22,13 @@ import (
 	"sort"
 	"strings"
 
-	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
-	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
+	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
+	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )

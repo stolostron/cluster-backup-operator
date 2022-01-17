@@ -37,11 +37,11 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
-	backupv1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
-	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	backupv1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	operatorapiv1 "open-cluster-management.io/api/operator/v1"
+	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	discoveryclient "k8s.io/client-go/discovery"
@@ -141,14 +141,20 @@ var _ = BeforeSuite(func() {
 					{
 						Name: "cluster.open-cluster-management.io",
 						Versions: []metav1.GroupVersionForDiscovery{
-							{GroupVersion: "cluster.open-cluster-management.io/v1beta1", Version: "v1beta1"},
+							{
+								GroupVersion: "cluster.open-cluster-management.io/v1beta1",
+								Version:      "v1beta1",
+							},
 							{GroupVersion: "cluster.open-cluster-management.io/v1", Version: "v1"},
 						},
 					},
 					{
 						Name: "admission.cluster.open-cluster-management.io",
 						Versions: []metav1.GroupVersionForDiscovery{
-							{GroupVersion: "admission.cluster.open-cluster-management.io/v1beta1", Version: "v1beta1"},
+							{
+								GroupVersion: "admission.cluster.open-cluster-management.io/v1beta1",
+								Version:      "v1beta1",
+							},
 						},
 					},
 					{
@@ -181,7 +187,9 @@ var _ = BeforeSuite(func() {
 		w.Write(output)
 	}))
 
-	fakeDiscovery = discoveryclient.NewDiscoveryClientForConfigOrDie(&restclient.Config{Host: server.URL})
+	fakeDiscovery = discoveryclient.NewDiscoveryClientForConfigOrDie(
+		&restclient.Config{Host: server.URL},
+	)
 
 	tests := []struct {
 		resourcesList *metav1.APIResourceList
@@ -223,7 +231,9 @@ var _ = BeforeSuite(func() {
 	test := tests[1]
 	_, err := fakeDiscovery.ServerResourcesForGroupVersion(test.request)
 
-	fakeDiscovery := discoveryclient.NewDiscoveryClientForConfigOrDie(&restclient.Config{Host: server.URL})
+	fakeDiscovery := discoveryclient.NewDiscoveryClientForConfigOrDie(
+		&restclient.Config{Host: server.URL},
+	)
 	got, err := fakeDiscovery.ServerResourcesForGroupVersion(test.request)
 
 	if test.expectErr {

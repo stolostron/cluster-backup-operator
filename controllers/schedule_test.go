@@ -21,7 +21,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
+	"github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/version"
@@ -39,7 +39,10 @@ func initBackupSchedule(cronString string) *v1beta1.BackupSchedule {
 	}
 }
 
-func initVeleroScheduleList(phase veleroapi.SchedulePhase, cronSpec string) *veleroapi.ScheduleList {
+func initVeleroScheduleList(
+	phase veleroapi.SchedulePhase,
+	cronSpec string,
+) *veleroapi.ScheduleList {
 	return &veleroapi.ScheduleList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "velero.io/v1",
@@ -114,7 +117,10 @@ func Test_parseCronSchedule(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := parseCronSchedule(tt.args.ctx, tt.args.backupSchedule); !reflect.DeepEqual(got, tt.want) {
+			if got := parseCronSchedule(tt.args.ctx, tt.args.backupSchedule); !reflect.DeepEqual(
+				got,
+				tt.want,
+			) {
 				t.Errorf("parseCronSchedule() = %v, want %v", got, tt.want)
 			}
 		})
@@ -147,7 +153,10 @@ func Test_setSchedulePhase(t *testing.T) {
 		{
 			name: "failed validation",
 			args: args{
-				schedules:      initVeleroScheduleList(veleroapi.SchedulePhaseFailedValidation, "0 8 * * *"),
+				schedules: initVeleroScheduleList(
+					veleroapi.SchedulePhaseFailedValidation,
+					"0 8 * * *",
+				),
 				backupSchedule: initBackupSchedule("0 8 * * *"),
 			},
 		},
