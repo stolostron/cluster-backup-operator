@@ -6,7 +6,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
+	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	corev1 "k8s.io/api/core/v1"

@@ -5,7 +5,7 @@ plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
 projectName: cluster-backup-operator
-repo: github.com/open-cluster-management/cluster-backup-operator
+repo: github.com/stolostron/cluster-backup-operator
 resources:
 - api:
     crdVersion: v1
@@ -14,7 +14,7 @@ resources:
   domain: open-cluster-management.io
   group: cluster
   kind: Backup
-  path: github.com/open-cluster-management/cluster-backup-operator/api/v1beta1
+  path: github.com/stolostron/cluster-backup-operator/api/v1beta1
   version: v1beta1
 - api:
     crdVersion: v1
@@ -23,7 +23,7 @@ resources:
   domain: open-cluster-management.io
   group: cluster
   kind: Restore
-  path: github.com/open-cluster-management/cluster-backup-operator/api/v1beta1
+  path: github.com/stolostron/cluster-backup-operator/api/v1beta1
   version: v1beta1
 - api:
     crdVersion: v1
@@ -32,6 +32,6 @@ resources:
   domain: open-cluster-management.io
   group: cluster
   kind: BackupSchedule
-  path: github.com/open-cluster-management/cluster-backup-operator/api/v1beta1
+  path: github.com/stolostron/cluster-backup-operator/api/v1beta1
   version: v1beta1
 version: "3"

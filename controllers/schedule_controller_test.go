@@ -10,15 +10,15 @@ import (
 	. "github.com/onsi/gomega"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
-	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
+	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
 
-	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 )
 
 var _ = Describe("BackupSchedule controller", func() {
@@ -710,8 +710,10 @@ var _ = Describe("BackupSchedule controller", func() {
 						"placement.cluster.open-cluster-management.io")).Should(BeTrue())
 					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
 						"clusterdeployment")).Should(BeTrue())
-					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources, //excludedGroup
-						"managedclustermutators.admission.cluster.open-cluster-management.io")).ShouldNot(BeTrue())
+					Expect(findValue(
+						veleroSchedule.Spec.Template.IncludedResources, //excludedGroup
+						"managedclustermutators.admission.cluster.open-cluster-management.io",
+					)).ShouldNot(BeTrue())
 
 				} else
 				// generic resources, using backup label
