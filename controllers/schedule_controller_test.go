@@ -11,7 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
-	v1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
+	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"

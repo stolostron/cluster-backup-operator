@@ -1,4 +1,4 @@
-module github.com/open-cluster-management/cluster-backup-operator
+module github.com/stolostron/cluster-backup-operator
 
 go 1.17
 
@@ -91,6 +91,9 @@ require (
 )
 
 replace (
+	github.com/open-cluster-management/api => github.com/stolostron/api v0.0.0-20210527013639-a6845f2ebcb1
+	github.com/open-cluster-management/library-go => github.com/stolostron/library-go v0.0.0-20210805092456-f9c5ab6c4fc1
+	github.com/open-cluster-management/multicloud-operators-channel => github.com/stolostron/multicloud-operators-channel v1.2.2-2-20201130-37b47
 	github.com/ulikunitz/xz => github.com/ulikunitz/xz v0.5.10
 	k8s.io/api => k8s.io/api v0.21.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.21.3
