@@ -34,9 +34,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	clusterv1 "github.com/open-cluster-management/api/cluster/v1"
-	backupv1beta1 "github.com/open-cluster-management/cluster-backup-operator/api/v1beta1"
 	chnv1 "github.com/open-cluster-management/multicloud-operators-channel/pkg/apis/apps/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	backupv1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	operatorapiv1 "open-cluster-management.io/api/operator/v1"
 
 	valeroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
