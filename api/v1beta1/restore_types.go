@@ -28,11 +28,13 @@ const (
 	RestorePhaseStarted = "Started"
 	// RestorePhaseRunning means the restore is running and not yet finished
 	RestorePhaseRunning = "Running"
-	// RestorePhasedFinished means the restore finsihed
+	// RestorePhaseFinished means the restore finsihed
 	RestorePhaseFinished = "Finished"
-	// RestorePhaseError means the restore is in error phase.
+	// RestorePhaseFinishedWithErrors means the restore finsihed with 1+ errors restoring individual items
+	RestorePhaseFinishedWithErrors = "FinishedWithErrors"
+	// RestorePhaseError means the restore is in error phase and was unable to execute
 	RestorePhaseError = "Error"
-	// RestorePhaseUnknown means the restore is in error phase.
+	// RestorePhaseUnknown means the restore is in unknown phase
 	RestorePhaseUnknown = "Unknown"
 )
 
