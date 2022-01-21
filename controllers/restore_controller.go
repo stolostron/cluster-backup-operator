@@ -195,43 +195,70 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	for i := range veleroRestoreList.Items {
-		veleroRestore := veleroRestoreList.Items[i].DeepCopy()
-		switch {
-		case isVeleroRestoreFinished(veleroRestore):
-			r.Recorder.Event(
-				restore,
-				v1.EventTypeNormal,
-				"Velero Restore finished",
-				fmt.Sprintf(
-					"%s finished",
-					veleroRestore.Name,
-				),
-			)
-			restore.Status.Phase = v1beta1.RestorePhaseFinished
-			restore.Status.LastMessage = fmt.Sprintf("Restore Complete %s", veleroRestore.Name)
-
-		case isVeleroRestoreRunning(veleroRestore):
-			restore.Status.Phase = v1beta1.RestorePhaseRunning
-			restore.Status.LastMessage = fmt.Sprintf(
-				"Velero Restore %s is running",
-				veleroRestore.Name,
-			)
-
-		default:
-			restore.Status.Phase = v1beta1.RestorePhaseUnknown
-			restore.Status.LastMessage = fmt.Sprintf(
-				"Unknown status for  %s Velero Restore",
-				veleroRestore.Name,
-			)
-		}
-	}
+	setRestorePhase(&veleroRestoreList, restore)
 
 	err := r.Client.Status().Update(ctx, restore)
 	return ctrl.Result{}, errors.Wrap(
 		err,
 		fmt.Sprintf("could not update status for restore %s/%s", restore.Namespace, restore.Name),
 	)
+}
+
+// set cumulative status of restores
+func setRestorePhase(
+	veleroRestoreList *veleroapi.RestoreList,
+	restore *v1beta1.Restore,
+) {
+	// get all velero restores and check status for each
+	for i := range veleroRestoreList.Items {
+		veleroRestore := veleroRestoreList.Items[i].DeepCopy()
+
+		if veleroRestore.Status.Phase == "" {
+			restore.Status.Phase = v1beta1.RestorePhaseUnknown
+			restore.Status.LastMessage = fmt.Sprintf(
+				"Unknown status for Velero restore %s",
+				veleroRestore.Name,
+			)
+			return
+		}
+		if veleroRestore.Status.Phase == veleroapi.RestorePhaseNew {
+			restore.Status.Phase = v1beta1.RestorePhaseStarted
+			restore.Status.LastMessage = fmt.Sprintf(
+				"Velero restore %s has started",
+				veleroRestore.Name,
+			)
+			return
+		}
+		if veleroRestore.Status.Phase == veleroapi.RestorePhaseInProgress {
+			restore.Status.Phase = v1beta1.RestorePhaseRunning
+			restore.Status.LastMessage = fmt.Sprintf(
+				"Velero restore %s is currently executing",
+				veleroRestore.Name,
+			)
+			return
+		}
+		if veleroRestore.Status.Phase == veleroapi.RestorePhaseFailed ||
+			veleroRestore.Status.Phase == veleroapi.RestorePhaseFailedValidation {
+			restore.Status.Phase = v1beta1.RestorePhaseError
+			restore.Status.LastMessage = fmt.Sprintf(
+				"Velero restore %s has failed validation or encountered errors",
+				veleroRestore.Name,
+			)
+			return
+		}
+		if veleroRestore.Status.Phase == veleroapi.RestorePhasePartiallyFailed {
+			restore.Status.Phase = v1beta1.RestorePhaseFinishedWithErrors
+			restore.Status.LastMessage = fmt.Sprintf(
+				"Velero restore %s has run to completion but encountered 1+ errors",
+				veleroRestore.Name,
+			)
+			return
+		}
+	}
+
+	// if no velero restore with error, new or inprogress status, they are all completed
+	restore.Status.Phase = v1beta1.RestorePhaseFinished
+	restore.Status.LastMessage = "All Velero restores have run successfully"
 }
 
 // SetupWithManager sets up the controller with the Manager.
