@@ -223,6 +223,7 @@ var _ = BeforeSuite(func() {
 		},
 	}
 
+	// check that these resources are backed up
 	resourcesToBackup = []string{
 		"clusterdeployment",
 		"machinepool",

@@ -58,6 +58,7 @@ var (
 	// or they are being recreated by owner resources, which are also backed up
 	excludedCRDs = []string{
 		"clustermanagementaddon",
+		"observabilityaddon",
 		"applicationmanager",
 		"certpolicycontroller",
 		"iampolicycontroller",
@@ -66,6 +67,7 @@ var (
 		"workmanager",
 		"backupschedule",
 		"restore",
+		"clusterclaim.cluster.open-cluster-management.io",
 	}
 
 	// resources used to activate the connection between hub and managed clusters - activation resources
@@ -76,14 +78,15 @@ var (
 		"managedclusterset",
 		"managecclustersetbindings",
 		"clusterpool",
-		"clusterclaim",
+		"hive.openshift.io.clusterclaim",
 		"clustercurator",
 		"managedclusterview",
-		"clusterstatus",
 	}
 
 	// all backup resources, except secrets, configmaps and managed cluster activation resources
 	// backup resources will be generated from the api groups CRDs
+	// the two resources below should already be picked up by the api group selection
+	// they are used here for testing purpose
 	backupResources = []string{
 		"clusterdeployment",
 		"machinepool",
@@ -91,6 +94,7 @@ var (
 
 	backupCredsResources = []string{
 		"secret",
+		"configmap",
 	}
 
 	// secrets and configmaps labels
