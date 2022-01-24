@@ -16,7 +16,11 @@ limitations under the License.
 
 package controllers
 
-import "strings"
+import (
+	"strings"
+
+	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+)
 
 func findSuffix(slice []string, val string) (int, bool) {
 	for i, item := range slice {
@@ -81,3 +85,25 @@ type SortResourceType []ResourceType
 func (a SortResourceType) Len() int           { return len(a) }
 func (a SortResourceType) Less(i, j int) bool { return a[i] < a[j] }
 func (a SortResourceType) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+
+// check if we have a valid storage location object
+func isValidStorageLocationDefined(veleroStorageLocations veleroapi.BackupStorageLocationList) (bool, string) {
+	isValidStorageLocation := false
+	veleroNamespace := ""
+	for i := range veleroStorageLocations.Items {
+		if veleroStorageLocations.Items[i].OwnerReferences != nil &&
+			veleroStorageLocations.Items[i].Status.Phase == veleroapi.BackupStorageLocationPhaseAvailable {
+			for _, ref := range veleroStorageLocations.Items[i].OwnerReferences {
+				if ref.Kind != "" {
+					isValidStorageLocation = true
+					veleroNamespace = veleroStorageLocations.Items[i].Namespace
+					break
+				}
+			}
+		}
+		if isValidStorageLocation {
+			break
+		}
+	}
+	return isValidStorageLocation, veleroNamespace
+}
