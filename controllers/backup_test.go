@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -255,7 +255,9 @@ var _ = Describe("Backup", func() {
 			Expect(backupsInError).Should(Equal([]veleroapi.Backup{failedBackup}))
 
 			Expect(shouldBackupAPIGroup("security.openshift.io")).Should(BeFalse())
-			Expect(shouldBackupAPIGroup("admission.cluster.open-cluster-management.io")).Should(BeFalse())
+			Expect(
+				shouldBackupAPIGroup("admission.cluster.open-cluster-management.io"),
+			).Should(BeFalse())
 			Expect(shouldBackupAPIGroup("discovery.open-cluster-management.io")).Should(BeTrue())
 			Expect(shouldBackupAPIGroup("argoproj.io")).Should(BeTrue())
 		})
