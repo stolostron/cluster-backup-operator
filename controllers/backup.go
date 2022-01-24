@@ -34,6 +34,12 @@ import (
 )
 
 var (
+	// BackupScheduleNameLabel is the label key used to identify the backup schedule by name.
+	BackupScheduleNameLabel string = "cluster.open-cluster-management.io/backup-schedule-name"
+	// BackupScheduleTypeLabel is the label key used to identify the type of the backup schedule
+	BackupScheduleTypeLabel string = "cluster.open-cluster-management.io/backup-schedule-type"
+)
+var (
 	// include resources from these api groups
 	includedAPIGroupsSuffix = []string{
 		".open-cluster-management.io",
