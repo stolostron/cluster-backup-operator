@@ -278,6 +278,15 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		veleroSchedule.Name = veleroScheduleIdentity.Name
 		veleroSchedule.Namespace = veleroScheduleIdentity.Namespace
 
+		// set backup schedule name as label annotation
+		labels := veleroSchedule.GetLabels()
+		if labels == nil {
+			labels = make(map[string]string)
+		}
+		labels[BackupScheduleNameLabel] = backupSchedule.Name
+		labels[BackupScheduleTypeLabel] = string(scheduleKey)
+		veleroSchedule.SetLabels(labels)
+
 		// create backup based on resource type
 		veleroBackupTemplate := &veleroapi.BackupSpec{}
 
