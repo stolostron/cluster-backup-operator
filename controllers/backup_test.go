@@ -3,6 +3,7 @@ package controllers
 import (
 	"math/rand"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -98,7 +99,10 @@ var _ = Describe("Backup", func() {
 		})
 
 		It("filterBackups should work as expected", func() {
-			startTimestamp := &metav1.Time{}
+			oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
+			sameScheduleTime := metav1.NewTime(time.Now().Add(-3 * time.Second))
+
+			twoHourAgo := metav1.NewTime(time.Now().Add(-2 * time.Hour))
 
 			sliceBackups := []veleroapi.Backup{
 				veleroapi.Backup{
@@ -115,7 +119,7 @@ var _ = Describe("Backup", func() {
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
-						StartTimestamp: startTimestamp,
+						StartTimestamp: &oneHourAgo,
 						Errors:         0,
 					},
 				},
@@ -133,7 +137,7 @@ var _ = Describe("Backup", func() {
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
-						StartTimestamp: startTimestamp,
+						StartTimestamp: &sameScheduleTime,
 						Errors:         0,
 					},
 				},
@@ -151,7 +155,7 @@ var _ = Describe("Backup", func() {
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
-						StartTimestamp: startTimestamp,
+						StartTimestamp: &twoHourAgo,
 						Errors:         0,
 					},
 				},
