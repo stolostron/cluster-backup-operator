@@ -174,6 +174,8 @@ var _ = Describe("BackupSchedule controller", func() {
 		}
 
 		veleroBackups = []veleroapi.Backup{}
+		oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
+		aFewSecondsAgo := metav1.NewTime(time.Now().Add(-2 * time.Second))
 
 		//create 3 sets of backups, for each timestamp
 		for _, timestampStr := range backupTimestamps {
@@ -191,8 +193,9 @@ var _ = Describe("BackupSchedule controller", func() {
 						IncludedNamespaces: []string{"please-keep-this-one"},
 					},
 					Status: veleroapi.BackupStatus{
-						Phase:  veleroapi.BackupPhaseCompleted,
-						Errors: 0,
+						Phase:          veleroapi.BackupPhaseCompleted,
+						StartTimestamp: &aFewSecondsAgo,
+						Errors:         0,
 					},
 				}
 
@@ -214,8 +217,9 @@ var _ = Describe("BackupSchedule controller", func() {
 				IncludedNamespaces: []string{"please-keep-this-one"},
 			},
 			Status: veleroapi.BackupStatus{
-				Phase:  veleroapi.BackupPhaseCompleted,
-				Errors: 0,
+				Phase:          veleroapi.BackupPhaseCompleted,
+				StartTimestamp: &oneHourAgo,
+				Errors:         0,
 			},
 		})
 	})
@@ -754,6 +758,9 @@ var _ = Describe("BackupSchedule controller", func() {
 		var newVeleroNamespace = "velero-ns-new"
 		var newAcmNamespace = "acm-ns-new"
 		var newChartsv1NSName = "acm-channel-ns-new"
+
+		oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
+
 		BeforeEach(func() {
 			clusterPoolNS = nil
 			chartsv1NS = &corev1.Namespace{
@@ -814,7 +821,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
-						StartTimestamp: &metav1.Time{},
+						StartTimestamp: &oneHourAgo,
 						Errors:         0,
 					},
 				},

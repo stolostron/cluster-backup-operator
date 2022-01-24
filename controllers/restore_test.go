@@ -48,6 +48,17 @@ func Test_isVeleroRestoreFinished(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name: "Not Finished",
+			args: args{
+				restore: &veleroapi.Restore{
+					Status: veleroapi.RestoreStatus{
+						Phase: veleroapi.RestorePhaseInProgress,
+					},
+				},
+			},
+			want: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -83,6 +94,17 @@ func Test_isVeleroRestoreRunning(t *testing.T) {
 				},
 			},
 			want: true,
+		},
+		{
+			name: "Failed velero restore",
+			args: args{
+				restore: &veleroapi.Restore{
+					Status: veleroapi.RestoreStatus{
+						Phase: veleroapi.RestorePhaseFailed,
+					},
+				},
+			},
+			want: false,
 		},
 	}
 	for _, tt := range tests {
