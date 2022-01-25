@@ -19,14 +19,11 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -122,120 +119,6 @@ var (
 		ManagedClusters:    "acm-managed-clusters-schedule",
 	}
 )
-
-// clean up old backups if they exceed the maxCount number
-func cleanupBackups(
-	ctx context.Context,
-	maxBackups int,
-	c client.Client,
-) {
-	backupLogger := log.FromContext(ctx)
-
-	backupLogger.Info(fmt.Sprintf("check if needed to remove backups maxBackups=%d", maxBackups))
-	veleroBackupList := veleroapi.BackupList{}
-	if err := c.List(ctx, &veleroBackupList, &client.ListOptions{}); err != nil {
-		backupLogger.Error(err, "failed to get veleroapi.BackupList")
-	} else {
-
-		// get only acm resources backups and not in deleting state
-		// which are backups starting with acm-resources-schedule
-		sliceBackups := filterBackups(veleroBackupList.Items[:], func(bkp veleroapi.Backup) bool {
-			return strings.HasPrefix(bkp.Name, veleroScheduleNames[Resources]) &&
-				bkp.Status.Phase != veleroapi.BackupPhaseDeleting
-		})
-
-		if maxBackups >= len(sliceBackups) {
-			// no need to delete old backups
-			return
-		}
-
-		// need to delete backups
-		// sort backups by create time
-		sort.Slice(sliceBackups, func(i, j int) bool {
-			var timeA int64
-			var timeB int64
-			if sliceBackups[i].Status.StartTimestamp != nil {
-				timeA = sliceBackups[i].Status.StartTimestamp.Time.Unix()
-			}
-			if sliceBackups[j].Status.StartTimestamp != nil {
-				timeB = sliceBackups[j].Status.StartTimestamp.Time.Unix()
-			}
-			return timeA < timeB
-		})
-
-		for i := 0; i < len(sliceBackups)-maxBackups; i++ {
-
-			// for each resources backup find all corresponding backups
-			// with the creation timestamp in the +- 2s interval and remove them
-			resourcesBackup := &sliceBackups[i]
-			creationTimestamp := resourcesBackup.CreationTimestamp
-			relatedBackups := filterBackups(veleroBackupList.Items[:], func(bkp veleroapi.Backup) bool {
-				isRelated := false
-				if creationTimestamp.Sub(bkp.CreationTimestamp.Time).Seconds() > 6 ||
-					bkp.CreationTimestamp.Sub(creationTimestamp.Time) > 6 {
-					return isRelated // not related, more then 6s appart
-				}
-
-				// check if the backup name is in the list of acm backups
-				for key := range veleroScheduleNames {
-					if strings.HasPrefix(bkp.Name, veleroScheduleNames[key]) {
-						isRelated = true
-						break
-					}
-				}
-
-				return isRelated
-
-			})
-			// delete all related backups with the same timestamp
-			for i := range relatedBackups {
-				deleteBackup(ctx, &relatedBackups[i], c)
-			}
-		}
-	}
-}
-
-func deleteBackup(
-	ctx context.Context,
-	backup *veleroapi.Backup,
-	c client.Client,
-) {
-	// delete backup now
-	backupLogger := log.FromContext(ctx)
-	backupName := backup.ObjectMeta.Name
-	backupNamespace := backup.ObjectMeta.Namespace
-	backupLogger.Info(fmt.Sprintf("delete backup %s", backupName))
-
-	backupDeleteIdentity := types.NamespacedName{
-		Name:      backupName,
-		Namespace: backupNamespace,
-	}
-
-	// get the velero CR using the backupDeleteIdentity
-	veleroDeleteBackup := &veleroapi.DeleteBackupRequest{}
-	err := c.Get(ctx, backupDeleteIdentity, veleroDeleteBackup)
-	if err != nil {
-		// check if this is a  resource NotFound error, in which case create the resource
-		if k8serr.IsNotFound(err) {
-
-			veleroDeleteBackup.Spec.BackupName = backupName
-			veleroDeleteBackup.Name = backupDeleteIdentity.Name
-			veleroDeleteBackup.Namespace = backupDeleteIdentity.Namespace
-
-			err = c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{})
-			if err != nil {
-				backupLogger.Error(
-					err,
-					fmt.Sprintf("create  DeleteBackupRequest request error for %s", backupName),
-				)
-			}
-		} else {
-			backupLogger.Error(err, fmt.Sprintf("Failed to create DeleteBackupRequest for resource %s", backupName))
-		}
-	} else {
-		backupLogger.Info(fmt.Sprintf("DeleteBackupRequest already exists, skip request creation %s", backupName))
-	}
-}
 
 // set all acm resources backup info
 func setResourcesBackupInfo(

@@ -373,7 +373,6 @@ var _ = Describe("BackupSchedule controller", func() {
 					Namespace: veleroNamespaceName,
 				},
 				Spec: v1beta1.BackupScheduleSpec{
-					MaxBackups:     2, // we have 3 groups of backups
 					VeleroSchedule: backupSchedule,
 					VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
 				},
@@ -476,12 +475,11 @@ var _ = Describe("BackupSchedule controller", func() {
 				},
 				Spec: v1beta1.BackupScheduleSpec{
 					VeleroSchedule: backupSchedule,
-					MaxBackups:     1,
 				},
 			}
 			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleNoTTL)).Should(Succeed())
 
-			// new schedule backup to trigger backup delete routine
+			// new schedule backup
 			backupScheduleName3 := backupScheduleName + "-3"
 			backupSchedule3 := v1beta1.BackupSchedule{
 				TypeMeta: metav1.TypeMeta{
@@ -494,7 +492,6 @@ var _ = Describe("BackupSchedule controller", func() {
 				},
 				Spec: v1beta1.BackupScheduleSpec{
 					VeleroSchedule: backupSchedule,
-					MaxBackups:     1,
 				},
 			}
 			Expect(k8sClient.Create(ctx, &backupSchedule3)).Should(Succeed())
@@ -551,7 +548,6 @@ var _ = Describe("BackupSchedule controller", func() {
 					Namespace: acmNamespaceName,
 				},
 				Spec: v1beta1.BackupScheduleSpec{
-					MaxBackups:     1,
 					VeleroSchedule: backupSchedule,
 					VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
 				},
@@ -594,7 +590,6 @@ var _ = Describe("BackupSchedule controller", func() {
 					Namespace: veleroNamespaceName,
 				},
 				Spec: v1beta1.BackupScheduleSpec{
-					MaxBackups:     1,
 					VeleroSchedule: "invalid-cron-exp",
 					VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
 				},
@@ -860,7 +855,6 @@ var _ = Describe("BackupSchedule controller", func() {
 						Namespace: newVeleroNamespace,
 					},
 					Spec: v1beta1.BackupScheduleSpec{
-						MaxBackups:     1,
 						VeleroSchedule: backupSchedule,
 						VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
 					},
@@ -905,7 +899,6 @@ var _ = Describe("BackupSchedule controller", func() {
 						Namespace: newVeleroNamespace,
 					},
 					Spec: v1beta1.BackupScheduleSpec{
-						MaxBackups:     1,
 						VeleroSchedule: backupSchedule,
 						VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
 					},

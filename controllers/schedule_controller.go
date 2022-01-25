@@ -71,10 +71,8 @@ const (
 const updateStatusFailedMsg = "Could not update status"
 
 const (
-	// Time interval to reque delete backups if they exceed maxBackups number
-	deleteBackupRequeueInterval = time.Minute * 60
-	failureInterval             = time.Second * 10
-	scheduleOwnerKey            = ".metadata.controller"
+	failureInterval  = time.Second * 10
+	scheduleOwnerKey = ".metadata.controller"
 )
 
 // BackupScheduleReconciler reconciles a BackupSchedule object
@@ -210,7 +208,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 			backupSchedule.Status.Phase = v1beta1.SchedulePhaseNew
 		}
 
-		return ctrl.Result{RequeueAfter: deleteBackupRequeueInterval}, errors.Wrap(
+		return ctrl.Result{}, errors.Wrap(
 			r.Client.Status().Update(ctx, backupSchedule),
 			updateStatusFailedMsg,
 		)
@@ -225,7 +223,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 			return ctrl.Result{}, err
 		}
 
-		return ctrl.Result{RequeueAfter: deleteBackupRequeueInterval}, errors.Wrap(
+		return ctrl.Result{}, errors.Wrap(
 			r.Client.Status().Update(ctx, backupSchedule),
 			updateStatusFailedMsg,
 		)
@@ -237,11 +235,8 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 	setSchedulePhase(&veleroScheduleList, backupSchedule)
 
-	// clean up old backups if they exceed the maxBackups number after backupDeleteRequeueInterval
-	cleanupBackups(ctx, backupSchedule.Spec.MaxBackups, r.Client)
-
 	err := r.Client.Status().Update(ctx, backupSchedule)
-	return ctrl.Result{RequeueAfter: deleteBackupRequeueInterval}, errors.Wrap(
+	return ctrl.Result{}, errors.Wrap(
 		err,
 		fmt.Sprintf(
 			"could not update status for schedule %s/%s",

@@ -56,9 +56,6 @@ type BackupScheduleSpec struct {
 	// the maximum default value set by velero is used - 720h
 	// +kubebuilder:validation:Optional
 	VeleroTTL metav1.Duration `json:"veleroTtl,omitempty"`
-	// Maximum number of scheduled backups after which the old backups are being removed
-	// +kubebuilder:validation:Required
-	MaxBackups int `json:"maxBackups"`
 }
 
 // BackupScheduleStatus defines the observed state of BackupSchedule
