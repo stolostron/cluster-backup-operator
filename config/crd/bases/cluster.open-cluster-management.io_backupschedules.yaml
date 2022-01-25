@@ -388,6 +388,13 @@ spec:
                                   contains only "value". The requirements are ANDed.
                                 type: object
                             type: object
+                          metadata:
+                            properties:
+                              labels:
+                                additionalProperties:
+                                  type: string
+                                type: object
+                            type: object
                           orderedResources:
                             additionalProperties:
                               type: string
@@ -772,6 +779,13 @@ spec:
                                   contains only "value". The requirements are ANDed.
                                 type: object
                             type: object
+                          metadata:
+                            properties:
+                              labels:
+                                additionalProperties:
+                                  type: string
+                                type: object
+                            type: object
                           orderedResources:
                             additionalProperties:
                               type: string
@@ -1154,6 +1168,13 @@ spec:
                                   to an element of matchExpressions, whose key field
                                   is "key", the operator is "In", and the values array
                                   contains only "value". The requirements are ANDed.
+                                type: object
+                            type: object
+                          metadata:
+                            properties:
+                              labels:
+                                additionalProperties:
+                                  type: string
                                 type: object
                             type: object
                           orderedResources:
