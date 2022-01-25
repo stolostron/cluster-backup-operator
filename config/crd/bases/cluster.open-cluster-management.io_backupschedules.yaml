@@ -45,10 +45,6 @@ spec:
           spec:
             description: BackupScheduleSpec defines the desired state of BackupSchedule
             properties:
-              maxBackups:
-                description: Maximum number of scheduled backups after which the old
-                  backups are being removed
-                type: integer
               veleroSchedule:
                 description: Schedule is a Cron expression defining when to run the
                   Velero Backup
@@ -59,7 +55,6 @@ spec:
                   the maximum default value set by velero is used - 720h
                 type: string
             required:
-            - maxBackups
             - veleroSchedule
             type: object
           status:

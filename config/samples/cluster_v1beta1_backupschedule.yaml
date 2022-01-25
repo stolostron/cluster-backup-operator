@@ -3,13 +3,10 @@
 # 
 # veleroSchedule - cron job to start new acm backups
 #
-# maxBackups - maximum number of acm backups after which old acm backups should be removed
-#
 apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: BackupSchedule
 metadata:
   name: schedule-acm
 spec:
-  maxBackups: 20
   veleroSchedule: 0 */6 * * *
   veleroTtl: 240h
