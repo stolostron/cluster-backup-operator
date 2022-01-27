@@ -8,7 +8,7 @@ require (
 	github.com/openshift/api v0.0.0-20210521075222-e273a339932a //Openshift 4.6
 	github.com/openshift/hive/apis v0.0.0-20210915004009-18827f64c00e
 	github.com/pkg/errors v0.9.1
-	github.com/robfig/cron/v3 v3.0.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/vmware-tanzu/velero v1.7.0
 	k8s.io/api v0.22.2
 	k8s.io/apimachinery v0.22.2
@@ -19,7 +19,6 @@ require (
 
 require (
 	github.com/go-logr/logr v0.4.0
-	github.com/stolostron/library-go v0.0.0-20220112062416-536980fdb526
 	open-cluster-management.io/multicloud-operators-channel v0.6.1-0.20220124220643-6ee87ebd2b22
 )
 
@@ -73,7 +72,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 	k8s.io/apiextensions-apiserver v0.22.2 // indirect
 	k8s.io/component-base v0.22.2 // indirect
-	k8s.io/klog v1.0.0 // indirect
 	k8s.io/klog/v2 v2.9.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20210421082810-95288971da7e // indirect
 	k8s.io/utils v0.0.0-20210930125809-cb0fa318a74b // indirect
