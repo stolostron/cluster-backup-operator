@@ -22,13 +22,13 @@ import (
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	backupv1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	"github.com/stolostron/cluster-backup-operator/controllers"
-	libgoclient "github.com/stolostron/library-go/pkg/client"
 	certsv1 "k8s.io/api/certificates/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -122,7 +122,8 @@ func main() {
 		setupLog.Error(err, "unable to create Schedule controller")
 		os.Exit(1)
 	}
-	kubeClient, err := libgoclient.NewDefaultKubeClient("")
+
+	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		kubeClient = nil
 	}
