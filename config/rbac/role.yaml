@@ -111,14 +111,6 @@ rules:
 - apiGroups:
   - velero.io
   resources:
-  - deletebackuprequests
-  verbs:
-  - create
-  - list
-  - watch
-- apiGroups:
-  - velero.io
-  resources:
   - restores
   verbs:
   - create
