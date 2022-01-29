@@ -71,7 +71,7 @@ const (
 const updateStatusFailedMsg = "Could not update status"
 
 const (
-	failureInterval  = time.Second * 10
+	failureInterval  = time.Second * 60
 	scheduleOwnerKey = ".metadata.controller"
 )
 
