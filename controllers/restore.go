@@ -156,6 +156,16 @@ func prepareForRestoreResources(
 	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
 	// delete each resource from included resources, if it has a velero annotation
 	// meaning that the resource was created by another restore
+
+	labelSelector := ""
+	if restoreType == ResourcesGeneric {
+		// add an extra label here, which is the cluster.open-cluster-management.io/backup
+		labelSelector = "velero.io/backup-name, cluster.open-cluster-management.io/backup"
+	} else {
+		// otherwise exclude all resources with a cluster.open-cluster-management.io/backup label
+		labelSelector = "velero.io/backup-name, !cluster.open-cluster-management.io/backup"
+	}
+
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
 	deletePolicy := v1.DeletePropagationForeground
 	deleteOptions := v1.DeleteOptions{
@@ -176,7 +186,7 @@ func prepareForRestoreResources(
 			if dr != nil {
 				// get all resources of this type with the velero.io/backup-name set
 				// we want to clean them up, they were created by a previous restore
-				dynamiclist, err := dr.List(ctx, v1.ListOptions{LabelSelector: "velero.io/backup-name"})
+				dynamiclist, err := dr.List(ctx, v1.ListOptions{LabelSelector: labelSelector})
 				if err != nil {
 					logger.Info(err.Error())
 				} else {
