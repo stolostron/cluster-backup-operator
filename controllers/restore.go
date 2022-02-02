@@ -84,7 +84,7 @@ func prepareForRestore(
 	switch restoreType {
 	case Credentials, CredentialsHive, CredentialsCluster:
 		prepareForRestoreCredentials(ctx, c, logger, restoreType)
-	case Resources, ResourcesGeneric:
+	case Resources: //, ResourcesGeneric:
 		prepareForRestoreResources(ctx, c, dc, dyn, logger, restoreType, veleroBackup)
 	}
 }
