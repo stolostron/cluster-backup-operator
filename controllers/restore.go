@@ -52,9 +52,16 @@ func updateRestoreStatus(
 	msg string,
 	restore *v1beta1.Restore,
 ) {
+	if status == v1beta1.RestorePhaseError {
+		if restore.Status.Phase == v1beta1.RestorePhaseFinished ||
+			restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors {
+			logger.Info("Skipped status update to error for completed restore")
+			return
+		}
+	}
+
 	logger.Info(msg)
 
 	restore.Status.Phase = status
 	restore.Status.LastMessage = msg
-
 }
