@@ -28,6 +28,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -53,9 +55,11 @@ const (
 // RestoreReconciler reconciles a Restore object
 type RestoreReconciler struct {
 	client.Client
-	KubeClient kubernetes.Interface
-	Scheme     *runtime.Scheme
-	Recorder   record.EventRecorder
+	DiscoveryClient discovery.DiscoveryInterface
+	DynamicClient   dynamic.Interface
+	KubeClient      kubernetes.Interface
+	Scheme          *runtime.Scheme
+	Recorder        record.EventRecorder
 }
 
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=restores,verbs=get;list;watch;create;update;patch;delete
@@ -74,6 +78,12 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	if err := r.Get(ctx, req.NamespacedName, restore); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	if restore.Status.Phase == v1beta1.RestorePhaseFinished ||
+		restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors {
+		// don't process a restore resource if it's completed
+		return ctrl.Result{}, nil
 	}
 
 	// don't create restores if backup storage location doesn't exist or is not avaialble
@@ -283,7 +293,7 @@ func (r *RestoreReconciler) getVeleroBackupName(
 	restore *v1beta1.Restore,
 	resourceType ResourceType,
 	backupName string,
-) (string, error) {
+) (string, error, *veleroapi.Backup) {
 
 	var computedName string
 
@@ -291,10 +301,10 @@ func (r *RestoreReconciler) getVeleroBackupName(
 		// backup name not available, find a proper backup
 		veleroBackups := &veleroapi.BackupList{}
 		if err := r.Client.List(ctx, veleroBackups, client.InNamespace(restore.Namespace)); err != nil {
-			return "", fmt.Errorf("unable to list velero backups: %v", err)
+			return "", fmt.Errorf("unable to list velero backups: %v", err), nil
 		}
 		if len(veleroBackups.Items) == 0 {
-			return "", fmt.Errorf("no backups found")
+			return "", fmt.Errorf("no backups found"), nil
 		}
 		// filter available backups to get only the ones related to this resource type
 		relatedBackups := filterBackups(veleroBackups.Items, func(bkp veleroapi.Backup) bool {
@@ -302,10 +312,10 @@ func (r *RestoreReconciler) getVeleroBackupName(
 				bkp.Status.Phase == veleroapi.BackupPhaseCompleted
 		})
 		if len(relatedBackups) == 0 {
-			return "", fmt.Errorf("no backups found")
+			return "", fmt.Errorf("no backups found"), nil
 		}
 		sort.Sort(mostRecentWithLessErrors(relatedBackups))
-		return relatedBackups[0].Name, nil
+		return relatedBackups[0].Name, nil, &relatedBackups[0]
 	} else {
 		// get the backup name for this type of resource, based on the requested resource timestamp
 		backupTimestamp := strings.LastIndex(backupName, "-")
@@ -321,9 +331,9 @@ func (r *RestoreReconciler) getVeleroBackupName(
 		&veleroBackup,
 	)
 	if err == nil {
-		return computedName, nil
+		return computedName, nil, &veleroBackup
 	}
-	return "", fmt.Errorf("cannot find %s Velero Backup: %v", computedName, err)
+	return "", fmt.Errorf("cannot find %s Velero Backup: %v", computedName, err), nil
 }
 
 // create velero.io.Restore resource for each resource type
@@ -365,7 +375,8 @@ func (r *RestoreReconciler) initVeleroRestores(
 		}
 
 		veleroRestore := &veleroapi.Restore{}
-		veleroBackupName, err := r.getVeleroBackupName(ctx, restore, key, backupName)
+		veleroBackup := &veleroapi.Backup{}
+		veleroBackupName, err, veleroBackup := r.getVeleroBackupName(ctx, restore, key, backupName)
 		if err != nil {
 			restoreLogger.Info(
 				"backup name not found, skipping restore for",
@@ -386,6 +397,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 				return err
 			}
 		} else {
+			prepareForRestore(ctx, r.Client, r.DiscoveryClient, r.DynamicClient, restoreLogger, key, veleroBackup)
 
 			veleroRestore.Name = getValidKsRestoreName(restore.Name, veleroBackupName)
 

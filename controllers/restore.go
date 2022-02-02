@@ -17,9 +17,21 @@ limitations under the License.
 package controllers
 
 import (
+	"context"
+
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/restmapper"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func isVeleroRestoreFinished(restore *veleroapi.Restore) bool {
@@ -57,4 +69,137 @@ func updateRestoreStatus(
 	restore.Status.Phase = status
 	restore.Status.LastMessage = msg
 
+}
+
+func prepareForRestore(
+	ctx context.Context,
+	c client.Client,
+	dc discovery.DiscoveryInterface,
+	dyn dynamic.Interface,
+	logger logr.Logger,
+	restoreType ResourceType,
+	veleroBackup *veleroapi.Backup,
+) {
+
+	switch restoreType {
+	case Credentials, CredentialsHive, CredentialsCluster:
+		prepareForRestoreCredentials(ctx, c, logger, restoreType)
+	case Resources, ResourcesGeneric:
+		prepareForRestoreResources(ctx, c, dc, dyn, logger, restoreType, veleroBackup)
+	}
+}
+
+func prepareForRestoreCredentials(
+	ctx context.Context,
+	c client.Client,
+	logger logr.Logger,
+	restoreType ResourceType,
+) {
+
+	logger.Info("enter prepareForRestoreCredentials for " + string(restoreType))
+	var labelKey string
+	switch string(restoreType) {
+	case string(CredentialsHive):
+		labelKey = backupCredsHiveLabel
+	case string(CredentialsCluster):
+		labelKey = backupCredsClusterLabel
+	default:
+		labelKey = backupCredsUserLabel
+	}
+
+	labelSelector := &v1.LabelSelector{}
+
+	req := &v1.LabelSelectorRequirement{}
+	req.Key = "velero.io/backup-name"
+	req.Operator = "Exists"
+	labelSelector.MatchExpressions = append(
+		labelSelector.MatchExpressions,
+		*req,
+	)
+	reqCredential := &v1.LabelSelectorRequirement{}
+	reqCredential.Key = labelKey
+	reqCredential.Operator = "Exists"
+	labelSelector.MatchExpressions = append(
+		labelSelector.MatchExpressions,
+		*reqCredential,
+	)
+
+	var labelSelectors labels.Selector
+	labelSelectors, _ = v1.LabelSelectorAsSelector(labelSelector)
+
+	secrets := corev1.SecretList{}
+	if err := c.List(ctx, &secrets, &client.ListOptions{LabelSelector: labelSelectors}); err != nil {
+		logger.Info(err.Error())
+	} else {
+		for i := range secrets.Items {
+			err = c.Delete(ctx, &secrets.Items[i])
+			if err != nil {
+				logger.Info(err.Error())
+			} else {
+				logger.Info("deleted resource" + secrets.Items[i].Namespace + "-" + secrets.Items[i].Name)
+			}
+		}
+	}
+	logger.Info("exit prepareForRestoreCredentials for " + string(restoreType))
+
+}
+
+func prepareForRestoreResources(
+	ctx context.Context,
+	c client.Client,
+	dc discovery.DiscoveryInterface,
+	dyn dynamic.Interface,
+	logger logr.Logger,
+	restoreType ResourceType,
+	veleroBackup *veleroapi.Backup,
+) {
+	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
+	// delete each resource from included resources, if it has a velero annotation
+	// meaning that the resource was created by another restore
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
+	deletePolicy := v1.DeletePropagationForeground
+	deleteOptions := v1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}
+	for i := range veleroBackup.Spec.IncludedResources {
+
+		kind, groupName := getResourceDetails(veleroBackup.Spec.IncludedResources[i])
+		groupKind := schema.GroupKind{
+			Group: groupName,
+			Kind:  kind,
+		}
+		mapping, err := mapper.RESTMapping(groupKind, "")
+		if err != nil {
+			logger.Info(err.Error())
+		} else {
+			var dr = dyn.Resource(mapping.Resource)
+			if dr != nil {
+				// get all resources of this type with the velero.io/backup-name set
+				// we want to clean them up, they were created by a previous restore
+				dynamiclist, err := dr.List(ctx, v1.ListOptions{LabelSelector: "velero.io/backup-name"})
+				if err != nil {
+					logger.Info(err.Error())
+				} else {
+					for i := range dynamiclist.Items {
+						// delete them
+						resource := dynamiclist.Items[i]
+						if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+							// namespaced resources should specify the namespace
+							err = dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions)
+						} else {
+							// for cluster-wide resources
+							err = dr.Delete(ctx, resource.GetName(), deleteOptions)
+						}
+
+						if err != nil {
+							logger.Info(err.Error())
+						} else {
+							logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+						}
+					}
+				}
+			}
+		}
+	}
+	logger.Info("exit prepareForRestoreResources for " + string(restoreType))
 }
