@@ -162,8 +162,9 @@ func prepareForRestoreResources(
 		// add an extra label here, which is the cluster.open-cluster-management.io/backup
 		labelSelector = "velero.io/backup-name, cluster.open-cluster-management.io/backup"
 	} else {
+		labelSelector = "velero.io/backup-name"
 		// otherwise exclude all resources with a cluster.open-cluster-management.io/backup label
-		labelSelector = "velero.io/backup-name, !cluster.open-cluster-management.io/backup"
+		//labelSelector = "velero.io/backup-name, !cluster.open-cluster-management.io/backup"
 	}
 
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
