@@ -342,6 +342,12 @@ func (r *RestoreReconciler) initVeleroRestores(
 	restore *v1beta1.Restore,
 ) error {
 	restoreLogger := log.FromContext(ctx)
+	restore.Status.Phase = v1beta1.RestorePhaseStarted
+	restore.Status.LastMessage = "Restore in progress"
+	err := r.Client.Status().Update(ctx, restore)
+	if err != nil {
+		restoreLogger.Error(err, "Unable to update status")
+	}
 
 	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, len(veleroScheduleNames))
 
