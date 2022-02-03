@@ -1345,126 +1345,6 @@ var _ = Describe("Basic Restore controller", func() {
 			}, timeout, interval).ShouldNot(BeEmpty())
 
 			By(
-				"Setting "+createdRestore.Status.VeleroManagedClustersRestoreName+" new",
-				func() {
-					updateVeleroRestoreStatus(
-						createdRestore.Status.VeleroManagedClustersRestoreName,
-						createdRestore.Namespace,
-						veleroapi.RestorePhaseNew,
-						timeout,
-						interval,
-					)
-				},
-			)
-
-			By("Checking ACM restore phase when velero restore is new", func() {
-				Eventually(func() v1beta1.RestorePhase {
-					k8sClient.Get(ctx,
-						types.NamespacedName{
-							Name:      restoreName,
-							Namespace: veleroNamespace.Name,
-						}, &createdRestore)
-					return createdRestore.Status.Phase
-				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseStarted))
-			})
-
-			By(
-				"Setting "+createdRestore.Status.VeleroManagedClustersRestoreName+" in progress",
-				func() {
-					updateVeleroRestoreStatus(
-						createdRestore.Status.VeleroManagedClustersRestoreName,
-						createdRestore.Namespace,
-						veleroapi.RestorePhaseInProgress,
-						timeout,
-						interval,
-					)
-				},
-			)
-
-			By("Checking ACM restore phase when velero restore is running", func() {
-				Eventually(func() v1beta1.RestorePhase {
-					k8sClient.Get(ctx,
-						types.NamespacedName{
-							Name:      restoreName,
-							Namespace: veleroNamespace.Name,
-						}, &createdRestore)
-					return createdRestore.Status.Phase
-				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseRunning))
-			})
-
-			By(
-				"Setting "+createdRestore.Status.VeleroManagedClustersRestoreName+" failed validation",
-				func() {
-					updateVeleroRestoreStatus(
-						createdRestore.Status.VeleroManagedClustersRestoreName,
-						createdRestore.Namespace,
-						veleroapi.RestorePhaseFailedValidation,
-						timeout,
-						interval,
-					)
-				},
-			)
-
-			By("Checking ACM restore phase when velero restore is in error", func() {
-				Eventually(func() v1beta1.RestorePhase {
-					k8sClient.Get(ctx,
-						types.NamespacedName{
-							Name:      restoreName,
-							Namespace: veleroNamespace.Name,
-						}, &createdRestore)
-					return createdRestore.Status.Phase
-				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
-			})
-
-			By(
-				"Setting "+createdRestore.Status.VeleroManagedClustersRestoreName+" failed",
-				func() {
-					updateVeleroRestoreStatus(
-						createdRestore.Status.VeleroManagedClustersRestoreName,
-						createdRestore.Namespace,
-						veleroapi.RestorePhaseFailed,
-						timeout,
-						interval,
-					)
-				},
-			)
-
-			By("Checking ACM restore phase when velero restore is in error", func() {
-				Eventually(func() v1beta1.RestorePhase {
-					k8sClient.Get(ctx,
-						types.NamespacedName{
-							Name:      restoreName,
-							Namespace: veleroNamespace.Name,
-						}, &createdRestore)
-					return createdRestore.Status.Phase
-				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
-			})
-
-			By(
-				"Setting "+createdRestore.Status.VeleroManagedClustersRestoreName+" partially failed",
-				func() {
-					updateVeleroRestoreStatus(
-						createdRestore.Status.VeleroManagedClustersRestoreName,
-						createdRestore.Namespace,
-						veleroapi.RestorePhasePartiallyFailed,
-						timeout,
-						interval,
-					)
-				},
-			)
-
-			By("Checking ACM restore phase when velero restore partially failed", func() {
-				Eventually(func() v1beta1.RestorePhase {
-					k8sClient.Get(ctx,
-						types.NamespacedName{
-							Name:      restoreName,
-							Namespace: veleroNamespace.Name,
-						}, &createdRestore)
-					return createdRestore.Status.Phase
-				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseFinishedWithErrors))
-			})
-
-			By(
 				"Setting "+createdRestore.Status.VeleroManagedClustersRestoreName+" completed",
 				func() {
 					updateVeleroRestoreStatus(
@@ -1487,6 +1367,88 @@ var _ = Describe("Basic Restore controller", func() {
 					return createdRestore.Status.Phase
 				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseFinished))
 			})
+
+			veleroRestores := veleroapi.RestoreList{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "RestoreList",
+				},
+				Items: []veleroapi.Restore{
+					veleroapi.Restore{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "velero/v1",
+							Kind:       "Restore",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "acm-managed-clusters-restore",
+							Namespace: veleroNamespace.Name,
+						},
+						Spec: veleroapi.RestoreSpec{
+							BackupName: "acm-managed-clusters-backup",
+						},
+						Status: veleroapi.RestoreStatus{
+							Phase: "",
+						},
+					},
+					veleroapi.Restore{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "velero/v1",
+							Kind:       "Restore",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "acm-resources-restore",
+							Namespace: veleroNamespace.Name,
+						},
+						Spec: veleroapi.RestoreSpec{
+							BackupName: "acm-resources-backup",
+						},
+						Status: veleroapi.RestoreStatus{
+							Phase: veleroapi.RestorePhaseCompleted,
+						},
+					},
+				},
+			}
+
+			setRestorePhase(&veleroRestores, &createdRestore)
+			Expect(
+				createdRestore.Status.Phase,
+			).Should(BeEquivalentTo(v1beta1.RestorePhaseUnknown))
+
+			veleroRestores.Items[0].Status.Phase = veleroapi.RestorePhaseNew
+			setRestorePhase(&veleroRestores, &createdRestore)
+			Expect(
+				createdRestore.Status.Phase,
+			).Should(BeEquivalentTo(v1beta1.RestorePhaseStarted))
+
+			veleroRestores.Items[0].Status.Phase = veleroapi.RestorePhaseFailedValidation
+			setRestorePhase(&veleroRestores, &createdRestore)
+			Expect(
+				createdRestore.Status.Phase,
+			).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
+
+			veleroRestores.Items[0].Status.Phase = veleroapi.RestorePhaseFailed
+			setRestorePhase(&veleroRestores, &createdRestore)
+			Expect(
+				createdRestore.Status.Phase,
+			).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
+
+			veleroRestores.Items[0].Status.Phase = veleroapi.RestorePhaseInProgress
+			setRestorePhase(&veleroRestores, &createdRestore)
+			Expect(
+				createdRestore.Status.Phase,
+			).Should(BeEquivalentTo(v1beta1.RestorePhaseRunning))
+
+			veleroRestores.Items[0].Status.Phase = veleroapi.RestorePhasePartiallyFailed
+			setRestorePhase(&veleroRestores, &createdRestore)
+			Expect(
+				createdRestore.Status.Phase,
+			).Should(BeEquivalentTo(v1beta1.RestorePhaseFinishedWithErrors))
+
+			veleroRestores.Items[0].Status.Phase = veleroapi.RestorePhaseCompleted
+			setRestorePhase(&veleroRestores, &createdRestore)
+			Expect(
+				createdRestore.Status.Phase,
+			).Should(BeEquivalentTo(v1beta1.RestorePhaseFinished))
 		})
 
 	})

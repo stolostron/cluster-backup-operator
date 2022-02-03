@@ -76,6 +76,12 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	if restore.Status.Phase == v1beta1.RestorePhaseFinished ||
+		restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors {
+		// don't process a restore resource if it's completed
+		return ctrl.Result{}, nil
+	}
+
 	// don't create restores if backup storage location doesn't exist or is not avaialble
 	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
 	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
@@ -93,7 +99,9 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// look for available VeleroStorageLocation
 	// and keep track of the velero oadp namespace
-	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(*veleroStorageLocations)
+	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(
+		*veleroStorageLocations,
+	)
 
 	// if no valid storage location found wait for valid value
 	if !isValidStorageLocation {

@@ -56,5 +56,4 @@ func updateRestoreStatus(
 
 	restore.Status.Phase = status
 	restore.Status.LastMessage = msg
-
 }
