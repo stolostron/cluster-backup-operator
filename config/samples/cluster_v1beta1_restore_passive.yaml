@@ -3,7 +3,7 @@
 apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Restore
 metadata:
-  name: restore-acm-passive
+  name: restore-acm-passive7
 spec:
   veleroManagedClustersBackupName: skip
   veleroCredentialsBackupName: latest
