@@ -17,6 +17,8 @@ limitations under the License.
 package controllers
 
 import (
+	"strings"
+
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
@@ -44,6 +46,40 @@ func isVeleroRestoreRunning(restore *veleroapi.Restore) bool {
 		return true
 	}
 	return false
+}
+
+func isSkipAllRestores(restore *v1beta1.Restore) bool {
+
+	backupName := ""
+
+	if restore.Spec.VeleroManagedClustersBackupName != nil {
+		backupName = *restore.Spec.VeleroManagedClustersBackupName
+		backupName = strings.ToLower(strings.TrimSpace(backupName))
+
+		if backupName != skipRestoreStr {
+			return false
+		}
+	}
+
+	if restore.Spec.VeleroCredentialsBackupName != nil {
+		backupName = *restore.Spec.VeleroCredentialsBackupName
+		backupName = strings.ToLower(strings.TrimSpace(backupName))
+
+		if backupName != skipRestoreStr {
+			return false
+		}
+	}
+
+	if restore.Spec.VeleroResourcesBackupName != nil {
+		backupName = *restore.Spec.VeleroResourcesBackupName
+		backupName = strings.ToLower(strings.TrimSpace(backupName))
+
+		if backupName != skipRestoreStr {
+			return false
+		}
+	}
+
+	return true
 }
 
 func updateRestoreStatus(
