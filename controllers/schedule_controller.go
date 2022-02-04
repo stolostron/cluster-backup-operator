@@ -45,13 +45,13 @@ const (
 	ManagedClusters ResourceType = "managedClusters"
 	// Credentials resource type for user created credentials
 	Credentials ResourceType = "credentials"
-	// Credentials resource type for hive secrets
+	// CredentialsHive resource type for hive secrets
 	CredentialsHive ResourceType = "credentialsHive"
-	// Credentials resource type for managed cluster secrets
+	// CredentialsCluster Credentials resource type for managed cluster secrets
 	CredentialsCluster ResourceType = "credentialsCluster"
 	// Resources related to applications and policies
 	Resources ResourceType = "resources"
-	// Genric Resources related to applications and policies
+	// ResourcesGeneric Genric Resources related to applications and policies
 	// these are user resources, except secrets, labeled with cluster.open-cluster-management.io/backup
 	// secrets labeled with cluster.open-cluster-management.io/backup are already backed up under credentialsCluster
 	ResourcesGeneric ResourceType = "resourcesGeneric"
@@ -61,11 +61,11 @@ const (
 type SecretType string
 
 const (
-	// hive created secrets
+	// HiveSecret hive created secrets
 	HiveSecret SecretType = "hive"
-	// managed cluster secrets
+	// ClusterSecret managed cluster secrets
 	ClusterSecret SecretType = "cluster"
-	// user defined secrets
+	// UserSecret user defined secrets
 	UserSecret SecretType = "user"
 )
 const updateStatusFailedMsg = "Could not update status"
@@ -128,7 +128,9 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 	// look for available VeleroStorageLocation
 	// and keep track of the velero oadp namespace
-	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(*veleroStorageLocations)
+	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(
+		*veleroStorageLocations,
+	)
 
 	// if no valid storage location found wait for valid value
 	if !isValidStorageLocation {

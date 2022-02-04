@@ -186,6 +186,18 @@ func setRestorePhase(
 	veleroRestoreList *veleroapi.RestoreList,
 	restore *v1beta1.Restore,
 ) {
+
+	if veleroRestoreList == nil || len(veleroRestoreList.Items) == 0 {
+		if isSkipAllRestores(restore) {
+			restore.Status.Phase = v1beta1.RestorePhaseFinished
+			restore.Status.LastMessage = fmt.Sprintf("Nothing to do for restore %s", restore.Name)
+			return
+		}
+		restore.Status.Phase = v1beta1.RestorePhaseStarted
+		restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
+		return
+	}
+
 	// get all velero restores and check status for each
 	for i := range veleroRestoreList.Items {
 		veleroRestore := veleroRestoreList.Items[i].DeepCopy()
@@ -314,12 +326,11 @@ func (r *RestoreReconciler) getVeleroBackupName(
 		}
 		sort.Sort(mostRecentWithLessErrors(relatedBackups))
 		return relatedBackups[0].Name, nil
-	} else {
-		// get the backup name for this type of resource, based on the requested resource timestamp
-		backupTimestamp := strings.LastIndex(backupName, "-")
-		if backupTimestamp != -1 {
-			computedName = veleroScheduleNames[resourceType] + backupName[backupTimestamp:]
-		}
+	}
+	// get the backup name for this type of resource, based on the requested resource timestamp
+	backupTimestamp := strings.LastIndex(backupName, "-")
+	if backupTimestamp != -1 {
+		computedName = veleroScheduleNames[resourceType] + backupName[backupTimestamp:]
 	}
 
 	veleroBackup := veleroapi.Backup{}
