@@ -90,7 +90,10 @@ var (
 	// backup resources will be generated from the api groups CRDs
 	// the two resources below should already be picked up by the api group selection
 	// they are used here for testing purpose
-	backupResources = []string{}
+	backupResources = []string{
+		"clusterdeployment.hive.openshift.io",
+		"machinepool.hive.openshift.io",
+	}
 
 	backupCredsResources = []string{
 		"secret",

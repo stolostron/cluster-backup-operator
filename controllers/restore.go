@@ -140,6 +140,19 @@ func prepareForRestoreCredentials(
 			}
 		}
 	}
+	configmaps := corev1.ConfigMapList{}
+	if err := c.List(ctx, &configmaps, &client.ListOptions{LabelSelector: labelSelectors}); err != nil {
+		logger.Info(err.Error())
+	} else {
+		for i := range configmaps.Items {
+			err = c.Delete(ctx, &configmaps.Items[i])
+			if err != nil {
+				logger.Info(err.Error())
+			} else {
+				logger.Info("deleted resource" + configmaps.Items[i].Namespace + "-" + configmaps.Items[i].Name)
+			}
+		}
+	}
 	logger.Info("exit prepareForRestoreCredentials for " + string(restoreType))
 
 }
