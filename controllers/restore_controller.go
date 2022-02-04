@@ -186,6 +186,13 @@ func setRestorePhase(
 	veleroRestoreList *veleroapi.RestoreList,
 	restore *v1beta1.Restore,
 ) {
+
+	if veleroRestoreList == nil || len(veleroRestoreList.Items) == 0 {
+		restore.Status.Phase = v1beta1.RestorePhaseStarted
+		restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
+		return
+	}
+
 	// get all velero restores and check status for each
 	for i := range veleroRestoreList.Items {
 		veleroRestore := veleroRestoreList.Items[i].DeepCopy()
