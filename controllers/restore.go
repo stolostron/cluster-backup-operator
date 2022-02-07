@@ -25,6 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
@@ -89,6 +90,25 @@ func prepareForRestore(
 	}
 }
 
+func deleteResource(
+	ctx context.Context,
+	c client.Client,
+	obj client.Object,
+	name string,
+	namespace string,
+	logger logr.Logger,
+) {
+	// TODO if finalizers, call c.Patch() to remove them
+	//c.Patch()
+	err := c.Delete(ctx, obj)
+	if err != nil {
+		logger.Info(err.Error())
+	} else {
+		logger.Info("deleted resource" + namespace + "-" + name)
+	}
+
+}
+
 func prepareForRestoreCredentials(
 	ctx context.Context,
 	c client.Client,
@@ -132,12 +152,7 @@ func prepareForRestoreCredentials(
 		logger.Info(err.Error())
 	} else {
 		for i := range secrets.Items {
-			err = c.Delete(ctx, &secrets.Items[i])
-			if err != nil {
-				logger.Info(err.Error())
-			} else {
-				logger.Info("deleted resource" + secrets.Items[i].Namespace + "-" + secrets.Items[i].Name)
-			}
+			deleteResource(ctx, c, &secrets.Items[i], secrets.Items[i].Name, secrets.Items[i].Namespace, logger)
 		}
 	}
 	configmaps := corev1.ConfigMapList{}
@@ -145,15 +160,40 @@ func prepareForRestoreCredentials(
 		logger.Info(err.Error())
 	} else {
 		for i := range configmaps.Items {
-			err = c.Delete(ctx, &configmaps.Items[i])
-			if err != nil {
-				logger.Info(err.Error())
-			} else {
-				logger.Info("deleted resource" + configmaps.Items[i].Namespace + "-" + configmaps.Items[i].Name)
-			}
+			deleteResource(ctx, c, &configmaps.Items[i], configmaps.Items[i].Name, configmaps.Items[i].Namespace, logger)
 		}
 	}
 	logger.Info("exit prepareForRestoreCredentials for " + string(restoreType))
+
+}
+
+func deleteDynamicResource(
+	ctx context.Context,
+	mapping *meta.RESTMapping,
+	dr dynamic.NamespaceableResourceInterface,
+	resource unstructured.Unstructured,
+	deleteOptions v1.DeleteOptions,
+	logger logr.Logger,
+) {
+	// TODO if finalizers, call c.Patch() to remove them
+	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+		// namespaced resources should specify the namespace
+		err := dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions)
+		if err != nil {
+			logger.Info(err.Error())
+		} else {
+			logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+		}
+	} else {
+		// for cluster-wide resources
+		//dr.Patch()
+		err := dr.Delete(ctx, resource.GetName(), deleteOptions)
+		if err != nil {
+			logger.Info(err.Error())
+		} else {
+			logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+		}
+	}
 
 }
 
@@ -206,20 +246,7 @@ func prepareForRestoreResources(
 				} else {
 					for i := range dynamiclist.Items {
 						// delete them
-						resource := dynamiclist.Items[i]
-						if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
-							// namespaced resources should specify the namespace
-							err = dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions)
-						} else {
-							// for cluster-wide resources
-							err = dr.Delete(ctx, resource.GetName(), deleteOptions)
-						}
-
-						if err != nil {
-							logger.Info(err.Error())
-						} else {
-							logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
-						}
+						deleteDynamicResource(ctx, mapping, dr, dynamiclist.Items[i], deleteOptions, logger)
 					}
 				}
 			}
