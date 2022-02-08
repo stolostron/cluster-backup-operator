@@ -58,6 +58,14 @@ type RestoreSpec struct {
 	// backup_name points to the name of the backup to be restored
 	// +kubebuilder:validation:Required
 	VeleroCredentialsBackupName *string `json:"veleroCredentialsBackupName"`
+	// +kubebuilder:validation:Optional
+	// set this to true if you want the restore to attempt to delete all
+	// resources created by a previous restore operation
+	// This will allow updating resources that are already on the hub and also part of the new backup
+	// It will also delete resources previously restored but no longer
+	// if not defined, the value is set to false
+	// in the current backup - these resources are no longer available on the cluster where the backup was run
+	CleanupBeforeRestore bool `json:"cleanupBeforeRestore,omitempty"`
 }
 
 // RestoreStatus defines the observed state of Restore

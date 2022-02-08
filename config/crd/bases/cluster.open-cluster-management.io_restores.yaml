@@ -45,6 +45,15 @@ spec:
           spec:
             description: RestoreSpec defines the desired state of Restore
             properties:
+              cleanupBeforeRestore:
+                description: set this to true if you want the restore to attempt to
+                  delete all resources created by a previous restore operation This
+                  will allow updating resources that are already on the hub and also
+                  part of the new backup It will also delete resources previously
+                  restored but no longer if not defined, the value is set to false
+                  in the current backup - these resources are no longer available
+                  on the cluster where the backup was run
+                type: boolean
               veleroCredentialsBackupName:
                 description: VeleroCredentialsBackupName is the name of the velero
                   back-up used to restore credentials. Is required, valid values are
