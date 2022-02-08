@@ -37,26 +37,6 @@ func initManagedClusterNamespace(name string) corev1.Namespace {
 
 }
 
-func updateVeleroRestoreStatus(
-	name, namespace string,
-	status veleroapi.RestorePhase,
-	timeout, interval time.Duration,
-) {
-	createdVeleroRestore := &veleroapi.Restore{}
-	Eventually(func() error {
-		return k8sClient.Get(context.Background(),
-			types.NamespacedName{
-				Name:      name,
-				Namespace: namespace}, createdVeleroRestore)
-	}, timeout, interval).Should(Succeed())
-
-	createdVeleroRestore.Status.Phase = status
-	Expect(
-		k8sClient.Status().
-			Update(context.Background(), createdVeleroRestore, &client.UpdateOptions{}),
-	).Should(Succeed())
-}
-
 var _ = Describe("Basic Restore controller", func() {
 	var (
 		ctx                                context.Context
@@ -1343,30 +1323,6 @@ var _ = Describe("Basic Restore controller", func() {
 					}, &createdRestore)
 				return createdRestore.Status.VeleroManagedClustersRestoreName
 			}, timeout, interval).ShouldNot(BeEmpty())
-
-			By(
-				"Setting "+createdRestore.Status.VeleroManagedClustersRestoreName+" completed",
-				func() {
-					updateVeleroRestoreStatus(
-						createdRestore.Status.VeleroManagedClustersRestoreName,
-						createdRestore.Namespace,
-						veleroapi.RestorePhaseCompleted,
-						timeout,
-						interval,
-					)
-				},
-			)
-
-			By("Checking ACM restore phase when velero restore finished", func() {
-				Eventually(func() v1beta1.RestorePhase {
-					k8sClient.Get(ctx,
-						types.NamespacedName{
-							Name:      restoreName,
-							Namespace: veleroNamespace.Name,
-						}, &createdRestore)
-					return createdRestore.Status.Phase
-				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseFinished))
-			})
 
 			veleroRestores := veleroapi.RestoreList{
 				TypeMeta: metav1.TypeMeta{
