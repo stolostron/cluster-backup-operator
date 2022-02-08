@@ -293,7 +293,7 @@ func (r *RestoreReconciler) getVeleroBackupName(
 	restore *v1beta1.Restore,
 	resourceType ResourceType,
 	backupName string,
-) (string, error, *veleroapi.Backup) {
+) (string, *veleroapi.Backup, error) {
 
 	var computedName string
 
@@ -301,10 +301,10 @@ func (r *RestoreReconciler) getVeleroBackupName(
 		// backup name not available, find a proper backup
 		veleroBackups := &veleroapi.BackupList{}
 		if err := r.Client.List(ctx, veleroBackups, client.InNamespace(restore.Namespace)); err != nil {
-			return "", fmt.Errorf("unable to list velero backups: %v", err), nil
+			return "", nil, fmt.Errorf("unable to list velero backups: %v", err)
 		}
 		if len(veleroBackups.Items) == 0 {
-			return "", fmt.Errorf("no backups found"), nil
+			return "", nil, fmt.Errorf("no backups found")
 		}
 		// filter available backups to get only the ones related to this resource type
 		relatedBackups := filterBackups(veleroBackups.Items, func(bkp veleroapi.Backup) bool {
@@ -312,10 +312,10 @@ func (r *RestoreReconciler) getVeleroBackupName(
 				bkp.Status.Phase == veleroapi.BackupPhaseCompleted
 		})
 		if len(relatedBackups) == 0 {
-			return "", fmt.Errorf("no backups found"), nil
+			return "", nil, fmt.Errorf("no backups found")
 		}
 		sort.Sort(mostRecentWithLessErrors(relatedBackups))
-		return relatedBackups[0].Name, nil, &relatedBackups[0]
+		return relatedBackups[0].Name, &relatedBackups[0], nil
 	} else {
 		// get the backup name for this type of resource, based on the requested resource timestamp
 		backupTimestamp := strings.LastIndex(backupName, "-")
@@ -331,9 +331,9 @@ func (r *RestoreReconciler) getVeleroBackupName(
 		&veleroBackup,
 	)
 	if err == nil {
-		return computedName, nil, &veleroBackup
+		return computedName, &veleroBackup, nil
 	}
-	return "", fmt.Errorf("cannot find %s Velero Backup: %v", computedName, err), nil
+	return "", nil, fmt.Errorf("cannot find %s Velero Backup: %v", computedName, err)
 }
 
 // create velero.io.Restore resource for each resource type
@@ -391,7 +391,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 		}
 
 		veleroRestore := &veleroapi.Restore{}
-		veleroBackupName, err, veleroBackup := r.getVeleroBackupName(ctx, restore, key, backupName)
+		veleroBackupName, veleroBackup, err := r.getVeleroBackupName(ctx, restore, key, backupName)
 		if err != nil {
 			restoreLogger.Info(
 				"backup name not found, skipping restore for",
