@@ -82,7 +82,7 @@ var (
 		"managedclusterset",
 		"managecclustersetbindings",
 		"clusterpool",
-		"hive.openshift.io.clusterclaim",
+		"clusterclaim.hive.openshift.io",
 		"clustercurator",
 		"managedclusterview",
 	}
@@ -92,8 +92,8 @@ var (
 	// the two resources below should already be picked up by the api group selection
 	// they are used here for testing purpose
 	backupResources = []string{
-		"clusterdeployment",
-		"machinepool",
+		"clusterdeployment.hive.openshift.io",
+		"machinepool.hive.openshift.io",
 	}
 
 	backupCredsResources = []string{

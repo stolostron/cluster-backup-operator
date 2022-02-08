@@ -107,3 +107,14 @@ func isValidStorageLocationDefined(veleroStorageLocations veleroapi.BackupStorag
 	}
 	return isValidStorageLocation, veleroNamespace
 }
+
+// having a resourceKind.resourceGroup string, return (resourceKind, resourceGroup)
+func getResourceDetails(resourceName string) (string, string) {
+
+	indexOfName := strings.Index(resourceName, ".")
+	if indexOfName > -1 {
+		return resourceName[:indexOfName], resourceName[indexOfName+1:]
+	}
+
+	return resourceName, ""
+}

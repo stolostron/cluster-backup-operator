@@ -3,6 +3,7 @@ kind: Restore
 metadata:
   name: restore-acm
 spec:
+  cleanupBeforeRestore: false
   veleroManagedClustersBackupName: latest
   veleroCredentialsBackupName: latest
   veleroResourcesBackupName: latest

@@ -17,11 +17,22 @@ limitations under the License.
 package controllers
 
 import (
+	"context"
 	"strings"
 
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery"
+	memory "k8s.io/client-go/discovery/cached"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/restmapper"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func isVeleroRestoreFinished(restore *veleroapi.Restore) bool {
@@ -92,4 +103,118 @@ func updateRestoreStatus(
 
 	restore.Status.Phase = status
 	restore.Status.LastMessage = msg
+}
+
+// delete resource
+func deleteDynamicResource(
+	ctx context.Context,
+	mapping *meta.RESTMapping,
+	dr dynamic.NamespaceableResourceInterface,
+	resource unstructured.Unstructured,
+	deleteOptions v1.DeleteOptions,
+	logger logr.Logger,
+) {
+	patch := `[ { "op": "remove", "path": "/metadata/finalizers" } ]`
+	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+		if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
+			// delete finalizers and delete resource in this way
+			if _, err := dr.Namespace(resource.GetNamespace()).Patch(ctx, resource.GetName(),
+				types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
+				logger.Info(err.Error())
+			} else {
+				logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+			}
+		} else {
+			// namespaced resources should specify the namespace
+			if err := dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions); err != nil {
+				logger.Info(err.Error())
+			} else {
+				logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+			}
+		}
+	} else {
+		// for cluster-wide resources
+		logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+		if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
+			// delete finalizers and delete resource in this way
+			if _, err := dr.Patch(ctx, resource.GetName(),
+				types.MergePatchType, []byte(patch), v1.PatchOptions{}); err != nil {
+				logger.Info(err.Error())
+			} else {
+				logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+			}
+		} else {
+			if err := dr.Delete(ctx, resource.GetName(), deleteOptions); err != nil {
+				logger.Info(err.Error())
+			} else {
+				logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+			}
+		}
+	}
+}
+
+func prepareForRestore(
+	ctx context.Context,
+	c client.Client,
+	dc discovery.DiscoveryInterface,
+	dyn dynamic.Interface,
+	logger logr.Logger,
+	restoreType ResourceType,
+	veleroBackup *veleroapi.Backup,
+) {
+	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
+	// delete each resource from included resources, if it has a velero annotation
+	// meaning that the resource was created by another restore
+
+	labelSelector := "velero.io/backup-name"
+	switch restoreType {
+	case ResourcesGeneric:
+		labelSelector = labelSelector + ",cluster.open-cluster-management.io/backup"
+	case Credentials:
+		labelSelector = labelSelector + "," + backupCredsUserLabel
+	case CredentialsHive:
+		labelSelector = labelSelector + "," + backupCredsHiveLabel
+	case CredentialsCluster:
+		labelSelector = labelSelector + "," + backupCredsClusterLabel
+	}
+
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
+	deletePolicy := v1.DeletePropagationForeground
+	deleteOptions := v1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}
+	for i := range veleroBackup.Spec.IncludedResources {
+
+		kind, groupName := getResourceDetails(veleroBackup.Spec.IncludedResources[i])
+
+		if kind == "clusterdeployment" || kind == "machinepool" {
+			// old backups have a short version for these resource
+			groupName = "hive.openshift.io"
+		}
+
+		groupKind := schema.GroupKind{
+			Group: groupName,
+			Kind:  kind,
+		}
+		mapping, err := mapper.RESTMapping(groupKind, "")
+		if err != nil {
+			logger.Info(err.Error())
+		} else {
+			var dr = dyn.Resource(mapping.Resource)
+			if dr != nil {
+				// get all resources of this type with the velero.io/backup-name set
+				// we want to clean them up, they were created by a previous restore
+				dynamiclist, err := dr.List(ctx, v1.ListOptions{LabelSelector: labelSelector})
+				if err != nil {
+					logger.Info(err.Error())
+				} else {
+					for i := range dynamiclist.Items {
+						// delete them
+						deleteDynamicResource(ctx, mapping, dr, dynamiclist.Items[i], deleteOptions, logger)
+					}
+				}
+			}
+		}
+	}
+	logger.Info("exit prepareForRestoreResources for " + string(restoreType))
 }

@@ -22,6 +22,7 @@ import (
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
@@ -114,6 +115,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// prepare the dynamic client
+	dyn, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		setupLog.Error(err, "unable to set up dynamic client")
+		os.Exit(1)
+	}
+
 	if err = (&controllers.BackupScheduleReconciler{
 		Client:          mgr.GetClient(),
 		DiscoveryClient: dc,
@@ -128,10 +136,12 @@ func main() {
 		kubeClient = nil
 	}
 	if err = (&controllers.RestoreReconciler{
-		Client:     mgr.GetClient(),
-		KubeClient: kubeClient,
-		Scheme:     mgr.GetScheme(),
-		Recorder:   mgr.GetEventRecorderFor("Restore controller"),
+		Client:          mgr.GetClient(),
+		KubeClient:      kubeClient,
+		DiscoveryClient: dc,
+		DynamicClient:   dyn,
+		Scheme:          mgr.GetScheme(),
+		Recorder:        mgr.GetEventRecorderFor("Restore controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create Restore controller")
 		os.Exit(1)
