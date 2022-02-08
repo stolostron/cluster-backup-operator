@@ -83,29 +83,38 @@ func deleteDynamicResource(
 	patch := `[ { "op": "remove", "path": "/metadata/finalizers" } ]`
 	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
 		if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
-			// delete finalizers
-			dr.Namespace(resource.GetNamespace()).Patch(ctx, resource.GetName(), types.JSONPatchType, []byte(patch), v1.PatchOptions{})
-		}
-		// namespaced resources should specify the namespace
-		err := dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions)
-		if err != nil {
-			logger.Info(err.Error())
+			// delete finalizers and delete resource in this way
+			if _, err := dr.Namespace(resource.GetNamespace()).Patch(ctx, resource.GetName(),
+				types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
+				logger.Info(err.Error())
+			} else {
+				logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+			}
 		} else {
-			logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+			// namespaced resources should specify the namespace
+			if err := dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions); err != nil {
+				logger.Info(err.Error())
+			} else {
+				logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+			}
 		}
-
 	} else {
 		// for cluster-wide resources
 		logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
 		if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
-			// delete finalizers
-			dr.Patch(ctx, resource.GetName(), types.MergePatchType, []byte(patch), v1.PatchOptions{})
-		}
-		err := dr.Delete(ctx, resource.GetName(), deleteOptions)
-		if err != nil {
-			logger.Info(err.Error())
+			// delete finalizers and delete resource in this way
+			if _, err := dr.Patch(ctx, resource.GetName(),
+				types.MergePatchType, []byte(patch), v1.PatchOptions{}); err != nil {
+				logger.Info(err.Error())
+			} else {
+				logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+			}
 		} else {
-			logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+			if err := dr.Delete(ctx, resource.GetName(), deleteOptions); err != nil {
+				logger.Info(err.Error())
+			} else {
+				logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+			}
 		}
 	}
 }
