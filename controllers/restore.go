@@ -22,12 +22,11 @@ import (
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
@@ -72,101 +71,7 @@ func updateRestoreStatus(
 
 }
 
-func prepareForRestore(
-	ctx context.Context,
-	c client.Client,
-	dc discovery.DiscoveryInterface,
-	dyn dynamic.Interface,
-	logger logr.Logger,
-	restoreType ResourceType,
-	veleroBackup *veleroapi.Backup,
-) {
-
-	switch restoreType {
-	case Credentials, CredentialsHive, CredentialsCluster:
-		prepareForRestoreCredentials(ctx, c, logger, restoreType)
-	case Resources: //, ResourcesGeneric:
-		prepareForRestoreResources(ctx, c, dc, dyn, logger, restoreType, veleroBackup)
-	}
-}
-
-func deleteResource(
-	ctx context.Context,
-	c client.Client,
-	obj client.Object,
-	name string,
-	namespace string,
-	logger logr.Logger,
-) {
-	// TODO if finalizers, call c.Patch() to remove them
-	//c.Patch()
-	err := c.Delete(ctx, obj)
-	if err != nil {
-		logger.Info(err.Error())
-	} else {
-		logger.Info("deleted resource" + namespace + "-" + name)
-	}
-
-}
-
-func prepareForRestoreCredentials(
-	ctx context.Context,
-	c client.Client,
-	logger logr.Logger,
-	restoreType ResourceType,
-) {
-
-	logger.Info("enter prepareForRestoreCredentials for " + string(restoreType))
-	var labelKey string
-	switch string(restoreType) {
-	case string(CredentialsHive):
-		labelKey = backupCredsHiveLabel
-	case string(CredentialsCluster):
-		labelKey = backupCredsClusterLabel
-	default:
-		labelKey = backupCredsUserLabel
-	}
-
-	labelSelector := &v1.LabelSelector{}
-
-	req := &v1.LabelSelectorRequirement{}
-	req.Key = "velero.io/backup-name"
-	req.Operator = "Exists"
-	labelSelector.MatchExpressions = append(
-		labelSelector.MatchExpressions,
-		*req,
-	)
-	reqCredential := &v1.LabelSelectorRequirement{}
-	reqCredential.Key = labelKey
-	reqCredential.Operator = "Exists"
-	labelSelector.MatchExpressions = append(
-		labelSelector.MatchExpressions,
-		*reqCredential,
-	)
-
-	var labelSelectors labels.Selector
-	labelSelectors, _ = v1.LabelSelectorAsSelector(labelSelector)
-
-	secrets := corev1.SecretList{}
-	if err := c.List(ctx, &secrets, &client.ListOptions{LabelSelector: labelSelectors}); err != nil {
-		logger.Info(err.Error())
-	} else {
-		for i := range secrets.Items {
-			deleteResource(ctx, c, &secrets.Items[i], secrets.Items[i].Name, secrets.Items[i].Namespace, logger)
-		}
-	}
-	configmaps := corev1.ConfigMapList{}
-	if err := c.List(ctx, &configmaps, &client.ListOptions{LabelSelector: labelSelectors}); err != nil {
-		logger.Info(err.Error())
-	} else {
-		for i := range configmaps.Items {
-			deleteResource(ctx, c, &configmaps.Items[i], configmaps.Items[i].Name, configmaps.Items[i].Namespace, logger)
-		}
-	}
-	logger.Info("exit prepareForRestoreCredentials for " + string(restoreType))
-
-}
-
+// delete resource
 func deleteDynamicResource(
 	ctx context.Context,
 	mapping *meta.RESTMapping,
@@ -175,8 +80,12 @@ func deleteDynamicResource(
 	deleteOptions v1.DeleteOptions,
 	logger logr.Logger,
 ) {
-	// TODO if finalizers, call c.Patch() to remove them
+	patch := `[ { "op": "remove", "path": "/metadata/finalizers" } ]`
 	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+		if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
+			// delete finalizers
+			dr.Namespace(resource.GetNamespace()).Patch(ctx, resource.GetName(), types.JSONPatchType, []byte(patch), v1.PatchOptions{})
+		}
 		// namespaced resources should specify the namespace
 		err := dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions)
 		if err != nil {
@@ -184,9 +93,14 @@ func deleteDynamicResource(
 		} else {
 			logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
 		}
+
 	} else {
 		// for cluster-wide resources
-		//dr.Patch()
+		logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+		if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
+			// delete finalizers
+			dr.Patch(ctx, resource.GetName(), types.MergePatchType, []byte(patch), v1.PatchOptions{})
+		}
 		err := dr.Delete(ctx, resource.GetName(), deleteOptions)
 		if err != nil {
 			logger.Info(err.Error())
@@ -194,10 +108,9 @@ func deleteDynamicResource(
 			logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
 		}
 	}
-
 }
 
-func prepareForRestoreResources(
+func prepareForRestore(
 	ctx context.Context,
 	c client.Client,
 	dc discovery.DiscoveryInterface,
@@ -210,14 +123,16 @@ func prepareForRestoreResources(
 	// delete each resource from included resources, if it has a velero annotation
 	// meaning that the resource was created by another restore
 
-	labelSelector := ""
-	if restoreType == ResourcesGeneric {
-		// add an extra label here, which is the cluster.open-cluster-management.io/backup
-		labelSelector = "velero.io/backup-name, cluster.open-cluster-management.io/backup"
-	} else {
-		labelSelector = "velero.io/backup-name"
-		// otherwise exclude all resources with a cluster.open-cluster-management.io/backup label
-		//labelSelector = "velero.io/backup-name, !cluster.open-cluster-management.io/backup"
+	labelSelector := "velero.io/backup-name"
+	switch restoreType {
+	case ResourcesGeneric:
+		labelSelector = labelSelector + ",cluster.open-cluster-management.io/backup"
+	case Credentials:
+		labelSelector = labelSelector + "," + backupCredsUserLabel
+	case CredentialsHive:
+		labelSelector = labelSelector + "," + backupCredsHiveLabel
+	case CredentialsCluster:
+		labelSelector = labelSelector + "," + backupCredsClusterLabel
 	}
 
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
@@ -228,6 +143,12 @@ func prepareForRestoreResources(
 	for i := range veleroBackup.Spec.IncludedResources {
 
 		kind, groupName := getResourceDetails(veleroBackup.Spec.IncludedResources[i])
+
+		if kind == "clusterdeployment" || kind == "machinepool" {
+			// old backups have a short version for these resource
+			groupName = "hive.openshift.io"
+		}
+
 		groupKind := schema.GroupKind{
 			Group: groupName,
 			Kind:  kind,

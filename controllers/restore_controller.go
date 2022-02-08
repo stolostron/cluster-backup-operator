@@ -349,13 +349,23 @@ func (r *RestoreReconciler) initVeleroRestores(
 		restoreLogger.Error(err, "Unable to update status")
 	}
 
-	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, len(veleroScheduleNames))
+	restoreKeys := make([]ResourceType, 0, len(veleroScheduleNames))
+	for key := range veleroScheduleNames {
+		restoreKeys = append(restoreKeys, key)
+	}
+	// sort restores to restore last credentials, first resources
+	// credentials could have owners in the resources path
+	sort.Slice(restoreKeys, func(i, j int) bool {
+		return restoreKeys[i] > restoreKeys[j]
+	})
+	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, len(restoreKeys))
 
 	// loop through resourceTypes to create a Velero restore per type
-	for key := range veleroScheduleNames {
+	for i := range restoreKeys {
 		backupName := latestBackupStr
 
-		switch key {
+		key := restoreKeys[i]
+		switch restoreKeys[i] {
 		case ManagedClusters:
 			if restore.Spec.VeleroManagedClustersBackupName != nil {
 				backupName = *restore.Spec.VeleroManagedClustersBackupName
@@ -381,7 +391,6 @@ func (r *RestoreReconciler) initVeleroRestores(
 		}
 
 		veleroRestore := &veleroapi.Restore{}
-		veleroBackup := &veleroapi.Backup{}
 		veleroBackupName, err, veleroBackup := r.getVeleroBackupName(ctx, restore, key, backupName)
 		if err != nil {
 			restoreLogger.Info(
