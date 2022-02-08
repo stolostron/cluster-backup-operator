@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -114,40 +115,50 @@ func deleteDynamicResource(
 	deleteOptions v1.DeleteOptions,
 	logger logr.Logger,
 ) {
+	nsScopedMsg := fmt.Sprintf(
+		"Deleted resource %s [%s.%s]",
+		resource.GetKind(),
+		resource.GetName(),
+		resource.GetNamespace())
+
+	globalResourceMsg := fmt.Sprintf(
+		"Deleted resource %s [%s]",
+		resource.GetKind(),
+		resource.GetName())
+
 	patch := `[ { "op": "remove", "path": "/metadata/finalizers" } ]`
 	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+		// namespaced resources should specify the namespace
 		if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
 			// delete finalizers and delete resource in this way
 			if _, err := dr.Namespace(resource.GetNamespace()).Patch(ctx, resource.GetName(),
 				types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
 				logger.Info(err.Error())
 			} else {
-				logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+				logger.Info(nsScopedMsg)
 			}
 		} else {
-			// namespaced resources should specify the namespace
 			if err := dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions); err != nil {
 				logger.Info(err.Error())
 			} else {
-				logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+				logger.Info(nsScopedMsg)
 			}
 		}
 	} else {
 		// for cluster-wide resources
-		logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
 		if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
 			// delete finalizers and delete resource in this way
 			if _, err := dr.Patch(ctx, resource.GetName(),
 				types.MergePatchType, []byte(patch), v1.PatchOptions{}); err != nil {
 				logger.Info(err.Error())
 			} else {
-				logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+				logger.Info(globalResourceMsg)
 			}
 		} else {
 			if err := dr.Delete(ctx, resource.GetName(), deleteOptions); err != nil {
 				logger.Info(err.Error())
 			} else {
-				logger.Info("deleted resource " + resource.GetKind() + "[" + resource.GetName() + "." + resource.GetNamespace() + "]")
+				logger.Info(globalResourceMsg)
 			}
 		}
 	}
@@ -199,22 +210,24 @@ func prepareForRestore(
 		mapping, err := mapper.RESTMapping(groupKind, "")
 		if err != nil {
 			logger.Info(err.Error())
-		} else {
-			var dr = dyn.Resource(mapping.Resource)
-			if dr != nil {
-				// get all resources of this type with the velero.io/backup-name set
-				// we want to clean them up, they were created by a previous restore
-				dynamiclist, err := dr.List(ctx, v1.ListOptions{LabelSelector: labelSelector})
-				if err != nil {
-					logger.Info(err.Error())
-				} else {
-					for i := range dynamiclist.Items {
-						// delete them
-						deleteDynamicResource(ctx, mapping, dr, dynamiclist.Items[i], deleteOptions, logger)
-					}
-				}
-			}
+			continue
 		}
+		var dr = dyn.Resource(mapping.Resource)
+		if dr == nil {
+			continue
+		}
+		// get all resources of this type with the velero.io/backup-name set
+		// we want to clean them up, they were created by a previous restore
+		dynamiclist, err := dr.List(ctx, v1.ListOptions{LabelSelector: labelSelector})
+		if err != nil {
+			logger.Info(err.Error())
+			continue
+		}
+		// get all items and delete them
+		for i := range dynamiclist.Items {
+			deleteDynamicResource(ctx, mapping, dr, dynamiclist.Items[i], deleteOptions, logger)
+		}
+
 	}
 	logger.Info("exit prepareForRestoreResources for " + string(restoreType))
 }
