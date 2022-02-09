@@ -88,3 +88,40 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 		})
 	}
 }
+
+func Test_getResourceDetails(t *testing.T) {
+	type args struct {
+		resourceName string
+	}
+	tests := []struct {
+		name     string
+		args     args
+		wantname string
+		wantkind string
+	}{
+		{
+			name: "resource with kind",
+			args: args{
+				resourceName: "channel.apps.open-cluster-management.io",
+			},
+			wantname: "channel",
+			wantkind: "apps.open-cluster-management.io",
+		},
+		{
+			name: "resource without kind",
+			args: args{
+				resourceName: "channel",
+			},
+			wantname: "channel",
+			wantkind: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotname, gotkind := getResourceDetails(*&tt.args.resourceName)
+			if gotname != tt.wantname || gotkind != tt.wantkind {
+				t.Errorf("getResourceDetails() = %v,%v, want %v,%v", gotname, gotkind, tt.wantname, tt.wantkind)
+			}
+		})
+	}
+}
