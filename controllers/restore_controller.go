@@ -429,7 +429,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			if restore.Spec.CleanupBeforeRestore {
 				// clean up resources only if requested
 				prepareForRestore(ctx, r.Client, r.DiscoveryClient, r.DynamicClient,
-					restoreLogger, key, veleroBackup)
+					key, veleroBackup)
 			}
 
 			veleroRestore.Name = getValidKsRestoreName(restore.Name, veleroBackupName)
