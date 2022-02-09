@@ -69,6 +69,7 @@ var _ = Describe("Basic Restore controller", func() {
 			"placementrule.apps.open-cluster-management.io",
 			"multiclusterobservability.observability.open-cluster-management.io",
 			"channel.apps.open-cluster-management.io",
+			"channel.cluster.open-cluster-management.io",
 		}
 	)
 
@@ -133,7 +134,7 @@ var _ = Describe("Basic Restore controller", func() {
 		channels = []chnv1.Channel{
 			{
 				TypeMeta: metav1.TypeMeta{
-					APIVersion: "apps.open-cluster-management.io/v1",
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
 					Kind:       "Channel",
 				},
 				ObjectMeta: metav1.ObjectMeta{
@@ -150,7 +151,7 @@ var _ = Describe("Basic Restore controller", func() {
 			},
 			{
 				TypeMeta: metav1.TypeMeta{
-					APIVersion: "apps.open-cluster-management.io/v1",
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
 					Kind:       "Channel",
 				},
 				ObjectMeta: metav1.ObjectMeta{
@@ -168,7 +169,7 @@ var _ = Describe("Basic Restore controller", func() {
 			},
 			{
 				TypeMeta: metav1.TypeMeta{
-					APIVersion: "apps.open-cluster-management.io/v1",
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
 					Kind:       "Channel",
 				},
 				ObjectMeta: metav1.ObjectMeta{

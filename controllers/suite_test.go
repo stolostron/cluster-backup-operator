@@ -92,6 +92,7 @@ var _ = BeforeSuite(func() {
 	beta := metav1.APIResourceList{
 		GroupVersion: "cluster.open-cluster-management.io/v1beta1",
 		APIResources: []metav1.APIResource{
+			{Name: "channels", Namespaced: true, Kind: "Channel"},
 			{Name: "placements", Namespaced: true, Kind: "Placement"},
 			{Name: "clustercurators", Namespaced: true, Kind: "ClusterCurator"},
 			{Name: "backupschedules", Namespaced: true, Kind: "BackupSchedule"},
