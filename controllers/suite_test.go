@@ -29,6 +29,7 @@ import (
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	certsv1 "k8s.io/api/certificates/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -245,6 +246,9 @@ var _ = BeforeSuite(func() {
 	_, err2 := fakeDiscovery.ServerGroups()
 	Expect(err2).To(BeNil())
 
+	dyn, err := dynamic.NewForConfig(&restclient.Config{Host: server.URL})
+	Expect(err).To(BeNil())
+
 	testEnvManagedCluster = &envtest.Environment{} // no CRDs for managedcluster
 	managedClusterCfg, err := testEnvManagedCluster.Start()
 	Expect(err).NotTo(HaveOccurred())
@@ -301,10 +305,12 @@ var _ = BeforeSuite(func() {
 	Expect(mgr).NotTo(BeNil())
 
 	err = (&RestoreReconciler{
-		KubeClient: nil,
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		Recorder:   mgr.GetEventRecorderFor("restore reconciler"),
+		KubeClient:      nil,
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		DiscoveryClient: fakeDiscovery,
+		DynamicClient:   dyn,
+		Recorder:        mgr.GetEventRecorderFor("restore reconciler"),
 	}).SetupWithManager(mgr)
 	Expect(err).ToNot(HaveOccurred())
 

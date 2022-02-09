@@ -34,6 +34,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 func isVeleroRestoreFinished(restore *veleroapi.Restore) bool {
@@ -169,10 +170,10 @@ func prepareForRestore(
 	c client.Client,
 	dc discovery.DiscoveryInterface,
 	dyn dynamic.Interface,
-	logger logr.Logger,
 	restoreType ResourceType,
 	veleroBackup *veleroapi.Backup,
 ) {
+	logger := log.FromContext(ctx)
 	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
 	// delete each resource from included resources, if it has a velero annotation
 	// meaning that the resource was created by another restore
