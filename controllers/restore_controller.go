@@ -86,6 +86,19 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 	}
 
+	otherRestoreName, err := r.isOtherRestoresRunning(ctx, restore)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if otherRestoreName != "" {
+		msg := "Restore instance " + otherRestoreName + " is currently running, ignoring this request."
+		updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseFinishedWithErrors, msg, restore)
+		return ctrl.Result{}, errors.Wrap(
+			r.Client.Status().Update(ctx, restore),
+			msg,
+		)
+	}
+
 	// don't create restores if backup storage location doesn't exist or is not avaialble
 	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
 	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
@@ -178,7 +191,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	setRestorePhase(&veleroRestoreList, restore)
 
-	err := r.Client.Status().Update(ctx, restore)
+	err = r.Client.Status().Update(ctx, restore)
 	return ctrl.Result{}, errors.Wrap(
 		err,
 		fmt.Sprintf("could not update status for restore %s/%s", restore.Namespace, restore.Name),
@@ -347,6 +360,48 @@ func (r *RestoreReconciler) getVeleroBackupName(
 		return computedName, &veleroBackup, nil
 	}
 	return "", nil, fmt.Errorf("cannot find %s Velero Backup: %v", computedName, err)
+}
+
+// check if there are other restores that are not complete yet
+func (r *RestoreReconciler) isOtherRestoresRunning(
+	ctx context.Context,
+	restore *v1beta1.Restore,
+) (string, error) {
+	restoreLogger := log.FromContext(ctx)
+
+	restoreList := v1beta1.RestoreList{}
+	if err := r.List(
+		ctx,
+		&restoreList,
+		client.InNamespace(restore.Namespace),
+	); err != nil {
+
+		msg := "unable to list restore resources" +
+			"namespace:" + restore.Namespace
+
+		restoreLogger.Error(
+			err,
+			msg,
+		)
+		return "", err
+	}
+
+	if len(restoreList.Items) == 0 {
+		return "", nil
+	}
+
+	for i := range restoreList.Items {
+		restoreItem := restoreList.Items[i]
+		if restoreItem.Name == restore.Name {
+			continue
+		}
+		if restoreItem.Status.Phase != v1beta1.RestorePhaseFinished &&
+			restoreItem.Status.Phase != v1beta1.RestorePhaseFinishedWithErrors {
+			return restoreItem.Name, nil
+		}
+	}
+
+	return "", nil
 }
 
 // create velero.io.Restore resource for each resource type
