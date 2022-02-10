@@ -30,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
-	memory "k8s.io/client-go/discovery/cached"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -114,8 +113,8 @@ func deleteDynamicResource(
 	dr dynamic.NamespaceableResourceInterface,
 	resource unstructured.Unstructured,
 	deleteOptions v1.DeleteOptions,
-	logger logr.Logger,
 ) {
+	logger := log.FromContext(ctx)
 	nsScopedMsg := fmt.Sprintf(
 		"Deleted resource %s [%s.%s]",
 		resource.GetKind(),
@@ -129,6 +128,11 @@ func deleteDynamicResource(
 
 	patch := `[ { "op": "remove", "path": "/metadata/finalizers" } ]`
 	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+		if err := dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions); err != nil {
+			logger.Info(err.Error())
+		} else {
+			logger.Info(nsScopedMsg)
+		}
 		// namespaced resources should specify the namespace
 		if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
 			// delete finalizers and delete resource in this way
@@ -138,25 +142,18 @@ func deleteDynamicResource(
 			} else {
 				logger.Info(nsScopedMsg)
 			}
-		} else {
-			if err := dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions); err != nil {
-				logger.Info(err.Error())
-			} else {
-				logger.Info(nsScopedMsg)
-			}
 		}
 	} else {
 		// for cluster-wide resources
+		if err := dr.Delete(ctx, resource.GetName(), deleteOptions); err != nil {
+			logger.Info(err.Error())
+		} else {
+			logger.Info(globalResourceMsg)
+		}
 		if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
 			// delete finalizers and delete resource in this way
 			if _, err := dr.Patch(ctx, resource.GetName(),
 				types.MergePatchType, []byte(patch), v1.PatchOptions{}); err != nil {
-				logger.Info(err.Error())
-			} else {
-				logger.Info(globalResourceMsg)
-			}
-		} else {
-			if err := dr.Delete(ctx, resource.GetName(), deleteOptions); err != nil {
 				logger.Info(err.Error())
 			} else {
 				logger.Info(globalResourceMsg)
@@ -172,6 +169,8 @@ func prepareForRestore(
 	dyn dynamic.Interface,
 	restoreType ResourceType,
 	veleroBackup *veleroapi.Backup,
+	mapper *restmapper.DeferredDiscoveryRESTMapper,
+	deleteOptions v1.DeleteOptions,
 ) {
 	logger := log.FromContext(ctx)
 	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
@@ -190,11 +189,6 @@ func prepareForRestore(
 		labelSelector = labelSelector + "," + backupCredsClusterLabel
 	}
 
-	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
-	deletePolicy := v1.DeletePropagationForeground
-	deleteOptions := v1.DeleteOptions{
-		PropagationPolicy: &deletePolicy,
-	}
 	for i := range veleroBackup.Spec.IncludedResources {
 
 		kind, groupName := getResourceDetails(veleroBackup.Spec.IncludedResources[i])
@@ -226,7 +220,7 @@ func prepareForRestore(
 		}
 		// get all items and delete them
 		for i := range dynamiclist.Items {
-			deleteDynamicResource(ctx, mapping, dr, dynamiclist.Items[i], deleteOptions, logger)
+			deleteDynamicResource(ctx, mapping, dr, dynamiclist.Items[i], deleteOptions)
 		}
 
 	}
