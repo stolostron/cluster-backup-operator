@@ -193,11 +193,11 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	setRestorePhase(&veleroRestoreList, restore)
 
-	err = r.Client.Status().Update(ctx, restore)
-	return ctrl.Result{}, errors.Wrap(
-		err,
-		fmt.Sprintf("could not update status for restore %s/%s", restore.Namespace, restore.Name),
-	)
+	if err = r.Client.Status().Update(ctx, restore); err != nil {
+		restoreLogger.Error(err, fmt.Sprintf("could not update status for restore %s/%s", restore.Namespace, restore.Name))
+	}
+
+	return ctrl.Result{}, nil
 }
 
 // set cumulative status of restores
@@ -413,7 +413,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 ) error {
 	restoreLogger := log.FromContext(ctx)
 	restore.Status.Phase = v1beta1.RestorePhaseStarted
-	restore.Status.LastMessage = "Restore in progress"
+	restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
 	err := r.Client.Status().Update(ctx, restore)
 	if err != nil {
 		restoreLogger.Error(err, "Unable to update status")
@@ -551,8 +551,6 @@ func (r *RestoreReconciler) initVeleroRestores(
 			restore.Status.VeleroResourcesRestoreName = veleroRestoresToCreate[key].Name
 		}
 	}
-	restore.Status.Phase = v1beta1.RestorePhaseStarted
-	restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
 
 	return nil
 }
