@@ -504,12 +504,13 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 	// clean up resources only if requested
 	if restore.Spec.CleanupBeforeRestore {
+		mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(r.DiscoveryClient))
+		deletePolicy := metav1.DeletePropagationForeground
+		deleteOptions := metav1.DeleteOptions{
+			PropagationPolicy: &deletePolicy,
+		}
+
 		for key := range veleroRestoresToCreate {
-			mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(r.DiscoveryClient))
-			deletePolicy := metav1.DeletePropagationForeground
-			deleteOptions := metav1.DeleteOptions{
-				PropagationPolicy: &deletePolicy,
-			}
 			prepareForRestore(ctx, r.Client, r.DiscoveryClient, r.DynamicClient,
 				key, backupsForVeleroRestores[key], mapper, deleteOptions)
 		}
