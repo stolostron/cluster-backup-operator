@@ -13,6 +13,6 @@ build-prow:
 .PHONY: unit-tests
 export GOCACHE = /tmp/gocache
 unit-tests:
-	mkdir '$(GOCACHE)'
+	mkdir $(GOCACHE)
 	GOFLAGS="" go test -timeout 120s -v -short ./controllers
 	
