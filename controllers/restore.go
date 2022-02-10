@@ -30,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
-	memory "k8s.io/client-go/discovery/cached"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -114,8 +113,8 @@ func deleteDynamicResource(
 	dr dynamic.NamespaceableResourceInterface,
 	resource unstructured.Unstructured,
 	deleteOptions v1.DeleteOptions,
-	logger logr.Logger,
 ) {
+	logger := log.FromContext(ctx)
 	nsScopedMsg := fmt.Sprintf(
 		"Deleted resource %s [%s.%s]",
 		resource.GetKind(),
@@ -172,6 +171,8 @@ func prepareForRestore(
 	dyn dynamic.Interface,
 	restoreType ResourceType,
 	veleroBackup *veleroapi.Backup,
+	mapper *restmapper.DeferredDiscoveryRESTMapper,
+	deleteOptions v1.DeleteOptions,
 ) {
 	logger := log.FromContext(ctx)
 	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
@@ -190,11 +191,6 @@ func prepareForRestore(
 		labelSelector = labelSelector + "," + backupCredsClusterLabel
 	}
 
-	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
-	deletePolicy := v1.DeletePropagationForeground
-	deleteOptions := v1.DeleteOptions{
-		PropagationPolicy: &deletePolicy,
-	}
 	for i := range veleroBackup.Spec.IncludedResources {
 
 		kind, groupName := getResourceDetails(veleroBackup.Spec.IncludedResources[i])
@@ -226,7 +222,7 @@ func prepareForRestore(
 		}
 		// get all items and delete them
 		for i := range dynamiclist.Items {
-			deleteDynamicResource(ctx, mapping, dr, dynamiclist.Items[i], deleteOptions, logger)
+			deleteDynamicResource(ctx, mapping, dr, dynamiclist.Items[i], deleteOptions)
 		}
 
 	}

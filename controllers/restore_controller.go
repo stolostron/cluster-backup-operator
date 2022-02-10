@@ -29,8 +29,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
+	memory "k8s.io/client-go/discovery/cached"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -427,6 +429,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 		return restoreKeys[i] > restoreKeys[j]
 	})
 	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, len(restoreKeys))
+	backupsForVeleroRestores := make(map[ResourceType]*veleroapi.Backup, len(restoreKeys))
 
 	// loop through resourceTypes to create a Velero restore per type
 	for i := range restoreKeys {
@@ -480,13 +483,6 @@ func (r *RestoreReconciler) initVeleroRestores(
 				return err
 			}
 		} else {
-
-			if restore.Spec.CleanupBeforeRestore {
-				// clean up resources only if requested
-				prepareForRestore(ctx, r.Client, r.DiscoveryClient, r.DynamicClient,
-					key, veleroBackup)
-			}
-
 			veleroRestore.Name = getValidKsRestoreName(restore.Name, veleroBackupName)
 
 			veleroRestore.Namespace = restore.Namespace
@@ -496,6 +492,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 				return err
 			}
 			veleroRestoresToCreate[key] = veleroRestore
+			backupsForVeleroRestores[key] = veleroBackup
 		}
 	}
 
@@ -505,6 +502,20 @@ func (r *RestoreReconciler) initVeleroRestores(
 		return nil
 	}
 
+	// clean up resources only if requested
+	if restore.Spec.CleanupBeforeRestore {
+		for key := range veleroRestoresToCreate {
+			mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(r.DiscoveryClient))
+			deletePolicy := metav1.DeletePropagationForeground
+			deleteOptions := metav1.DeleteOptions{
+				PropagationPolicy: &deletePolicy,
+			}
+			prepareForRestore(ctx, r.Client, r.DiscoveryClient, r.DynamicClient,
+				key, backupsForVeleroRestores[key], mapper, deleteOptions)
+		}
+	}
+
+	// now create the restore resources and start the actual restore
 	for key := range veleroRestoresToCreate {
 		if err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{}); err != nil {
 			restoreLogger.Error(
