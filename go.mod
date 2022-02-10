@@ -3,17 +3,17 @@ module github.com/stolostron/cluster-backup-operator
 go 1.17
 
 require (
-	github.com/onsi/ginkgo/v2 v2.1.0
-	github.com/onsi/gomega v1.18.0
+	github.com/onsi/ginkgo/v2 v2.1.1
+	github.com/onsi/gomega v1.18.1
 	github.com/openshift/api v0.0.0-20210521075222-e273a339932a //Openshift 4.6
-	github.com/openshift/hive/apis v0.0.0-20210915004009-18827f64c00e
+	github.com/openshift/hive/apis v0.0.0-20220208211620-c2317e6c13bd
 	github.com/pkg/errors v0.9.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/vmware-tanzu/velero v1.7.0
 	k8s.io/api v0.22.2
 	k8s.io/apimachinery v0.22.2
 	k8s.io/client-go v12.0.0+incompatible
-	open-cluster-management.io/api v0.5.0
+	open-cluster-management.io/api v0.6.0
 	sigs.k8s.io/controller-runtime v0.9.1
 )
 
