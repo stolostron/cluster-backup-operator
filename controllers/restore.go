@@ -128,6 +128,11 @@ func deleteDynamicResource(
 
 	patch := `[ { "op": "remove", "path": "/metadata/finalizers" } ]`
 	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+		if err := dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions); err != nil {
+			logger.Info(err.Error())
+		} else {
+			logger.Info(nsScopedMsg)
+		}
 		// namespaced resources should specify the namespace
 		if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
 			// delete finalizers and delete resource in this way
@@ -137,25 +142,18 @@ func deleteDynamicResource(
 			} else {
 				logger.Info(nsScopedMsg)
 			}
-		} else {
-			if err := dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions); err != nil {
-				logger.Info(err.Error())
-			} else {
-				logger.Info(nsScopedMsg)
-			}
 		}
 	} else {
 		// for cluster-wide resources
+		if err := dr.Delete(ctx, resource.GetName(), deleteOptions); err != nil {
+			logger.Info(err.Error())
+		} else {
+			logger.Info(globalResourceMsg)
+		}
 		if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
 			// delete finalizers and delete resource in this way
 			if _, err := dr.Patch(ctx, resource.GetName(),
 				types.MergePatchType, []byte(patch), v1.PatchOptions{}); err != nil {
-				logger.Info(err.Error())
-			} else {
-				logger.Info(globalResourceMsg)
-			}
-		} else {
-			if err := dr.Delete(ctx, resource.GetName(), deleteOptions); err != nil {
 				logger.Info(err.Error())
 			} else {
 				logger.Info(globalResourceMsg)
