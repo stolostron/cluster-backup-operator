@@ -9,12 +9,12 @@ require (
 	github.com/openshift/hive/apis v0.0.0-20220208211620-c2317e6c13bd
 	github.com/pkg/errors v0.9.1
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/vmware-tanzu/velero v1.7.1
+	github.com/vmware-tanzu/velero v1.7.0
 	k8s.io/api v0.22.2
 	k8s.io/apimachinery v0.22.2
 	k8s.io/client-go v12.0.0+incompatible
 	open-cluster-management.io/api v0.6.0
-	sigs.k8s.io/controller-runtime v0.10.2
+	sigs.k8s.io/controller-runtime v0.9.1
 )
 
 require (
@@ -85,5 +85,4 @@ replace (
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.22.2
 	k8s.io/apimachinery => k8s.io/apimachinery v0.22.2
 	k8s.io/client-go => k8s.io/client-go v0.22.2
-	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.9.6
 )
