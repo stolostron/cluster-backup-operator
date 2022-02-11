@@ -183,15 +183,16 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				err,
 				msg,
 			)
-
+			// set error status for all errors from initVeleroRestores
+			restore.Status.Phase = v1beta1.RestorePhaseError
 			return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
 				r.Client.Status().Update(ctx, restore),
 				msg,
 			)
 		}
+	} else {
+		setRestorePhase(&veleroRestoreList, restore)
 	}
-
-	setRestorePhase(&veleroRestoreList, restore)
 
 	err = r.Client.Status().Update(ctx, restore)
 	return ctrl.Result{}, errors.Wrap(
@@ -414,10 +415,6 @@ func (r *RestoreReconciler) initVeleroRestores(
 	restoreLogger := log.FromContext(ctx)
 	restore.Status.Phase = v1beta1.RestorePhaseStarted
 	restore.Status.LastMessage = "Restore in progress"
-	err := r.Client.Status().Update(ctx, restore)
-	if err != nil {
-		restoreLogger.Error(err, "Unable to update status")
-	}
 
 	restoreKeys := make([]ResourceType, 0, len(veleroScheduleNames))
 	for key := range veleroScheduleNames {
@@ -454,6 +451,10 @@ func (r *RestoreReconciler) initVeleroRestores(
 		backupName = strings.ToLower(strings.TrimSpace(backupName))
 
 		if backupName == "" {
+			restore.Status.LastMessage = fmt.Sprintf(
+				"Backup name not found for resource type: %s",
+				key,
+			)
 			return fmt.Errorf("backup name not found")
 		}
 
@@ -470,7 +471,6 @@ func (r *RestoreReconciler) initVeleroRestores(
 				"namespace", restore.Namespace,
 				"type", key,
 			)
-			restore.Status.Phase = v1beta1.RestorePhaseError
 			restore.Status.LastMessage = fmt.Sprintf(
 				"Backup %s Not found for resource type: %s",
 				backupName,
@@ -489,6 +489,10 @@ func (r *RestoreReconciler) initVeleroRestores(
 			veleroRestore.Spec.BackupName = veleroBackupName
 
 			if err := ctrl.SetControllerReference(restore, veleroRestore, r.Scheme); err != nil {
+				restore.Status.LastMessage = fmt.Sprintf(
+					"Could not set controller reference for resource type: %s",
+					key,
+				)
 				return err
 			}
 			veleroRestoresToCreate[key] = veleroRestore
@@ -504,7 +508,9 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 	// clean up resources only if requested
 	if restore.Spec.CleanupBeforeRestore {
-		mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(r.DiscoveryClient))
+		mapper := restmapper.NewDeferredDiscoveryRESTMapper(
+			memory.NewMemCacheClient(r.DiscoveryClient),
+		)
 		deletePolicy := metav1.DeletePropagationForeground
 		deleteOptions := metav1.DeleteOptions{
 			PropagationPolicy: &deletePolicy,
@@ -525,7 +531,6 @@ func (r *RestoreReconciler) initVeleroRestores(
 				"namespace", veleroRestoresToCreate[key].Namespace,
 				"name", veleroRestoresToCreate[key].Name,
 			)
-			restore.Status.Phase = v1beta1.RestorePhaseError
 			restore.Status.LastMessage = fmt.Sprintf(
 				"Cannot create velero restore resource %s/%s: %v",
 				veleroRestoresToCreate[key].Namespace,
