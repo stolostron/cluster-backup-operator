@@ -49,12 +49,18 @@ var (
 	}
 
 	// exclude resources from these api groups
+	// search.open-cluster-management.io is required to be backed up
+	// but since the CRs are created in the MCH NS which is excluded by the resources backup
+	// we want those CRs to be labeled with cluster.open-cluster-management.io/backup
+	// so they are picked up by the resources-generic backup
 	excludedAPIGroups = []string{
 		"admission.cluster.open-cluster-management.io",
 		"admission.work.open-cluster-management.io",
 		"internal.open-cluster-management.io",
 		"operator.open-cluster-management.io",
 		"work.open-cluster-management.io",
+		"search.open-cluster-management.io",
+		"velero.io",
 	}
 	// exclude these CRDs
 	// they are part of the included api groups but are either not needed
@@ -80,7 +86,7 @@ var (
 		"klusterletaddonconfig",
 		"managedclusteraddon",
 		"managedclusterset",
-		"managecclustersetbindings",
+		"managedclustersetbindings",
 		"clusterpool",
 		"clusterclaim.hive.openshift.io",
 		"clustercurator",
