@@ -81,18 +81,33 @@ var _ = BeforeSuite(func() {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	stable := metav1.APIResourceList{
-		GroupVersion: "argoproj.io/v1beta1",
+	argov1alphaInfo := metav1.APIResourceList{
+		GroupVersion: "argoproj.io/v1alpha1",
 		APIResources: []metav1.APIResource{
-			{Name: "clusterclaims", Namespaced: false, Kind: "ClusterClaim"},
-			{Name: "services", Namespaced: true, Kind: "Service"},
-			{Name: "namespaces", Namespaced: false, Kind: "Namespace"},
+			{Name: "applications", Namespaced: true, Kind: "Application"},
+			{Name: "applicationsets", Namespaced: true, Kind: "ApplicationSet"},
+			{Name: "argocds", Namespaced: true, Kind: "Argocd"},
 		},
 	}
-	beta := metav1.APIResourceList{
-		GroupVersion: "cluster.open-cluster-management.io/v1beta1",
+	appsInfo := metav1.APIResourceList{
+		GroupVersion: "apps.open-cluster-management.io/v1beta1",
 		APIResources: []metav1.APIResource{
 			{Name: "channels", Namespaced: true, Kind: "Channel"},
+			{Name: "subscriptions", Namespaced: true, Kind: "Subscription"},
+		},
+	}
+	clusterv1beta1Info := metav1.APIResourceList{
+		GroupVersion: "cluster.open-cluster-management.io/v1beta1",
+		APIResources: []metav1.APIResource{
+			{Name: "placements", Namespaced: true, Kind: "Placement"},
+			{Name: "clustercurators", Namespaced: true, Kind: "ClusterCurator"},
+			{Name: "backupschedules", Namespaced: true, Kind: "BackupSchedule"},
+			{Name: "managedclusters", Namespaced: true, Kind: "ManagedCluster"},
+		},
+	}
+	clusterv1Info := metav1.APIResourceList{
+		GroupVersion: "cluster.open-cluster-management.io/v1",
+		APIResources: []metav1.APIResource{
 			{Name: "placements", Namespaced: true, Kind: "Placement"},
 			{Name: "clustercurators", Namespaced: true, Kind: "ClusterCurator"},
 			{Name: "backupschedules", Namespaced: true, Kind: "BackupSchedule"},
@@ -105,25 +120,27 @@ var _ = BeforeSuite(func() {
 			{Name: "managedclustermutators", Namespaced: false, Kind: "AdmissionReview"},
 		},
 	}
-	other := metav1.APIResourceList{
-		GroupVersion: "config.openshift.io/v1beta1",
+	hiveInfo := metav1.APIResourceList{
+		GroupVersion: "hive.openshift.io/v1beta1",
 		APIResources: []metav1.APIResource{
-			{Name: "apiservers", Namespaced: false, Kind: "APIServer"},
+			{Name: "dnszones", Namespaced: false, Kind: "DNSZone"},
 		},
 	}
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var list interface{}
 		switch req.URL.Path {
-		case "/api/v1":
-			list = &stable
-		case "/apis/extensions/v1beta1":
-			list = &beta
 		case "/apis/cluster.open-cluster-management.io/v1beta1":
-			list = &beta
+			list = &clusterv1beta1Info
+		case "/apis/cluster.open-cluster-management.io/v1":
+			list = &clusterv1Info
 		case "/apis/admission.cluster.open-cluster-management.io/v1beta1":
 			list = &excluded
-		case "/apis/config.openshift.io/v1beta1":
-			list = &other
+		case "/apis/hive.openshift.io/v1beta1":
+			list = &hiveInfo
+		case "/apis/apps.open-cluster-management.io/v1beta1":
+			list = &appsInfo
+		case "/api/argoproj.io/v1alpha1":
+			list = &argov1alphaInfo
 
 		case "/api":
 			list = &metav1.APIVersions{
@@ -137,7 +154,10 @@ var _ = BeforeSuite(func() {
 					{
 						Name: "argoproj.io",
 						Versions: []metav1.GroupVersionForDiscovery{
-							{GroupVersion: "argoproj.io/v1beta1", Version: "v1beta1"},
+							{
+								GroupVersion: "argoproj.io/v1alpha1",
+								Version:      "v1alpha1",
+							},
 						},
 					},
 					{
@@ -147,7 +167,10 @@ var _ = BeforeSuite(func() {
 								GroupVersion: "cluster.open-cluster-management.io/v1beta1",
 								Version:      "v1beta1",
 							},
-							{GroupVersion: "cluster.open-cluster-management.io/v1", Version: "v1"},
+							{
+								GroupVersion: "cluster.open-cluster-management.io/v1",
+								Version:      "v1",
+							},
 						},
 					},
 					{
@@ -160,16 +183,15 @@ var _ = BeforeSuite(func() {
 						},
 					},
 					{
-						Name: "config.openshift.io",
+						Name: "hive.openshift.io",
 						Versions: []metav1.GroupVersionForDiscovery{
-							{GroupVersion: "config.openshift.io/v1beta1", Version: "v1beta1"},
+							{GroupVersion: "hive.openshift.io/v1beta1", Version: "v1beta1"},
 						},
 					},
 					{
-						Name: "extensions",
+						Name: "apps.open-cluster-management.io",
 						Versions: []metav1.GroupVersionForDiscovery{
-							{GroupVersion: "extensions/v1beta1", Version: "v1beta1"},
-							{GroupVersion: "extensions/v1beta2", Version: "v1beta2"},
+							{GroupVersion: "apps.open-cluster-management.io/v1beta1", Version: "v1beta1"},
 						},
 					},
 				},
@@ -200,35 +222,41 @@ var _ = BeforeSuite(func() {
 		expectErr     bool
 	}{
 		{
-			resourcesList: &stable,
-			path:          "/api/v1",
-			request:       "v1",
+			resourcesList: &clusterv1beta1Info,
+			path:          "/apis/cluster.open-cluster-management.io/v1beta1",
+			request:       "cluster.open-cluster-management.io/v1beta1",
 			expectErr:     false,
 		},
 		{
-			resourcesList: &beta,
-			path:          "/apis/extensions/v1beta1",
-			request:       "extensions/v1beta1",
+			resourcesList: &clusterv1Info,
+			path:          "/apis/cluster.open-cluster-management.io/v1",
+			request:       "cluster.open-cluster-management.io/v1",
 			expectErr:     false,
 		},
 		{
-			resourcesList: &beta,
-			path:          "/apis/extensions/v1beta1",
-			request:       "extensions/v1beta1",
+			resourcesList: &argov1alphaInfo,
+			path:          "/apis/argoproj.io/v1alpha1",
+			request:       "argoproj.io/v1alpha1",
+			expectErr:     false,
+		},
+		{
+			resourcesList: &hiveInfo,
+			path:          "/apis/hive.openshift.io/v1beta1",
+			request:       "hive.openshift.io/v1beta1",
 			expectErr:     false,
 		},
 		{
 			resourcesList: &excluded,
 			path:          "/apis/admission.cluster.open-cluster-management.io/v1beta1",
-			request:       "admission.cluster.open-cluster-management.io/v1beta1/v1beta1",
+			request:       "admission.cluster.open-cluster-management.io/v1beta1",
 			expectErr:     false,
 		},
 	}
 
 	// check that these resources are backed up
 	resourcesToBackup = []string{
-		"clusterdeployment",
-		"machinepool",
+		"clusterdeployment.hive.openshift.io",
+		"machinepool.hive.openshift.io",
 		"placement.cluster.open-cluster-management.io",
 	}
 	test := tests[1]

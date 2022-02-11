@@ -342,7 +342,9 @@ func getResourcesToBackup(
 			//get all resources for each group version
 			resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
 			if err != nil {
-				backupLogger.Error(err, "failed to get server resources")
+				backupLogger.Info(fmt.Sprintf("Failed to get server resources for group=%s, version=%s, error:%s",
+					group.Name, version.GroupVersion,
+					err.Error()))
 				continue
 			}
 			if resourceList == nil {

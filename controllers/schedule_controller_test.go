@@ -725,7 +725,7 @@ var _ = Describe("BackupSchedule controller", func() {
 						"placement.cluster.open-cluster-management.io")).Should(BeTrue())
 
 					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, //already in cluster resources backup
-						"klusterletaddonconfig")).Should(BeTrue())
+						"klusterletaddonconfig.agent.open-cluster-management.io")).Should(BeTrue())
 				}
 			}
 
