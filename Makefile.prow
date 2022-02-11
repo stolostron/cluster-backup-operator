@@ -11,10 +11,8 @@ build-prow:
 	docker build -f Dockerfile . -t ${REPO_URL}/cluster-backup-operator:${VERSION}
 
 .PHONY: unit-tests
-export GOCACHE = /tmp/gocache
+export HOME = /tmp/home
 unit-tests:
-	mkdir $(GOCACHE)
-	go version
-	go env
-	GOFLAGS="" GOCACHE="$(GOCACHE)" GOENV="$(GOCACHE)/go/env" go test -timeout 120s -v -short ./controllers
+	mkdir $(HOME)
+	GOFLAGS="" go test -timeout 120s -v -short ./controllers
 	
