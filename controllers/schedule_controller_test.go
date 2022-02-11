@@ -450,6 +450,9 @@ var _ = Describe("BackupSchedule controller", func() {
 				if err != nil {
 					return metav1.Duration{Duration: time.Hour * 0}
 				}
+				if createdBackupSchedule.Status.VeleroScheduleManagedClusters == nil {
+					return metav1.Duration{Duration: time.Hour * 0}
+				}
 				return createdBackupSchedule.Status.VeleroScheduleManagedClusters.Spec.Template.TTL
 			}, timeout, interval).Should(BeIdenticalTo(metav1.Duration{Duration: time.Hour * 150}))
 
