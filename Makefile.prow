@@ -14,5 +14,5 @@ build-prow:
 export GOCACHE = /tmp/gocache
 unit-tests:
 	mkdir $(GOCACHE)
-	GOFLAGS="" go test -timeout 120s -v -short ./controllers
+	GOFLAGS="" GOCACHE="$(GOCACHE)" go test -timeout 120s -v -short ./controllers
 	
