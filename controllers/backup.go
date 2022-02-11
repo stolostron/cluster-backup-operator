@@ -18,13 +18,10 @@ package controllers
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/discovery"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -49,12 +46,18 @@ var (
 	}
 
 	// exclude resources from these api groups
+	// search.open-cluster-management.io is required to be backed up
+	// but since the CRs are created in the MCH NS which is excluded by the resources backup
+	// we want those CRs to be labeled with cluster.open-cluster-management.io/backup
+	// so they are picked up by the resources-generic backup
 	excludedAPIGroups = []string{
 		"admission.cluster.open-cluster-management.io",
 		"admission.work.open-cluster-management.io",
 		"internal.open-cluster-management.io",
 		"operator.open-cluster-management.io",
 		"work.open-cluster-management.io",
+		"search.open-cluster-management.io",
+		"velero.io",
 	}
 	// exclude these CRDs
 	// they are part of the included api groups but are either not needed
@@ -76,15 +79,16 @@ var (
 
 	// resources used to activate the connection between hub and managed clusters - activation resources
 	backupManagedClusterResources = []string{
-		"managedcluster", //global
-		"klusterletaddonconfig",
-		"managedclusteraddon",
-		"managedclusterset",
-		"managecclustersetbindings",
-		"clusterpool",
+		"managedcluster.cluster.open-cluster-management.io", //global
+		"managedcluster.clusterview.open-cluster-management.io",
+		"klusterletaddonconfig.agent.open-cluster-management.io",
+		"managedclusteraddon.addon.open-cluster-management.io",
+		"managedclusterset.cluster.open-cluster-management.io",
+		"managedclusterset.clusterview.open-cluster-management.io",
+		"managedclustersetbindings.cluster.open-cluster-management.io",
+		"clusterpool.hive.openshift.io",
 		"clusterclaim.hive.openshift.io",
-		"clustercurator",
-		"managedclusterview",
+		"clustercurator.cluster.open-cluster-management.io",
 	}
 
 	// all backup resources, except secrets, configmaps and managed cluster activation resources
@@ -297,80 +301,4 @@ func filterBackups(vs []veleroapi.Backup, f func(veleroapi.Backup) bool) []veler
 		}
 	}
 	return filtered
-}
-
-// get server resources that needs backup
-func getResourcesToBackup(
-	ctx context.Context,
-	dc discovery.DiscoveryInterface,
-) ([]string, error) {
-
-	backupLogger := log.FromContext(ctx)
-
-	backupResourceNames := backupResources
-
-	// build the list of excluded resources
-	ignoreCRDs := excludedCRDs
-
-	groupList, err := dc.ServerGroups()
-	if err != nil {
-		return backupResourceNames, fmt.Errorf("failed to get server groups: %v", err)
-	}
-	if groupList == nil {
-		return backupResourceNames, nil
-	}
-	for _, group := range groupList.Groups {
-
-		if !shouldBackupAPIGroup(group.Name) {
-			// ignore excluded api groups
-			continue
-		}
-
-		for _, version := range group.Versions {
-			//get all resources for each group version
-			resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
-			if err != nil {
-				backupLogger.Error(err, "failed to get server resources")
-				continue
-			}
-			if resourceList == nil {
-				continue
-			}
-			for _, resource := range resourceList.APIResources {
-				resourceKind := strings.ToLower(resource.Kind)
-				resourceName := resourceKind + "." + group.Name
-				// if resource kind is not ignored
-				// and kind.group is not used to identify resource to ignore
-				// the resource is not in cluster activation backup group
-				// add it to the generic backup resources
-				if !findValue(ignoreCRDs, resourceKind) &&
-					!findValue(ignoreCRDs, resourceName) &&
-					!findValue(backupManagedClusterResources, resourceKind) &&
-					!findValue(backupManagedClusterResources, resourceName) {
-					backupResourceNames = appendUnique(backupResourceNames, resourceName)
-				}
-			}
-		}
-	}
-	return backupResourceNames, nil
-}
-
-// returns true if this api group needs to be backed up
-func shouldBackupAPIGroup(groupStr string) bool {
-
-	_, ok := find(excludedAPIGroups, groupStr)
-	if ok {
-		// this has to be excluded
-		return false
-	}
-
-	_, ok = find(includedAPIGroupsByName, groupStr)
-	// if not in the included api groups
-	if !ok {
-		// check if is in the included api groups by suffix
-		_, ok = findSuffix(includedAPIGroupsSuffix, groupStr)
-
-	}
-
-	return ok
 }

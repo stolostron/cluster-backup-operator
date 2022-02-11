@@ -17,9 +17,13 @@ limitations under the License.
 package controllers
 
 import (
+	"context"
+	"fmt"
 	"strings"
 
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	"k8s.io/client-go/discovery"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 func findSuffix(slice []string, val string) (int, bool) {
@@ -117,4 +121,128 @@ func getResourceDetails(resourceName string) (string, string) {
 	}
 
 	return resourceName, ""
+}
+
+// returns true if this api group needs to be backed up
+func shouldBackupAPIGroup(groupStr string) bool {
+
+	_, ok := find(excludedAPIGroups, groupStr)
+	if ok {
+		// this has to be excluded
+		return false
+	}
+
+	_, ok = find(includedAPIGroupsByName, groupStr)
+	// if not in the included api groups
+	if !ok {
+		// check if is in the included api groups by suffix
+		_, ok = findSuffix(includedAPIGroupsSuffix, groupStr)
+
+	}
+
+	return ok
+}
+
+// get server resources that needs backup
+func getResourcesToBackup(
+	ctx context.Context,
+	dc discovery.DiscoveryInterface,
+) ([]string, error) {
+
+	backupLogger := log.FromContext(ctx)
+
+	backupResourceNames := backupResources
+
+	// build the list of excluded resources
+	ignoreCRDs := excludedCRDs
+
+	groupList, err := dc.ServerGroups()
+	if err != nil {
+		return backupResourceNames, fmt.Errorf("failed to get server groups: %v", err)
+	}
+	if groupList == nil {
+		return backupResourceNames, nil
+	}
+	for _, group := range groupList.Groups {
+
+		if !shouldBackupAPIGroup(group.Name) {
+			// ignore excluded api groups
+			continue
+		}
+
+		for _, version := range group.Versions {
+			//get all resources for each group version
+			resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
+			if err != nil {
+				backupLogger.Error(err, "failed to get server resources")
+				continue
+			}
+			if resourceList == nil {
+				continue
+			}
+			for _, resource := range resourceList.APIResources {
+				resourceKind := strings.ToLower(resource.Kind)
+				resourceName := resourceKind + "." + group.Name
+				// if resource kind is not ignored
+				// and kind.group is not used to identify resource to ignore
+				// the resource is not in cluster activation backup group
+				// add it to the generic backup resources
+				if !findValue(ignoreCRDs, resourceKind) &&
+					!findValue(ignoreCRDs, resourceName) &&
+					!findValue(backupManagedClusterResources, resourceKind) &&
+					!findValue(backupManagedClusterResources, resourceName) {
+					backupResourceNames = appendUnique(backupResourceNames, resourceName)
+				}
+			}
+		}
+	}
+	return backupResourceNames, nil
+}
+
+// retrurn the set of CRDs for a potential generic resource,
+// backed up by acm-resources-generic-schedule
+// labeled by cluster.open-cluster-management.io/backup
+func getGenericCRDFromAPIGroups(
+	ctx context.Context,
+	dc discovery.DiscoveryInterface,
+	veleroBackup *veleroapi.Backup,
+) ([]string, error) {
+
+	logger := log.FromContext(ctx)
+
+	resources := []string{}
+
+	groupList, err := dc.ServerGroups()
+	if err != nil {
+		return resources, fmt.Errorf("failed to get server groups: %v", err)
+	}
+	if groupList == nil {
+		return resources, nil
+	}
+	for _, group := range groupList.Groups {
+		for _, version := range group.Versions {
+			//get all resources for each group version
+			resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
+			if err != nil {
+				logger.Error(err, "failed to get server resources")
+				continue
+			}
+			if resourceList == nil || group.Name == "" {
+				// don't want any resource with no apigroup
+				continue
+			}
+			for _, resource := range resourceList.APIResources {
+
+				resourceKind := strings.ToLower(resource.Kind)
+				resourceName := resourceKind + "." + group.Name
+
+				if !findValue(veleroBackup.Spec.ExcludedResources, resourceName) &&
+					!findValue(veleroBackup.Spec.ExcludedResources, resourceKind) {
+					resources = appendUnique(resources, resourceName)
+				}
+			}
+		}
+	}
+
+	return resources, nil
 }

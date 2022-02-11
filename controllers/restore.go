@@ -176,7 +176,6 @@ func prepareForRestore(
 	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
 	// delete each resource from included resources, if it has a velero annotation
 	// meaning that the resource was created by another restore
-
 	labelSelector := "velero.io/backup-name"
 	switch restoreType {
 	case ResourcesGeneric:
@@ -189,7 +188,15 @@ func prepareForRestore(
 		labelSelector = labelSelector + "," + backupCredsClusterLabel
 	}
 
-	for i := range veleroBackup.Spec.IncludedResources {
+	var resources []string
+	if restoreType != ResourcesGeneric {
+		resources = veleroBackup.Spec.IncludedResources
+	} else {
+		// for generic resources get all CRDs and exclude the ones in the veleroBackup.Spec.ExcludedResources
+		resources, _ = getGenericCRDFromAPIGroups(ctx, dc, veleroBackup)
+	}
+
+	for i := range resources {
 
 		kind, groupName := getResourceDetails(veleroBackup.Spec.IncludedResources[i])
 
