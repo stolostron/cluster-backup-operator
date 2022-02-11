@@ -14,5 +14,7 @@ build-prow:
 export GOCACHE = /tmp/gocache
 unit-tests:
 	mkdir $(GOCACHE)
+	go version
+	go env
 	GOFLAGS="" GOCACHE="$(GOCACHE)" go test -timeout 120s -v -short ./controllers
 	
