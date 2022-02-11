@@ -189,9 +189,17 @@ func prepareForRestore(
 		labelSelector = labelSelector + "," + backupCredsClusterLabel
 	}
 
-	for i := range veleroBackup.Spec.IncludedResources {
+	var resources []string
+	if restoreType != ResourcesGeneric {
+		resources = veleroBackup.Spec.IncludedResources
+	} else {
+		// for generic resources get all CRDs and exclude the ones in the veleroBackup.Spec.ExcludedResources
+		resources, _ = getGenericCRDFromAPIGroups(ctx, dc, veleroBackup)
+	}
 
-		kind, groupName := getResourceDetails(veleroBackup.Spec.IncludedResources[i])
+	for i := range resources {
+
+		kind, groupName := getResourceDetails(resources[i])
 
 		if kind == "clusterdeployment" || kind == "machinepool" {
 			// old backups have a short version for these resource
@@ -204,7 +212,8 @@ func prepareForRestore(
 		}
 		mapping, err := mapper.RESTMapping(groupKind, "")
 		if err != nil {
-			logger.Info(err.Error())
+			logger.Info(fmt.Sprintf("Failed to get dynamic mapper for group=%s, error : %s",
+				groupKind, err.Error()))
 			continue
 		}
 		var dr = dyn.Resource(mapping.Resource)
@@ -215,7 +224,7 @@ func prepareForRestore(
 		// we want to clean them up, they were created by a previous restore
 		dynamiclist, err := dr.List(ctx, v1.ListOptions{LabelSelector: labelSelector})
 		if err != nil {
-			logger.Info(err.Error())
+			// ignore error
 			continue
 		}
 		// get all items and delete them

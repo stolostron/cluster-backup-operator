@@ -82,15 +82,16 @@ var (
 
 	// resources used to activate the connection between hub and managed clusters - activation resources
 	backupManagedClusterResources = []string{
-		"managedcluster", //global
-		"klusterletaddonconfig",
-		"managedclusteraddon",
-		"managedclusterset",
-		"managedclustersetbindings",
-		"clusterpool",
+		"managedcluster.cluster.open-cluster-management.io", //global
+		"managedcluster.clusterview.open-cluster-management.io",
+		"klusterletaddonconfig.agent.open-cluster-management.io",
+		"managedclusteraddon.addon.open-cluster-management.io",
+		"managedclusterset.cluster.open-cluster-management.io",
+		"managedclusterset.clusterview.open-cluster-management.io",
+		"managedclustersetbinding.cluster.open-cluster-management.io",
+		"clusterpool.hive.openshift.io",
 		"clusterclaim.hive.openshift.io",
-		"clustercurator",
-		"managedclusterview",
+		"clustercurator.cluster.open-cluster-management.io",
 	}
 
 	// all backup resources, except secrets, configmaps and managed cluster activation resources
@@ -268,6 +269,11 @@ func setManagedClustersBackupInfo(
 	var clusterResource bool = true // include cluster level resources
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 
+	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
+		veleroBackupTemplate.ExcludedNamespaces,
+		"local-cluster",
+	)
+
 	for i := range backupManagedClusterResources { // managed clusters required resources, from namespace or cluster level
 		veleroBackupTemplate.IncludedResources = appendUnique(
 			veleroBackupTemplate.IncludedResources,
@@ -336,7 +342,9 @@ func getResourcesToBackup(
 			//get all resources for each group version
 			resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
 			if err != nil {
-				backupLogger.Error(err, "failed to get server resources")
+				backupLogger.Info(fmt.Sprintf("Failed to get server resources for group=%s, version=%s, error:%s",
+					group.Name, version.GroupVersion,
+					err.Error()))
 				continue
 			}
 			if resourceList == nil {
