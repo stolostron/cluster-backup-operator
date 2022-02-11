@@ -16,5 +16,5 @@ unit-tests:
 	mkdir $(GOCACHE)
 	go version
 	go env
-	GOFLAGS="" GOCACHE="$(GOCACHE)" go test -timeout 120s -v -short ./controllers
+	GOFLAGS="" GOCACHE="$(GOCACHE)" GOENV="$(GOCACHE)/go/env" go test -timeout 120s -v -short ./controllers
 	
