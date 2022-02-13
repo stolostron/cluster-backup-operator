@@ -30,6 +30,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -79,6 +81,8 @@ const (
 type BackupScheduleReconciler struct {
 	client.Client
 	DiscoveryClient discovery.DiscoveryInterface
+	DynamicClient   dynamic.Interface
+	RESTMapper      *restmapper.DeferredDiscoveryRESTMapper
 	Scheme          *runtime.Scheme
 }
 
@@ -263,6 +267,9 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 	}
 	sort.Sort(SortResourceType(scheduleKeys))
 
+	// get cluster uid
+	uid, _ := getHubIdentification(ctx, r.DiscoveryClient, r.DynamicClient, r.RESTMapper)
+
 	// loop through schedule names to create a Velero schedule per type
 	for _, scheduleKey := range scheduleKeys {
 		veleroScheduleIdentity := types.NamespacedName{
@@ -281,6 +288,9 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		}
 		labels[BackupScheduleNameLabel] = backupSchedule.Name
 		labels[BackupScheduleTypeLabel] = string(scheduleKey)
+		// set cluster uid
+		labels[BackupScheduleClusterUIDLabel] = uid
+
 		veleroSchedule.SetLabels(labels)
 
 		// create backup based on resource type
