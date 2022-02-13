@@ -175,9 +175,9 @@ func getGenericCRDFromAPIGroups(
 	return resources, nil
 }
 
-// return hub url, used to annotate backup schedules
-// to know what hub had created the backups
-// when switching active - passive clusters
+// return hub uid, used to annotate backup schedules
+// to know what hub is pushing the backups to the storage location
+// info used when switching active - passive clusters
 func getHubIdentification(
 	ctx context.Context,
 	dc discovery.DiscoveryInterface,
