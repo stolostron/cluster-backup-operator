@@ -193,11 +193,6 @@ func (r *BackupScheduleReconciler) scheduleOwnsLatestStorageBackups(
 
 	logger := log.FromContext(ctx)
 
-	if backupSchedule.GetLabels()[BackupScheduleClusterLabel] == "" {
-		logger.Info("current schedule has no cluster info")
-		return true, nil
-	}
-
 	backups := veleroapi.BackupList{}
 	if err := r.List(ctx, &backups, client.MatchingLabels{"velero.io/schedule-name": "acm-resources-schedule"}); err != nil {
 		logger.Info(err.Error())
@@ -226,10 +221,6 @@ func (r *BackupScheduleReconciler) scheduleOwnsLatestStorageBackups(
 		return true, nil
 	}
 	lastBackup := sliceBackups[len(sliceBackups)-1]
-	if lastBackup.Labels[BackupScheduleClusterLabel] == "" {
-		logger.Info("backup has no cluster info")
-		return true, nil
-	}
 
 	if lastBackup.Labels[BackupScheduleClusterLabel] != backupSchedule.GetLabels()[BackupScheduleClusterLabel] {
 		return false, &lastBackup
