@@ -73,8 +73,9 @@ const (
 const updateStatusFailedMsg = "Could not update status"
 
 const (
-	failureInterval  = time.Second * 60
-	scheduleOwnerKey = ".metadata.controller"
+	failureInterval          = time.Second * 60
+	collisionControlInterval = time.Minute * 60 // run each hour
+	scheduleOwnerKey         = ".metadata.controller"
 )
 
 // BackupScheduleReconciler reconciles a BackupSchedule object
@@ -217,7 +218,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 			backupSchedule.Status.Phase = v1beta1.SchedulePhaseBackupCollision
 			backupSchedule.Status.LastMessage = msg
 
-			return ctrl.Result{}, errors.Wrap(
+			return ctrl.Result{RequeueAfter: collisionControlInterval}, errors.Wrap(
 				r.Client.Status().Update(ctx, backupSchedule),
 				msg,
 			)
@@ -236,7 +237,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 			backupSchedule.Status.LastMessage = NewPhaseMsg
 			backupSchedule.Status.Phase = v1beta1.SchedulePhaseNew
 		}
-		return ctrl.Result{}, errors.Wrap(
+		return ctrl.Result{RequeueAfter: collisionControlInterval}, errors.Wrap(
 			r.Client.Status().Update(ctx, backupSchedule),
 			updateStatusFailedMsg,
 		)
@@ -251,7 +252,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 			return ctrl.Result{}, err
 		}
 
-		return ctrl.Result{}, errors.Wrap(
+		return ctrl.Result{RequeueAfter: collisionControlInterval}, errors.Wrap(
 			r.Client.Status().Update(ctx, backupSchedule),
 			updateStatusFailedMsg,
 		)
@@ -264,7 +265,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	setSchedulePhase(&veleroScheduleList, backupSchedule)
 
 	err := r.Client.Status().Update(ctx, backupSchedule)
-	return ctrl.Result{}, errors.Wrap(
+	return ctrl.Result{RequeueAfter: collisionControlInterval}, errors.Wrap(
 		err,
 		fmt.Sprintf(
 			"could not update status for schedule %s/%s",
