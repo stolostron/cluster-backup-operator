@@ -200,9 +200,32 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 
+	if len(veleroScheduleList.Items) > 0 {
+		if isThisTheOwner, lastBackup := r.scheduleOwnsLatestStorageBackups(ctx, &veleroScheduleList.Items[0]); !isThisTheOwner {
+			// set exception status, because another cluster is creating backups
+			// and storing them at the same location
+			// we risk a backup collision, as more then one cluster seems to be
+			// backing up data in the same location
+			msg := fmt.Sprintf(
+				"Backup %s, from cluster with id [%s] is using the same storage location. Collision with this cluster backup!",
+				lastBackup.GetName(),
+				lastBackup.GetLabels()[BackupScheduleClusterLabel],
+			)
+			scheduleLogger.Info(msg)
+
+			backupSchedule.Status.Phase = v1beta1.SchedulePhaseBackupCollision
+			backupSchedule.Status.LastMessage = msg
+
+			return ctrl.Result{}, errors.Wrap(
+				r.Client.Status().Update(ctx, backupSchedule),
+				msg,
+			)
+		}
+	}
 	// no velero schedules, so create them
 	if len(veleroScheduleList.Items) == 0 {
-		err := r.initVeleroSchedules(ctx, backupSchedule)
+		clusterId, _ := getHubIdentification(ctx, r.DiscoveryClient, r.DynamicClient, r.RESTMapper)
+		err := r.initVeleroSchedules(ctx, backupSchedule, clusterId)
 		if err != nil {
 			msg := fmt.Errorf(FailedPhaseMsg+": %v", err)
 			scheduleLogger.Error(err, err.Error())
@@ -212,7 +235,6 @@ func (r *BackupScheduleReconciler) Reconcile(
 			backupSchedule.Status.LastMessage = NewPhaseMsg
 			backupSchedule.Status.Phase = v1beta1.SchedulePhaseNew
 		}
-
 		return ctrl.Result{}, errors.Wrap(
 			r.Client.Status().Update(ctx, backupSchedule),
 			updateStatusFailedMsg,
@@ -255,6 +277,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 func (r *BackupScheduleReconciler) initVeleroSchedules(
 	ctx context.Context,
 	backupSchedule *v1beta1.BackupSchedule,
+	clusterId string,
 ) error {
 	scheduleLogger := log.FromContext(ctx)
 
@@ -266,9 +289,6 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		scheduleKeys = append(scheduleKeys, key)
 	}
 	sort.Sort(SortResourceType(scheduleKeys))
-
-	// get cluster uid
-	uid, _ := getHubIdentification(ctx, r.DiscoveryClient, r.DynamicClient, r.RESTMapper)
 
 	// loop through schedule names to create a Velero schedule per type
 	for _, scheduleKey := range scheduleKeys {
@@ -289,7 +309,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		labels[BackupScheduleNameLabel] = backupSchedule.Name
 		labels[BackupScheduleTypeLabel] = string(scheduleKey)
 		// set cluster uid
-		labels[BackupScheduleClusterUIDLabel] = uid
+		labels[BackupScheduleClusterLabel] = clusterId
 
 		veleroSchedule.SetLabels(labels)
 

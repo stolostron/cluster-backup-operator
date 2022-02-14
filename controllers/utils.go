@@ -205,5 +205,5 @@ func getHubIdentification(
 	if err != nil || item == nil {
 		return uid, err
 	}
-	return string(item.GetUID()), nil
+	return string(item.GetLabels()["clusterID"]), nil
 }

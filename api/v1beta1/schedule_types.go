@@ -41,6 +41,9 @@ const (
 	// SchedulePhaseUnknown means the schedule has been processed by
 	// the ScheduleController but there are some unknown issues
 	SchedulePhaseUnknown SchedulePhase = "Unknown"
+	// another cluster pushes backups to the same storage location
+	// resulting in a backup collision
+	SchedulePhaseBackupCollision SchedulePhase = "BackupCollision"
 )
 
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
