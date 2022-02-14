@@ -29,8 +29,10 @@ import (
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	certsv1 "k8s.io/api/certificates/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -333,20 +335,27 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(mgr).NotTo(BeNil())
 
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
+		memory.NewMemCacheClient(fakeDiscovery),
+	)
+
 	err = (&RestoreReconciler{
 		KubeClient:      nil,
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		DiscoveryClient: fakeDiscovery,
 		DynamicClient:   dyn,
+		RESTMapper:      mapper,
 		Recorder:        mgr.GetEventRecorderFor("restore reconciler"),
 	}).SetupWithManager(mgr)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&BackupScheduleReconciler{
 		Client:          mgr.GetClient(),
-		DiscoveryClient: fakeDiscovery,
 		Scheme:          mgr.GetScheme(),
+		DiscoveryClient: fakeDiscovery,
+		DynamicClient:   dyn,
+		RESTMapper:      mapper,
 	}).SetupWithManager(mgr)
 	Expect(err).ToNot(HaveOccurred())
 

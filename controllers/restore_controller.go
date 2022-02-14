@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
-	memory "k8s.io/client-go/discovery/cached"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/restmapper"
@@ -60,6 +59,7 @@ type RestoreReconciler struct {
 	KubeClient      kubernetes.Interface
 	DiscoveryClient discovery.DiscoveryInterface
 	DynamicClient   dynamic.Interface
+	RESTMapper      *restmapper.DeferredDiscoveryRESTMapper
 	Scheme          *runtime.Scheme
 	Recorder        record.EventRecorder
 }
@@ -508,9 +508,6 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 	// clean up resources only if requested
 	if restore.Spec.CleanupBeforeRestore {
-		mapper := restmapper.NewDeferredDiscoveryRESTMapper(
-			memory.NewMemCacheClient(r.DiscoveryClient),
-		)
 		deletePolicy := metav1.DeletePropagationForeground
 		deleteOptions := metav1.DeleteOptions{
 			PropagationPolicy: &deletePolicy,
@@ -518,7 +515,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 		for key := range veleroRestoresToCreate {
 			prepareForRestore(ctx, r.Client, r.DiscoveryClient, r.DynamicClient,
-				key, backupsForVeleroRestores[key], mapper, deleteOptions)
+				key, backupsForVeleroRestores[key], r.RESTMapper, deleteOptions)
 		}
 	}
 

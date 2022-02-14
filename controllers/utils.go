@@ -22,7 +22,11 @@ import (
 	"strings"
 
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -169,4 +173,37 @@ func getGenericCRDFromAPIGroups(
 	}
 
 	return resources, nil
+}
+
+// return hub uid, used to annotate backup schedules
+// to know what hub is pushing the backups to the storage location
+// info used when switching active - passive clusters
+func getHubIdentification(
+	ctx context.Context,
+	dc discovery.DiscoveryInterface,
+	dyn dynamic.Interface,
+	mapper *restmapper.DeferredDiscoveryRESTMapper,
+) (string, error) {
+
+	uid := "unknown"
+	logger := log.FromContext(ctx)
+	groupKind := schema.GroupKind{
+		Group: "config.openshift.io",
+		Kind:  "ClusterVersion",
+	}
+	mapping, err := mapper.RESTMapping(groupKind, "")
+	if err != nil {
+		logger.Info(fmt.Sprintf("Failed to get dynamic mapper for group=%s, error : %s",
+			groupKind, err.Error()))
+		return uid, err
+	}
+	var dr = dyn.Resource(mapping.Resource)
+	if dr == nil {
+		return uid, nil
+	}
+	items, err := dr.List(ctx, v1.ListOptions{})
+	if err != nil || items == nil {
+		return uid, err
+	}
+	return string(items.Items[0].GetUID()), nil
 }

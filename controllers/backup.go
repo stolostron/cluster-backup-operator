@@ -35,6 +35,8 @@ var (
 	BackupScheduleNameLabel string = "cluster.open-cluster-management.io/backup-schedule-name"
 	// BackupScheduleTypeLabel is the label key used to identify the type of the backup schedule
 	BackupScheduleTypeLabel string = "cluster.open-cluster-management.io/backup-schedule-type"
+	// BackupScheduleClusterUIDLabel is the label key used to identify the cluster id that generated the backup
+	BackupScheduleClusterLabel string = "cluster.open-cluster-management.io/backup-cluster"
 )
 var (
 	// include resources from these api groups

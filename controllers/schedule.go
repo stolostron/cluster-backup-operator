@@ -19,10 +19,12 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/robfig/cron/v3"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -180,4 +182,58 @@ func parseCronSchedule(
 	}
 
 	return nil
+}
+
+// returns true if this schedule has generated the latest backups in the
+// storage location
+func (r *BackupScheduleReconciler) scheduleOwnsLatestStorageBackups(
+	ctx context.Context,
+	backupSchedule *veleroapi.Schedule,
+) (bool, *veleroapi.Backup) {
+
+	logger := log.FromContext(ctx)
+
+	if backupSchedule.GetLabels()[BackupScheduleClusterLabel] == "" {
+		logger.Info("current schedule has no cluster info")
+		return true, nil
+	}
+
+	backups := veleroapi.BackupList{}
+	if err := r.List(ctx, &backups, client.MatchingLabels{"velero.io/schedule-name": "acm-resources-schedule"}); err != nil {
+		logger.Info(err.Error())
+		return true, nil
+	}
+	// get only acm resources backups and not in deleting state
+	// which are backups starting with acm-resources-schedule
+	sliceBackups := filterBackups(backups.Items[:], func(bkp veleroapi.Backup) bool {
+		return bkp.Status.Phase != veleroapi.BackupPhaseDeleting
+	})
+
+	// sort backups
+	sort.Slice(sliceBackups, func(i, j int) bool {
+		var timeA int64
+		var timeB int64
+		if sliceBackups[i].Status.StartTimestamp != nil {
+			timeA = sliceBackups[i].Status.StartTimestamp.Time.Unix()
+		}
+		if sliceBackups[j].Status.StartTimestamp != nil {
+			timeB = sliceBackups[j].Status.StartTimestamp.Time.Unix()
+		}
+		return timeA < timeB
+	})
+
+	if len(sliceBackups) == 0 {
+		return true, nil
+	}
+	lastBackup := sliceBackups[len(sliceBackups)-1]
+	if lastBackup.Labels[BackupScheduleClusterLabel] == "" {
+		logger.Info("backup has no cluster info")
+		return true, nil
+	}
+
+	if lastBackup.Labels[BackupScheduleClusterLabel] != backupSchedule.GetLabels()[BackupScheduleClusterLabel] {
+		return false, &lastBackup
+	}
+
+	return true, nil
 }

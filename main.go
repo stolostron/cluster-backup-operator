@@ -22,9 +22,11 @@ import (
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+	memory "k8s.io/client-go/discovery/cached"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/restmapper"
 
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
@@ -121,10 +123,15 @@ func main() {
 		setupLog.Error(err, "unable to set up dynamic client")
 		os.Exit(1)
 	}
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
+		memory.NewMemCacheClient(dc),
+	)
 
 	if err = (&controllers.BackupScheduleReconciler{
 		Client:          mgr.GetClient(),
 		DiscoveryClient: dc,
+		DynamicClient:   dyn,
+		RESTMapper:      mapper,
 		Scheme:          mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create Schedule controller")
@@ -140,6 +147,7 @@ func main() {
 		KubeClient:      kubeClient,
 		DiscoveryClient: dc,
 		DynamicClient:   dyn,
+		RESTMapper:      mapper,
 		Scheme:          mgr.GetScheme(),
 		Recorder:        mgr.GetEventRecorderFor("Restore controller"),
 	}).SetupWithManager(mgr); err != nil {
