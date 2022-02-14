@@ -112,6 +112,11 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	if backupSchedule.Status.Phase == v1beta1.SchedulePhaseBackupCollision {
+		scheduleLogger.Info("ignore resource in SchedulePhaseBackupCollision state")
+		return ctrl.Result{}, nil
+	}
+
 	// don't create schedules if backup storage location doesn't exist or is not avaialble
 	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
 	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
@@ -208,8 +213,11 @@ func (r *BackupScheduleReconciler) Reconcile(
 			// we risk a backup collision, as more then one cluster seems to be
 			// backing up data in the same location
 			msg := fmt.Sprintf(
-				"Backup %s, from cluster with id [%s] is using the same storage location. Collision with current cluster [%s] backup!",
-				lastBackup.GetName(),
+				"Backup %s, from cluster with id [%s] is using the same storage location."+
+					" This is a backup collision with current cluster [%s] backup."+
+					" Review and resolve the collision then create a new BackupSchedule resource to "+
+					" resume backups from this cluster."+
+					lastBackup.GetName(),
 				lastBackup.GetLabels()[BackupScheduleClusterLabel],
 				veleroScheduleList.Items[0].GetLabels()[BackupScheduleClusterLabel],
 			)
@@ -217,6 +225,12 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 			backupSchedule.Status.Phase = v1beta1.SchedulePhaseBackupCollision
 			backupSchedule.Status.LastMessage = msg
+
+			//delete all schedules until admin resolves the conflict and recreates the schedule
+			// do not generate new backups
+			for i := range veleroScheduleList.Items {
+				r.Delete(ctx, &veleroScheduleList.Items[i])
+			}
 
 			return ctrl.Result{RequeueAfter: collisionControlInterval}, errors.Wrap(
 				r.Client.Status().Update(ctx, backupSchedule),
