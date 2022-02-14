@@ -37,6 +37,11 @@ var _ = Describe("Backup", func() {
 		veleroManagedClustersBackupName        = "acm-managed-clusters-schedule-20210910181336"
 		veleroResourcesBackupName              = "acm-resources-schedule-20210910181336"
 		veleroCredentialsBackupName            = "acm-credentials-schedule-20210910181336"
+
+		labelsCls123 = map[string]string{
+			"velero.io/schedule-name":  "acm-resources-schedule",
+			BackupScheduleClusterLabel: "cls-123",
+		}
 	)
 
 	Context("For utility functions of Backup", func() {
@@ -62,6 +67,7 @@ var _ = Describe("Backup", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      backupName,
 					Namespace: "",
+					Labels:    labelsCls123,
 				},
 			}
 			veleroBackups = append(veleroBackups, &veleroBackup)
@@ -113,6 +119,7 @@ var _ = Describe("Backup", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      veleroManagedClustersBackupName,
 						Namespace: veleroNamespaceName,
+						Labels:    labelsCls123,
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
@@ -131,6 +138,7 @@ var _ = Describe("Backup", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      veleroResourcesBackupName,
 						Namespace: veleroNamespaceName,
+						Labels:    labelsCls123,
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
@@ -149,6 +157,7 @@ var _ = Describe("Backup", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      veleroCredentialsBackupName,
 						Namespace: veleroNamespaceName,
+						Labels:    labelsCls123,
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
@@ -167,6 +176,7 @@ var _ = Describe("Backup", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      veleroManagedClustersBackupName + "-new",
 						Namespace: veleroNamespaceName,
+						Labels:    labelsCls123,
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
@@ -184,6 +194,7 @@ var _ = Describe("Backup", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      veleroResourcesBackupName + "-new",
 						Namespace: veleroNamespaceName,
+						Labels:    labelsCls123,
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
@@ -201,6 +212,7 @@ var _ = Describe("Backup", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      veleroCredentialsBackupName + "-new",
 						Namespace: veleroNamespaceName,
+						Labels:    labelsCls123,
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
@@ -218,6 +230,7 @@ var _ = Describe("Backup", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "some-other-new",
 						Namespace: veleroNamespaceName,
+						Labels:    labelsCls123,
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},

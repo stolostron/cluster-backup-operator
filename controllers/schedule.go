@@ -194,7 +194,8 @@ func (r *BackupScheduleReconciler) scheduleOwnsLatestStorageBackups(
 	logger := log.FromContext(ctx)
 
 	backups := veleroapi.BackupList{}
-	if err := r.List(ctx, &backups, client.MatchingLabels{"velero.io/schedule-name": "acm-resources-schedule"}); err != nil {
+	if err := r.List(ctx, &backups,
+		client.MatchingLabels{"velero.io/schedule-name": "acm-resources-schedule"}); err != nil {
 		logger.Info(err.Error())
 		return true, nil
 	}

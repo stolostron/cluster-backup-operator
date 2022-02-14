@@ -51,6 +51,11 @@ var _ = Describe("BackupSchedule controller", func() {
 
 		timeout  = time.Second * 70
 		interval = time.Millisecond * 250
+
+		labelsClsU = map[string]string{
+			"velero.io/schedule-name":  "acm-resources-schedule",
+			BackupScheduleClusterLabel: "unknown",
+		}
 	)
 
 	BeforeEach(func() {
@@ -188,6 +193,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      value + "-" + timestampStr,
 						Namespace: veleroNamespaceName,
+						Labels:    labelsClsU,
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},

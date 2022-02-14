@@ -91,6 +91,13 @@ var _ = BeforeSuite(func() {
 			{Name: "argocds", Namespaced: true, Kind: "Argocd"},
 		},
 	}
+	openshiftv1Info :=
+		metav1.APIResourceList{
+			GroupVersion: "config.openshift.io/v1",
+			APIResources: []metav1.APIResource{
+				{Name: "clusterversions", Namespaced: false, Kind: "ClusterVersion"},
+			},
+		}
 	appsInfo := metav1.APIResourceList{
 		GroupVersion: "apps.open-cluster-management.io/v1beta1",
 		APIResources: []metav1.APIResource{
@@ -141,8 +148,10 @@ var _ = BeforeSuite(func() {
 			list = &hiveInfo
 		case "/apis/apps.open-cluster-management.io/v1beta1":
 			list = &appsInfo
-		case "/api/argoproj.io/v1alpha1":
+		case "/apis/argoproj.io/v1alpha1":
 			list = &argov1alphaInfo
+		case "/apis/config.openshift.io/v1":
+			list = &openshiftv1Info
 
 		case "/api":
 			list = &metav1.APIVersions{
@@ -153,6 +162,15 @@ var _ = BeforeSuite(func() {
 		case "/apis":
 			list = &metav1.APIGroupList{
 				Groups: []metav1.APIGroup{
+					{
+						Name: "config.openshift.io",
+						Versions: []metav1.GroupVersionForDiscovery{
+							{
+								GroupVersion: "config.openshift.io/v1",
+								Version:      "v1",
+							},
+						},
+					},
 					{
 						Name: "argoproj.io",
 						Versions: []metav1.GroupVersionForDiscovery{
@@ -239,6 +257,12 @@ var _ = BeforeSuite(func() {
 			resourcesList: &argov1alphaInfo,
 			path:          "/apis/argoproj.io/v1alpha1",
 			request:       "argoproj.io/v1alpha1",
+			expectErr:     false,
+		},
+		{
+			resourcesList: &openshiftv1Info,
+			path:          "/apis/config.openshift.io/v1",
+			request:       "config.openshift.io/v1",
 			expectErr:     false,
 		},
 		{
