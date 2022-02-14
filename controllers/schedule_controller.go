@@ -207,9 +207,10 @@ func (r *BackupScheduleReconciler) Reconcile(
 			// we risk a backup collision, as more then one cluster seems to be
 			// backing up data in the same location
 			msg := fmt.Sprintf(
-				"Backup %s, from cluster with id [%s] is using the same storage location. Collision with this cluster backup!",
+				"Backup %s, from cluster with id [%s] is using the same storage location. Collision with current cluster [%s] backup!",
 				lastBackup.GetName(),
 				lastBackup.GetLabels()[BackupScheduleClusterLabel],
+				veleroScheduleList.Items[0].GetLabels()[BackupScheduleClusterLabel],
 			)
 			scheduleLogger.Info(msg)
 

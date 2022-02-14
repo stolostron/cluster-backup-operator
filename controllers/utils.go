@@ -188,8 +188,8 @@ func getHubIdentification(
 	uid := "unknown"
 	logger := log.FromContext(ctx)
 	groupKind := schema.GroupKind{
-		Group: "cluster.open-cluster-management.io",
-		Kind:  "ManagedCluster",
+		Group: "config.openshift.io",
+		Kind:  "ClusterVersion",
 	}
 	mapping, err := mapper.RESTMapping(groupKind, "")
 	if err != nil {
@@ -201,9 +201,9 @@ func getHubIdentification(
 	if dr == nil {
 		return uid, nil
 	}
-	item, err := dr.Get(ctx, "local-cluster", v1.GetOptions{})
-	if err != nil || item == nil {
+	items, err := dr.List(ctx, v1.ListOptions{})
+	if err != nil || items == nil {
 		return uid, err
 	}
-	return string(item.GetLabels()["clusterID"]), nil
+	return string(items.Items[0].GetUID()), nil
 }
