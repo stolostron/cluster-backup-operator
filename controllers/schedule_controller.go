@@ -207,7 +207,8 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 
 	if len(veleroScheduleList.Items) > 0 {
-		if isThisTheOwner, lastBackup := r.scheduleOwnsLatestStorageBackups(ctx, &veleroScheduleList.Items[0]); !isThisTheOwner {
+		if isThisTheOwner, lastBackup := r.scheduleOwnsLatestStorageBackups(ctx,
+			&veleroScheduleList.Items[0]); !isThisTheOwner {
 			// set exception status, because another cluster is creating backups
 			// and storing them at the same location
 			// we risk a backup collision, as more then one cluster seems to be
