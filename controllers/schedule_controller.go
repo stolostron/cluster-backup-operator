@@ -227,7 +227,9 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 			// delete schedules, don't generate new backups
 			for i := range veleroScheduleList.Items {
-				r.Delete(ctx, &veleroScheduleList.Items[i])
+				if err := r.Delete(ctx, &veleroScheduleList.Items[i]); err != nil {
+					scheduleLogger.Error(err, "Failed to delete schedule")
+				}
 			}
 
 			return ctrl.Result{RequeueAfter: collisionControlInterval}, errors.Wrap(
