@@ -206,7 +206,8 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 
-	if len(veleroScheduleList.Items) > 0 {
+	if len(veleroScheduleList.Items) > 0 &&
+		backupSchedule.Status.Phase != v1beta1.SchedulePhaseNew {
 		if isThisTheOwner, lastBackup := r.scheduleOwnsLatestStorageBackups(ctx,
 			&veleroScheduleList.Items[0]); !isThisTheOwner {
 			// set exception status, because another cluster is creating backups
