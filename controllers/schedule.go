@@ -39,6 +39,11 @@ const (
 	UnknownPhaseMsg string = "Some Velero schedules are not enabled. " +
 		"If the status doesn't change check the velero pod is running and " +
 		"that you have created a Velero resource as documented in the install guide."
+	// BackupCollisionPhaseMsg when another cluster is creating backups at the same storage location
+	BackupCollisionPhaseMsg string = "Backup %s, from cluster with id [%s] is using the same storage location." +
+		" This is a backup collision with current cluster [%s] backup." +
+		" Review and resolve the collision then create a new BackupSchedule resource to " +
+		" resume backups from this cluster."
 )
 
 func updateScheduleStatus(
@@ -82,6 +87,9 @@ func setSchedulePhase(
 	schedules *veleroapi.ScheduleList,
 	backupSchedule *v1beta1.BackupSchedule,
 ) {
+	if backupSchedule.Status.Phase == v1beta1.SchedulePhaseBackupCollision {
+		return
+	}
 
 	if schedules == nil || len(schedules.Items) <= 0 {
 		backupSchedule.Status.Phase = v1beta1.SchedulePhaseNew
@@ -195,7 +203,7 @@ func (r *BackupScheduleReconciler) scheduleOwnsLatestStorageBackups(
 
 	backups := veleroapi.BackupList{}
 	if err := r.List(ctx, &backups,
-		client.MatchingLabels{"velero.io/schedule-name": "acm-resources-schedule"}); err != nil {
+		client.MatchingLabels{"velero.io/schedule-name": veleroScheduleNames[Resources]}); err != nil {
 		logger.Info(err.Error())
 		return true, nil
 	}
