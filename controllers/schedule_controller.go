@@ -207,6 +207,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 
 	if len(veleroScheduleList.Items) > 0 &&
+		backupSchedule.Status.Phase != "" &&
 		backupSchedule.Status.Phase != v1beta1.SchedulePhaseNew {
 		if isThisTheOwner, lastBackup := r.scheduleOwnsLatestStorageBackups(ctx,
 			&veleroScheduleList.Items[0]); !isThisTheOwner {
