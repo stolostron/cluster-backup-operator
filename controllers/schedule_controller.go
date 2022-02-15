@@ -213,11 +213,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 			// and storing them at the same location
 			// we risk a backup collision, as more then one cluster seems to be
 			// backing up data in the same location
-			msg := fmt.Sprintf(
-				"Backup %s, from cluster with id [%s] is using the same storage location."+
-					" This is a backup collision with current cluster [%s] backup."+
-					" Review and resolve the collision then create a new BackupSchedule resource to "+
-					" resume backups from this cluster.",
+			msg := fmt.Sprintf(BackupCollisionPhaseMsg,
 				lastBackup.GetName(),
 				lastBackup.GetLabels()[BackupScheduleClusterLabel],
 				veleroScheduleList.Items[0].GetLabels()[BackupScheduleClusterLabel],
@@ -226,6 +222,11 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 			backupSchedule.Status.Phase = v1beta1.SchedulePhaseBackupCollision
 			backupSchedule.Status.LastMessage = msg
+
+			// delete schedules, don't generate new backups
+			for i := range veleroScheduleList.Items {
+				r.Delete(ctx, &veleroScheduleList.Items[i])
+			}
 
 			return ctrl.Result{RequeueAfter: collisionControlInterval}, errors.Wrap(
 				r.Client.Status().Update(ctx, backupSchedule),
