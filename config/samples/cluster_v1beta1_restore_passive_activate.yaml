@@ -7,6 +7,5 @@ kind: Restore
 metadata:
   name: restore-acm-passive-activate
 spec:
-  veleroManagedClustersBackupName: true
   veleroCredentialsBackupName: skip
   veleroResourcesBackupName: skip
