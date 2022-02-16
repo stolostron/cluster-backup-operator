@@ -345,7 +345,7 @@ var _ = Describe("Basic Restore controller", func() {
 				Namespace: veleroNamespace.Name,
 			},
 			Spec: v1beta1.RestoreSpec{
-				CleanupBeforeRestore:            true,
+				CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
 				VeleroManagedClustersBackupName: &veleroManagedClustersBackupName,
 				VeleroCredentialsBackupName:     &latestBackup,
 				VeleroResourcesBackupName:       &veleroResourcesBackupName,
@@ -455,7 +455,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Namespace: veleroNamespace.Name,
 				},
 				Spec: v1beta1.RestoreSpec{
-					CleanupBeforeRestore:            true,
+					CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
 					VeleroManagedClustersBackupName: &latestBackup,
 					VeleroCredentialsBackupName:     &latestBackup,
 					VeleroResourcesBackupName:       &latestBackup,
@@ -1042,7 +1042,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Namespace: veleroNamespace.Name,
 				},
 				Spec: v1beta1.RestoreSpec{
-					CleanupBeforeRestore:            true,
+					CleanupBeforeRestore:            v1beta1.CleanupTypeRestored,
 					VeleroManagedClustersBackupName: &latestBackup,
 					VeleroCredentialsBackupName:     &invalidBackup,
 					VeleroResourcesBackupName:       &latestBackup,
@@ -1436,7 +1436,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Namespace: veleroNamespace.Name,
 				},
 				Spec: v1beta1.RestoreSpec{
-					CleanupBeforeRestore:            true,
+					CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
 					VeleroManagedClustersBackupName: &latestBackup,
 					VeleroCredentialsBackupName:     &skipRestore,
 					VeleroResourcesBackupName:       &skipRestore,

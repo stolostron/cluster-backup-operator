@@ -167,6 +167,7 @@ func prepareForRestore(
 	c client.Client,
 	dc discovery.DiscoveryInterface,
 	dyn dynamic.Interface,
+	cleanupType v1beta1.CleanupType,
 	restoreType ResourceType,
 	veleroBackup *veleroapi.Backup,
 	mapper *restmapper.DeferredDiscoveryRESTMapper,
@@ -174,10 +175,13 @@ func prepareForRestore(
 ) {
 	logger := log.FromContext(ctx)
 	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
-	// delete each resource from included resources, if it has a velero annotation
-	// meaning that the resource was created by another restore
 
-	labelSelector := "velero.io/backup-name"
+	labelSelector := ""
+	if cleanupType == v1beta1.CleanupTypeRestored {
+		// delete each resource from included resources, if it has a velero annotation
+		// meaning that the resource was created by another restore
+		labelSelector = "velero.io/backup-name"
+	}
 	switch restoreType {
 	case ResourcesGeneric:
 		labelSelector = labelSelector + ",cluster.open-cluster-management.io/backup"

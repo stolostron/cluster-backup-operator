@@ -38,6 +38,17 @@ const (
 	RestorePhaseUnknown = "Unknown"
 )
 
+type CleanupType string
+
+const (
+	// clean up all resources created by CRD in the acm backup criteria
+	CleanupTypeAll = "CleanupAll"
+	// clean up only resources created as a result of a restore operation
+	CleanupTypeRestored = "CleanupRestored"
+	// don't clean up any resources
+	CleanupTypeNone = "None"
+)
+
 // RestoreSpec defines the desired state of Restore
 type RestoreSpec struct {
 	// VeleroManagedClustersBackupName is the name of the velero back-up used to restore managed clusters.
@@ -59,13 +70,16 @@ type RestoreSpec struct {
 	// +kubebuilder:validation:Required
 	VeleroCredentialsBackupName *string `json:"veleroCredentialsBackupName"`
 	// +kubebuilder:validation:Optional
-	// set this to true if you want the restore to attempt to delete all
+	// set this to CleanupTypeAll if you want the restore to attempt to first delete all
+	// resources with a CRD in the acm backup criteria
+	//
+	// set this to CleanupTypeRestored if you want the restore to attempt to delete all
 	// resources created by a previous restore operation
 	// This will allow updating resources that are already on the hub and also part of the new backup
-	// It will also delete resources previously restored but no longer
-	// if not defined, the value is set to false
-	// in the current backup - these resources are no longer available on the cluster where the backup was run
-	CleanupBeforeRestore bool `json:"cleanupBeforeRestore,omitempty"`
+	// And it will also delete resources previously restored but no longer in the current backup
+	//
+	// if not defined, the value is assumed to be CleanupTypeNone - no clean up called
+	CleanupBeforeRestore CleanupType `json:"cleanupBeforeRestore,omitempty"`
 }
 
 // RestoreStatus defines the observed state of Restore
