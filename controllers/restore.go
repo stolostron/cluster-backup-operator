@@ -191,7 +191,8 @@ func prepareForRestore(
 	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
 
 	labelSelector := ""
-	if cleanupType == v1beta1.CleanupTypeRestored || cleanupType == "" {
+	if cleanupType == v1beta1.CleanupTypeRestored || cleanupType == "" ||
+		restoreType == ResourcesGeneric {
 		// delete each resource from included resources, if it has a velero annotation
 		// meaning that the resource was created by another restore
 		labelSelector = "velero.io/backup-name,"

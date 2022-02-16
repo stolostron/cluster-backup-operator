@@ -8,5 +8,5 @@ kind: BackupSchedule
 metadata:
   name: schedule-acm
 spec:
-  veleroSchedule: 0 */6 * * *
+  veleroSchedule: 0 */2 * * *
   veleroTtl: 240h
