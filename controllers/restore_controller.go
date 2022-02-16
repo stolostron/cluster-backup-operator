@@ -518,7 +518,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 	}
 
 	// clean up resources only if requested
-	if restore.Spec.CleanupBeforeRestore {
+	if restore.Spec.CleanupBeforeRestore != v1beta1.CleanupTypeNone {
 		deletePolicy := metav1.DeletePropagationForeground
 		deleteOptions := metav1.DeleteOptions{
 			PropagationPolicy: &deletePolicy,
@@ -526,7 +526,15 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 		for key := range veleroRestoresToCreate {
 			prepareForRestore(ctx, r.Client, r.DiscoveryClient, r.DynamicClient,
-				key, backupsForVeleroRestores[key], r.RESTMapper, deleteOptions)
+				restore.Spec.CleanupBeforeRestore, key, backupsForVeleroRestores[key], r.RESTMapper, deleteOptions)
+		}
+		if backupsForVeleroRestores[ManagedClusters] == nil &&
+			backupsForVeleroRestores[Resources] != nil {
+			// when cleaning up resources also clean up managed clusters resources
+			if _, veleroBackup, err := r.getVeleroBackupName(ctx, restore, Resources, latestBackupStr); err != nil {
+				prepareForRestore(ctx, r.Client, r.DiscoveryClient, r.DynamicClient,
+					restore.Spec.CleanupBeforeRestore, Resources, veleroBackup, r.RESTMapper, deleteOptions)
+			}
 		}
 	}
 
