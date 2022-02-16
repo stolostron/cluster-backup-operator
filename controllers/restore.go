@@ -113,8 +113,22 @@ func deleteDynamicResource(
 	dr dynamic.NamespaceableResourceInterface,
 	resource unstructured.Unstructured,
 	deleteOptions v1.DeleteOptions,
+	excludedNamespaces []string,
 ) {
 	logger := log.FromContext(ctx)
+
+	nsSkipMsg := fmt.Sprintf(
+		"Skipping resource %s [%s.%s]",
+		resource.GetKind(),
+		resource.GetName(),
+		resource.GetNamespace())
+
+	if mapping.Scope.Name() == meta.RESTScopeNameNamespace &&
+		findValue(excludedNamespaces, resource.GetNamespace()) {
+		logger.Info(nsSkipMsg)
+		return
+	}
+
 	nsScopedMsg := fmt.Sprintf(
 		"Deleted resource %s [%s.%s]",
 		resource.GetKind(),
@@ -177,21 +191,23 @@ func prepareForRestore(
 	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
 
 	labelSelector := ""
-	if cleanupType == v1beta1.CleanupTypeRestored {
+	if cleanupType == v1beta1.CleanupTypeRestored || cleanupType == "" ||
+		restoreType == ResourcesGeneric {
 		// delete each resource from included resources, if it has a velero annotation
 		// meaning that the resource was created by another restore
-		labelSelector = "velero.io/backup-name"
+		labelSelector = "velero.io/backup-name,"
 	}
 	switch restoreType {
 	case ResourcesGeneric:
-		labelSelector = labelSelector + ",cluster.open-cluster-management.io/backup"
+		labelSelector = labelSelector + "cluster.open-cluster-management.io/backup"
 	case Credentials:
-		labelSelector = labelSelector + "," + backupCredsUserLabel
+		labelSelector = labelSelector + backupCredsUserLabel
 	case CredentialsHive:
-		labelSelector = labelSelector + "," + backupCredsHiveLabel
+		labelSelector = labelSelector + backupCredsHiveLabel
 	case CredentialsCluster:
-		labelSelector = labelSelector + "," + backupCredsClusterLabel
+		labelSelector = labelSelector + backupCredsClusterLabel
 	}
+	labelSelector = strings.TrimSuffix(labelSelector, ",")
 
 	var resources []string
 	if restoreType != ResourcesGeneric {
@@ -224,16 +240,22 @@ func prepareForRestore(
 		if dr == nil {
 			continue
 		}
+
+		var listOptions = v1.ListOptions{}
+		if labelSelector != "" {
+			listOptions = v1.ListOptions{LabelSelector: labelSelector}
+		}
+
 		// get all resources of this type with the velero.io/backup-name set
 		// we want to clean them up, they were created by a previous restore
-		dynamiclist, err := dr.List(ctx, v1.ListOptions{LabelSelector: labelSelector})
+		dynamiclist, err := dr.List(ctx, listOptions)
 		if err != nil {
 			// ignore error
 			continue
 		}
 		// get all items and delete them
 		for i := range dynamiclist.Items {
-			deleteDynamicResource(ctx, mapping, dr, dynamiclist.Items[i], deleteOptions)
+			deleteDynamicResource(ctx, mapping, dr, dynamiclist.Items[i], deleteOptions, veleroBackup.Spec.ExcludedNamespaces)
 		}
 
 	}
