@@ -260,7 +260,14 @@ func prepareRestoreForBackup(
 		}
 		// get all items and delete them
 		for i := range dynamiclist.Items {
-			deleteDynamicResource(ctx, mapping, dr, dynamiclist.Items[i], deleteOptions, veleroBackup.Spec.ExcludedNamespaces)
+			deleteDynamicResource(
+				ctx,
+				mapping,
+				dr,
+				dynamiclist.Items[i],
+				deleteOptions,
+				veleroBackup.Spec.ExcludedNamespaces,
+			)
 		}
 
 	}

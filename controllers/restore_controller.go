@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -48,9 +49,10 @@ var (
 )
 
 const (
-	restoreOwnerKey        = ".metadata.controller"
-	skipRestoreStr  string = "skip"
-	latestBackupStr string = "latest"
+	restoreOwnerKey            = ".metadata.controller"
+	skipRestoreStr      string = "skip"
+	latestBackupStr     string = "latest"
+	restoreSyncInterval        = time.Minute * 30
 )
 
 type DynamicStruct struct {
@@ -537,7 +539,9 @@ func (r *RestoreReconciler) retrieveRestoreDetails(
 				"Backup name not found for resource type: %s",
 				key,
 			)
-			return veleroRestoresToCreate, backupsForVeleroRestores, fmt.Errorf("backup name not found")
+			return veleroRestoresToCreate, backupsForVeleroRestores, fmt.Errorf(
+				"backup name not found",
+			)
 		}
 
 		if backupName == skipRestoreStr {
@@ -545,7 +549,12 @@ func (r *RestoreReconciler) retrieveRestoreDetails(
 		}
 
 		veleroRestore := &veleroapi.Restore{}
-		veleroBackupName, veleroBackup, err := r.getVeleroBackupName(ctx, acmRestore, key, backupName)
+		veleroBackupName, veleroBackup, err := r.getVeleroBackupName(
+			ctx,
+			acmRestore,
+			key,
+			backupName,
+		)
 		if err != nil {
 			restoreLogger.Info(
 				"backup name not found, skipping restore for",
@@ -605,8 +614,14 @@ func (r *RestoreReconciler) prepareForRestore(
 		}
 
 		for key := range veleroRestoresToCreate {
-			prepareRestoreForBackup(ctx, reconcileArgs,
-				acmRestore.Spec.CleanupBeforeRestore, key, backupsForVeleroRestores[key], deleteOptions)
+			prepareRestoreForBackup(
+				ctx,
+				reconcileArgs,
+				acmRestore.Spec.CleanupBeforeRestore,
+				key,
+				backupsForVeleroRestores[key],
+				deleteOptions,
+			)
 		}
 	}
 }

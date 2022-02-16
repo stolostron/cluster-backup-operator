@@ -80,6 +80,10 @@ type RestoreSpec struct {
 	//
 	// if not defined, the value is assumed to be CleanupTypeNone - no clean up called
 	CleanupBeforeRestore CleanupType `json:"cleanupBeforeRestore,omitempty"`
+	// +kubebuilder:validation:Optional
+	// set this to true if you want to keep checking for new backups and restore if updates are available.
+	// If not defined, the value is set to false
+	SyncRestoreWithNewBackups bool `json:"SyncRestoreWithNewBackups,omitempty"`
 }
 
 // RestoreStatus defines the observed state of Restore
