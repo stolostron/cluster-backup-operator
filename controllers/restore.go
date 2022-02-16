@@ -113,8 +113,22 @@ func deleteDynamicResource(
 	dr dynamic.NamespaceableResourceInterface,
 	resource unstructured.Unstructured,
 	deleteOptions v1.DeleteOptions,
+	excludedNamespaces []string,
 ) {
 	logger := log.FromContext(ctx)
+
+	nsSkipMsg := fmt.Sprintf(
+		"Skipping resource %s [%s.%s]",
+		resource.GetKind(),
+		resource.GetName(),
+		resource.GetNamespace())
+
+	if mapping.Scope.Name() == meta.RESTScopeNameNamespace &&
+		findValue(excludedNamespaces, resource.GetNamespace()) {
+		logger.Info(nsSkipMsg)
+		return
+	}
+
 	nsScopedMsg := fmt.Sprintf(
 		"Deleted resource %s [%s.%s]",
 		resource.GetKind(),
@@ -240,7 +254,7 @@ func prepareForRestore(
 		}
 		// get all items and delete them
 		for i := range dynamiclist.Items {
-			deleteDynamicResource(ctx, mapping, dr, dynamiclist.Items[i], deleteOptions)
+			deleteDynamicResource(ctx, mapping, dr, dynamiclist.Items[i], deleteOptions, veleroBackup.Spec.ExcludedNamespaces)
 		}
 
 	}
