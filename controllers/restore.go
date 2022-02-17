@@ -29,9 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -176,15 +174,13 @@ func deleteDynamicResource(
 	}
 }
 
-func prepareForRestore(
+// clean up resources for the restored backup resources
+func prepareRestoreForBackup(
 	ctx context.Context,
-	c client.Client,
-	dc discovery.DiscoveryInterface,
-	dyn dynamic.Interface,
+	args DynamicStruct,
 	cleanupType v1beta1.CleanupType,
 	restoreType ResourceType,
 	veleroBackup *veleroapi.Backup,
-	mapper *restmapper.DeferredDiscoveryRESTMapper,
 	deleteOptions v1.DeleteOptions,
 ) {
 	logger := log.FromContext(ctx)
@@ -214,7 +210,7 @@ func prepareForRestore(
 		resources = veleroBackup.Spec.IncludedResources
 	} else {
 		// for generic resources get all CRDs and exclude the ones in the veleroBackup.Spec.ExcludedResources
-		resources, _ = getGenericCRDFromAPIGroups(ctx, dc, veleroBackup)
+		resources, _ = getGenericCRDFromAPIGroups(ctx, args.dc, veleroBackup)
 	}
 
 	for i := range resources {
@@ -230,13 +226,13 @@ func prepareForRestore(
 			Group: groupName,
 			Kind:  kind,
 		}
-		mapping, err := mapper.RESTMapping(groupKind, "")
+		mapping, err := args.mapper.RESTMapping(groupKind, "")
 		if err != nil {
 			logger.Info(fmt.Sprintf("Failed to get dynamic mapper for group=%s, error : %s",
 				groupKind, err.Error()))
 			continue
 		}
-		var dr = dyn.Resource(mapping.Resource)
+		var dr = args.dyn.Resource(mapping.Resource)
 		if dr == nil {
 			continue
 		}
