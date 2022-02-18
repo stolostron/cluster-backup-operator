@@ -608,13 +608,5 @@ func (r *RestoreReconciler) prepareForRestore(
 			prepareRestoreForBackup(ctx, reconcileArgs,
 				acmRestore.Spec.CleanupBeforeRestore, key, backupsForVeleroRestores[key], deleteOptions)
 		}
-		if backupsForVeleroRestores[ManagedClusters] == nil &&
-			backupsForVeleroRestores[Resources] != nil {
-			// when cleaning up resources also clean up managed clusters resources
-			if _, veleroBackup, err := r.getVeleroBackupName(ctx, &acmRestore, Resources, latestBackupStr); err != nil {
-				prepareRestoreForBackup(ctx, reconcileArgs,
-					acmRestore.Spec.CleanupBeforeRestore, Resources, veleroBackup, deleteOptions)
-			}
-		}
 	}
 }

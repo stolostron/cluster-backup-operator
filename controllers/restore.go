@@ -184,6 +184,12 @@ func prepareRestoreForBackup(
 	deleteOptions v1.DeleteOptions,
 ) {
 	logger := log.FromContext(ctx)
+
+	if restoreType == ManagedClusters {
+		logger.Info("skipping cleanup of managed clusters activation data")
+		return
+	}
+
 	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
 
 	labelSelector := ""
