@@ -114,6 +114,7 @@ func deleteDynamicResource(
 	excludedNamespaces []string,
 ) {
 	logger := log.FromContext(ctx)
+	localCluster := "local-cluster"
 
 	nsSkipMsg := fmt.Sprintf(
 		"Skipping resource %s [%s.%s]",
@@ -121,8 +122,10 @@ func deleteDynamicResource(
 		resource.GetName(),
 		resource.GetNamespace())
 
-	if mapping.Scope.Name() == meta.RESTScopeNameNamespace &&
-		findValue(excludedNamespaces, resource.GetNamespace()) {
+	if resource.GetName() == localCluster ||
+		(mapping.Scope.Name() == meta.RESTScopeNameNamespace &&
+			(resource.GetNamespace() == localCluster ||
+				findValue(excludedNamespaces, resource.GetNamespace()))) {
 		logger.Info(nsSkipMsg)
 		return
 	}
