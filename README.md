@@ -41,13 +41,13 @@ This project is licensed under the *Apache License 2.0*. A copy of the license c
 
 
 ## Getting Started
-The Cluster Back up and Restore Operator provides disaster recovery solutions for the case when the ACM hub goes down and need to be recreated. Scenarios outside the scope of this component : disaster recovery scenarios for applications running on managed clusters or scenarios where the managed clusters go down. 
+The Cluster Back up and Restore Operator provides disaster recovery solutions for the case when the Red Hat Advanced Cluster Management for Kubernetes hub goes down and needs to be recreated. Scenarios outside the scope of this component : disaster recovery scenarios for applications running on managed clusters or scenarios where the managed clusters go down. 
 
-The Cluster Back up and Restore Operator runs on the hub and depends on the [OADP Operator](https://github.com/openshift/oadp-operator) to create a connection to a backup storage location on the ACM hub, which is then used to backup and restore ACM hub resources. 
+The Cluster Back up and Restore Operator runs on the Red Hat Advanced Cluster Management for Kubernetes hub and depends on the [OADP Operator](https://github.com/openshift/oadp-operator) to create a connection to a backup storage location on the hub, which is then used to backup and restore user created hub resources. 
 
-The Cluster Back up and Restore Operator chart is installed automatically by the MultiClusterHub resource, when installing or upgrading to version 2.5 of the Advanced Cluster Management operator. The OADP Operator is also installed automatically by a hook defined on the Cluster Back up and Restore Operator chart.
+The Cluster Back up and Restore Operator chart is installed automatically by the MultiClusterHub resource, when installing or upgrading to version 2.5 of the Red Hat Advanced Cluster Management operator. The OADP Operator will be installed automatically with the Cluster Back up and Restore Operator chart, as a chart hook.
 
-Before you can use the cluster backup operator, the [OADP Operator](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md) must be configured to set the connection to the storage location where backups will be saved. Make sure you follow the steps to create the [secret for the cloud storage](https://github.com/openshift/oadp-operator#creating-credentials-secret) where the backups are going to be saved, then use that secret when creating the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) to setup the connection to the storage location.
+Before you can use the Cluster Back up and Restore operator, the [OADP Operator](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md) must be configured to set the connection to the storage location where backups will be saved. Make sure you follow the steps to create the [secret for the cloud storage](https://github.com/openshift/oadp-operator#creating-credentials-secret) where the backups are going to be saved, then use that secret when creating the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) to setup the connection to the storage location.
 
 <b>Note</b>: The Cluster Back up and Restore Operator chart installs the [backup-restore-enabled](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. The Policy templates check if the required pods are running, storage location is available, backups are available at the defined location and no erros status is reported by the main resources. This Policy is intended to help notify the Hub admin of any backup issues as the hub is active and expected to produce backups.
 
@@ -55,25 +55,26 @@ Before you can use the cluster backup operator, the [OADP Operator](https://gith
 
 ## Design
 
-The operator defines the `BackupSchedule.cluster.open-cluster-management.io` resource, used to setup acm backup schedules, and `Restore.cluster.open-cluster-management.io` resource, used to process and restore these backups.
-The operator creates corresponding Velero or DataProtectionApplication resources depending what version of the operator is used and sets the options needed to backup remote clusters and any other hub resources that needs to be restored.
+The operator defines the `BackupSchedule.cluster.open-cluster-management.io` resource, used to setup Red Hat Advanced Cluster Management for Kubernetes backup schedules, and `Restore.cluster.open-cluster-management.io` resource, used to process and restore these backups.
+The operator sets the options needed to backup remote clusters identity and any other hub resources that needs to be restored.
 
 ![Cluster Backup Controller Dataflow](images/cluster-backup-controller-dataflow.png)
 
 
 ## What is backed up
 
-The Cluster Back up and Restore Operator solution provides backup and restore support for all ACM hub resources: managed clusters, applications, policies, bare metal assets.
-It  provides support for backing up any third party resources extending the basic ACM installation. 
-With this backup solution, you can define a cron based backup schedule that runs at specified time intervals and continuously backup the latest version of the Hub content.
+The Cluster Back up and Restore Operator solution provides backup and restore support for all Red Hat Advanced Cluster Management for Kubernetes hub resources like managed clusters, applications, policies, bare metal assets.
+It  provides support for backing up any third party resources extending the basic hub installation. 
+With this backup solution, you can define a cron based backup schedule which runs at specified time intervals and continuously backs up the latest version of the hub content.
+When the hub needs to be replaced or in a disaster scenario when the hub goes down, a new hub can be deployed and backed up data moved to the new hub, so that the new hub replaces the old one.
 
 The steps below show how the Cluster Back up and Restore Operator finds the resources to be backed up.
-With this approach the backup up includes all CRDs installed on the ACM Hub, including any extensions to the ACM solution using third parties components.
-1. Exclude all resources in the MultiClusterHub namespace. This is to avoid backing up installation resources which are linked to the current Hub configuration that should not be backed up.
-2. Backup all CRDs with an api version suffixed by `.open-cluster-management.io`. This will cover all ACM resources.
+With this approach the backup includes all CRDs installed on the hub, including any extensions using third parties components.
+1. Exclude all resources in the MultiClusterHub namespace. This is to avoid backing up installation resources which are linked to the current Hub identity and should not be backed up.
+2. Backup all CRDs with an api version suffixed by `.open-cluster-management.io`. This will cover all Advanced Cluster Management resources.
 3. Additionally, backup all CRDs from these api groups: `argoproj.io`,`app.k8s.io`,`core.observatorium.io`,`hive.openshift.io`
 4. Exclude ACM CRDs from the following api groups: `clustermanagementaddon`, `observabilityaddon`, `applicationmanager`,`certpolicycontroller`,`iampolicycontroller`,`policycontroller`,`searchcollector`,`workmanager`,`backupschedule`,`restore`,`clusterclaim.cluster.open-cluster-management.io`
-5. Backup secrets and configmaps with one of the following label annotations. Any secret or configmap setting at least one of these labels is being backed up :
+5. Backup secrets and configmaps with one of the following label annotations:
 `cluster.open-cluster-management.io/type`, `hive.openshift.io/secret-type`, `cluster.open-cluster-management.io/backup`
 6. Use this label annotation for any other resources that should be backed up and are not included in the above criteria: `cluster.open-cluster-management.io/backup`
 7. Resources picked up by the above rules that should not be backed up, can be explicitly excluded when setting this label annotation: `velero.io/exclude-from-backup=true` 
@@ -86,35 +87,35 @@ A backup schedule is activated when creating the `backupschedule.cluster.open-cl
 
 After you create a `backupschedule.cluster.open-cluster-management.io` resource you should be able to run `oc get bsch -n <oadp-operator-ns>` and get the status of the scheduled cluster backups. The `<oadp-operator-ns>` is the namespace where BackupSchedule was created and it should be the same namespace where the OADP Operator was installed.
 
-The `backupschedule.cluster.open-cluster-management.io` created 6 `schedule.velero.io` resources, used to generate the backups.
+The `backupschedule.cluster.open-cluster-management.io` creates 6 `schedule.velero.io` resources, used to generate the backups.
 
 Run `os get schedules -A | grep acm` to view the list of backup scheduled.
 
 Resources are backed up in 3 separate groups:
-1. credentials backup ( 3 backup files, for hive, acm and generic backups )
+1. credentials backup ( 3 backup files, for hive, ACM and generic backups )
 2. resources backup ( 2 backup files, one for the ACM resources and second for generic resources, labeled with `cluster.open-cluster-management.io/backup`)
 
-3. managed clusters backup ( one backup containing only resources which result in activating the managed cluster connection to the hub where the backup was restored on)
+3. managed clusters backup, labeled with `cluster.open-cluster-management.io/backup-schedule-type: acm-managed-clusters` ( one backup containing only resources which result in activating the managed cluster connection to the hub where the backup was restored on)
 
 
 <b>Note</b>:
 
-a. The resources backup in step 2 above contains managed cluster specific resources but does not contain the subset of resources which will make the manage cluster connect to this hub. These resources, also called managed clusters activation resources, are stored by the managed clusters backup. When you restore just the resources backup on a hub, the Hub sees all managed clusters but they are in a detached state. The managed clusters are still connected to the initial hub.
+a. The resources backed up in step 2 above contains managed cluster specific resources but does not contain the subset of resources which will make the manage cluster connect to this hub. These resources, also called managed clusters activation resources, are stored by the managed clusters backup, created in step 3. When you restore just the resources from step 1 and 2 above on a new hub, the new hub sees all managed clusters but they are in a detached state. The managed clusters are still connected to the hub which had produced the backup file.
 
-b. Only managed clusters created using the hive api will be automatically connected with the Hub when the `acm-managed-clusters` backup is restored on another hub. All other managed clusters will show up as `Pending Import` and must be imported back on the new hub.
+b. Only managed clusters created using the hive api will be automatically connected with the new hub when the `acm-managed-clusters` backup is restored on another hub. All other managed clusters will show up as `Pending Import` and must be imported back on the new hub.
 
-c. When restoring a backup on a new hub, make sure the old hub from where the backup was created is shut down, otherwise the old hub will try to reimport the managed clusters as soon as the managed cluster reconciliation finds the managed clusters are no longer available.
+c. When restoring a backup on a new hub, make sure the old hub from where the backup was created is shut down, otherwise the old hub will try to reimport the managed clusters as soon as the managed cluster reconciliation finds the managed clusters are no longer available, so both hubs will try to manage the clusters.
 
 ### Backup Collisions
 
-As hubs change from passive to primary clusters and back, different clusters backup up data at the same storage location. This could result in backup collisions, where latest backup is generated by a hub who is no longer the designated primary hub but produces backups because the `BackupSchedule.cluster.open-cluster-management.io` resource is Enabled on this hub.
+As hubs change from passive to primary clusters and back, different clusters can backup up data at the same storage location. This could result in backup collisions, which means the latest backups are generated by a hub who is no longer the designated primary hub. That hub produces backups because the `BackupSchedule.cluster.open-cluster-management.io` resource is still Enabled on this hub.
 Situations when a backup collision could happen:
-1. Primary hub, Hub1, goes down unexpenctedly and the admin designates another hub, Hub2, as the active hub. The admin enables on Hub2 the `BackupSchedule.cluster.open-cluster-management.io` resource which stores the hub's backups at the same storage location. Hub1 comes back to live unexpectedly and since the `BackupSchedule.cluster.open-cluster-management.io` resource is still enabled on Hub1, it will resume writting backups to the same location. Any cluster restoring the latest backups from this location will pick up Hub1 data instead of Hub2.
-2. The admin tests the backup scenario and stops Hub1, then makes Hub2 the primary hub: restores the latest data then enables the `BackupSchedule.cluster.open-cluster-management.io` resource on Hub2 to write backup data. After a while, once the validation is complete, the admin wants to make Hub1 the primary hub again. The admin starts Hub1 but Hub2 still has the `BackupSchedule.cluster.open-cluster-management.io` resource active and running. Until Hub2 `BackupSchedule.cluster.open-cluster-management.io` resource is deleted, Hub2 backup job could write backups at any time at the same storage location, corrupting the backup data. Any cluster restoring the latest backups from this location will pick up Hub1 data instead of Hub2.
+1. Primary hub, Hub1, goes down and the admin designates another hub, Hub2, as the active hub, by restoring all backups from Hub1 on Hub2. The admin enables next on Hub2 the `BackupSchedule.cluster.open-cluster-management.io` resource which stores the hub's backups at the same storage location. HUb2 is now the primary hub, manages the clusters and writes backup data to  the storage location. Now Hub1 comes back to live unexpectedly and since the `BackupSchedule.cluster.open-cluster-management.io` resource is still enabled on Hub1, it will resume writting backups to the same storage location Hub2. Any cluster restoring the latest backups from this location will pick up Hub1 data instead of Hub2.
+2. The admin tests the backup scenario by stopping Hub1 and making Hub2 the primary hub: the admin restores the Hub1 backup data then enables the `BackupSchedule.cluster.open-cluster-management.io` resource on Hub2 so that Hub2 writes backup data to the common storage location. After the disaster test is completed, the admin wants to revert and make Hub1 the primary hub again. The admin starts Hub1 but Hub2 still has the `BackupSchedule.cluster.open-cluster-management.io` resource active and running. Until Hub2 `BackupSchedule.cluster.open-cluster-management.io` resource is deleted, Hub2 backup job could write backups at any time at the same storage location, corrupting the backup data. Any cluster restoring the latest backups from this location will pick up Hubs data instead of Hub1.
 
-In order to avoid this type of backup collisions, a BackupCollision state exists for a  `BackupSchedule.cluster.open-cluster-management.io` resource. The controller check regularly if the latest backup in the storage location has been generated from the current cluster. If not, it means that another cluster has more recently written backup data to the storage location so this hub is in collision with another hub.
+In order to avoid this type of backup collisions, a BackupCollision state exists for a  `BackupSchedule.cluster.open-cluster-management.io` resource. The controller checks regularly if the latest backup in the storage location has been generated from the current cluster. If not, it means that another cluster has more recently written backup data to the storage location so this hub is in collision with another hub.
 
-In this case, the current hub `BackupSchedule.cluster.open-cluster-management.io` resource status is set to BackupCollision and the `Schedule.velero.io` resources created by this resource are deleted to avoid data corruption. The BackupCollision is reported by the [chart Policy](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) so the user can verify what cluster is the primary one, than remove the `BackupSchedule.cluster.open-cluster-management.io` resource from the invalid cluster and recreated a new `BackupSchedule.cluster.open-cluster-management.io` resource on the primary hub. 
+In this case, the current hub `BackupSchedule.cluster.open-cluster-management.io` resource status is set to BackupCollision and the `Schedule.velero.io` resources created by this resource are deleted to avoid data corruption. The BackupCollision is reported by the [backup Policy](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml). The admin should verify what cluster must be the one writting data to the  storage location, than remove the `BackupSchedule.cluster.open-cluster-management.io` resource from the invalid cluster and recreated a new `BackupSchedule.cluster.open-cluster-management.io` resource on the valid, primary hub. 
 
 
 ## Restoring a backup
@@ -124,11 +125,11 @@ In a usual restore scenario, the hub where the backups have been executed become
 There are also cases where you want to restore the data on the same hub where the backup was collected, in order to recover data from a previous snapshot. In this case both restore and backup operations are executed on the same hub.
 
 A restore backup is executed when creating the `restore.cluster.open-cluster-management.io` resource on the hub. A few samples are available [here](https://github.com/stolostron/cluster-backup-operator/tree/main/config/samples)
-- use the [passive sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive.yaml) if you want to restore all resources on the new hub but you don't want to have the managed clusters moved over yet. You can use this restore configuration when the initial hub is still up and you want to prevent the managed clusters to change ownership. You could use this to just view the initial hub configuration or to prepare the new hub to take over when needed; in that case just restore the managed clusters resources.
-- use the [passive activation sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive_activate.yaml) when you want to move the managed clusters to this hub. In this case it is assumed that the hub has been preped already with the other data, using the [passive sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive.yaml)
+- use the [passive sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive.yaml) if you want to restore all resources on the new hub but you don't want to have the managed clusters be managed by the new hub. You can use this restore configuration when the initial hub is still up and you want to prevent the managed clusters to change ownership. You could use this to just view the initial hub configuration or to prepare the new hub to take over when needed; in that case just restore the managed clusters resources.
+- use the [passive activation sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive_activate.yaml) when you want to this hub to manage the clusters. In this case it is assumed that the hub has been set already with the other data, using the [passive sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive.yaml)
 - use the [restore sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore.yaml) if you want to restore all data at once and make this hub take over the managed clusters as well.
 
-After you create a `restore.cluster.open-cluster-management.io` resource on the hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on your  hub that the backed up resources contained by the backup file have been created.
+After you create a `restore.cluster.open-cluster-management.io` resource on the hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on your hub that the backed up resources contained by the backup file have been created.
 
 <b>Note:</b> 
 
@@ -166,11 +167,12 @@ spec:
 The Cluster Back up and Restore Operator [chart](https://github.com/stolostron/cluster-backup-chart) installs the [backup-restore-enabled](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. 
 
 The Policy has a set of templates which check for the following constraints and informs when any of them are violated. 
-- backup and restore pod is running
+- Backup and restore operator pod is running
 - OADP operator pod is running
 - velero pod is running
 - a  `BackupStorageLocation.velero.io` resource was created and the status is `Available`
 - `Backup.velero.io` resources are available at the location sepcified by the `BackupStorageLocation.velero.io` resource and the backups were created by the this component `BackupSchedule.cluster.open-cluster-management.io` resource. This validates that the backups has been executed at least once.
+- if a `BackupSchedule.cluster.open-cluster-management.io` exists on the current cluster, the state is not `BackupCollision`.
 - if a `BackupSchedule.cluster.open-cluster-management.io` exists on the current cluster, the status is not in (Failed, or empty state). This ensures that if this cluster is the primary hub and is generating backups, the `BackupSchedule.cluster.open-cluster-management.io` status is healthy.
 - if a `Restore.cluster.open-cluster-management.io` exists on the current cluster, the status is not in (Failed, or empty state). This ensures that if this cluster is the secondary hub and is restoring backups, the `Restore.cluster.open-cluster-management.io` status is healthy.
 
