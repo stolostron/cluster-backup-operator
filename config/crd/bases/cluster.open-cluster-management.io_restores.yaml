@@ -45,11 +45,6 @@ spec:
           spec:
             description: RestoreSpec defines the desired state of Restore
             properties:
-              SyncRestoreWithNewBackups:
-                description: set this to true if you want to keep checking for new
-                  backups and restore if updates are available. If not defined, the
-                  value is set to false
-                type: boolean
               cleanupBeforeRestore:
                 description: "set this to CleanupTypeAll if you want the restore to
                   attempt to first delete all resources with a CRD in the acm backup
@@ -61,6 +56,11 @@ spec:
                   \n if not defined, the value is assumed to be CleanupTypeNone -
                   no clean up called"
                 type: string
+              syncRestoreWithNewBackups:
+                description: set this to true if you want to keep checking for new
+                  backups and restore if updates are available. If not defined, the
+                  value is set to false
+                type: boolean
               veleroCredentialsBackupName:
                 description: VeleroCredentialsBackupName is the name of the velero
                   back-up used to restore credentials. Is required, valid values are

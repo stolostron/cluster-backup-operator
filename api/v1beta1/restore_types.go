@@ -85,7 +85,7 @@ type RestoreSpec struct {
 	// +kubebuilder:validation:Optional
 	// set this to true if you want to keep checking for new backups and restore if updates are available.
 	// If not defined, the value is set to false
-	SyncRestoreWithNewBackups bool `json:"SyncRestoreWithNewBackups,omitempty"`
+	SyncRestoreWithNewBackups bool `json:"syncRestoreWithNewBackups,omitempty"`
 }
 
 // RestoreStatus defines the observed state of Restore
