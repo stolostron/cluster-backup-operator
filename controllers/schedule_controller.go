@@ -74,7 +74,7 @@ const updateStatusFailedMsg = "Could not update status"
 
 const (
 	failureInterval          = time.Second * 60
-	collisionControlInterval = time.Minute * 60 // run each hour
+	collisionControlInterval = time.Minute * 30
 	scheduleOwnerKey         = ".metadata.controller"
 )
 
