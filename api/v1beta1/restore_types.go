@@ -36,6 +36,8 @@ const (
 	RestorePhaseError = "Error"
 	// RestorePhaseUnknown means the restore is in unknown phase
 	RestorePhaseUnknown = "Unknown"
+	// RestorePhaseEnabled means the restore is enabled and will continue syncing with new backups
+	RestorePhaseEnabled = "Enabled"
 )
 
 type CleanupType string

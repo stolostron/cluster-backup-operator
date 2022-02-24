@@ -24,6 +24,7 @@ import (
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -299,4 +300,108 @@ func (r *RestoreReconciler) becomeActiveCluster(ctx context.Context,
 		logger.Error(err, "Failed to create schedule")
 	}
 
+}
+
+func (r *RestoreReconciler) isNewBackupAvailable(
+	ctx context.Context,
+	restore v1beta1.Restore,
+	resourceType ResourceType) bool {
+	logger := log.FromContext(ctx)
+
+	// get the latest Velero backup for this resourceType
+	// this backup might be newer than the backup which
+	// was used in the latest Velero restore for this resourceType
+	newVeleroBackupName, newVeleroBackup, err := r.getVeleroBackupName(
+		ctx,
+		&restore,
+		resourceType,
+		latestBackupStr,
+	)
+	if err != nil {
+		logger.Error(
+			err,
+			"Failed to get new Velero backup for resource type "+string(resourceType),
+		)
+		return false
+	}
+
+	// find the latest velero restore for this resourceType
+	latestVeleroRestoreName := ""
+	switch resourceType {
+	case ManagedClusters:
+		latestVeleroRestoreName = restore.Status.VeleroManagedClustersRestoreName
+	case Credentials, CredentialsHive, CredentialsCluster:
+		latestVeleroRestoreName = restore.Status.VeleroCredentialsRestoreName
+	case Resources, ResourcesGeneric:
+		latestVeleroRestoreName = restore.Status.VeleroResourcesRestoreName
+	}
+	if latestVeleroRestoreName == "" {
+		logger.Info(
+			fmt.Sprintf(
+				"Failed to find the latest Velero restore name for resource type=%s, restore=%s",
+				string(resourceType),
+				restore.Name,
+			),
+		)
+		return false
+	}
+
+	backupTimestamp := strings.LastIndex(latestVeleroRestoreName, "-")
+	if backupTimestamp != -1 {
+		if strings.HasSuffix(newVeleroBackupName, latestVeleroRestoreName[backupTimestamp:]) {
+			return false
+		}
+	}
+
+	latestVeleroRestore := veleroapi.Restore{}
+	err = r.Get(
+		ctx,
+		types.NamespacedName{
+			Name:      latestVeleroRestoreName,
+			Namespace: restore.Namespace,
+		},
+		&latestVeleroRestore,
+	)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return true
+		}
+		logger.Error(
+			err,
+			"Failed to get Velero restore "+latestVeleroRestoreName,
+		)
+		return false
+	}
+
+	// compare the backup name and timestamp of newVeleroBackupName
+	// with the backup used in the latestVeleroRestore
+	if latestVeleroRestore.Spec.BackupName != newVeleroBackupName {
+		latestVeleroBackup := veleroapi.Backup{}
+		err := r.Get(
+			ctx,
+			types.NamespacedName{
+				Name:      latestVeleroRestore.Spec.BackupName,
+				Namespace: restore.Namespace,
+			},
+			&latestVeleroBackup,
+		)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return true
+			}
+			logger.Error(
+				err,
+				"Failed to get Velero backup "+latestVeleroRestore.Spec.BackupName,
+			)
+			return false
+		}
+		if newVeleroBackup.Status.Errors > latestVeleroBackup.Status.Errors {
+			return false
+		}
+		return latestVeleroBackup.Status.StartTimestamp.Before(
+			newVeleroBackup.Status.StartTimestamp,
+		)
+	}
+
+	return false
 }
