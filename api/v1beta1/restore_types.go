@@ -36,6 +36,8 @@ const (
 	RestorePhaseError = "Error"
 	// RestorePhaseUnknown means the restore is in unknown phase
 	RestorePhaseUnknown = "Unknown"
+	// RestorePhaseEnabled means the restore is enabled and will continue syncing with new backups
+	RestorePhaseEnabled = "Enabled"
 )
 
 type CleanupType string
@@ -80,6 +82,12 @@ type RestoreSpec struct {
 	//
 	// if not defined, the value is assumed to be CleanupTypeNone - no clean up called
 	CleanupBeforeRestore CleanupType `json:"cleanupBeforeRestore,omitempty"`
+	// +kubebuilder:validation:Optional
+	// Set this to true if you want to keep checking for new backups and restore if updates are available.
+	// If not defined, the value is set to false.
+	// For this option to work, you need to set VeleroResourcesBackupName and VeleroCredentialsBackupName
+	// to latest and VeleroManagedClustersBackupName to skip
+	SyncRestoreWithNewBackups bool `json:"syncRestoreWithNewBackups,omitempty"`
 }
 
 // RestoreStatus defines the observed state of Restore

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -48,9 +49,10 @@ var (
 )
 
 const (
-	restoreOwnerKey        = ".metadata.controller"
-	skipRestoreStr  string = "skip"
-	latestBackupStr string = "latest"
+	restoreOwnerKey            = ".metadata.controller"
+	skipRestoreStr      string = "skip"
+	latestBackupStr     string = "latest"
+	restoreSyncInterval        = time.Minute * 30
 )
 
 type DynamicStruct struct {
@@ -177,8 +179,10 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	if len(veleroRestoreList.Items) == 0 {
-		if err := r.initVeleroRestores(ctx, restore); err != nil {
+	sync := isValidSyncOptions(restore) && restore.Status.Phase == v1beta1.RestorePhaseEnabled
+
+	if len(veleroRestoreList.Items) == 0 || sync {
+		if err := r.initVeleroRestores(ctx, restore, sync); err != nil {
 			msg := fmt.Sprintf(
 				"unable to initialize Velero restores for restore %s/%s: %v",
 				req.Namespace,
@@ -209,6 +213,19 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	err = r.Client.Status().Update(ctx, restore)
+
+	if restore.Spec.SyncRestoreWithNewBackups &&
+		restore.Status.Phase == v1beta1.RestorePhaseEnabled {
+		return ctrl.Result{RequeueAfter: restoreSyncInterval}, errors.Wrap(
+			err,
+			fmt.Sprintf(
+				"could not update status for restore %s/%s",
+				restore.Namespace,
+				restore.Name,
+			),
+		)
+	}
+
 	return ctrl.Result{}, errors.Wrap(
 		err,
 		fmt.Sprintf("could not update status for restore %s/%s", restore.Namespace, restore.Name),
@@ -220,6 +237,10 @@ func setRestorePhase(
 	veleroRestoreList *veleroapi.RestoreList,
 	restore *v1beta1.Restore,
 ) {
+
+	if restore.Status.Phase == v1beta1.RestorePhaseEnabled {
+		return
+	}
 
 	if veleroRestoreList == nil || len(veleroRestoreList.Items) == 0 {
 		if isSkipAllRestores(restore) {
@@ -233,6 +254,7 @@ func setRestorePhase(
 	}
 
 	// get all velero restores and check status for each
+	partiallyFailed := false
 	for i := range veleroRestoreList.Items {
 		veleroRestore := veleroRestoreList.Items[i].DeepCopy()
 
@@ -270,18 +292,24 @@ func setRestorePhase(
 			return
 		}
 		if veleroRestore.Status.Phase == veleroapi.RestorePhasePartiallyFailed {
-			restore.Status.Phase = v1beta1.RestorePhaseFinishedWithErrors
-			restore.Status.LastMessage = fmt.Sprintf(
-				"Velero restore %s has run to completion but encountered 1+ errors",
-				veleroRestore.Name,
-			)
-			return
+			partiallyFailed = true
+			continue
 		}
 	}
 
-	// if no velero restore with error, new or inprogress status, they are all completed
-	restore.Status.Phase = v1beta1.RestorePhaseFinished
-	restore.Status.LastMessage = "All Velero restores have run successfully"
+	// sync is enabled only when the backup name for managed clusters is set to skip
+	if isValidSyncOptions(restore) &&
+		*restore.Spec.VeleroManagedClustersBackupName == skipRestoreStr {
+		restore.Status.Phase = v1beta1.RestorePhaseEnabled
+		restore.Status.LastMessage = "Velero restores have run to completion, " +
+			"restore will continue to sync with new backups"
+	} else if partiallyFailed {
+		restore.Status.Phase = v1beta1.RestorePhaseFinishedWithErrors
+		restore.Status.LastMessage = "Velero restores have run to completion but encountered 1+ errors"
+	} else {
+		restore.Status.Phase = v1beta1.RestorePhaseFinished
+		restore.Status.LastMessage = "All Velero restores have run successfully"
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -425,16 +453,27 @@ func (r *RestoreReconciler) isOtherRestoresRunning(
 func (r *RestoreReconciler) initVeleroRestores(
 	ctx context.Context,
 	restore *v1beta1.Restore,
+	sync bool,
 ) error {
 	restoreLogger := log.FromContext(ctx)
-	restore.Status.Phase = v1beta1.RestorePhaseStarted
-	restore.Status.LastMessage = "Restore in progress"
-	if err := r.Client.Status().Update(ctx, restore); err != nil {
-		restoreLogger.Error(err, "Failed to update status")
+
+	if sync {
+		if r.isNewBackupAvailable(ctx, *restore, Resources) {
+			restoreLogger.Info(
+				"new backups available to sync with for this restore",
+				"name", restore.Name,
+				"namespace", restore.Namespace,
+			)
+		} else {
+			return nil
+		}
 	}
 
 	// loop through resourceTypes to create a Velero restore per type
-	veleroRestoresToCreate, backupsForVeleroRestores, err := r.retrieveRestoreDetails(ctx, restore)
+	veleroRestoresToCreate, backupsForVeleroRestores, err := r.retrieveRestoreDetails(
+		ctx,
+		restore,
+	)
 	if len(veleroRestoresToCreate) == 0 {
 		restore.Status.Phase = v1beta1.RestorePhaseFinished
 		restore.Status.LastMessage = fmt.Sprintf("Nothing to do for restore %s", restore.Name)
@@ -537,7 +576,9 @@ func (r *RestoreReconciler) retrieveRestoreDetails(
 				"Backup name not found for resource type: %s",
 				key,
 			)
-			return veleroRestoresToCreate, backupsForVeleroRestores, fmt.Errorf("backup name not found")
+			return veleroRestoresToCreate, backupsForVeleroRestores, fmt.Errorf(
+				"backup name not found",
+			)
 		}
 
 		if backupName == skipRestoreStr {
@@ -545,7 +586,12 @@ func (r *RestoreReconciler) retrieveRestoreDetails(
 		}
 
 		veleroRestore := &veleroapi.Restore{}
-		veleroBackupName, veleroBackup, err := r.getVeleroBackupName(ctx, acmRestore, key, backupName)
+		veleroBackupName, veleroBackup, err := r.getVeleroBackupName(
+			ctx,
+			acmRestore,
+			key,
+			backupName,
+		)
 		if err != nil {
 			restoreLogger.Info(
 				"backup name not found, skipping restore for",
@@ -605,8 +651,14 @@ func (r *RestoreReconciler) prepareForRestore(
 		}
 
 		for key := range veleroRestoresToCreate {
-			prepareRestoreForBackup(ctx, reconcileArgs,
-				acmRestore.Spec.CleanupBeforeRestore, key, backupsForVeleroRestores[key], deleteOptions)
+			prepareRestoreForBackup(
+				ctx,
+				reconcileArgs,
+				acmRestore.Spec.CleanupBeforeRestore,
+				key,
+				backupsForVeleroRestores[key],
+				deleteOptions,
+			)
 		}
 	}
 }
