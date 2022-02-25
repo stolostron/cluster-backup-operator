@@ -59,6 +59,47 @@ func isVeleroRestoreRunning(restore *veleroapi.Restore) bool {
 	return false
 }
 
+func isValidSyncOptions(restore *v1beta1.Restore) bool {
+
+	sync := restore.Spec.SyncRestoreWithNewBackups &&
+		restore.Status.Phase == v1beta1.RestorePhaseEnabled
+
+	if !sync {
+		return false
+	}
+
+	if restore.Spec.VeleroManagedClustersBackupName == nil ||
+		restore.Spec.VeleroCredentialsBackupName == nil ||
+		restore.Spec.VeleroResourcesBackupName == nil {
+		return false
+	}
+
+	backupName := ""
+
+	backupName = *restore.Spec.VeleroManagedClustersBackupName
+	backupName = strings.ToLower(strings.TrimSpace(backupName))
+
+	if backupName != skipRestoreStr && backupName != latestBackupStr {
+		return false
+	}
+
+	backupName = *restore.Spec.VeleroCredentialsBackupName
+	backupName = strings.ToLower(strings.TrimSpace(backupName))
+
+	if backupName != latestBackupStr {
+		return false
+	}
+
+	backupName = *restore.Spec.VeleroResourcesBackupName
+	backupName = strings.ToLower(strings.TrimSpace(backupName))
+
+	if backupName != latestBackupStr {
+		return false
+	}
+
+	return true
+}
+
 func isSkipAllRestores(restore *v1beta1.Restore) bool {
 
 	backupName := ""
@@ -328,11 +369,7 @@ func (r *RestoreReconciler) isNewBackupAvailable(
 	// find the latest velero restore for this resourceType
 	latestVeleroRestoreName := ""
 	switch resourceType {
-	case ManagedClusters:
-		latestVeleroRestoreName = restore.Status.VeleroManagedClustersRestoreName
-	case Credentials, CredentialsHive, CredentialsCluster:
-		latestVeleroRestoreName = restore.Status.VeleroCredentialsRestoreName
-	case Resources, ResourcesGeneric:
+	case Resources:
 		latestVeleroRestoreName = restore.Status.VeleroResourcesRestoreName
 	}
 	if latestVeleroRestoreName == "" {
@@ -346,11 +383,9 @@ func (r *RestoreReconciler) isNewBackupAvailable(
 		return false
 	}
 
-	backupTimestamp := strings.LastIndex(latestVeleroRestoreName, "-")
-	if backupTimestamp != -1 {
-		if strings.HasSuffix(newVeleroBackupName, latestVeleroRestoreName[backupTimestamp:]) {
-			return false
-		}
+	newVeleroRestoreName := getValidKsRestoreName(restore.Name, newVeleroBackupName)
+	if latestVeleroRestoreName == newVeleroRestoreName {
+		return false
 	}
 
 	latestVeleroRestore := veleroapi.Restore{}
@@ -393,9 +428,6 @@ func (r *RestoreReconciler) isNewBackupAvailable(
 				err,
 				"Failed to get Velero backup "+latestVeleroRestore.Spec.BackupName,
 			)
-			return false
-		}
-		if newVeleroBackup.Status.Errors > latestVeleroBackup.Status.Errors {
 			return false
 		}
 		return latestVeleroBackup.Status.StartTimestamp.Before(

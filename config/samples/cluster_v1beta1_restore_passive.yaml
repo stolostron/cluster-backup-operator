@@ -16,6 +16,7 @@ metadata:
   name: restore-acm-passive
 spec:
   cleanupBeforeRestore: CleanupAll
+  syncRestoreWithNewBackups: false
   veleroManagedClustersBackupName: skip
   veleroCredentialsBackupName: latest
   veleroResourcesBackupName: latest

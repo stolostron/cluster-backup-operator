@@ -57,9 +57,11 @@ spec:
                   no clean up called"
                 type: string
               syncRestoreWithNewBackups:
-                description: set this to true if you want to keep checking for new
+                description: Set this to true if you want to keep checking for new
                   backups and restore if updates are available. If not defined, the
-                  value is set to false
+                  value is set to false. For this option to work, you need to set
+                  VeleroResourcesBackupName and VeleroCredentialsBackupName to latest
+                  and VeleroManagedClustersBackupName to skip
                 type: boolean
               veleroCredentialsBackupName:
                 description: VeleroCredentialsBackupName is the name of the velero

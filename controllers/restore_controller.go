@@ -179,11 +179,10 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	sync := restore.Spec.SyncRestoreWithNewBackups &&
-		restore.Status.Phase == v1beta1.RestorePhaseEnabled
+	validSync := isValidSyncOptions(restore)
 
-	if len(veleroRestoreList.Items) == 0 || sync {
-		if err := r.initVeleroRestores(ctx, restore, sync); err != nil {
+	if len(veleroRestoreList.Items) == 0 || validSync {
+		if err := r.initVeleroRestores(ctx, restore, validSync); err != nil {
 			msg := fmt.Sprintf(
 				"unable to initialize Velero restores for restore %s/%s: %v",
 				req.Namespace,
@@ -299,7 +298,14 @@ func setRestorePhase(
 	}
 
 	// if no velero restore with error, new or inprogress status, they are all completed
-	if restore.Spec.SyncRestoreWithNewBackups {
+	managedClusterBackupName := ""
+	if restore.Spec.VeleroManagedClustersBackupName != nil {
+		managedClusterBackupName = *restore.Spec.VeleroManagedClustersBackupName
+		managedClusterBackupName = strings.ToLower(strings.TrimSpace(managedClusterBackupName))
+	}
+	// sync is enabled only when the backup name for managed clusters is set to skip
+	if restore.Spec.SyncRestoreWithNewBackups &&
+		managedClusterBackupName == skipRestoreStr {
 		restore.Status.Phase = v1beta1.RestorePhaseEnabled
 		restore.Status.LastMessage = "Velero restores have run to completion, " +
 			"restore will continue to sync with new backups"
@@ -458,8 +464,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 	restoreLogger := log.FromContext(ctx)
 
 	if sync {
-		if r.isNewBackupAvailable(ctx, *restore, Resources) &&
-			r.isNewBackupAvailable(ctx, *restore, Credentials) {
+		if r.isNewBackupAvailable(ctx, *restore, Resources) {
 			restoreLogger.Info(
 				"new backups available to sync with for this restore",
 				"name", restore.Name,
@@ -474,7 +479,6 @@ func (r *RestoreReconciler) initVeleroRestores(
 	veleroRestoresToCreate, backupsForVeleroRestores, err := r.retrieveRestoreDetails(
 		ctx,
 		restore,
-		sync,
 	)
 	if len(veleroRestoresToCreate) == 0 {
 		restore.Status.Phase = v1beta1.RestorePhaseFinished
@@ -534,7 +538,6 @@ func (r *RestoreReconciler) initVeleroRestores(
 func (r *RestoreReconciler) retrieveRestoreDetails(
 	ctx context.Context,
 	acmRestore *v1beta1.Restore,
-	sync bool,
 ) (map[ResourceType]*veleroapi.Restore,
 	map[ResourceType]*veleroapi.Backup,
 	error) {
@@ -559,17 +562,15 @@ func (r *RestoreReconciler) retrieveRestoreDetails(
 		key := restoreKeys[i]
 		switch key {
 		case ManagedClusters:
-			if sync {
-				backupName = skipRestoreStr
-			} else if acmRestore.Spec.VeleroManagedClustersBackupName != nil {
+			if acmRestore.Spec.VeleroManagedClustersBackupName != nil {
 				backupName = *acmRestore.Spec.VeleroManagedClustersBackupName
 			}
 		case Credentials, CredentialsHive, CredentialsCluster:
-			if !sync && acmRestore.Spec.VeleroCredentialsBackupName != nil {
+			if acmRestore.Spec.VeleroCredentialsBackupName != nil {
 				backupName = *acmRestore.Spec.VeleroCredentialsBackupName
 			}
 		case Resources, ResourcesGeneric:
-			if !sync && acmRestore.Spec.VeleroResourcesBackupName != nil {
+			if acmRestore.Spec.VeleroResourcesBackupName != nil {
 				backupName = *acmRestore.Spec.VeleroResourcesBackupName
 			}
 		}
