@@ -61,10 +61,7 @@ func isVeleroRestoreRunning(restore *veleroapi.Restore) bool {
 
 func isValidSyncOptions(restore *v1beta1.Restore) bool {
 
-	sync := restore.Spec.SyncRestoreWithNewBackups &&
-		restore.Status.Phase == v1beta1.RestorePhaseEnabled
-
-	if !sync {
+	if !restore.Spec.SyncRestoreWithNewBackups {
 		return false
 	}
 

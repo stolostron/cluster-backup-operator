@@ -179,10 +179,10 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	validSync := isValidSyncOptions(restore)
+	sync := isValidSyncOptions(restore) && restore.Status.Phase == v1beta1.RestorePhaseEnabled
 
-	if len(veleroRestoreList.Items) == 0 || validSync {
-		if err := r.initVeleroRestores(ctx, restore, validSync); err != nil {
+	if len(veleroRestoreList.Items) == 0 || sync {
+		if err := r.initVeleroRestores(ctx, restore, sync); err != nil {
 			msg := fmt.Sprintf(
 				"unable to initialize Velero restores for restore %s/%s: %v",
 				req.Namespace,
@@ -297,15 +297,9 @@ func setRestorePhase(
 		}
 	}
 
-	// if no velero restore with error, new or inprogress status, they are all completed
-	managedClusterBackupName := ""
-	if restore.Spec.VeleroManagedClustersBackupName != nil {
-		managedClusterBackupName = *restore.Spec.VeleroManagedClustersBackupName
-		managedClusterBackupName = strings.ToLower(strings.TrimSpace(managedClusterBackupName))
-	}
 	// sync is enabled only when the backup name for managed clusters is set to skip
-	if restore.Spec.SyncRestoreWithNewBackups &&
-		managedClusterBackupName == skipRestoreStr {
+	if isValidSyncOptions(restore) &&
+		*restore.Spec.VeleroManagedClustersBackupName == skipRestoreStr {
 		restore.Status.Phase = v1beta1.RestorePhaseEnabled
 		restore.Status.LastMessage = "Velero restores have run to completion, " +
 			"restore will continue to sync with new backups"
