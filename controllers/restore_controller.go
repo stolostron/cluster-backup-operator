@@ -203,14 +203,6 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	} else {
 		setRestorePhase(&veleroRestoreList, restore)
-
-		if (restore.Status.Phase == v1beta1.RestorePhaseFinished ||
-			restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors) &&
-			*restore.Spec.VeleroManagedClustersBackupName != skipRestoreStr {
-			// this cluster was activated so create the backup schedule from this cluster now
-			r.becomeActiveCluster(ctx, *restore)
-		}
-
 	}
 
 	err = r.Client.Status().Update(ctx, restore)

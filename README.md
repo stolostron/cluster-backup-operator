@@ -113,12 +113,12 @@ Situations when a backup collision could happen:
 1. Primary hub goes down unexpectedly:
     - 1.1) Primary hub, Hub1, goes down 
     - 1.2) Hub1 backup data is restored on Hub2
-    - 1.3) As soon as the `acm-managed-clusters` backup is restored on Hub2, the operator automatically creates the `BackupSchedule.cluster.open-cluster-management.io` resource on Hub2. Hub2 is now the primary hub and generates backup data to the common storage location. 
+    - 1.3) The admin creates the `BackupSchedule.cluster.open-cluster-management.io` resource on Hub2. Hub2 is now the primary hub and generates backup data to the common storage location. 
     - 1.4) Hub1 comes back to life unexpectedly. Since the `BackupSchedule.cluster.open-cluster-management.io` resource is still enabled on Hub1, it will resume writting backups to the same storage location as Hub2. Both Hub1 and Hub2 are now writting backup data at the same storage location. Any cluster restoring the latest backups from this storage location could pick up Hub1 data instead of Hub2.
 2. The admin tests the disaster scenario by making Hub2 a primary hub:
     - 2.1) Hub1 is stopped
     - 2.2) Hub1 backup data is restored on Hub2
-    - 2.3) As soon as the `acm-managed-clusters` backup is restored on Hub2, the operator automatically creates the `BackupSchedule.cluster.open-cluster-management.io` resource on Hub2. Hub2 is now the primary hub and generates backup data to the common storage location. 
+    - 2.3) The admin creates the `BackupSchedule.cluster.open-cluster-management.io` resource on Hub2. Hub2 is now the primary hub and generates backup data to the common storage location. 
     - 2.4) After the disaster test is completed, the admin will revert to the previous state and make Hub1 the primary hub:
         - 2.4.1) Hub1 is started. Hub2 is still up though and the `BackupSchedule.cluster.open-cluster-management.io` resource is Enabled on Hub2. Until Hub2 `BackupSchedule.cluster.open-cluster-management.io` resource is deleted or Hub2 is stopped, Hub2 could write backups at any time at the same storage location, corrupting the backup data. Any cluster restoring the latest backups from this location could pick up Hub2 data instead of Hub1. The right approach here would have been to first stop Hub2 or delete the `BackupSchedule.cluster.open-cluster-management.io` resource on Hub2, then start Hub1.
 

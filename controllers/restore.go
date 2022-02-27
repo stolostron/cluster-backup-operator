@@ -31,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -307,33 +306,6 @@ func prepareRestoreForBackup(
 
 	}
 	logger.Info("exit prepareForRestoreResources for " + string(restoreType))
-}
-
-func (r *RestoreReconciler) becomeActiveCluster(ctx context.Context,
-	restore v1beta1.Restore) {
-	logger := log.FromContext(ctx)
-
-	logger.Info("create backup schedule")
-	backupSchedule := v1beta1.BackupSchedule{}
-	backupSchedule.Namespace = restore.Namespace
-	backupSchedule.Name = restore.Name + "-backup"
-
-	backupSchedule.Spec.VeleroSchedule = "0 */1 * * *"
-
-	// set restore name as label annotation
-	// so we know from what activation restore this backup was initiated
-	labels := backupSchedule.GetLabels()
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-	labels[BackupScheduleActivationLabel] = restore.Name
-
-	backupSchedule.SetLabels(labels)
-
-	if err := r.Create(ctx, &backupSchedule, &client.CreateOptions{}); err != nil {
-		logger.Error(err, "Failed to create schedule")
-	}
-
 }
 
 func (r *RestoreReconciler) isNewBackupAvailable(
