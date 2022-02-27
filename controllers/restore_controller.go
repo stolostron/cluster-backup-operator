@@ -195,6 +195,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			)
 			// set error status for all errors from initVeleroRestores
 			restore.Status.Phase = v1beta1.RestorePhaseError
+			restore.Status.LastMessage = err.Error()
 			return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
 				r.Client.Status().Update(ctx, restore),
 				msg,
@@ -485,7 +486,10 @@ func (r *RestoreReconciler) initVeleroRestores(
 	}
 
 	// clean up resources only if requested
-	r.prepareForRestore(ctx, *restore, veleroRestoresToCreate, backupsForVeleroRestores)
+	if err := r.prepareForRestore(ctx, *restore, veleroRestoresToCreate,
+		backupsForVeleroRestores); err != nil {
+		return err
+	}
 
 	// now create the restore resources and start the actual restore
 	for key := range veleroRestoresToCreate {
@@ -636,7 +640,18 @@ func (r *RestoreReconciler) prepareForRestore(
 	acmRestore v1beta1.Restore,
 	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
 	backupsForVeleroRestores map[ResourceType]*veleroapi.Backup,
-) {
+) error {
+
+	if ok := findValue([]string{v1beta1.CleanupTypeAll,
+		v1beta1.CleanupTypeNone,
+		v1beta1.CleanupTypeRestored},
+		string(acmRestore.Spec.CleanupBeforeRestore)); !ok {
+
+		msg := "invalid CleanupBeforeRestore value : " +
+			string(acmRestore.Spec.CleanupBeforeRestore)
+		acmRestore.Status.LastMessage = msg
+		return fmt.Errorf(msg)
+	}
 
 	// clean up resources only if requested
 	if acmRestore.Spec.CleanupBeforeRestore != v1beta1.CleanupTypeNone {
@@ -661,4 +676,5 @@ func (r *RestoreReconciler) prepareForRestore(
 			)
 		}
 	}
+	return nil
 }

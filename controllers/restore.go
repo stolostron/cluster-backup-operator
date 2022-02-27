@@ -165,6 +165,7 @@ func deleteDynamicResource(
 		(mapping.Scope.Name() == meta.RESTScopeNameNamespace &&
 			(resource.GetNamespace() == localCluster ||
 				findValue(excludedNamespaces, resource.GetNamespace()))) {
+		// do not clean up local-cluster resources
 		logger.Info(nsSkipMsg)
 		return
 	}
@@ -227,15 +228,10 @@ func prepareRestoreForBackup(
 ) {
 	logger := log.FromContext(ctx)
 
-	if restoreType == ManagedClusters {
-		logger.Info("skipping cleanup of managed clusters activation data")
-		return
-	}
-
 	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
 
 	labelSelector := ""
-	if cleanupType == v1beta1.CleanupTypeRestored || cleanupType == "" ||
+	if cleanupType == v1beta1.CleanupTypeRestored ||
 		restoreType == ResourcesGeneric {
 		// delete each resource from included resources, if it has a velero annotation
 		// meaning that the resource was created by another restore

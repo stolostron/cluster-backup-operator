@@ -64,6 +64,7 @@ var (
 		"operator.open-cluster-management.io",
 		"work.open-cluster-management.io",
 		"search.open-cluster-management.io",
+		"admission.hive.openshift.io",
 		"velero.io",
 	}
 	// exclude these CRDs
