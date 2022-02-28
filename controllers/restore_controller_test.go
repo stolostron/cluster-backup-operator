@@ -938,6 +938,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Namespace: veleroNamespace.Name,
 				},
 				Spec: v1beta1.RestoreSpec{
+					CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
 					VeleroManagedClustersBackupName: &skipRestore,
 					VeleroCredentialsBackupName:     &skipRestore,
 					VeleroResourcesBackupName:       &skipRestore,
@@ -1001,6 +1002,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Namespace: veleroNamespace.Name,
 				},
 				Spec: v1beta1.RestoreSpec{
+					CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
 					VeleroManagedClustersBackupName: &skipRestore,
 					VeleroCredentialsBackupName:     &skipRestore,
 					VeleroResourcesBackupName:       &skipRestore,
@@ -1137,7 +1139,7 @@ var _ = Describe("Basic Restore controller", func() {
 			}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
 			Expect(
 				createdRestore.Status.LastMessage,
-			).Should(BeIdenticalTo("Backup invalid-backup-name Not found for resource type: credentials"))
+			).Should(BeIdenticalTo("cannot find acm-credentials-schedule-name Velero Backup: Backup.velero.io \"acm-credentials-schedule-name\" not found"))
 
 			// createdRestore above is has RestorePhaseError status
 			// the following restore should be ignored
@@ -1151,6 +1153,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Namespace: veleroNamespace.Name,
 				},
 				Spec: v1beta1.RestoreSpec{
+					CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
 					VeleroManagedClustersBackupName: &skipRestore,
 					VeleroCredentialsBackupName:     &skipRestore,
 					VeleroResourcesBackupName:       &skipRestore,
@@ -1232,6 +1235,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Namespace: acmNamespaceName,
 				},
 				Spec: v1beta1.RestoreSpec{
+					CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
 					VeleroManagedClustersBackupName: &latestBackup,
 					VeleroCredentialsBackupName:     &skipRestore,
 					VeleroResourcesBackupName:       &skipRestore,
@@ -1331,6 +1335,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Namespace: veleroNamespace.Name,
 				},
 				Spec: v1beta1.RestoreSpec{
+					CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
 					VeleroManagedClustersBackupName: &latestBackup,
 					VeleroCredentialsBackupName:     &skipRestore,
 					VeleroResourcesBackupName:       &skipRestore,
@@ -1587,6 +1592,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Namespace: veleroNamespace.Name,
 				},
 				Spec: v1beta1.RestoreSpec{
+					CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
 					VeleroManagedClustersBackupName: &latestBackup,
 					VeleroCredentialsBackupName:     &skipRestore,
 					VeleroResourcesBackupName:       &skipRestore,

@@ -142,6 +142,7 @@ func Test_isSkipAllRestores(t *testing.T) {
 						Namespace: "veleroNamespace",
 					},
 					Spec: v1beta1.RestoreSpec{
+						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
 						VeleroManagedClustersBackupName: &skipRestore,
 						VeleroCredentialsBackupName:     &skipRestore,
 						VeleroResourcesBackupName:       &skipRestore,

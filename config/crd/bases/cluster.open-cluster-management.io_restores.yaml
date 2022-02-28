@@ -52,9 +52,7 @@ spec:
                   to attempt to delete all resources created by a previous restore
                   operation This will allow updating resources that are already on
                   the hub and also part of the new backup And it will also delete
-                  resources previously restored but no longer in the current backup
-                  \n if not defined, the value is assumed to be CleanupTypeNone -
-                  no clean up called"
+                  resources previously restored but no longer in the current backup"
                 type: string
               syncRestoreWithNewBackups:
                 description: Set this to true if you want to keep checking for new
@@ -85,6 +83,7 @@ spec:
                   to the name of the backup to be restored
                 type: string
             required:
+            - cleanupBeforeRestore
             - veleroCredentialsBackupName
             - veleroManagedClustersBackupName
             - veleroResourcesBackupName
