@@ -174,7 +174,7 @@ spec:
 ```
 
 ### Cleaning up the hub before restore
-Velero currently skips restored resources if they are already installed on the hub. This limits the scenarios that can be used when restoring hub data on a new hub. Unless the new hub is not used and the restore is applied only once, the hub could not be relibly used as a passive configuration: the data on this hub is not reflective of the data available with the restored resources.
+Velero currently skips backed up resources if they are already installed on the hub. This limits the scenarios that can be used when restoring hub data on a new hub. Unless the new hub is not used and the restore is applied only once, the hub could not be relibly used as a passive configuration: the data on this hub is not reflective of the data available with the restored resources.
 
 Restore limitations examples:
 1. A Policy exists on the new hub, before the backup data is restored on this hub. After the restore of the backup resources, the new hub is not identical with the initial hub from where the data was restored. The Policy should not be running on the new hub since this is a Policy not available with the backup resources.
