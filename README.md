@@ -127,6 +127,13 @@ In order to avoid and to report this type of backup collisions, a BackupCollisio
 
 In this case, the current hub `BackupSchedule.cluster.open-cluster-management.io` resource status is set to BackupCollision and the `Schedule.velero.io` resources created by this resource are deleted to avoid data corruption. The BackupCollision is reported by the [backup Policy](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml). The admin should verify what hub must be the one writting data to the  storage location, than remove the `BackupSchedule.cluster.open-cluster-management.io` resource from the invalid hub and recreated a new `BackupSchedule.cluster.open-cluster-management.io` resource on the valid, primary hub, to resume the backup on this hub. 
 
+Example of a schedule in `BackupCollision` state:
+
+```
+oc get backupschedule -A
+NAMESPACE       NAME               PHASE             MESSAGE
+openshift-adp   schedule-hub-1   BackupCollision   Backup acm-resources-schedule-20220301234625, from cluster with id [be97a9eb-60b8-4511-805c-298e7c0898b3] is using the same storage location. This is a backup collision with current cluster [1f30bfe5-0588-441c-889e-eaf0ae55f941] backup. Review and resolve the collision then create a new BackupSchedule resource to  resume backups from this cluster.
+```
 
 ## Restoring a backup
 
@@ -281,6 +288,7 @@ kind: Restore
 metadata:
   name: restore-acm
 spec:
+  cleanupBeforeRestore: CleanupRestored
   veleroManagedClustersBackupName: latest
   veleroCredentialsBackupName: latest
   veleroResourcesBackupName: latest
@@ -326,6 +334,8 @@ The valid options for the above properties are :
   - `skip` - do not attempt to restore this type of backup with the current restore operation
   - `<backup_name>` - restore the specified backup pointing to it by name
 
+The `cleanupBeforeRestore` property is used to clean up resources before the restore is executed. More details about this options [here](#cleaning-up-the-hub-before-restore).
+
 <b>Note:</b> The `restore.cluster.open-cluster-management.io` resource is executed once. After the restore operation is completed, if you want to run another restore operation on the same hub, you have to create a new `restore.cluster.open-cluster-management.io` resource.
 
 
@@ -337,6 +347,7 @@ kind: Restore
 metadata:
   name: restore-acm
 spec:
+  cleanupBeforeRestore: CleanupRestored
   veleroManagedClustersBackupName: latest
   veleroCredentialsBackupName: latest
   veleroResourcesBackupName: latest
@@ -350,6 +361,7 @@ kind: Restore
 metadata:
   name: restore-acm
 spec:
+  cleanupBeforeRestore: None
   veleroManagedClustersBackupName: latest
   veleroCredentialsBackupName: skip
   veleroResourcesBackupName: skip
@@ -363,6 +375,7 @@ kind: Restore
 metadata:
   name: restore-acm
 spec:
+  cleanupBeforeRestore: None
   veleroManagedClustersBackupName: acm-managed-clusters-schedule-20210902205438
   veleroCredentialsBackupName: skip
   veleroResourcesBackupName: skip
