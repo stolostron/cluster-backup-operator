@@ -206,7 +206,10 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 
+	// enforce backup collision only if this schedule was NOT created now ( current time - creation > 5)
+	// in this case ignore any collisions since the user had initiated this backup
 	if len(veleroScheduleList.Items) > 0 &&
+		metav1.Now().Sub(veleroScheduleList.Items[0].CreationTimestamp.Time).Seconds() > 5 &&
 		backupSchedule.Status.Phase != "" &&
 		backupSchedule.Status.Phase != v1beta1.SchedulePhaseNew {
 		if isThisTheOwner, lastBackup := r.scheduleOwnsLatestStorageBackups(ctx,
