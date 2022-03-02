@@ -175,26 +175,37 @@ func deleteDynamicResource(
 		resource.GetName(),
 		resource.GetNamespace())
 
+	nsScopedPatchMsg := fmt.Sprintf(
+		"Removed finalizers for %s [%s.%s]",
+		resource.GetKind(),
+		resource.GetName(),
+		resource.GetNamespace())
+
 	globalResourceMsg := fmt.Sprintf(
 		"Deleted resource %s [%s]",
 		resource.GetKind(),
 		resource.GetName())
 
+	globalResourcePatchMsg := fmt.Sprintf(
+		"Removed finalizers for %s [%s]",
+		resource.GetKind(),
+		resource.GetName())
+
 	patch := `[ { "op": "remove", "path": "/metadata/finalizers" } ]`
 	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+		// namespaced resources should specify the namespace
 		if err := dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions); err != nil {
 			logger.Info(err.Error())
 		} else {
 			logger.Info(nsScopedMsg)
-		}
-		// namespaced resources should specify the namespace
-		if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
-			// delete finalizers and delete resource in this way
-			if _, err := dr.Namespace(resource.GetNamespace()).Patch(ctx, resource.GetName(),
-				types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
-				logger.Info(err.Error())
-			} else {
-				logger.Info(nsScopedMsg)
+			if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
+				// delete finalizers and delete resource in this way
+				if _, err := dr.Namespace(resource.GetNamespace()).Patch(ctx, resource.GetName(),
+					types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
+					logger.Info(err.Error())
+				} else {
+					logger.Info(nsScopedPatchMsg)
+				}
 			}
 		}
 	} else {
@@ -203,14 +214,14 @@ func deleteDynamicResource(
 			logger.Info(err.Error())
 		} else {
 			logger.Info(globalResourceMsg)
-		}
-		if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
-			// delete finalizers and delete resource in this way
-			if _, err := dr.Patch(ctx, resource.GetName(),
-				types.MergePatchType, []byte(patch), v1.PatchOptions{}); err != nil {
-				logger.Info(err.Error())
-			} else {
-				logger.Info(globalResourceMsg)
+			if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
+				// delete finalizers and delete resource in this way
+				if _, err := dr.Patch(ctx, resource.GetName(),
+					types.MergePatchType, []byte(patch), v1.PatchOptions{}); err != nil {
+					logger.Info(err.Error())
+				} else {
+					logger.Info(globalResourcePatchMsg)
+				}
 			}
 		}
 	}
