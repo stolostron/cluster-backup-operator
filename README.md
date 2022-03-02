@@ -74,11 +74,19 @@ With this approach the backup includes all CRDs installed on the hub, including 
 1. Exclude all resources in the MultiClusterHub namespace. This is to avoid backing up installation resources which are linked to the current Hub identity and should not be backed up.
 2. Backup all CRDs with an api version suffixed by `.open-cluster-management.io`. This will cover all Advanced Cluster Management resources.
 3. Additionally, backup all CRDs from these api groups: `argoproj.io`,`app.k8s.io`,`core.observatorium.io`,`hive.openshift.io`
-4. Exclude ACM CRDs from the following api groups: `clustermanagementaddon`, `observabilityaddon`, `applicationmanager`,`certpolicycontroller`,`iampolicycontroller`,`policycontroller`,`searchcollector`,`workmanager`,`backupschedule`,`restore`,`clusterclaim.cluster.open-cluster-management.io`
-5. Backup secrets and configmaps with one of the following label annotations:
+4. Exclude all CRDs from the following api groups : `admission.cluster.open-cluster-management.io`,
+	`admission.work.open-cluster-management.io`,
+	`internal.open-cluster-management.io`,
+	`operator.open-cluster-management.io`,
+	`work.open-cluster-management.io`,
+	`search.open-cluster-management.io`,
+	`admission.hive.openshift.io`,
+	`velero.io`
+5. Exclude ACM CRDs from the following api groups: `clustermanagementaddon`, `observabilityaddon`, `applicationmanager`,`certpolicycontroller`,`iampolicycontroller`,`policycontroller`,`searchcollector`,`workmanager`,`backupschedule`,`restore`,`clusterclaim.cluster.open-cluster-management.io`
+6. Backup secrets and configmaps with one of the following label annotations:
 `cluster.open-cluster-management.io/type`, `hive.openshift.io/secret-type`, `cluster.open-cluster-management.io/backup`
-6. Use this label annotation for any other resources that should be backed up and are not included in the above criteria: `cluster.open-cluster-management.io/backup`
-7. Resources picked up by the above rules that should not be backed up, can be explicitly excluded when setting this label annotation: `velero.io/exclude-from-backup=true` 
+7. Use this label annotation for any other resources that should be backed up and are not included in the above criteria: `cluster.open-cluster-management.io/backup`
+8. Resources picked up by the above rules that should not be backed up, can be explicitly excluded when setting this label annotation: `velero.io/exclude-from-backup=true` 
 
 
 
