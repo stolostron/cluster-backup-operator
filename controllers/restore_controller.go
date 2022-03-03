@@ -534,8 +534,13 @@ func (r *RestoreReconciler) retrieveRestoreDetails(
 
 	restoreLogger := log.FromContext(ctx)
 
-	restoreKeys := make([]ResourceType, 0, len(veleroScheduleNames))
+	restoreKeys := make([]ResourceType, 0, len(veleroScheduleNames)-1) // ignore validation backup
 	for key := range veleroScheduleNames {
+		if key == ValidationSchedule {
+			// ignore validation backup; this is used for the policy
+			// to validate that there are backups schedules enabled
+			continue
+		}
 		restoreKeys = append(restoreKeys, key)
 	}
 	// sort restores to restore last credentials, first resources

@@ -134,7 +134,10 @@ func isScheduleSpecUpdated(
 	for i := range schedules.Items {
 		veleroSchedule := &schedules.Items[i]
 
-		if veleroSchedule.Spec.Template.TTL.Duration != backupSchedule.Spec.VeleroTTL.Duration {
+		if veleroSchedule.Name != veleroScheduleNames[ValidationSchedule] &&
+			veleroSchedule.Spec.Template.TTL.Duration != backupSchedule.Spec.VeleroTTL.Duration {
+			// validation backup TTL should be ignored here
+			// since that one is using the schedule's cron job interval
 			return true
 		}
 		if veleroSchedule.Spec.Schedule != backupSchedule.Spec.VeleroSchedule {
