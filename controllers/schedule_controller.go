@@ -53,6 +53,9 @@ const (
 	CredentialsCluster ResourceType = "credentialsCluster"
 	// Resources related to applications and policies
 	Resources ResourceType = "resources"
+	// schedule used by the backup Policy to validate that there are active backups running
+	// and stored to the storage location, using the schedule cron time
+	ValidationSchedule = "validation"
 	// ResourcesGeneric Genric Resources related to applications and policies
 	// these are user resources, except secrets, labeled with cluster.open-cluster-management.io/backup
 	// secrets labeled with cluster.open-cluster-management.io/backup are already backed up under credentialsCluster
@@ -348,12 +351,14 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 			setResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
 		case ResourcesGeneric:
 			setGenericResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
-
+		case ValidationSchedule:
+			veleroBackupTemplate, _ = setValidationBackupInfo(ctx, veleroBackupTemplate, backupSchedule, r.Client)
 		}
 
 		veleroSchedule.Spec.Template = *veleroBackupTemplate
 		veleroSchedule.Spec.Schedule = backupSchedule.Spec.VeleroSchedule
-		if backupSchedule.Spec.VeleroTTL.Duration != 0 {
+		if backupSchedule.Spec.VeleroTTL.Duration != 0 && scheduleKey != ValidationSchedule {
+			// TTL for a validation backup is already set using the cron job interval
 			veleroSchedule.Spec.Template.TTL = backupSchedule.Spec.VeleroTTL
 		}
 

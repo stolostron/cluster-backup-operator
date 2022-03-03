@@ -20,7 +20,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/robfig/cron/v3"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -130,6 +132,7 @@ var (
 		Resources:          "acm-resources-schedule",
 		ResourcesGeneric:   "acm-resources-generic-schedule",
 		ManagedClusters:    "acm-managed-clusters-schedule",
+		ValidationSchedule: "acm-validation-policy-schedule",
 	}
 )
 
@@ -284,6 +287,57 @@ func setManagedClustersBackupInfo(
 			veleroBackupTemplate.IncludedResources,
 			backupManagedClusterResources[i],
 		)
+	}
+}
+
+// set validation backup information
+// this is a dummy backup, only purpose being to verify if there are
+// new backups stored since the last cron job was invoked
+// the backup will delete itself using ttl = owning schedule cron job + 5 min
+// So, if no other backups are scheduled later on, there will be
+// no backups created from the acm-validation-policy-schedule schedule
+// and the policy will alert if no acm-validation-policy-schedule are found
+func setValidationBackupInfo(
+	ctx context.Context,
+	veleroBackupTemplate *veleroapi.BackupSpec,
+	backupSchedule *v1beta1.BackupSchedule,
+	c client.Client,
+) (*veleroapi.BackupSpec, error) {
+
+	veleroBackupTemplate.IncludedNamespaces = appendUnique(
+		veleroBackupTemplate.IncludedNamespaces,
+		backupSchedule.Namespace,
+	)
+
+	veleroBackupTemplate.IncludedResources = appendUnique(
+		veleroBackupTemplate.IncludedResources,
+		backupSchedule.Kind,
+	)
+
+	// the backup should be deleted after ttl = schedule cron job time passed
+	// adding extra 5min so that an old validation backup overlaps for a few minutes
+	// with the new validation backup; doing that so that policy doesn't report an error
+	// in this short interval when the old validation backup is deleted
+	// and the old one is recreated by the cron job validation schedule
+	scheduleLogger := log.FromContext(ctx)
+	if cronSchedule, err := cron.ParseStandard(backupSchedule.Spec.VeleroSchedule); err != nil {
+		scheduleLogger.Error(
+			err,
+			"Error parsing schedule",
+			"schedule", backupSchedule.Spec.VeleroSchedule,
+		)
+		veleroBackupTemplate.TTL = v1.Duration{Duration: time.Hour * 1}
+		return veleroBackupTemplate, err
+	} else {
+		currentTime := v1.Now().Time
+		// add extra 5 minutes to the cron job time before deleting this backup
+		nextRunTime := cronSchedule.Next(currentTime).Add(time.Minute * 5)
+
+		veleroBackupTemplate.TTL = v1.Duration{
+			Duration: nextRunTime.Sub(currentTime),
+		}
+
+		return veleroBackupTemplate, nil
 	}
 }
 
