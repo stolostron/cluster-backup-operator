@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -311,6 +312,11 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		scheduleKeys = append(scheduleKeys, key)
 	}
 	sort.Sort(SortResourceType(scheduleKeys))
+	// swap the last two items to put the resources last, after the resourcesGeneric
+	swapF := reflect.Swapper(scheduleKeys)
+	if len(scheduleKeys) > 1 {
+		swapF(len(scheduleKeys)-2, len(scheduleKeys)-1)
+	}
 
 	// loop through schedule names to create a Velero schedule per type
 	for _, scheduleKey := range scheduleKeys {
@@ -352,7 +358,12 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		case ResourcesGeneric:
 			setGenericResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
 		case ValidationSchedule:
-			veleroBackupTemplate, _ = setValidationBackupInfo(ctx, veleroBackupTemplate, backupSchedule, r.Client)
+			veleroBackupTemplate, _ = setValidationBackupInfo(
+				ctx,
+				veleroBackupTemplate,
+				backupSchedule,
+				r.Client,
+			)
 		}
 
 		veleroSchedule.Spec.Template = *veleroBackupTemplate

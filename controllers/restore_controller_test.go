@@ -472,25 +472,6 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "acm-managed-clusters-schedule-bad-very-recent-backup",
-						Namespace: veleroNamespace.Name,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						Errors:         10,
-						StartTimestamp: &oneHourAgo,
-					},
-				},
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
 						Name:      "acm-managed-clusters-schedule-good-old-backup",
 						Namespace: veleroNamespace.Name,
 					},
@@ -562,25 +543,6 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 				},
 				// acm-resources-schedule backups
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "acm-resources-schedule-bad-very-recent-backup",
-						Namespace: veleroNamespace.Name,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						Errors:         10,
-						StartTimestamp: &oneHourAgo,
-					},
-				},
 				veleroapi.Backup{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
@@ -696,25 +658,6 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 				},
 				// acm-credentials-schedule backups
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "acm-credentials-schedule-bad-very-recent-backup",
-						Namespace: veleroNamespace.Name,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						Errors:         10,
-						StartTimestamp: &oneHourAgo,
-					},
-				},
 				veleroapi.Backup{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
@@ -1249,7 +1192,7 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "acm-managed-clusters-schedule-bad-very-recent-backup",
+						Name:      "acm-managed-clusters-schedule-recent-backup",
 						Namespace: veleroNamespace.Name,
 					},
 					Spec: veleroapi.BackupSpec{
@@ -1257,7 +1200,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
-						Errors:         10,
+						Errors:         0,
 						StartTimestamp: &oneHourAgo,
 					},
 				},
@@ -1349,7 +1292,7 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "acm-managed-clusters-schedule-bad-very-recent-backup",
+						Name:      "acm-managed-clusters-schedule-recent-backup",
 						Namespace: veleroNamespace.Name,
 					},
 					Spec: veleroapi.BackupSpec{
@@ -1357,7 +1300,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
-						Errors:         10,
+						Errors:         0,
 						StartTimestamp: &oneHourAgo,
 					},
 				},

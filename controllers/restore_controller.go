@@ -333,22 +333,16 @@ func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// mostRecentWithLessErrors defines type and code to sort velero backups
-// according to number of errors and start timestamp
-type mostRecentWithLessErrors []veleroapi.Backup
+// mostRecent defines type and code to sort velero backups
+// according to start timestamp
+type mostRecent []veleroapi.Backup
 
-func (backups mostRecentWithLessErrors) Len() int { return len(backups) }
+func (backups mostRecent) Len() int { return len(backups) }
 
-func (backups mostRecentWithLessErrors) Swap(i, j int) {
+func (backups mostRecent) Swap(i, j int) {
 	backups[i], backups[j] = backups[j], backups[i]
 }
-func (backups mostRecentWithLessErrors) Less(i, j int) bool {
-	if backups[i].Status.Errors < backups[j].Status.Errors {
-		return true
-	}
-	if backups[i].Status.Errors > backups[j].Status.Errors {
-		return false
-	}
+func (backups mostRecent) Less(i, j int) bool {
 	return backups[j].Status.StartTimestamp.Before(backups[i].Status.StartTimestamp)
 }
 
@@ -379,7 +373,7 @@ func (r *RestoreReconciler) getVeleroBackupName(
 		if len(relatedBackups) == 0 {
 			return "", nil, fmt.Errorf("no backups found")
 		}
-		sort.Sort(mostRecentWithLessErrors(relatedBackups))
+		sort.Sort(mostRecent(relatedBackups))
 		return relatedBackups[0].Name, &relatedBackups[0], nil
 	}
 	// get the backup name for this type of resource, based on the requested resource timestamp
@@ -451,7 +445,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 	restoreLogger := log.FromContext(ctx)
 
 	if sync {
-		if r.isNewBackupAvailable(ctx, *restore, Resources) {
+		if r.isNewBackupAvailable(ctx, restore, Resources) {
 			restoreLogger.Info(
 				"new backups available to sync with for this restore",
 				"name", restore.Name,
