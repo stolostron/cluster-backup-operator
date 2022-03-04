@@ -321,7 +321,7 @@ func prepareRestoreForBackup(
 
 func (r *RestoreReconciler) isNewBackupAvailable(
 	ctx context.Context,
-	restore v1beta1.Restore,
+	restore *v1beta1.Restore,
 	resourceType ResourceType) bool {
 	logger := log.FromContext(ctx)
 
@@ -330,7 +330,7 @@ func (r *RestoreReconciler) isNewBackupAvailable(
 	// was used in the latest Velero restore for this resourceType
 	newVeleroBackupName, newVeleroBackup, err := r.getVeleroBackupName(
 		ctx,
-		&restore,
+		restore,
 		resourceType,
 		latestBackupStr,
 	)
