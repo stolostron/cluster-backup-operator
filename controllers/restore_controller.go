@@ -86,6 +86,10 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	restoreLogger := log.FromContext(ctx)
 	restore := &v1beta1.Restore{}
 
+	// velero doesn't delete expired backups if they are in FailedValidation
+	// workaround and delete expired or invalid validation backups them now
+	cleanupExpiredValidationBackups(ctx, req.Namespace, r.Client)
+
 	if err := r.Get(ctx, req.NamespacedName, restore); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
