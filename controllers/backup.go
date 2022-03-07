@@ -25,7 +25,10 @@ import (
 	"github.com/robfig/cron/v3"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -446,4 +449,88 @@ func shouldBackupAPIGroup(groupStr string) bool {
 	}
 
 	return ok
+}
+
+// clean up expired validation backups, workaround for
+// velero doesn't delete expired backups if they are in FailedValidation
+// or storage location is no longer valid
+func cleanupExpiredValidationBackups(
+	ctx context.Context,
+	veleroNS string,
+	c client.Client,
+) {
+	backupLogger := log.FromContext(ctx)
+
+	validationLabel := labels.SelectorFromSet(
+		map[string]string{"velero.io/schedule-name": "acm-validation-policy-schedule"})
+	veleroBackupList := veleroapi.BackupList{}
+	if err := c.List(ctx, &veleroBackupList, &client.ListOptions{
+		Namespace:     veleroNS,
+		LabelSelector: validationLabel,
+	}); err == nil {
+
+		for i := range veleroBackupList.Items {
+			backup := veleroBackupList.Items[i]
+			if backup.Status.Expiration != nil &&
+				v1.Now().Time.After(backup.Status.Expiration.Time) {
+				backupLogger.Info(fmt.Sprintf("validation backup %s expired, delete it",
+					backup.Name))
+				deleteBackup(ctx, &backup, c)
+			}
+		}
+	} else {
+		backupLogger.Info(err.Error())
+	}
+}
+
+// delete backup using a deletebackuprequest
+func deleteBackup(
+	ctx context.Context,
+	backup *veleroapi.Backup,
+	c client.Client,
+) {
+	// delete backup now
+	backupLogger := log.FromContext(ctx)
+	backupName := backup.ObjectMeta.Name
+	backupNamespace := backup.ObjectMeta.Namespace
+	backupLogger.Info(fmt.Sprintf("delete backup %s", backupName))
+
+	backupDeleteIdentity := types.NamespacedName{
+		Name:      backupName,
+		Namespace: backupNamespace,
+	}
+
+	// get the velero CR using the backupDeleteIdentity
+	veleroDeleteBackup := &veleroapi.DeleteBackupRequest{}
+	err := c.Get(ctx, backupDeleteIdentity, veleroDeleteBackup)
+	if err != nil {
+		// check if this is a  resource NotFound error, in which case create the resource
+		if k8serr.IsNotFound(err) {
+
+			veleroDeleteBackup.Spec.BackupName = backupName
+			veleroDeleteBackup.Name = backupDeleteIdentity.Name
+			veleroDeleteBackup.Namespace = backupDeleteIdentity.Namespace
+
+			err = c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{})
+			if err != nil {
+				backupLogger.Error(
+					err,
+					fmt.Sprintf("create  DeleteBackupRequest request error for %s", backupName),
+				)
+			}
+		} else {
+			backupLogger.Error(err, fmt.Sprintf("Failed to create DeleteBackupRequest for resource %s", backupName))
+		}
+	} else {
+		backupLogger.Info(fmt.Sprintf("DeleteBackupRequest already exists, skip request creation %s", backupName))
+		if veleroDeleteBackup.Status.Errors != nil {
+			// delete the backup now
+			if err := c.Delete(ctx, backup); err != nil {
+				backupLogger.Error(
+					err,
+					fmt.Sprintf("failed to delete the backup %s", backupName),
+				)
+			}
+		}
+	}
 }

@@ -17,6 +17,12 @@ Cluster Back up and Restore Operator.
     - [Restoring a backup](#restoring-a-backup)
       - [Cleaning up the hub before restore](#cleaning-up-the-hub-before-restore)
     - [Backup validation using a Policy](#backup-validation-using-a-policy)
+      - [Pod validation](#pod-validation)
+      - [Backup Storage validation](#backup-storage-validation)
+      - [BackupSchedule collision validation](#backupschedule-collision-validation)
+      - [BackupSchedule and Restore status validation](#backupschedule-and-restore-status-validation)
+      - [Backups exist validation](#backups-exist-validation)
+      - [Backups are actively running as a cron job](#backups-are-actively-running-as-a-cron-job)
 - [Setting up Your Dev Environment](#setting-up-your-dev-environment)
   - [Prerequiste Tools](#prerequiste-tools)
   - [Installation](#installation)
@@ -210,14 +216,28 @@ The prepare for cleanup option uses the `cleanupBeforeRestore` property to ident
 The Cluster Back up and Restore Operator [chart](https://github.com/stolostron/cluster-backup-chart) installs the [backup-restore-enabled](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. 
 
 The Policy has a set of templates which check for the following constraints and informs when any of them are violated. 
-- Backup and restore operator pod is running
-- OADP operator pod is running
-- velero pod is running
-- a  `BackupStorageLocation.velero.io` resource was created and the status is `Available`
-- `Backup.velero.io` resources are available at the location sepcified by the `BackupStorageLocation.velero.io` resource and the backups were created by the `BackupSchedule.cluster.open-cluster-management.io` resource. This validates that the backups has been executed at least once, using the Backup and restore operator.
-- if a `BackupSchedule.cluster.open-cluster-management.io` exists on the current hub, the state is not `BackupCollision`. This verifies that the current hub is not in collision with any other hub when writing backup data to the storage location. For a definition of the BackupCollision state read the [Backup Collisions section](#backup-collisions) 
-- if a `BackupSchedule.cluster.open-cluster-management.io` exists on the current cluster, the status is not in (Failed, or empty state). This ensures that if this cluster is the primary hub and is generating backups, the `BackupSchedule.cluster.open-cluster-management.io` status is healthy.
-- if a `Restore.cluster.open-cluster-management.io` exists on the current cluster, the status is not in (Failed, or empty state). This ensures that if this cluster is the secondary hub and is restoring backups, the `Restore.cluster.open-cluster-management.io` status is healthy.
+
+### Pod validation
+The following templates check the pod status for the backup component and dependencies:
+- `acm-backup-pod-running` template checks if Backup and restore operator pod is running 
+- `oadp-pod-running` template checks if OADP operator pod is running
+- `velero-pod-running` template checks if Velero pod is running
+
+### Backup Storage validation
+- `backup-storage-location-available` template checks if a  `BackupStorageLocation.velero.io` resource was created and the status is `Available`. This implies that the connection to the backup storage is valid.
+
+### BackupSchedule collision validation
+- `acm-backup-clusters-collision-report` template checks that if a `BackupSchedule.cluster.open-cluster-management.io` exists on the current hub, its state is not `BackupCollision`. This verifies that the current hub is not in collision with any other hub when writing backup data to the storage location. For a definition of the BackupCollision state read the [Backup Collisions section](#backup-collisions) 
+
+### BackupSchedule and Restore status validation
+- `acm-backup-phase-validation` template checks that if a `BackupSchedule.cluster.open-cluster-management.io` exists on the current cluster, the status is not in (Failed, or empty state). This ensures that if this cluster is the primary hub and is generating backups, the `BackupSchedule.cluster.open-cluster-management.io` status is healthy.
+- the same template checks that if a `Restore.cluster.open-cluster-management.io` exists on the current cluster, the status is not in (Failed, or empty state). This ensures that if this cluster is the secondary hub and is restoring backups, the `Restore.cluster.open-cluster-management.io` status is healthy.
+
+### Backups exist validation
+- `acm-managed-clusters-schedule-backups-available` template checks if `Backup.velero.io` resources are available at the location sepcified by the `BackupStorageLocation.velero.io` and the backups were created by a `BackupSchedule.cluster.open-cluster-management.io` resource. This validates that the backups have been executed at least once, using the Backup and restore operator.
+
+### Backups are actively running as a cron job
+- a `BackupSchedule.cluster.open-cluster-management.io` is actively running and saving new backups at the storage location. This validation is done by the `backup-schedule-cron-enabled` Policy template. The template checks that there is a `Backup.velero.io` with a label `velero.io/schedule-name: acm-validation-policy-schedule` at the storage location. The `acm-validation-policy-schedule` backups are set to expire after the time set for the backups cron schedule. If no cron job is running anymore to create backups, the old `acm-validation-policy-schedule` backup is deleted because it expired and a new one is not created. So if no `acm-validation-policy-schedule` backups exist at any moment in time, it means that there are no active cron job genertaing acm backups.
 
 This Policy is intended to help notify the Hub admin of any backup issues as the hub is active and expected to produce or restore backups.
 

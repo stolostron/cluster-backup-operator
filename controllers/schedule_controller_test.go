@@ -183,8 +183,9 @@ var _ = Describe("BackupSchedule controller", func() {
 		aFewSecondsAgo := metav1.NewTime(time.Now().Add(-2 * time.Second))
 
 		//create 3 sets of backups, for each timestamp
-		for _, timestampStr := range backupTimestamps {
+		for i, timestampStr := range backupTimestamps {
 			for _, value := range veleroScheduleNames {
+
 				backup := veleroapi.Backup{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
@@ -203,6 +204,14 @@ var _ = Describe("BackupSchedule controller", func() {
 						StartTimestamp: &aFewSecondsAgo,
 						Errors:         0,
 					},
+				}
+
+				if value == ValidationSchedule {
+
+					if i == len(backupTimestamps)-1 {
+						// mark it as expired
+						backup.Status.Expiration = &oneHourAgo
+					}
 				}
 
 				veleroBackups = append(veleroBackups, backup)
