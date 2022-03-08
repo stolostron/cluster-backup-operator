@@ -230,18 +230,17 @@ func deleteDynamicResource(
 // clean up resources for the restored backup resources
 func prepareRestoreForBackup(
 	ctx context.Context,
-	args DynamicStruct,
-	cleanupType v1beta1.CleanupType,
+	restoreOptions RestoreOptions,
 	restoreType ResourceType,
 	veleroBackup *veleroapi.Backup,
-	deleteOptions v1.DeleteOptions,
+	additionalLabels string,
 ) {
 	logger := log.FromContext(ctx)
 
 	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
 
 	labelSelector := ""
-	if cleanupType == v1beta1.CleanupTypeRestored ||
+	if restoreOptions.cleanupType == v1beta1.CleanupTypeRestored ||
 		restoreType == ResourcesGeneric {
 		// delete each resource from included resources, if it has a velero annotation
 		// meaning that the resource was created by another restore
@@ -259,12 +258,16 @@ func prepareRestoreForBackup(
 	}
 	labelSelector = strings.TrimSuffix(labelSelector, ",")
 
+	if additionalLabels != "" {
+		labelSelector = labelSelector + ", " + additionalLabels
+	}
+
 	var resources []string
 	if restoreType != ResourcesGeneric {
 		resources = veleroBackup.Spec.IncludedResources
 	} else {
 		// for generic resources get all CRDs and exclude the ones in the veleroBackup.Spec.ExcludedResources
-		resources, _ = getGenericCRDFromAPIGroups(ctx, args.dc, veleroBackup)
+		resources, _ = getGenericCRDFromAPIGroups(ctx, restoreOptions.dynamicArgs.dc, veleroBackup)
 	}
 
 	for i := range resources {
@@ -280,13 +283,13 @@ func prepareRestoreForBackup(
 			Group: groupName,
 			Kind:  kind,
 		}
-		mapping, err := args.mapper.RESTMapping(groupKind, "")
+		mapping, err := restoreOptions.dynamicArgs.mapper.RESTMapping(groupKind, "")
 		if err != nil {
 			logger.Info(fmt.Sprintf("Failed to get dynamic mapper for group=%s, error : %s",
 				groupKind, err.Error()))
 			continue
 		}
-		var dr = args.dyn.Resource(mapping.Resource)
+		var dr = restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource)
 		if dr == nil {
 			continue
 		}
@@ -305,14 +308,17 @@ func prepareRestoreForBackup(
 		}
 		// get all items and delete them
 		for i := range dynamiclist.Items {
+			logger.Info(dynamiclist.Items[i].GetName())
+
 			deleteDynamicResource(
 				ctx,
 				mapping,
 				dr,
 				dynamiclist.Items[i],
-				deleteOptions,
+				restoreOptions.deleteOptions,
 				veleroBackup.Spec.ExcludedNamespaces,
 			)
+
 		}
 
 	}

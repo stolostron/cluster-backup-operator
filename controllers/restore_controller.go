@@ -61,6 +61,12 @@ type DynamicStruct struct {
 	mapper *restmapper.DeferredDiscoveryRESTMapper
 }
 
+type RestoreOptions struct {
+	cleanupType   v1beta1.CleanupType
+	deleteOptions metav1.DeleteOptions
+	dynamicArgs   DynamicStruct
+}
+
 // RestoreReconciler reconciles a Restore object
 type RestoreReconciler struct {
 	client.Client
@@ -483,6 +489,48 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 	// now create the restore resources and start the actual restore
 	for key := range veleroRestoresToCreate {
+
+		restoreObj := veleroRestoresToCreate[key]
+		if key == ResourcesGeneric &&
+			veleroRestoresToCreate[ManagedClusters] == nil {
+			// if restoring the resources but not the managed clusters,
+			// do not restore generic resources in the activation stage
+			if restoreObj.Spec.LabelSelector == nil {
+				labels := &metav1.LabelSelector{}
+				restoreObj.Spec.LabelSelector = labels
+
+				requirements := make([]metav1.LabelSelectorRequirement, 0)
+				restoreObj.Spec.LabelSelector.MatchExpressions = requirements
+			}
+			req := &metav1.LabelSelectorRequirement{}
+			req.Key = backupCredsClusterLabel
+			req.Operator = "NotIn"
+			req.Values = []string{"cluster-activation"}
+			restoreObj.Spec.LabelSelector.MatchExpressions = append(
+				restoreObj.Spec.LabelSelector.MatchExpressions,
+				*req,
+			)
+		}
+		if key == ResourcesGeneric &&
+			veleroRestoresToCreate[Resources] == nil {
+			// if restoring the ManagedClusters and resources are not restored
+			// need to restore the generic resources for the activation phase
+			if restoreObj.Spec.LabelSelector == nil {
+				labels := &metav1.LabelSelector{}
+				restoreObj.Spec.LabelSelector = labels
+
+				requirements := make([]metav1.LabelSelectorRequirement, 0)
+				restoreObj.Spec.LabelSelector.MatchExpressions = requirements
+			}
+			req := &metav1.LabelSelectorRequirement{}
+			req.Key = backupCredsClusterLabel
+			req.Operator = "In"
+			req.Values = []string{"cluster-activation"}
+			restoreObj.Spec.LabelSelector.MatchExpressions = append(
+				restoreObj.Spec.LabelSelector.MatchExpressions,
+				*req,
+			)
+		}
 		if err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{}); err != nil {
 			restoreLogger.Error(
 				err,
@@ -562,9 +610,20 @@ func (r *RestoreReconciler) retrieveRestoreDetails(
 			if acmRestore.Spec.VeleroCredentialsBackupName != nil {
 				backupName = *acmRestore.Spec.VeleroCredentialsBackupName
 			}
-		case Resources, ResourcesGeneric:
+		case Resources:
 			if acmRestore.Spec.VeleroResourcesBackupName != nil {
 				backupName = *acmRestore.Spec.VeleroResourcesBackupName
+			}
+		case ResourcesGeneric:
+			if acmRestore.Spec.VeleroResourcesBackupName != nil {
+				backupName = *acmRestore.Spec.VeleroResourcesBackupName
+			}
+			if backupName == skipRestoreStr &&
+				acmRestore.Spec.VeleroManagedClustersBackupName != nil {
+				// if resources is set to skip but managed clusters are restored
+				// we still need the generic resources
+				// for the resources with the label value 'cluster-activation'
+				backupName = *acmRestore.Spec.VeleroManagedClustersBackupName
 			}
 		}
 
@@ -649,27 +708,60 @@ func (r *RestoreReconciler) prepareForRestore(
 	}
 
 	// clean up resources only if requested
-	if acmRestore.Spec.CleanupBeforeRestore != v1beta1.CleanupTypeNone {
-		deletePolicy := metav1.DeletePropagationForeground
-		deleteOptions := metav1.DeleteOptions{
-			PropagationPolicy: &deletePolicy,
-		}
-		reconcileArgs := DynamicStruct{
-			dc:     r.DiscoveryClient,
-			dyn:    r.DynamicClient,
-			mapper: r.RESTMapper,
-		}
+	if acmRestore.Spec.CleanupBeforeRestore == v1beta1.CleanupTypeNone {
+		return nil
+	}
 
-		for key := range veleroRestoresToCreate {
+	deletePolicy := metav1.DeletePropagationForeground
+	delOptions := metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}
+
+	reconcileArgs := DynamicStruct{
+		dc:     r.DiscoveryClient,
+		dyn:    r.DynamicClient,
+		mapper: r.RESTMapper,
+	}
+
+	restoreOptions := RestoreOptions{
+		dynamicArgs:   reconcileArgs,
+		cleanupType:   acmRestore.Spec.CleanupBeforeRestore,
+		deleteOptions: delOptions,
+	}
+
+	for key := range veleroRestoresToCreate {
+
+		additionalLabel := ""
+		if key == ManagedClusters &&
+			veleroRestoresToCreate[ResourcesGeneric] == nil {
+			// process here generic resources with an activation label
+			// since generic resources are not restored
+			additionalLabel = "cluster.open-cluster-management.io/backup in (cluster-activation)"
 			prepareRestoreForBackup(
 				ctx,
-				reconcileArgs,
-				acmRestore.Spec.CleanupBeforeRestore,
-				key,
+				restoreOptions,
+				ResourcesGeneric,
 				backupsForVeleroRestores[key],
-				deleteOptions,
+				additionalLabel,
 			)
 		}
+		if key == ResourcesGeneric &&
+			veleroRestoresToCreate[ManagedClusters] == nil {
+			// managed clusters not restored
+			// don't clean up resources with cluster-activation label
+			additionalLabel = "cluster.open-cluster-management.io/backup," +
+				"cluster.open-cluster-management.io/backup notin (cluster-activation)"
+
+		}
+		prepareRestoreForBackup(
+			ctx,
+			restoreOptions,
+			key,
+			backupsForVeleroRestores[key],
+			additionalLabel,
+		)
+
 	}
+
 	return nil
 }
