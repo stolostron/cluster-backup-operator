@@ -12,6 +12,8 @@ Cluster Back up and Restore Operator.
   - [Getting Started](#getting-started)
   - [Design](#design)
     - [What is backed up](#what-is-backed-up)
+      - [Steps to identify backup data](#steps-to-identify-backup-data)
+      - [Extending backup data](#extending-backup-data)
       - [Resources restored at managed clusters activation time](#resources-restored-at-managed-clusters-activation-time)
     - [Scheduling a cluster backup](#scheduling-a-cluster-backup)
       - [Backup Collisions](#backup-collisions)
@@ -76,24 +78,34 @@ It  provides support for backing up any third party resources extending the basi
 With this backup solution, you can define a cron based backup schedule which runs at specified time intervals and continuously backs up the latest version of the hub content.
 When the hub needs to be replaced or in a disaster scenario when the hub goes down, a new hub can be deployed and backed up data moved to the new hub, so that the new hub replaces the old one.
 
+### Steps to identify backup data
+
 The steps below show how the Cluster Back up and Restore Operator finds the resources to be backed up.
 With this approach the backup includes all CRDs installed on the hub, including any extensions using third parties components.
+
+
 1. Exclude all resources in the MultiClusterHub namespace. This is to avoid backing up installation resources which are linked to the current Hub identity and should not be backed up.
 2. Backup all CRDs with an api version suffixed by `.open-cluster-management.io`. This will cover all Advanced Cluster Management resources.
 3. Additionally, backup all CRDs from these api groups: `argoproj.io`,`app.k8s.io`,`core.observatorium.io`,`hive.openshift.io`
 4. Exclude all CRDs from the following api groups : `admission.cluster.open-cluster-management.io`,
-	`admission.work.open-cluster-management.io`,
-	`internal.open-cluster-management.io`,
-	`operator.open-cluster-management.io`,
-	`work.open-cluster-management.io`,
-	`search.open-cluster-management.io`,
-	`admission.hive.openshift.io`,
-	`velero.io`
+  `admission.work.open-cluster-management.io`,
+  `internal.open-cluster-management.io`,
+  `operator.open-cluster-management.io`,
+  `work.open-cluster-management.io`,
+  `search.open-cluster-management.io`,
+  `admission.hive.openshift.io`,
+  `velero.io`
 5. Exclude the following CRDs; they are part of the included api groups but are either not needed or they are being recreated by owner resources, which are also backed up: `clustermanagementaddon`, `observabilityaddon`, `applicationmanager`,`certpolicycontroller`,`iampolicycontroller`,`policycontroller`,`searchcollector`,`workmanager`,`backupschedule`,`restore`,`clusterclaim.cluster.open-cluster-management.io`
 6. Backup secrets and configmaps with one of the following label annotations:
 `cluster.open-cluster-management.io/type`, `hive.openshift.io/secret-type`, `cluster.open-cluster-management.io/backup`
 7. Use this label annotation for any other resources that should be backed up and are not included in the above criteria: `cluster.open-cluster-management.io/backup`
 8. Resources picked up by the above rules that should not be backed up, can be explicitly excluded when setting this label annotation: `velero.io/exclude-from-backup=true` 
+
+### Extending backup data
+Third party components can choose to back up their resources with the ACM backup by adding the `cluster.open-cluster-management.io/backup` label to these resources. The value of the label could be any string, including an empty string. It is indicated though to set a value that can be later on used to easily identify the component backing up this resource. For example `cluster.open-cluster-management.io/backup: idp` if the components are provided by an idp solution.
+
+<b>Note:</b> 
+Use the `cluster-activation` value for the `cluster.open-cluster-management.io/backup` label if you want the resources to be restored when the managed clusters activation resources are restored. Restoring the managed clusters activation resources result in managed clusters being actively managed by the hub where the restore was executed. 
 
 ### Resources restored at managed clusters activation time
 
@@ -122,7 +134,7 @@ Resources are backed up in 3 separate groups:
 1. credentials backup ( 3 backup files, for hive, ACM and generic backups )
 2. resources backup ( 2 backup files, one for the ACM resources and second for generic resources, labeled with `cluster.open-cluster-management.io/backup`)
 
-3. managed clusters backup, labeled with `cluster.open-cluster-management.io/backup-schedule-type: acm-managed-clusters` ( one backup containing only resources which result in activating the managed cluster connection to the hub where the backup was restored on)
+3. managed clusters backup, schedule labeled with `cluster.open-cluster-management.io/backup-schedule-type: acm-managed-clusters` ( one backup containing only resources which result in activating the managed cluster connection to the hub where the backup was restored on)
 
 
 <b>Note</b>:
