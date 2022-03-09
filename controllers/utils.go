@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
@@ -202,8 +203,23 @@ func getHubIdentification(
 		return uid, nil
 	}
 	items, err := dr.List(ctx, v1.ListOptions{})
-	if err != nil || items == nil {
+	if err != nil || items == nil || len(items.Items) == 0 ||
+		items.Items[0].Object == nil {
 		return uid, err
 	}
-	return string(items.Items[0].GetUID()), nil
+
+	// get clusterID from the spec section
+	specInfo := items.Items[0].Object["spec"]
+	if specInfo != nil {
+		iter := reflect.ValueOf(specInfo).MapRange()
+		for iter.Next() {
+			key := iter.Key().Interface()
+			if key == "clusterID" {
+				value := iter.Value().Interface()
+				uid = value.(string)
+			}
+
+		}
+	}
+	return uid, nil
 }
