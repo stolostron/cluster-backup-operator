@@ -243,7 +243,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 				}
 			}
 
-			return ctrl.Result{RequeueAfter: collisionControlInterval}, errors.Wrap(
+			return ctrl.Result{}, errors.Wrap(
 				r.Client.Status().Update(ctx, backupSchedule),
 				msg,
 			)

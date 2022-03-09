@@ -12,6 +12,7 @@ Cluster Back up and Restore Operator.
   - [Getting Started](#getting-started)
   - [Design](#design)
     - [What is backed up](#what-is-backed-up)
+      - [Resources restored at managed clusters activation time](#resources-restored-at-managed-clusters-activation-time)
     - [Scheduling a cluster backup](#scheduling-a-cluster-backup)
       - [Backup Collisions](#backup-collisions)
     - [Restoring a backup](#restoring-a-backup)
@@ -94,6 +95,17 @@ With this approach the backup includes all CRDs installed on the hub, including 
 7. Use this label annotation for any other resources that should be backed up and are not included in the above criteria: `cluster.open-cluster-management.io/backup`
 8. Resources picked up by the above rules that should not be backed up, can be explicitly excluded when setting this label annotation: `velero.io/exclude-from-backup=true` 
 
+### Resources restored at managed clusters activation time
+
+As mentioned above, when you add the `cluster.open-cluster-management.io/backup` label to a resource, this resource is automatically backed up under the `acm-resources-generic-schedule` backup. If any of these resources need to be restored only when the managed clusters are moved to the new hub, so when the `veleroManagedClustersBackupName:latest` is used on the restored resource, then you have to set the label value to `cluster-activation`. This will ensure the resource is not restored unless the managed cluster activation is called.
+Example :
+```yaml
+apiVersion: my.group/v1alpha1
+kind: MyResource
+metadata:
+  labels:
+    cluster.open-cluster-management.io/backup: cluster-activation
+``` 
 
 
 ## Scheduling a cluster backup 
@@ -208,8 +220,6 @@ The prepare for cleanup option uses the `cleanupBeforeRestore` property to ident
 - `None` : no clean up necessary, just call Velero restore. This is to be used on a brand new hub.
 - `CleanupRestored` : clean up all resources created by a previous acm restore. This should be the common usage for this property. It is less intrusive then the `CleanupAll` and covers the scenario where you start with a clean hub and keep restoring resources on this hub ( limitation sample 3 above )
 - `CleanupAll` : clean up all resources on the hub which could be part of an acm backup, even if they were not created as a result of a restore operation. This is to be used when extra content has been created on this hub which requires clean up ( limitation samples 1 and 2 above ). Use this option with caution though as this will cleanup resources on the hub created by the user, not by a previous backup. It is <b>strongly recommended</b> to use the `CleanupRestored` option and to refrain from manually updating hub content when the hub is designated as a passive candidate for a disaster scenario. Basically avoid getting into the situation where you have to swipe the cluster using the `CleanupAll` option; this is given as a last alternative.
-
-
 
 ## Backup validation using a Policy
 

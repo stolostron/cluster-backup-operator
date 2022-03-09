@@ -76,16 +76,16 @@ var (
 	// they are part of the included api groups but are either not needed
 	// or they are being recreated by owner resources, which are also backed up
 	excludedCRDs = []string{
-		"clustermanagementaddon",
-		"observabilityaddon",
-		"applicationmanager",
-		"certpolicycontroller",
-		"iampolicycontroller",
-		"policycontroller",
-		"searchcollector",
-		"workmanager",
-		"backupschedule",
-		"restore",
+		"clustermanagementaddon.addon.open-cluster-management.io",
+		"observabilityaddon.observability.open-cluster-management.io",
+		"applicationmanager.agent.open-cluster-management.io",
+		"certpolicycontroller.agent.open-cluster-management.io",
+		"iampolicycontroller.agent.open-cluster-management.io",
+		"policycontroller.agent.open-cluster-management.io",
+		"searchcollector.agent.open-cluster-management.io",
+		"workmanager.agent.open-cluster-management.io",
+		"backupschedule.cluster.open-cluster-management.io",
+		"restore.cluster.open-cluster-management.io",
 		"clusterclaim.cluster.open-cluster-management.io",
 		"discoveredcluster.discovery.open-cluster-management.io",
 	}
