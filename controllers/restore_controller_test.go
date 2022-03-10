@@ -1082,7 +1082,7 @@ var _ = Describe("Basic Restore controller", func() {
 			}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
 			Expect(
 				createdRestore.Status.LastMessage,
-			).Should(BeIdenticalTo("cannot find acm-credentials-schedule-name Velero Backup: Backup.velero.io \"acm-credentials-schedule-name\" not found"))
+			).Should(BeIdenticalTo("cannot find invalid-backup-name Velero Backup: Backup.velero.io \"invalid-backup-name\" not found"))
 
 			// createdRestore above is has RestorePhaseError status
 			// the following restore should be ignored
