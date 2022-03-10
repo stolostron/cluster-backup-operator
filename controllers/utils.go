@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -88,6 +89,19 @@ func getValidKsRestoreName(clusterRestoreName string, backupName string) string 
 	return fullName
 }
 
+// Velero uses TimestampedName for backups using the follwoing format
+// by setting the default backup name format based on the schedule
+// fmt.Sprintf("%s-%s", s.Name, timestamp.Format("20060102150405"))
+// this function parses Velero backupName and returns the timestamp
+func getBackupTimestamp(backupName string) (time.Time, error) {
+	timestampIndex := strings.LastIndex(backupName, "-")
+	if timestampIndex != -1 {
+		timestampStr := strings.Trim(backupName[timestampIndex:], "-")
+		return time.Parse("20060102150405", timestampStr)
+	}
+	return time.Time{}, nil
+}
+
 // SortResourceType implements sort.Interface
 type SortResourceType []ResourceType
 
@@ -96,7 +110,9 @@ func (a SortResourceType) Less(i, j int) bool { return a[i] < a[j] }
 func (a SortResourceType) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 
 // check if we have a valid storage location object
-func isValidStorageLocationDefined(veleroStorageLocations veleroapi.BackupStorageLocationList) (bool, string) {
+func isValidStorageLocationDefined(
+	veleroStorageLocations veleroapi.BackupStorageLocationList,
+) (bool, string) {
 	isValidStorageLocation := false
 	veleroNamespace := ""
 	for i := range veleroStorageLocations.Items {
