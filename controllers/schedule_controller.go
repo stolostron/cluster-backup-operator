@@ -125,6 +125,24 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, nil
 	}
 
+	// don't create schedule if an active restore exists
+	restoreName, err := r.isRestoreRunning(ctx, backupSchedule)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if restoreName != "" {
+		msg := "Restore resource " + restoreName + " is currently active, " +
+			"verify that any active restores are removed."
+		scheduleLogger.Info(msg)
+		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
+		backupSchedule.Status.LastMessage = msg
+		// retry after failureInterval
+		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
+			r.Client.Status().Update(ctx, backupSchedule),
+			msg,
+		)
+	}
+
 	// don't create schedules if backup storage location doesn't exist or is not avaialble
 	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
 	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
@@ -288,7 +306,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 	setSchedulePhase(&veleroScheduleList, backupSchedule)
 
-	err := r.Client.Status().Update(ctx, backupSchedule)
+	err = r.Client.Status().Update(ctx, backupSchedule)
 	return ctrl.Result{RequeueAfter: collisionControlInterval}, errors.Wrap(
 		err,
 		fmt.Sprintf(
@@ -401,6 +419,45 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		setVeleroScheduleInStatus(scheduleKey, veleroSchedule, backupSchedule)
 	}
 	return nil
+}
+
+// check if there is a restore running on this cluster
+func (r *BackupScheduleReconciler) isRestoreRunning(
+	ctx context.Context,
+	backupSchedule *v1beta1.BackupSchedule,
+) (string, error) {
+	scheduleLogger := log.FromContext(ctx)
+
+	restoreList := v1beta1.RestoreList{}
+	if err := r.List(
+		ctx,
+		&restoreList,
+		client.InNamespace(backupSchedule.Namespace),
+	); err != nil {
+
+		msg := "unable to list restore resources " +
+			"namespace:" + backupSchedule.Namespace
+
+		scheduleLogger.Error(
+			err,
+			msg,
+		)
+		return "", err
+	}
+
+	if len(restoreList.Items) == 0 {
+		return "", nil
+	}
+
+	for i := range restoreList.Items {
+		restoreItem := restoreList.Items[i]
+		if restoreItem.Status.Phase != v1beta1.RestorePhaseFinished &&
+			restoreItem.Status.Phase != v1beta1.RestorePhaseFinishedWithErrors {
+			return restoreItem.Name, nil
+		}
+	}
+
+	return "", nil
 }
 
 // delete all velero schedules owned by this BackupSchedule
