@@ -245,14 +245,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 				}
 			}
 
-			return ctrl.Result{}, errors.Wrap(
-				err,
-				fmt.Sprintf(
-					"could not update status for schedule %s/%s",
-					backupSchedule.Namespace,
-					backupSchedule.Name,
-				),
-			)
+			return ctrl.Result{}, errors.Wrap(err, msg)
 		}
 	}
 	// no velero schedules, so create them
