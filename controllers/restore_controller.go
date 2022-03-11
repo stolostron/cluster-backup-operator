@@ -119,6 +119,22 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		)
 	}
 
+	// don't create restore if an active schedule exists
+	backupScheduleName, err := r.isBackupScheduleRunning(ctx, restore)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if backupScheduleName != "" {
+		msg := "BackupSchedule instance " + backupScheduleName + " is active, " +
+			"verify that any active backup schedules are removed."
+		updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseError, msg, restore)
+		// retry after failureInterval
+		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
+			r.Client.Status().Update(ctx, restore),
+			msg,
+		)
+	}
+
 	// don't create restores if backup storage location doesn't exist or is not avaialble
 	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
 	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
@@ -443,6 +459,44 @@ func (r *RestoreReconciler) getVeleroBackupName(
 		return backupName, &veleroBackup, nil
 	}
 	return "", nil, fmt.Errorf("cannot find %s Velero Backup: %v", backupName, err)
+}
+
+// check if there is a backup schedule running on this cluster
+func (r *RestoreReconciler) isBackupScheduleRunning(
+	ctx context.Context,
+	restore *v1beta1.Restore,
+) (string, error) {
+	restoreLogger := log.FromContext(ctx)
+
+	backupScheduleList := v1beta1.BackupScheduleList{}
+	if err := r.List(
+		ctx,
+		&backupScheduleList,
+		client.InNamespace(restore.Namespace),
+	); err != nil {
+
+		msg := "unable to list backup schedule resources " +
+			"namespace:" + restore.Namespace
+
+		restoreLogger.Error(
+			err,
+			msg,
+		)
+		return "", err
+	}
+
+	if len(backupScheduleList.Items) == 0 {
+		return "", nil
+	}
+
+	for i := range backupScheduleList.Items {
+		backupScheduleItem := backupScheduleList.Items[i]
+		if backupScheduleItem.Status.Phase != v1beta1.SchedulePhaseBackupCollision {
+			return backupScheduleItem.Name, nil
+		}
+	}
+
+	return "", nil
 }
 
 // check if there are other restores that are not complete yet
