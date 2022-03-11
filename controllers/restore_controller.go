@@ -106,32 +106,21 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 	}
 
-	otherRestoreName, err := r.isOtherRestoresRunning(ctx, restore)
+	// don't create restores if there is any other active resource in this namespace
+	activeResourceMsg, err := r.isOtherResourcesRunning(ctx, restore)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	if otherRestoreName != "" {
-		msg := "Restore instance " + otherRestoreName + " is currently running, ignoring this request."
-		updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseFinishedWithErrors, msg, restore)
+	if activeResourceMsg != "" {
+		updateRestoreStatus(
+			restoreLogger,
+			v1beta1.RestorePhaseFinishedWithErrors,
+			activeResourceMsg,
+			restore,
+		)
 		return ctrl.Result{}, errors.Wrap(
 			r.Client.Status().Update(ctx, restore),
-			msg,
-		)
-	}
-
-	// don't create restore if an active schedule exists
-	backupScheduleName, err := r.isBackupScheduleRunning(ctx, restore)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if backupScheduleName != "" {
-		msg := "BackupSchedule instance " + backupScheduleName + " is active, " +
-			"verify that any active backup schedules are removed."
-		updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseError, msg, restore)
-		// retry after failureInterval
-		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
-			r.Client.Status().Update(ctx, restore),
-			msg,
+			activeResourceMsg,
 		)
 	}
 

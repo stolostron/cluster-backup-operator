@@ -131,7 +131,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 	if restoreName != "" {
-		msg := "Restore instance " + restoreName + " is active, " +
+		msg := "Restore resource " + restoreName + " is currently active, " +
 			"verify that any active restores are removed."
 		scheduleLogger.Info(msg)
 		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation

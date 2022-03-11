@@ -326,6 +326,36 @@ func prepareRestoreForBackup(
 	logger.Info("exit prepareForRestoreResources for " + string(restoreType))
 }
 
+// check if there is any active resource on this cluster
+func (r *RestoreReconciler) isOtherResourcesRunning(
+	ctx context.Context,
+	restore *v1beta1.Restore,
+) (string, error) {
+	// don't create restore if an active schedule exists
+	backupScheduleName, err := r.isBackupScheduleRunning(ctx, restore)
+	if err != nil {
+		return "", err
+	}
+	if backupScheduleName != "" {
+		msg := "This resource is ignored because BackupSchedule resource " + backupScheduleName + " is currently active, " +
+			"before creating another resource verify that any active resources are removed."
+		return msg, nil
+	}
+
+	// don't create restore if an active restore exists
+	otherRestoreName, err := r.isOtherRestoresRunning(ctx, restore)
+	if err != nil {
+		return "", err
+	}
+	if otherRestoreName != "" {
+		msg := "This resource is ignored because Restore resource " + otherRestoreName + " is currently active, " +
+			"before creating another resource verify that any active resources are removed."
+		return msg, nil
+	}
+
+	return "", nil
+}
+
 // check if there is a backup schedule running on this cluster
 func (r *RestoreReconciler) isBackupScheduleRunning(
 	ctx context.Context,
