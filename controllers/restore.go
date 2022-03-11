@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -323,6 +324,86 @@ func prepareRestoreForBackup(
 
 	}
 	logger.Info("exit prepareForRestoreResources for " + string(restoreType))
+}
+
+// check if there is a backup schedule running on this cluster
+func (r *RestoreReconciler) isBackupScheduleRunning(
+	ctx context.Context,
+	restore *v1beta1.Restore,
+) (string, error) {
+	restoreLogger := log.FromContext(ctx)
+
+	backupScheduleList := v1beta1.BackupScheduleList{}
+	if err := r.List(
+		ctx,
+		&backupScheduleList,
+		client.InNamespace(restore.Namespace),
+	); err != nil {
+
+		msg := "unable to list backup schedule resources " +
+			"namespace:" + restore.Namespace
+
+		restoreLogger.Error(
+			err,
+			msg,
+		)
+		return "", err
+	}
+
+	if len(backupScheduleList.Items) == 0 {
+		return "", nil
+	}
+
+	for i := range backupScheduleList.Items {
+		backupScheduleItem := backupScheduleList.Items[i]
+		if backupScheduleItem.Status.Phase != v1beta1.SchedulePhaseBackupCollision {
+			return backupScheduleItem.Name, nil
+		}
+	}
+
+	return "", nil
+}
+
+// check if there are other restores that are not complete yet
+func (r *RestoreReconciler) isOtherRestoresRunning(
+	ctx context.Context,
+	restore *v1beta1.Restore,
+) (string, error) {
+	restoreLogger := log.FromContext(ctx)
+
+	restoreList := v1beta1.RestoreList{}
+	if err := r.List(
+		ctx,
+		&restoreList,
+		client.InNamespace(restore.Namespace),
+	); err != nil {
+
+		msg := "unable to list restore resources" +
+			"namespace:" + restore.Namespace
+
+		restoreLogger.Error(
+			err,
+			msg,
+		)
+		return "", err
+	}
+
+	if len(restoreList.Items) == 0 {
+		return "", nil
+	}
+
+	for i := range restoreList.Items {
+		restoreItem := restoreList.Items[i]
+		if restoreItem.Name == restore.Name {
+			continue
+		}
+		if restoreItem.Status.Phase != v1beta1.RestorePhaseFinished &&
+			restoreItem.Status.Phase != v1beta1.RestorePhaseFinishedWithErrors {
+			return restoreItem.Name, nil
+		}
+	}
+
+	return "", nil
 }
 
 func (r *RestoreReconciler) isNewBackupAvailable(
