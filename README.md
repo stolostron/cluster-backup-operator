@@ -18,6 +18,8 @@ Cluster Back up and Restore Operator.
     - [Scheduling a cluster backup](#scheduling-a-cluster-backup)
       - [Backup Collisions](#backup-collisions)
     - [Restoring a backup](#restoring-a-backup)
+      - [Prepare the new hub](#prepare-the-new-hub)
+      - [Restoring backups](#restoring-backups)
       - [Cleaning up the hub before restore](#cleaning-up-the-hub-before-restore)
     - [Backup validation using a Policy](#backup-validation-using-a-policy)
       - [Pod validation](#pod-validation)
@@ -59,7 +61,7 @@ The Cluster Back up and Restore Operator chart is installed automatically by the
 
 Before you can use the Cluster Back up and Restore operator, the [OADP Operator](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md) must be configured to set the connection to the storage location where backups will be saved. Make sure you follow the steps to create the [secret for the cloud storage](https://github.com/openshift/oadp-operator#creating-credentials-secret) where the backups are going to be saved, then use that secret when creating the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) to setup the connection to the storage location.
 
-<b>Note</b>: The Cluster Back up and Restore Operator chart installs the [backup-restore-enabled](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. The Policy templates check if the required pods are running, storage location is available, backups are available at the defined location and no erros status is reported by the main resources. This Policy is intended to help notify the Hub admin of any backup issues as the hub is active and expected to produce backups.
+<b>Note</b>: The Cluster Back up and Restore Operator chart installs the [backup-restore-enabled](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. The Policy templates check if the required pods are running, storage location is available, backups are available at the defined location and no error status is reported by the main resources. This Policy is intended to help notify the Hub admin of any backup issues as the hub is active and expected to produce backups.
 
 
 
@@ -175,24 +177,43 @@ openshift-adp   schedule-hub-1   BackupCollision   Backup acm-resources-schedule
 
 ## Restoring a backup
 
-In a usual restore scenario, the hub where the backups have been executed becomes unavailable and data backed up needs to be moved to a new hub. This is done by running the cluster restore operation on the hub where the backed up data needs to be moved to. In this case, the restore operation is executed on a different hub than the one where the backup was created. 
+### Prepare the new hub
+Before running the restore operation on a new hub, you need to manually configure the hub and install the same operators as on the initial hub. For example, you have to install the Red Hat Advanced Cluster Management for Kubernetes operator, in the same namespace as the initial hub, then create the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) and connect to the same storage location where the initial hub had backed up data. If the initial hub had any other operators installed, you have to install them now, before running the restore operation. This ensure the new hub is configured in the same way as the initial hub.
+
+### Restoring backups
+In a usual restore scenario, the hub where the backups have been executed becomes unavailable and data backed up needs to be moved to a new hub. This is done by running the restore operation on the hub where the backed up data needs to be moved to. In this case, the restore operation is executed on a different hub than the one where the backup was created. 
 
 There are also cases where you want to restore the data on the same hub where the backup was collected, in order to recover data from a previous snapshot. In this case both restore and backup operations are executed on the same hub.
 
 A restore backup is executed when creating the `restore.cluster.open-cluster-management.io` resource on the hub. A few samples are available [here](https://github.com/stolostron/cluster-backup-operator/tree/main/config/samples)
-- use the [passive sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive.yaml) if you want to restore all resources on the new hub but you don't want to have the managed clusters be managed by the new hub. You can use this restore configuration when the initial hub is still up and you want to prevent the managed clusters to change ownership. You could use this restore option when you want to view the initial hub configuration on the new hub or to prepare the new hub to take over when needed; in that case just restore the managed clusters resources using the [passive activation sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive_activate.yaml).
+- use the [passive sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive.yaml) if you want to restore all resources on the new hub but you don't want to have the managed clusters be managed by the new hub. You can use this restore configuration when the initial hub is still up and you want to prevent the managed clusters to change ownership. You could use this restore option when you want to view the initial hub content using the new hub or to prepare the new hub to take over when needed. In the case of takeover, just restore the managed clusters resources using the [passive activation sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive_activate.yaml); the managed clusters will now connect with the new hub.
 - use the [passive activation sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive_activate.yaml) when you want for this hub to manage the clusters. In this case it is assumed that the other data has been restored already on this hub using the [passive sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive.yaml)
 - use the [restore sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore.yaml) if you want to restore all data at once and make this hub take over the managed clusters in one step.
 
 After you create a `restore.cluster.open-cluster-management.io` resource on the hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on your hub that the backed up resources contained by the backup file have been created.
 
+### Cleaning up the hub before restore
+Velero currently skips backed up resources if they are already installed on the hub. This limits the scenarios that can be used when restoring hub data on a new hub. Unless the new hub is not used and the restore is applied only once, the hub could not be relibly used as a passive configuration: the data on this hub is not reflective of the data available with the restored resources.
+
+Restore limitations examples:
+1. A Policy exists on the new hub, before the backup data is restored on this hub. After the restore of the backup resources, the new hub is not identical with the initial hub from where the data was restored. The Policy should not be running on the new hub since this is a Policy not available with the backup resources.
+2. A Policy exists on the new hub, before the backup data is restored on this hub. The backup data contains the same Policy but in an updated configuration. Since Velero skips existing resources, the Policy will stay unchanged on the new hub, so the Policy is not the same as the one backed up on the initial hub.
+3. A Policy is restored on the new hub. The primary hub keeps updating the content and the Policy content changes as well. The user reapplies the backup on the new hub, expecting to get the updated Policy. Since the Policy already exists on the hub - created by the previous restore - it will not be restored again. So the new hub has now a different configuration from the primary hub, even if the backup contains the expected updated content; that content is not updated by Velero on the new hub.
+
+To address above limitations, when a `Restore.cluster.open-cluster-management.io` resource is created, the Cluster Back up and Restore Operator runs a prepare for restore set of steps which will clean up the hub, before Velero restore is called. 
+
+The prepare for cleanup option uses the `cleanupBeforeRestore` property to identify the subset of objects to clean up. There are 3 options you could set for this clean up: 
+- `None` : no clean up necessary, just call Velero restore. This is to be used on a brand new hub.
+- `CleanupRestored` : clean up all resources created by a previous acm restore. This should be the common usage for this property. It is less intrusive then the `CleanupAll` and covers the scenario where you start with a clean hub and keep restoring resources on this hub ( limitation sample 3 above )
+- `CleanupAll` : clean up all resources on the hub which could be part of an acm backup, even if they were not created as a result of a restore operation. This is to be used when extra content has been created on this hub which requires clean up ( limitation samples 1 and 2 above ). Use this option with caution though as this will cleanup resources on the hub created by the user, not by a previous backup. It is <b>strongly recommended</b> to use the `CleanupRestored` option and to refrain from manually updating hub content when the hub is designated as a passive candidate for a disaster scenario. Basically avoid getting into the situation where you have to swipe the cluster using the `CleanupAll` option; this is given as a last alternative.
+
 <b>Note:</b> 
 
-a. The `restore.cluster.open-cluster-management.io` resource is executed once. After the restore operation is completed, if you want to run another restore operation on the same hub, you have to create a new `restore.cluster.open-cluster-management.io` resource.
+1. The `restore.cluster.open-cluster-management.io` resource is executed once. After the restore operation is completed, if you want to run another restore operation on the same hub, you have to create a new `restore.cluster.open-cluster-management.io` resource.
 
-b. Although you can create multiple `restore.cluster.open-cluster-management.io` resources, only one is allowed to be executing at any moment in time.
+2. Although you can create multiple `restore.cluster.open-cluster-management.io` resources, only one is allowed to be executing at any moment in time.
 
-c. The restore operation allows to restore all 3 backup types created by the backup operation, although you can choose to install only a certain type (only managed clusters or only user credentials or only hub resources). 
+3. The restore operation allows to restore all 3 backup types created by the backup operation, although you can choose to install only a certain type (only managed clusters or only user credentials or only hub resources). 
 
 The restore defines 3 required spec properties, defining the restore logic for the 3 type of backed up files. 
 - `veleroManagedClustersBackupName` is used to define the restore option for the managed clusters. 
@@ -218,20 +239,6 @@ spec:
   veleroResourcesBackupName: latest
 ```
 
-### Cleaning up the hub before restore
-Velero currently skips backed up resources if they are already installed on the hub. This limits the scenarios that can be used when restoring hub data on a new hub. Unless the new hub is not used and the restore is applied only once, the hub could not be relibly used as a passive configuration: the data on this hub is not reflective of the data available with the restored resources.
-
-Restore limitations examples:
-1. A Policy exists on the new hub, before the backup data is restored on this hub. After the restore of the backup resources, the new hub is not identical with the initial hub from where the data was restored. The Policy should not be running on the new hub since this is a Policy not available with the backup resources.
-2. A Policy exists on the new hub, before the backup data is restored on this hub. The backup data contains the same Policy but in an updated configuration. Since Velero skips existing resources, the Policy will stay unchanged on the new hub, so the Policy is not the same as the one backed up on the initial hub.
-3. A Policy is restored on the new hub. The primary hub keeps updating the content and the Policy content changes as well. The user reapplies the backup on the new hub, expecting to get the updated Policy. Since the Policy already exists on the hub - created by the previous restore - it will not be restored again. So the new hub has now a different configuration from the primary hub, even if the backup contains the expected updated content; that content is not updated by Velero on the new hub.
-
-To address above limitations, when a `Restore.cluster.open-cluster-management.io` resource is created, the Cluster Back up and Restore Operator runs a prepare for restore set of steps which will clean up the hub, before Velero restore is called. 
-
-The prepare for cleanup option uses the `cleanupBeforeRestore` property to identify the subset of objects to clean up. There are 3 options you could set for this clean up: 
-- `None` : no clean up necessary, just call Velero restore. This is to be used on a brand new hub.
-- `CleanupRestored` : clean up all resources created by a previous acm restore. This should be the common usage for this property. It is less intrusive then the `CleanupAll` and covers the scenario where you start with a clean hub and keep restoring resources on this hub ( limitation sample 3 above )
-- `CleanupAll` : clean up all resources on the hub which could be part of an acm backup, even if they were not created as a result of a restore operation. This is to be used when extra content has been created on this hub which requires clean up ( limitation samples 1 and 2 above ). Use this option with caution though as this will cleanup resources on the hub created by the user, not by a previous backup. It is <b>strongly recommended</b> to use the `CleanupRestored` option and to refrain from manually updating hub content when the hub is designated as a passive candidate for a disaster scenario. Basically avoid getting into the situation where you have to swipe the cluster using the `CleanupAll` option; this is given as a last alternative.
 
 ## Backup validation using a Policy
 
