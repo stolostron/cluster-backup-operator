@@ -236,6 +236,8 @@ func (r *BackupScheduleReconciler) Reconcile(
 			backupSchedule.Status.Phase = v1beta1.SchedulePhaseBackupCollision
 			backupSchedule.Status.LastMessage = msg
 
+			err := r.Client.Status().Update(ctx, backupSchedule)
+
 			// delete schedules, don't generate new backups
 			for i := range veleroScheduleList.Items {
 				if err := r.Delete(ctx, &veleroScheduleList.Items[i]); err != nil {
@@ -243,10 +245,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 				}
 			}
 
-			return ctrl.Result{}, errors.Wrap(
-				r.Client.Status().Update(ctx, backupSchedule),
-				msg,
-			)
+			return ctrl.Result{}, errors.Wrap(err, msg)
 		}
 	}
 	// no velero schedules, so create them
