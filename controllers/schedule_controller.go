@@ -376,7 +376,8 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		case CredentialsCluster:
 			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client, string(ClusterSecret))
 		case Resources:
-			setResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
+			setResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup,
+				veleroSchedule.Namespace, r.Client)
 		case ResourcesGeneric:
 			setGenericResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
 		case ValidationSchedule:

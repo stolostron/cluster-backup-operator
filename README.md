@@ -10,6 +10,8 @@ Cluster Back up and Restore Operator.
   - [Community, discussion, contribution, and support](#community-discussion-contribution-and-support)
   - [License](#license)
   - [Getting Started](#getting-started)
+    - [OADP Operator installed by the backup chart](#oadp-operator-installed-by-the-backup-chart)
+    - [Policy to inform on backup configuration issues](#policy-to-inform-on-backup-configuration-issues)
   - [Design](#design)
     - [What is backed up](#what-is-backed-up)
       - [Steps to identify backup data](#steps-to-identify-backup-data)
@@ -61,7 +63,12 @@ The Cluster Back up and Restore Operator chart is installed automatically by the
 
 Before you can use the Cluster Back up and Restore operator, the [OADP Operator](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md) must be configured to set the connection to the storage location where backups will be saved. Make sure you follow the steps to create the [secret for the cloud storage](https://github.com/openshift/oadp-operator#creating-credentials-secret) where the backups are going to be saved, then use that secret when creating the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) to setup the connection to the storage location.
 
-<b>Note</b>: The Cluster Back up and Restore Operator chart installs the [backup-restore-enabled](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. The Policy templates check if the required pods are running, storage location is available, backups are available at the defined location and no error status is reported by the main resources. This Policy is intended to help notify the Hub admin of any backup issues as the hub is active and expected to produce backups.
+
+### OADP Operator installed by the backup chart
+Starting with Red Hat Advanced Cluster Management version 2.5, the Cluster Back up and Restore Operator chart is installed automatically as soon as the `MultiClusterHub` resource is created. The Cluster Back up and Restore Operator chart in turn automatically installs the [OADP Operator](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md), in the same namespace with the backup chart. If you have previously installed and used the OADP Operator on this hub, you should uninstall this version since the backup chart works now with the operator installed in the chart's namespace. This should not affect your old backups and previous work. Just use the same storage location for the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) owned by the OADP Operator installed with the backup chart and it will access the same backup data as the previous operator. The only difference is that velero backup resources are now loaded under the new OADP Operator namespace on this hub.
+
+### Policy to inform on backup configuration issues
+The Cluster Back up and Restore Operator chart installs the [backup-restore-enabled](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. The Policy templates check if the required pods are running, storage location is available, backups are available at the defined location and no error status is reported by the main resources. This Policy is intended to help notify the Hub admin of any backup issues as the hub is active and expected to produce backups.
 
 
 
