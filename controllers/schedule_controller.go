@@ -112,6 +112,8 @@ func (r *BackupScheduleReconciler) Reconcile(
 	scheduleLogger := log.FromContext(ctx)
 	backupSchedule := &v1beta1.BackupSchedule{}
 
+	getHubIdentification(ctx, r.DiscoveryClient, r.DynamicClient, r.RESTMapper)
+
 	// velero doesn't delete expired backups if they are in FailedValidation
 	// workaround and delete expired or invalid validation backups them now
 	cleanupExpiredValidationBackups(ctx, req.Namespace, r.Client)
@@ -376,8 +378,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		case CredentialsCluster:
 			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client, string(ClusterSecret))
 		case Resources:
-			setResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup,
-				veleroSchedule.Namespace, r.Client)
+			setResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
 		case ResourcesGeneric:
 			setGenericResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
 		case ValidationSchedule:

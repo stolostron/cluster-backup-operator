@@ -146,7 +146,6 @@ func setResourcesBackupInfo(
 	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
 	resourcesToBackup []string,
-	backupNS string,
 	c client.Client,
 ) {
 
@@ -156,12 +155,6 @@ func setResourcesBackupInfo(
 	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
 		veleroBackupTemplate.ExcludedNamespaces,
 		"local-cluster",
-	)
-
-	// exclude NS where the backup chart is installed
-	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
-		veleroBackupTemplate.ExcludedNamespaces,
-		backupNS,
 	)
 
 	for i := range resourcesToBackup { // acm resources
