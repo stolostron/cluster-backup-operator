@@ -346,6 +346,7 @@ var _ = Describe("Basic Restore controller", func() {
 			},
 			Spec: v1beta1.RestoreSpec{
 				CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+				SyncRestoreWithNewBackups:       true,
 				VeleroManagedClustersBackupName: &veleroManagedClustersBackupName,
 				VeleroCredentialsBackupName:     &latestBackup,
 				VeleroResourcesBackupName:       &veleroResourcesBackupName,
@@ -455,6 +456,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Namespace: veleroNamespace.Name,
 				},
 				Spec: v1beta1.RestoreSpec{
+					SyncRestoreWithNewBackups:       true,
 					CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
 					VeleroManagedClustersBackupName: &latestBackup,
 					VeleroCredentialsBackupName:     &latestBackup,

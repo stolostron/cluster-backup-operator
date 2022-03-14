@@ -88,6 +88,8 @@ var (
 		"restore.cluster.open-cluster-management.io",
 		"clusterclaim.cluster.open-cluster-management.io",
 		"discoveredcluster.discovery.open-cluster-management.io",
+		"clusterimageset.hive.openshift.io",
+		"hiveconfig.hive.openshift.io",
 	}
 
 	// resources used to activate the connection between hub and managed clusters - activation resources
