@@ -216,11 +216,13 @@ The prepare for cleanup option uses the `cleanupBeforeRestore` property to ident
 
 <b>Note:</b> 
 
-1. The `restore.cluster.open-cluster-management.io` resource is executed once. After the restore operation is completed, if you want to run another restore operation on the same hub, you have to create a new `restore.cluster.open-cluster-management.io` resource.
+1. Velero sets a `PartiallyFailed` status for a velero restore resource if the backup restored had no resources. This means that a `restore.cluster.open-cluster-management.io` resource could be in `PartiallyFailed` status if any of the `restore.velero.io` resources created did not restore any resources because the corresponding backup was empty.
 
-2. Although you can create multiple `restore.cluster.open-cluster-management.io` resources, only one is allowed to be executing at any moment in time.
+2. The `restore.cluster.open-cluster-management.io` resource is executed once. After the restore operation is completed, if you want to run another restore operation on the same hub, you have to create a new `restore.cluster.open-cluster-management.io` resource.
 
-3. The restore operation allows to restore all 3 backup types created by the backup operation, although you can choose to install only a certain type (only managed clusters or only user credentials or only hub resources). 
+3. Although you can create multiple `restore.cluster.open-cluster-management.io` resources, only one is allowed to be executing at any moment in time.
+
+4. The restore operation allows to restore all 3 backup types created by the backup operation, although you can choose to install only a certain type (only managed clusters or only user credentials or only hub resources). 
 
 The restore defines 3 required spec properties, defining the restore logic for the 3 type of backed up files. 
 - `veleroManagedClustersBackupName` is used to define the restore option for the managed clusters. 
@@ -387,6 +389,8 @@ schedule-acm
 ## Restore a backup
 
 After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on the new hub that the backed up resources contained by the backup file have been created.
+
+Velero sets a `PartiallyFailed` status for a velero restore resource if the backup restored had no resources. This means that a `restore.cluster.open-cluster-management.io` resource could be in `PartiallyFailed` status if any of the `restore.velero.io` resources created did not restore any resources because the corresponding backup was empty. 
 
 The restore defines 3 required spec properties, defining the restore logic for the 3 type of backed up files. 
 - `veleroManagedClustersBackupName` is used to define the restore option for the managed clusters. 
