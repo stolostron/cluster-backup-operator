@@ -1,0 +1,33 @@
+# apply this resource to restore hub resources in a passive configuration
+# and keeps checking for new backups and restore if updates are available
+# restored managed clusters will show as detached on the current hub, where this resource is applied
+
+######
+# syncRestoreWithNewBackups - keep checking for new backups and restore if updates are available.
+#                             For this option to work, you need to set VeleroResourcesBackupName and VeleroCredentialsBackupName to latest
+#                             and set VeleroManagedClustersBackupName to skip ( as soon as the cluster activation data is latest, the restore is completed)
+#                             If not defined, the value is set to false.
+####
+
+# cleanupBeforeRestore - required, asks to clean up cluster before applying restore
+# valid options : 
+# CleanupRestored - clean up only resources created by a previous acm restore
+# CleanupAll - clean up all resources defined by the acm backups IncludedResources spec
+#              even if they were not created as a result of a restore operation
+#              Use this option with caution as this could cleanup resources on the hub
+#              created by the user, that should be kept even if they are not in the restored resources
+
+# None : don't clean up anything, just apply the restore
+# If this cleanupBeforeRestore option is not specified, the CleanupRestored is applied by default
+
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-passive-sync
+spec:
+  syncRestoreWithNewBackups: true # restore if new updates are available
+  cleanupBeforeRestore: CleanupRestored 
+  veleroManagedClustersBackupName: skip # syncRestoreWithNewBackups is ignored if managed clusters are restored
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
