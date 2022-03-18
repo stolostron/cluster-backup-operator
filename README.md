@@ -191,7 +191,7 @@ openshift-adp   schedule-hub-1   BackupCollision   Backup acm-resources-schedule
 ### Prepare the new hub
 Before running the restore operation on a new hub, you need to manually configure the hub and install the same operators as on the initial hub. For example, you have to install the Red Hat Advanced Cluster Management for Kubernetes operator, in the same namespace as the initial hub, then create the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) and connect to the same storage location where the initial hub had backed up data. If the initial hub had any other operators installed, you have to install them now, before running the restore operation. This ensure the new hub is configured in the same way as the initial hub.
 
-The new hub must use the same namespace names as the old hub when installing the Red Hat Advanced Cluster Management for Kubernetes operator and any other operators configured on the previoud hub.
+The new hub must use the same namespace names as the old hub when installing the Red Hat Advanced Cluster Management for Kubernetes operator and any other operators configured on the previous hub.
 
 ### Restoring backups
 In a usual restore scenario, the hub where the backups have been executed becomes unavailable and data backed up needs to be moved to a new hub. This is done by running the restore operation on the hub where the backed up data needs to be moved to. In this case, the restore operation is executed on a different hub than the one where the backup was created. 
