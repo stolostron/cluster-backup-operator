@@ -151,7 +151,7 @@ func deleteDynamicResource(
 	resource unstructured.Unstructured,
 	deleteOptions v1.DeleteOptions,
 	excludedNamespaces []string,
-) {
+) bool {
 	logger := log.FromContext(ctx)
 	localCluster := "local-cluster"
 
@@ -165,9 +165,17 @@ func deleteDynamicResource(
 		(mapping.Scope.Name() == meta.RESTScopeNameNamespace &&
 			(resource.GetNamespace() == localCluster ||
 				findValue(excludedNamespaces, resource.GetNamespace()))) {
-		// do not clean up local-cluster resources
+		// do not clean up local-cluster resources or resources from excluded NS
 		logger.Info(nsSkipMsg)
-		return
+		return false
+	}
+
+	if resource.GetLabels() != nil && (resource.GetLabels()["velero.io/exclude-from-backup"] == "true" ||
+		resource.GetLabels()["installer.name"] == "multiclusterhub") {
+		// do not cleanup resources with a velero.io/exclude-from-backup=true label, they are not backed up
+		// do not backup subscriptions created by the mch in a separate NS
+		logger.Info(nsSkipMsg)
+		return false
 	}
 
 	nsScopedMsg := fmt.Sprintf(
@@ -200,12 +208,12 @@ func deleteDynamicResource(
 		} else {
 			logger.Info(nsScopedMsg)
 			if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
+				logger.Info(nsScopedPatchMsg)
 				// delete finalizers and delete resource in this way
 				if _, err := dr.Namespace(resource.GetNamespace()).Patch(ctx, resource.GetName(),
 					types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
 					logger.Info(err.Error())
-				} else {
-					logger.Info(nsScopedPatchMsg)
+					return false
 				}
 			}
 		}
@@ -217,15 +225,17 @@ func deleteDynamicResource(
 			logger.Info(globalResourceMsg)
 			if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
 				// delete finalizers and delete resource in this way
+				logger.Info(globalResourcePatchMsg)
 				if _, err := dr.Patch(ctx, resource.GetName(),
 					types.MergePatchType, []byte(patch), v1.PatchOptions{}); err != nil {
 					logger.Info(err.Error())
-				} else {
-					logger.Info(globalResourcePatchMsg)
+					return false
 				}
 			}
 		}
 	}
+
+	return true
 }
 
 // clean up resources for the restored backup resources
@@ -274,6 +284,11 @@ func prepareRestoreForBackup(
 	for i := range resources {
 
 		kind, groupName := getResourceDetails(resources[i])
+
+		if kind == "clusterimageset" || kind == "hiveconfig" {
+			// ignore clusterimagesets and hiveconfig
+			continue
+		}
 
 		if kind == "clusterdeployment" || kind == "machinepool" {
 			// old backups have a short version for these resource

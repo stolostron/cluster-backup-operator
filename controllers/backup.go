@@ -88,8 +88,6 @@ var (
 		"restore.cluster.open-cluster-management.io",
 		"clusterclaim.cluster.open-cluster-management.io",
 		"discoveredcluster.discovery.open-cluster-management.io",
-		"clusterimageset.hive.openshift.io",
-		"hiveconfig.hive.openshift.io",
 	}
 
 	// resources used to activate the connection between hub and managed clusters - activation resources
@@ -146,6 +144,7 @@ func setResourcesBackupInfo(
 	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
 	resourcesToBackup []string,
+	backupNS string,
 	c client.Client,
 ) {
 
@@ -155,6 +154,12 @@ func setResourcesBackupInfo(
 	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
 		veleroBackupTemplate.ExcludedNamespaces,
 		"local-cluster",
+	)
+
+	// exclude backup chart NS
+	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
+		veleroBackupTemplate.ExcludedNamespaces,
+		backupNS,
 	)
 
 	for i := range resourcesToBackup { // acm resources
