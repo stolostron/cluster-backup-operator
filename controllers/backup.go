@@ -55,6 +55,7 @@ var (
 		"app.k8s.io",
 		"core.observatorium.io",
 		"hive.openshift.io",
+		"agent-install.openshift.io",
 	}
 
 	// exclude resources from these api groups
