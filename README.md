@@ -22,6 +22,10 @@ Cluster Back up and Restore Operator.
     - [Restoring a backup](#restoring-a-backup)
       - [Prepare the new hub](#prepare-the-new-hub)
       - [Restoring backups](#restoring-backups)
+        - [Restoring passive resources and check for new backups](#restoring-passive-resources-and-check-for-new-backups)
+        - [Restoring passive resources](#restoring-passive-resources)
+        - [Restoring activation resources](#restoring-activation-resources)
+        - [Restoring all resources](#restoring-all-resources)
       - [Cleaning up the hub before restore](#cleaning-up-the-hub-before-restore)
     - [Backup validation using a Policy](#backup-validation-using-a-policy)
       - [Pod validation](#pod-validation)
@@ -187,15 +191,35 @@ openshift-adp   schedule-hub-1   BackupCollision   Backup acm-resources-schedule
 ### Prepare the new hub
 Before running the restore operation on a new hub, you need to manually configure the hub and install the same operators as on the initial hub. For example, you have to install the Red Hat Advanced Cluster Management for Kubernetes operator, in the same namespace as the initial hub, then create the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) and connect to the same storage location where the initial hub had backed up data. If the initial hub had any other operators installed, you have to install them now, before running the restore operation. This ensure the new hub is configured in the same way as the initial hub.
 
+The new hub must use the same namespace names as the old hub when installing the Red Hat Advanced Cluster Management for Kubernetes operator and any other operators configured on the previoud hub.
+
 ### Restoring backups
 In a usual restore scenario, the hub where the backups have been executed becomes unavailable and data backed up needs to be moved to a new hub. This is done by running the restore operation on the hub where the backed up data needs to be moved to. In this case, the restore operation is executed on a different hub than the one where the backup was created. 
 
 There are also cases where you want to restore the data on the same hub where the backup was collected, in order to recover data from a previous snapshot. In this case both restore and backup operations are executed on the same hub.
 
 A restore backup is executed when creating the `restore.cluster.open-cluster-management.io` resource on the hub. A few samples are available [here](https://github.com/stolostron/cluster-backup-operator/tree/main/config/samples)
-- use the [passive sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive.yaml) if you want to restore all resources on the new hub but you don't want to have the managed clusters be managed by the new hub. You can use this restore configuration when the initial hub is still up and you want to prevent the managed clusters to change ownership. You could use this restore option when you want to view the initial hub content using the new hub or to prepare the new hub to take over when needed. In the case of takeover, just restore the managed clusters resources using the [passive activation sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive_activate.yaml); the managed clusters will now connect with the new hub.
-- use the [passive activation sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive_activate.yaml) when you want for this hub to manage the clusters. In this case it is assumed that the other data has been restored already on this hub using the [passive sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive.yaml)
-- use the [restore sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore.yaml) if you want to restore all data at once and make this hub take over the managed clusters in one step.
+
+By passive data we mean resource that don't result in activating the connection between the new hub and managed clusters. When the passive data is restored on the new hub, the managed clusters show up but they are in detached state. The hub that produced the backup is still managing these clusters.
+
+By activation data we mean resources that, when restored on the new hub, result in making the managed clusters to be managed by the new hub. The new hub is now the active hub, managing the clusters.
+
+#### Restoring passive resources and check for new backups
+
+
+Use the [restore passive with sync sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive_sync.yaml) if you want to restore passive data then keep checking if new backups are available and restore them automatically. For this automatic restore of new backups to work, the restore must set `syncRestoreWithNewBackups` property to `true` and must only restore latest, passive data. So for this option to work, you need to set `VeleroResourcesBackupName` and `VeleroCredentialsBackupName` to `latest` and the `VeleroManagedClustersBackupName` to `skip` - as soon as the `VeleroManagedClustersBackupName` is set to `latest`, the managed clusters are activated on the new hub and this hub becomes a primary hub. When this happens, the restore resource is set to `Finished` and the `syncRestoreWithNewBackups` is ignored, even if set to `true`. The restore operation has completed.
+
+#### Restoring passive resources
+
+Use the [passive sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive.yaml) if you want to restore all resources on the new hub but you don't want to have the managed clusters be managed by the new hub. You can use this restore configuration when the initial hub is still up and you want to prevent the managed clusters to change ownership. You could use this restore option when you want to view the initial hub content using the new hub or to prepare the new hub to take over when needed. In the case of takeover, just restore the managed clusters resources using the [passive activation sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive_activate.yaml); the managed clusters will now connect with the new hub.
+
+#### Restoring activation resources
+
+Use the [passive activation sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive_activate.yaml) when you want for this hub to manage the clusters. In this case it is assumed that the other data has been restored already on this hub using the [passive sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive.yaml)
+
+#### Restoring all resources
+
+Use the [restore sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore.yaml) if you want to restore all data at once and make this hub take over the managed clusters in one step.
 
 After you create a `restore.cluster.open-cluster-management.io` resource on the hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on your hub that the backed up resources contained by the backup file have been created.
 
@@ -218,7 +242,7 @@ The prepare for cleanup option uses the `cleanupBeforeRestore` property to ident
 
 1. Velero sets a `PartiallyFailed` status for a velero restore resource if the backup restored had no resources. This means that a `restore.cluster.open-cluster-management.io` resource could be in `PartiallyFailed` status if any of the `restore.velero.io` resources created did not restore any resources because the corresponding backup was empty.
 
-2. The `restore.cluster.open-cluster-management.io` resource is executed once. After the restore operation is completed, if you want to run another restore operation on the same hub, you have to create a new `restore.cluster.open-cluster-management.io` resource.
+2. The `restore.cluster.open-cluster-management.io` resource is executed once, unless you use the `syncRestoreWithNewBackups:true` to keep restoring passive data when new backups are available.For this case, follow the [restore passive with sync sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive_sync.yaml). After the restore operation is completed, if you want to run another restore operation on the same hub, you have to create a new `restore.cluster.open-cluster-management.io` resource.
 
 3. Although you can create multiple `restore.cluster.open-cluster-management.io` resources, only one is allowed to be executing at any moment in time.
 
