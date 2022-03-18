@@ -55,6 +55,12 @@ spec:
                   previously restored. 3. Use None if you don't want to clean up any
                   resources before restoring the new data.
                 type: string
+              restoreSyncInterval:
+                description: Used in combination with the SyncRestoreWithNewBackups
+                  property When SyncRestoreWithNewBackups is set to true, defines
+                  the duration for checking on new backups If not defined and SyncRestoreWithNewBackups
+                  is set to true, it defaults to 30minutes
+                type: string
               syncRestoreWithNewBackups:
                 description: Set this to true if you want to keep checking for new
                   backups and restore if updates are available. If not defined, the
