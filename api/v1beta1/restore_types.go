@@ -91,6 +91,11 @@ type RestoreSpec struct {
 	// For this option to work, you need to set VeleroResourcesBackupName and VeleroCredentialsBackupName
 	// to latest and VeleroManagedClustersBackupName to skip
 	SyncRestoreWithNewBackups bool `json:"syncRestoreWithNewBackups,omitempty"`
+	// +kubebuilder:validation:Optional
+	// Used in combination with the SyncRestoreWithNewBackups property
+	// When SyncRestoreWithNewBackups is set to true, defines the duration for checking on new backups
+	// If not defined and SyncRestoreWithNewBackups is set to true, it defaults to 30minutes
+	RestoreSyncInterval metav1.Duration `json:"restoreSyncInterval,omitempty"`
 }
 
 // RestoreStatus defines the observed state of Restore

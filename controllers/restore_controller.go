@@ -221,10 +221,19 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	err = r.Client.Status().Update(ctx, restore)
+	return sendResult(restore, err)
+}
+
+func sendResult(restore *v1beta1.Restore, err error) (ctrl.Result, error) {
 
 	if restore.Spec.SyncRestoreWithNewBackups &&
 		restore.Status.Phase == v1beta1.RestorePhaseEnabled {
-		return ctrl.Result{RequeueAfter: restoreSyncInterval}, errors.Wrap(
+
+		tryAgain := restoreSyncInterval
+		if restore.Spec.RestoreSyncInterval.Duration != 0 {
+			tryAgain = restore.Spec.RestoreSyncInterval.Duration
+		}
+		return ctrl.Result{RequeueAfter: tryAgain}, errors.Wrap(
 			err,
 			fmt.Sprintf(
 				"could not update status for restore %s/%s",

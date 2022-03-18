@@ -209,6 +209,24 @@ By activation data we mean resources that, when restored on the new hub, result 
 
 Use the [restore passive with sync sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive_sync.yaml) if you want to restore passive data then keep checking if new backups are available and restore them automatically. For this automatic restore of new backups to work, the restore must set `syncRestoreWithNewBackups` property to `true` and must only restore latest, passive data. So for this option to work, you need to set `VeleroResourcesBackupName` and `VeleroCredentialsBackupName` to `latest` and the `VeleroManagedClustersBackupName` to `skip` - as soon as the `VeleroManagedClustersBackupName` is set to `latest`, the managed clusters are activated on the new hub and this hub becomes a primary hub. When this happens, the restore resource is set to `Finished` and the `syncRestoreWithNewBackups` is ignored, even if set to `true`. The restore operation has completed.
 
+By default, when `syncRestoreWithNewBackups` is set to `true`, the controller checks for new backups every 30 minutes. If new backups are found, it restores the backed up resources. You can update the duration after which you want the controller to check for new backups using this property `restoreSyncInterval`. 
+
+For example, the resource below checks for new backups every 10 minutes.
+
+```yaml
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-passive-sync
+spec:
+  syncRestoreWithNewBackups: true # restore again when new backups are available
+  restoreSyncInterval: 10m # check for new backups every 10 minutes
+  cleanupBeforeRestore: CleanupRestored 
+  veleroManagedClustersBackupName: skip
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
+```
+
 #### Restoring passive resources
 
 Use the [passive sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive.yaml) if you want to restore all resources on the new hub but you don't want to have the managed clusters be managed by the new hub. You can use this restore configuration when the initial hub is still up and you want to prevent the managed clusters to change ownership. You could use this restore option when you want to view the initial hub content using the new hub or to prepare the new hub to take over when needed. In the case of takeover, just restore the managed clusters resources using the [passive activation sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive_activate.yaml); the managed clusters will now connect with the new hub.
