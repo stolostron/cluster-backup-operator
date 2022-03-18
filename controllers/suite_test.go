@@ -133,6 +133,8 @@ var _ = BeforeSuite(func() {
 		GroupVersion: "hive.openshift.io/v1beta1",
 		APIResources: []metav1.APIResource{
 			{Name: "dnszones", Namespaced: false, Kind: "DNSZone"},
+			{Name: "clusterimageset", Namespaced: false, Kind: "ClusterImageSet"},
+			{Name: "hiveconfig", Namespaced: false, Kind: "HiveConfig"},
 		},
 	}
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
