@@ -28,6 +28,6 @@ metadata:
 spec:
   syncRestoreWithNewBackups: true # restore if new updates are available
   cleanupBeforeRestore: CleanupRestored 
-  veleroManagedClustersBackupName: skip # syncRestoreWithNewBackups is ignored if managed clusters are
+  veleroManagedClustersBackupName: skip # syncRestoreWithNewBackups is ignored if managed clusters are restored
   veleroCredentialsBackupName: latest
   veleroResourcesBackupName: latest
