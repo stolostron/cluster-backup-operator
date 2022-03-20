@@ -13,10 +13,13 @@ Cluster Back up and Restore Operator.
     - [OADP Operator installed by the backup chart](#oadp-operator-installed-by-the-backup-chart)
     - [Policy to inform on backup configuration issues](#policy-to-inform-on-backup-configuration-issues)
   - [Design](#design)
+    - [Cluster Backup and Restore flow](#cluster-backup-and-restore-flow)
     - [What is backed up](#what-is-backed-up)
       - [Steps to identify backup data](#steps-to-identify-backup-data)
       - [Extending backup data](#extending-backup-data)
       - [Resources restored at managed clusters activation time](#resources-restored-at-managed-clusters-activation-time)
+    - [Passive data](#passive-data)
+    - [Managed clusters activation data](#managed-clusters-activation-data)
     - [Scheduling a cluster backup](#scheduling-a-cluster-backup)
       - [Backup Collisions](#backup-collisions)
     - [Restoring a backup](#restoring-a-backup)
@@ -34,6 +37,9 @@ Cluster Back up and Restore Operator.
       - [BackupSchedule and Restore status validation](#backupschedule-and-restore-status-validation)
       - [Backups exist validation](#backups-exist-validation)
       - [Backups are actively running as a cron job](#backups-are-actively-running-as-a-cron-job)
+- [Active passive configuration design](#active-passive-configuration-design)
+  - [Setting up an active passive configuration](#setting-up-an-active-passive-configuration)
+  - [Disaster recovery](#disaster-recovery)
 - [Setting up Your Dev Environment](#setting-up-your-dev-environment)
   - [Prerequiste Tools](#prerequiste-tools)
   - [Installation](#installation)
@@ -65,7 +71,7 @@ The Cluster Back up and Restore Operator runs on the Red Hat Advanced Cluster Ma
 
 The Cluster Back up and Restore Operator chart is installed automatically by the MultiClusterHub resource, when installing or upgrading to version 2.5 of the Red Hat Advanced Cluster Management operator. The OADP Operator will be installed automatically with the Cluster Back up and Restore Operator chart, as a chart hook.
 
-Before you can use the Cluster Back up and Restore operator, the [OADP Operator](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md) must be configured to set the connection to the storage location where backups will be saved. Make sure you follow the steps to create the [secret for the cloud storage](https://github.com/openshift/oadp-operator#creating-credentials-secret) where the backups are going to be saved, then use that secret when creating the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) to setup the connection to the storage location.
+Before you can use the Cluster Back up and Restore operator, the [OADP Operator](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md) must be configured to set the connection to the storage location where backups will be saved. Make sure you follow the steps to create the [secret for the cloud storage](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-credentials-secret) where the backups are going to be saved, then use that secret when creating the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) to setup the connection to the storage location.
 
 
 ### OADP Operator installed by the backup chart
@@ -75,14 +81,18 @@ Starting with Red Hat Advanced Cluster Management version 2.5, the Cluster Back 
 The Cluster Back up and Restore Operator chart installs the [backup-restore-enabled](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. The Policy templates check if the required pods are running, storage location is available, backups are available at the defined location and no error status is reported by the main resources. This Policy is intended to help notify the Hub admin of any backup issues as the hub is active and expected to produce backups.
 
 
-
 ## Design
 
-The operator defines the `BackupSchedule.cluster.open-cluster-management.io` resource, used to setup Red Hat Advanced Cluster Management for Kubernetes backup schedules, and `Restore.cluster.open-cluster-management.io` resource, used to process and restore these backups.
-The operator sets the options needed to backup remote clusters identity and any other hub resources that needs to be restored.
+The content below describes the backup and restore flow using the Cluster Back up and Restore Operator solution, with details on what and how the data is backed up and restored.
+Once you are familiar with these concepts you can follow the [Active passive configuration design](#active-passive-configuration-design) section to understand how to build a complete DR solution with an ACM hub set as a primary, active configuration, managing clusters, and one or more ACM hubs setup to take over in a disaster scenario.
+
+
+## Cluster Backup and Restore flow
+
+The operator defines the `BackupSchedule.cluster.open-cluster-management.io` resource, used to setup Red Hat Advanced Cluster Management for Kubernetes backup schedules, and the `Restore.cluster.open-cluster-management.io` resource, used to process and restore these backups.
+The operator sets the options needed to backup remote clusters identity and any other hub resources that need to be restored.
 
 ![Cluster Backup Controller Dataflow](images/cluster-backup-controller-dataflow.png)
-
 
 ## What is backed up
 
@@ -131,6 +141,14 @@ metadata:
   labels:
     cluster.open-cluster-management.io/backup: cluster-activation
 ``` 
+
+## Passive data
+
+Passive data is backup data such as secrets, configmaps, apps, policies and all the managed cluster custom resources which are not resulting in activating the connection between managed clusters and hub where these resources are being restored on. These resources are stored by the credentials backup and resources backup files.
+
+## Managed clusters activation data
+
+Managed clusters activation data or activation data, is backup data which when restored on a new hub will result in managed clusters being actively managed by the hub where the restore was executed. Activation data  resources are stored by the managed clusters backup, labeled with `cluster.open-cluster-management.io/backup-schedule-type: acm-managed-clusters`.
 
 
 ## Scheduling a cluster backup 
@@ -317,9 +335,31 @@ The following templates check the pod status for the backup component and depend
 - `acm-managed-clusters-schedule-backups-available` template checks if `Backup.velero.io` resources are available at the location sepcified by the `BackupStorageLocation.velero.io` and the backups were created by a `BackupSchedule.cluster.open-cluster-management.io` resource. This validates that the backups have been executed at least once, using the Backup and restore operator.
 
 ### Backups are actively running as a cron job
-- a `BackupSchedule.cluster.open-cluster-management.io` is actively running and saving new backups at the storage location. This validation is done by the `backup-schedule-cron-enabled` Policy template. The template checks that there is a `Backup.velero.io` with a label `velero.io/schedule-name: acm-validation-policy-schedule` at the storage location. The `acm-validation-policy-schedule` backups are set to expire after the time set for the backups cron schedule. If no cron job is running anymore to create backups, the old `acm-validation-policy-schedule` backup is deleted because it expired and a new one is not created. So if no `acm-validation-policy-schedule` backups exist at any moment in time, it means that there are no active cron job genertaing acm backups.
+- This validation is done by the `backup-schedule-cron-enabled` template. It checks that a `BackupSchedule.cluster.open-cluster-management.io` is actively running and creating new backups at the storage location.  The template checks that there is a `Backup.velero.io` with a label `velero.io/schedule-name: acm-validation-policy-schedule` at the storage location. The `acm-validation-policy-schedule` backups are set to expire after the time set for the backups cron schedule. If no cron job is running anymore to create backups, the old `acm-validation-policy-schedule` backup is deleted because it expired and a new one is not created. So if no `acm-validation-policy-schedule` backups exist at any moment in time, it means that there are no active cron job generating acm backups.
 
 This Policy is intended to help notify the Hub admin of any backup issues as the hub is active and expected to produce or restore backups.
+
+# Active passive configuration design
+
+## Setting up an active passive configuration
+
+In an active passive configuration you have 
+- one hub, called active or primary hub, which manages the clusters and is backing up resources at defined time intervals, using the `BackupSchedule.cluster.open-cluster-management.io` resource
+- one or more passive hubs, which are continously retrieving the latest backups and restoring the [passive data](#passive-data). The passive hubs use the `Restore.cluster.open-cluster-management.io` resource to keep restoring passive data posted by the primary hub, when new backup data is available. These hubs are on standby to become a primary hub when the primary hub goes down. They are connected to the same storage location where the primary hub backs up data so they can access the primary hub backups. For more details on how to setup this automatic restore configuration see the [Restoring passive resources and check for new backups](#restoring-passive-resources-and-check-for-new-backups) section.
+
+![Active Passive Configuration Dataflow](images/active-passive-configuration-dataflow.png)
+
+## Disaster recovery
+
+When the primary hub goes down, one of the passive hubs are chosen by the admin to take over the managed clusters. In the image below, the admin decides to use Hub D as the new primary hub. These are the steps taken to have Hub D become a primary hub: 
+1. Hub D restores the [Managed Cluster activation data](#managed-clusters-activation-data). At this point, the managed clusters connect with Hub D.
+2. The admin starts a backup on the new primary, Hub D, by creating a `BackupSchedule.cluster.open-cluster-management.io` resource and storing the backups at the same storage location as the initial primary hub. All other passive hubs will now restore [passive data](#passive-data) using the backup data created by the new primary hub, unaware that the primary hub has changed. Hub D behaves now as the primary hub, managing clusters and backing up data.
+
+Note: 
+- Step 1 is not automated since the admin should decide if the primary hub is down and needs to be replaced, or there is some network communication error between the hub and managed clusters. The admin also decides what passive hub should become primary. If desired, this step could be automated using the Policy integration with Ansible jobs: the admin can setup an Ansible job to be executed when the [Backup Policy](#backup-validation-using-a-policy) reports backup execution errors.
+- Although Step 2 above is manual, the admin will be notified using the [Backups are actively running as a cron job](#backups-are-actively-running-as-a-cron-job) if he omits to start creating backups from the new primary hub. 
+
+![Disaster Recovery](images/disaster-recovery.png)
 
 
 # Setting up Your Dev Environment
