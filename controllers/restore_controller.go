@@ -174,6 +174,16 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		)
 	}
 
+	if restore.Spec.CleanupBeforeRestore != v1beta1.CleanupTypeNone &&
+		restore.Status.Phase == "" {
+		// update state only at the very beginning
+		restore.Status.Phase = v1beta1.RestorePhaseStarted
+		restore.Status.LastMessage = "Prepare to restore"
+		if err = r.Client.Status().Update(ctx, restore); err != nil {
+			restoreLogger.Info(err.Error())
+		}
+
+	}
 	// retrieve the velero restore (if any)
 	veleroRestoreList := veleroapi.RestoreList{}
 	if err := r.List(
