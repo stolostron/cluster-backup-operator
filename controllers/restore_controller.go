@@ -194,7 +194,8 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	sync := isValidSyncOptions(restore) && restore.Status.Phase == v1beta1.RestorePhaseEnabled
+	isValidSync, msg := isValidSyncOptions(restore)
+	sync := isValidSync && restore.Status.Phase == v1beta1.RestorePhaseEnabled
 
 	if len(veleroRestoreList.Items) == 0 || sync {
 		if err := r.initVeleroRestores(ctx, restore, sync); err != nil {
@@ -218,6 +219,12 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	} else {
 		setRestorePhase(&veleroRestoreList, restore)
+	}
+
+	if restore.Spec.SyncRestoreWithNewBackups && !isValidSync {
+		restore.Status.LastMessage = restore.Status.LastMessage +
+			" ; SyncRestoreWithNewBackups option is ignored because " +
+			msg
 	}
 
 	err = r.Client.Status().Update(ctx, restore)
@@ -314,8 +321,9 @@ func setRestorePhase(
 		}
 	}
 
+	isValidSync, _ := isValidSyncOptions(restore)
 	// sync is enabled only when the backup name for managed clusters is set to skip
-	if isValidSyncOptions(restore) &&
+	if isValidSync &&
 		*restore.Spec.VeleroManagedClustersBackupName == skipRestoreStr {
 		restore.Status.Phase = v1beta1.RestorePhaseEnabled
 		restore.Status.LastMessage = "Velero restores have run to completion, " +
@@ -467,6 +475,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 ) error {
 	restoreLogger := log.FromContext(ctx)
 
+	restoreOnlyManagedClusters := false
 	if sync {
 		if r.isNewBackupAvailable(ctx, restore, Resources) {
 			restoreLogger.Info(
@@ -474,6 +483,11 @@ func (r *RestoreReconciler) initVeleroRestores(
 				"name", restore.Name,
 				"namespace", restore.Namespace,
 			)
+		} else if restore.Status.VeleroManagedClustersRestoreName == "" &&
+			*restore.Spec.VeleroManagedClustersBackupName == latestBackupStr {
+			// check if the managed cluster resources were not restored yet
+			// allow that now
+			restoreOnlyManagedClusters = true
 		} else {
 			return nil
 		}
@@ -483,6 +497,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 	veleroRestoresToCreate, backupsForVeleroRestores, err := r.retrieveRestoreDetails(
 		ctx,
 		restore,
+		restoreOnlyManagedClusters,
 	)
 	if err != nil {
 		return err
@@ -586,17 +601,24 @@ func (r *RestoreReconciler) initVeleroRestores(
 func (r *RestoreReconciler) retrieveRestoreDetails(
 	ctx context.Context,
 	acmRestore *v1beta1.Restore,
+	restoreOnlyManagedClusters bool,
 ) (map[ResourceType]*veleroapi.Restore,
 	map[ResourceType]*veleroapi.Backup,
 	error) {
 
 	restoreLogger := log.FromContext(ctx)
 
-	restoreKeys := make([]ResourceType, 0, len(veleroScheduleNames)-1) // ignore validation backup
+	restoreLength := len(veleroScheduleNames) - 1 // ignore validation backup
+	if restoreOnlyManagedClusters {
+		restoreLength = 1 // will get only managed clusters
+	}
+	restoreKeys := make([]ResourceType, 0, restoreLength)
 	for key := range veleroScheduleNames {
-		if key == ValidationSchedule {
+		if key == ValidationSchedule ||
+			(restoreOnlyManagedClusters && key != ManagedClusters) {
 			// ignore validation backup; this is used for the policy
 			// to validate that there are backups schedules enabled
+			// also ignore all but managed clusters when only this is restored
 			continue
 		}
 		restoreKeys = append(restoreKeys, key)
