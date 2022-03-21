@@ -9,4 +9,4 @@ metadata:
   name: schedule-acm
 spec:
   veleroSchedule: 0 */2 * * *
-  veleroTtl: 72h
+  veleroTtl: 120h
