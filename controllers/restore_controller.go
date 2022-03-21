@@ -179,7 +179,10 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		// update state only at the very beginning
 		restore.Status.Phase = v1beta1.RestorePhaseStarted
 		restore.Status.LastMessage = "Prepare to restore"
-		r.Client.Status().Update(ctx, restore)
+		if err = r.Client.Status().Update(ctx, restore); err != nil {
+			restoreLogger.Info(err.Error())
+		}
+
 	}
 	// retrieve the velero restore (if any)
 	veleroRestoreList := veleroapi.RestoreList{}
