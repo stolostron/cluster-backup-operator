@@ -59,16 +59,16 @@ func isVeleroRestoreRunning(restore *veleroapi.Restore) bool {
 	return false
 }
 
-func isValidSyncOptions(restore *v1beta1.Restore) bool {
+func isValidSyncOptions(restore *v1beta1.Restore) (bool, string) {
 
 	if !restore.Spec.SyncRestoreWithNewBackups {
-		return false
+		return false, ""
 	}
 
 	if restore.Spec.VeleroManagedClustersBackupName == nil ||
 		restore.Spec.VeleroCredentialsBackupName == nil ||
 		restore.Spec.VeleroResourcesBackupName == nil {
-		return false
+		return false, "Some Velero backup names are not set."
 	}
 
 	backupName := ""
@@ -77,24 +77,23 @@ func isValidSyncOptions(restore *v1beta1.Restore) bool {
 	backupName = strings.ToLower(strings.TrimSpace(backupName))
 
 	if backupName != skipRestoreStr && backupName != latestBackupStr {
-		return false
+		return false, "VeleroManagedClustersBackupName should be set to skip or latest."
 	}
 
 	backupName = *restore.Spec.VeleroCredentialsBackupName
 	backupName = strings.ToLower(strings.TrimSpace(backupName))
 
 	if backupName != latestBackupStr {
-		return false
+		return false, "VeleroCredentialsBackupName should be set to latest."
 	}
 
 	backupName = *restore.Spec.VeleroResourcesBackupName
 	backupName = strings.ToLower(strings.TrimSpace(backupName))
 
 	if backupName != latestBackupStr {
-		return false
+		return false, "VeleroResourcesBackupName should be set to latest."
 	}
-
-	return true
+	return true, ""
 }
 
 func isSkipAllRestores(restore *v1beta1.Restore) bool {
