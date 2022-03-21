@@ -757,14 +757,7 @@ func (r *RestoreReconciler) prepareForRestore(
 				additionalLabel,
 			)
 		}
-		if key == ResourcesGeneric &&
-			veleroRestoresToCreate[ManagedClusters] == nil {
-			// managed clusters not restored
-			// don't clean up resources with cluster-activation label
-			additionalLabel = "cluster.open-cluster-management.io/backup," +
-				"cluster.open-cluster-management.io/backup notin (cluster-activation)"
 
-		}
 		prepareRestoreForBackup(
 			ctx,
 			restoreOptions,
