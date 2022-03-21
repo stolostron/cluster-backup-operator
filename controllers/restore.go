@@ -205,6 +205,7 @@ func deleteDynamicResource(
 		// namespaced resources should specify the namespace
 		if err := dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions); err != nil {
 			logger.Info(err.Error())
+			return false
 		} else {
 			logger.Info(nsScopedMsg)
 			if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
@@ -221,13 +222,14 @@ func deleteDynamicResource(
 		// for cluster-wide resources
 		if err := dr.Delete(ctx, resource.GetName(), deleteOptions); err != nil {
 			logger.Info(err.Error())
+			return false
 		} else {
 			logger.Info(globalResourceMsg)
 			if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
 				// delete finalizers and delete resource in this way
 				logger.Info(globalResourcePatchMsg)
 				if _, err := dr.Patch(ctx, resource.GetName(),
-					types.MergePatchType, []byte(patch), v1.PatchOptions{}); err != nil {
+					types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
 					logger.Info(err.Error())
 					return false
 				}
@@ -276,6 +278,16 @@ func prepareRestoreForBackup(
 	var resources []string
 	if restoreType != ResourcesGeneric {
 		resources = veleroBackup.Spec.IncludedResources
+
+		if restoreType == Resources {
+			// include managed cluster resources, they need to be cleaned up even if the managed clusters are not restored now
+			for i := range backupManagedClusterResources {
+				resources = appendUnique(
+					resources,
+					backupManagedClusterResources[i],
+				)
+			}
+		}
 	} else {
 		// for generic resources get all CRDs and exclude the ones in the veleroBackup.Spec.ExcludedResources
 		resources, _ = getGenericCRDFromAPIGroups(ctx, restoreOptions.dynamicArgs.dc, veleroBackup)
@@ -315,8 +327,6 @@ func prepareRestoreForBackup(
 			listOptions = v1.ListOptions{LabelSelector: labelSelector}
 		}
 
-		// get all resources of this type with the velero.io/backup-name set
-		// we want to clean them up, they were created by a previous restore
 		dynamiclist, err := dr.List(ctx, listOptions)
 		if err != nil {
 			// ignore error
@@ -324,8 +334,6 @@ func prepareRestoreForBackup(
 		}
 		// get all items and delete them
 		for i := range dynamiclist.Items {
-			logger.Info(dynamiclist.Items[i].GetName())
-
 			deleteDynamicResource(
 				ctx,
 				mapping,
