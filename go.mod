@@ -9,12 +9,12 @@ require (
 	github.com/openshift/hive/apis v0.0.0-20220208211620-c2317e6c13bd
 	github.com/pkg/errors v0.9.1
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/vmware-tanzu/velero v1.8.1
+	github.com/vmware-tanzu/velero v1.7.1
 	k8s.io/api v0.23.3
-	k8s.io/apimachinery v0.23.5
+	k8s.io/apimachinery v0.23.3
 	k8s.io/client-go v12.0.0+incompatible
 	open-cluster-management.io/api v0.6.0
-	sigs.k8s.io/controller-runtime v0.11.1
+	sigs.k8s.io/controller-runtime v0.11.0
 )
 
 require (
@@ -42,7 +42,7 @@ require (
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-cmp v0.5.6 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
-	github.com/google/uuid v1.2.0 // indirect
+	github.com/google/uuid v1.1.2 // indirect
 	github.com/googleapis/gnostic v0.5.5 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
