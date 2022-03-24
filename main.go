@@ -33,6 +33,7 @@ import (
 	backupv1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	"github.com/stolostron/cluster-backup-operator/controllers"
 	certsv1 "k8s.io/api/certificates/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/discovery"
@@ -56,6 +57,7 @@ var (
 
 func init() {
 
+	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(backupv1beta1.AddToScheme(scheme))
 	utilruntime.Must(chnv1.AddToScheme(scheme))
 	utilruntime.Must(certsv1.AddToScheme(scheme))
