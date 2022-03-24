@@ -38,6 +38,7 @@ var _ = Describe("BackupSchedule controller", func() {
 		acmNamespace          *corev1.Namespace
 		chartsv1NS            *corev1.Namespace
 		clusterPoolNS         *corev1.Namespace
+		clusterPoolSecrets    []corev1.Secret
 
 		backupTimestamps = []string{
 			"20210910181336",
@@ -124,6 +125,18 @@ var _ = Describe("BackupSchedule controller", func() {
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name: acmNamespaceName,
+			},
+		}
+		clusterPoolSecrets = []corev1.Secret{
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Secret",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "app-prow-47-aws-creds",
+					Namespace: clusterPoolNSName,
+				},
 			},
 		}
 		clusterPools = []hivev1.ClusterPool{
@@ -254,6 +267,10 @@ var _ = Describe("BackupSchedule controller", func() {
 		var zero int64 = 0
 
 		if clusterPoolNS != nil {
+
+			for i := range clusterPoolSecrets {
+				Expect(k8sClient.Delete(ctx, &clusterPoolSecrets[i])).Should(Succeed())
+			}
 			for i := range clusterPools {
 				Expect(k8sClient.Delete(ctx, &clusterPools[i])).Should(Succeed())
 			}
@@ -299,6 +316,9 @@ var _ = Describe("BackupSchedule controller", func() {
 		if clusterPoolNS != nil {
 			Expect(k8sClient.Create(ctx, clusterPoolNS)).Should(Succeed())
 
+			for i := range clusterPoolSecrets {
+				Expect(k8sClient.Create(ctx, &clusterPoolSecrets[i])).Should(Succeed())
+			}
 			for i := range clusterPools {
 				Expect(k8sClient.Create(ctx, &clusterPools[i])).Should(Succeed())
 			}

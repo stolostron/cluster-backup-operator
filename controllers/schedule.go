@@ -20,10 +20,13 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/robfig/cron/v3"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -239,4 +242,71 @@ func (r *BackupScheduleReconciler) scheduleOwnsLatestStorageBackups(
 	}
 
 	return true, nil
+}
+
+// prepare resources before backing up
+func prepareForBackup(ctx context.Context,
+	c client.Client,
+) {
+	// update secrets for clusterDeployments created by cluster claims
+	clusterDeployments := &hivev1.ClusterDeploymentList{}
+	if err := c.List(ctx, clusterDeployments, &client.ListOptions{}); err == nil {
+		for i := range clusterDeployments.Items {
+			if clusterDeployments.Items[i].Spec.ClusterPoolRef != nil {
+				secrets := &corev1.SecretList{}
+				if err := c.List(ctx, secrets, &client.ListOptions{
+					Namespace: clusterDeployments.Items[i].Namespace,
+				}); err == nil {
+					updateSecretsLabels(ctx, c, *secrets, clusterDeployments.Items[i].Name)
+				}
+			}
+		}
+	}
+
+	// update secrets for cluster pools
+	clusterPools := &hivev1.ClusterPoolList{}
+	if err := c.List(ctx, clusterPools, &client.ListOptions{}); err == nil {
+		for i := range clusterPools.Items {
+			secrets := &corev1.SecretList{}
+			if err := c.List(ctx, secrets, &client.ListOptions{
+				Namespace: clusterPools.Items[i].Namespace,
+			}); err == nil {
+				updateSecretsLabels(ctx, c, *secrets, clusterPools.Items[i].Name)
+			}
+		}
+	}
+}
+
+// set backup label for hive secrets not having the label set
+func updateSecretsLabels(ctx context.Context,
+	c client.Client,
+	secrets corev1.SecretList,
+	prefix string,
+) {
+	logger := log.FromContext(ctx)
+
+	for s := range secrets.Items {
+		secret := secrets.Items[s]
+
+		if strings.HasPrefix(secret.Name, prefix) &&
+			!strings.Contains(secret.Name, "-bootstrap-") {
+			labels := secret.GetLabels()
+			if labels == nil {
+				labels = make(map[string]string)
+			}
+			if labels[backupCredsHiveLabel] == "" &&
+				labels[backupCredsUserLabel] == "" &&
+				labels[backupCredsClusterLabel] == "" {
+				// and set backup labels for secrets created by cluster claim
+				labels[backupCredsClusterLabel] = "clusterpool"
+				secret.SetLabels(labels)
+				msg := "update secret " + secret.Name
+				logger.Info(msg)
+				if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err != nil {
+					logger.Error(err, "failed to update secret")
+				}
+			}
+		}
+	}
+
 }

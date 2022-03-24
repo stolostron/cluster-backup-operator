@@ -340,6 +340,9 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		swapF(4, 5)
 	}
 
+	// add any missing labels
+	prepareForBackup(ctx, r.Client)
+
 	// loop through schedule names to create a Velero schedule per type
 	for _, scheduleKey := range scheduleKeys {
 		veleroScheduleIdentity := types.NamespacedName{
