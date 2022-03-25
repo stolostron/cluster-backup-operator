@@ -248,16 +248,34 @@ func (r *BackupScheduleReconciler) scheduleOwnsLatestStorageBackups(
 func prepareForBackup(ctx context.Context,
 	c client.Client,
 ) {
+	logger := log.FromContext(ctx)
 	// update secrets for clusterDeployments created by cluster claims
 	clusterDeployments := &hivev1.ClusterDeploymentList{}
 	if err := c.List(ctx, clusterDeployments, &client.ListOptions{}); err == nil {
 		for i := range clusterDeployments.Items {
-			if clusterDeployments.Items[i].Spec.ClusterPoolRef != nil {
+			clusterDeployment := clusterDeployments.Items[i]
+			if clusterDeployment.Spec.ClusterPoolRef != nil {
 				secrets := &corev1.SecretList{}
 				if err := c.List(ctx, secrets, &client.ListOptions{
 					Namespace: clusterDeployments.Items[i].Namespace,
 				}); err == nil {
+					// add backup labels if not set yet
 					updateSecretsLabels(ctx, c, *secrets, clusterDeployments.Items[i].Name)
+				}
+
+				// add a label annnotation to the resource
+				// to disable the creation webhook validation
+				// which doesn't allow restoring the ClusterDeployment
+				labels := clusterDeployment.GetLabels()
+				if labels == nil {
+					labels = make(map[string]string)
+				}
+				labels["hive.openshift.io/disable-creation-webhook-for-dr"] = "true"
+				clusterDeployment.SetLabels(labels)
+				msg := "update clusterDeployment " + clusterDeployment.Name
+				logger.Info(msg)
+				if err := c.Update(ctx, &clusterDeployment, &client.UpdateOptions{}); err != nil {
+					logger.Error(err, "failed to update clusterDeployment")
 				}
 			}
 		}
