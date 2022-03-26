@@ -178,12 +178,13 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		restore.Status.Phase == "" {
 		// update state only at the very beginning
 		restore.Status.Phase = v1beta1.RestorePhaseStarted
-		restore.Status.LastMessage = "Prepare to restore"
+		restore.Status.LastMessage = "Prepare to restore, cleaning up resources"
 		if err = r.Client.Status().Update(ctx, restore); err != nil {
 			restoreLogger.Info(err.Error())
 		}
 
 	}
+
 	// retrieve the velero restore (if any)
 	veleroRestoreList := veleroapi.RestoreList{}
 	if err := r.List(
@@ -499,9 +500,22 @@ func (r *RestoreReconciler) initVeleroRestores(
 			// allow that now
 			restoreOnlyManagedClusters = true
 		} else {
+			r.Recorder.Event(
+				restore,
+				v1.EventTypeNormal,
+				"Processing restore request",
+				"Restore sync found no new backups",
+			)
 			return nil
 		}
 	}
+
+	r.Recorder.Event(
+		restore,
+		v1.EventTypeNormal,
+		"Processing restore request",
+		"Restore sync found new backups",
+	)
 
 	// loop through resourceTypes to create a Velero restore per type
 	veleroRestoresToCreate, backupsForVeleroRestores, err := r.retrieveRestoreDetails(
@@ -521,7 +535,9 @@ func (r *RestoreReconciler) initVeleroRestores(
 	// clean up resources only if requested
 	if err := r.prepareForRestore(ctx, *restore, veleroRestoresToCreate,
 		backupsForVeleroRestores); err != nil {
-		return err
+		// continue with the restore even if the prepare for restore returned some errors
+		// we don't know how much was cleaned up prior to the error so don't abort the action now
+		restoreLogger.Error(err, "Prepare for restore returned error")
 	}
 
 	// now create the restore resources and start the actual restore
@@ -781,8 +797,9 @@ func (r *RestoreReconciler) prepareForRestore(
 			// process here generic resources with an activation label
 			// since generic resources are not restored
 			additionalLabel = "cluster.open-cluster-management.io/backup in (cluster-activation)"
-			prepareRestoreForBackup(
+			r.prepareRestoreForBackup(
 				ctx,
+				&acmRestore,
 				restoreOptions,
 				ResourcesGeneric,
 				backupsForVeleroRestores[key],
@@ -790,8 +807,15 @@ func (r *RestoreReconciler) prepareForRestore(
 			)
 		}
 
-		prepareRestoreForBackup(
+		if key == ManagedClusters && veleroRestoresToCreate[Resources] != nil {
+			// managed clusters restore are being processed with resources
+			// so ignore this call here
+			continue
+		}
+
+		r.prepareRestoreForBackup(
 			ctx,
+			&acmRestore,
 			restoreOptions,
 			key,
 			backupsForVeleroRestores[key],
