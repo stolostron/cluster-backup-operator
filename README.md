@@ -30,6 +30,7 @@ Cluster Back up and Restore Operator.
         - [Restoring activation resources](#restoring-activation-resources)
         - [Restoring all resources](#restoring-all-resources)
       - [Cleaning up the hub before restore](#cleaning-up-the-hub-before-restore)
+      - [View restore events](#view-restore-events)
     - [Backup validation using a Policy](#backup-validation-using-a-policy)
       - [Pod validation](#pod-validation)
       - [Backup Storage validation](#backup-storage-validation)
@@ -320,6 +321,7 @@ apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Restore
 metadata:
   name: restore-acm
+  namespace: open-cluster-management-backup
 spec:
   cleanupBeforeRestore: CleanupRestored
   veleroManagedClustersBackupName: latest
@@ -327,6 +329,41 @@ spec:
   veleroResourcesBackupName: latest
 ```
 
+### View restore events
+
+Use the `oc describe -n <oadp-n> <restore-name>` command to get information about restore events.
+A sample output is shown below
+
+```yaml
+Spec:
+  Cleanup Before Restore:               CleanupRestored
+  Restore Sync Interval:                4m
+  Sync Restore With New Backups:        true
+  Velero Credentials Backup Name:       latest
+  Velero Managed Clusters Backup Name:  skip
+  Velero Resources Backup Name:         latest
+Status:
+  Last Message:                     Velero restores have run to completion, restore will continue to sync with new backups
+  Phase:                            Enabled
+  Velero Credentials Restore Name:  example-acm-credentials-schedule-20220325220057
+  Velero Resources Restore Name:    example-acm-resources-schedule-20220325220057
+Events:
+  Type    Reason                                                 Age   From                Message
+  ----    ------                                                 ----  ----                -------
+  Normal  Processing restore request                             89s   Restore controller  Restore sync found new backups
+  Normal  Prepare to restore, cleaning up resources for backup:  89s   Restore controller  acm-resources-generic-schedule-20220325220057
+  Normal  Prepare to restore, cleaning up resources for backup:  66s   Restore controller  acm-resources-schedule-20220325220057
+  Normal  Prepare to restore, cleaning up resources for backup:  61s   Restore controller  acm-credentials-hive-schedule-20220325220057
+  Normal  Prepare to restore, cleaning up resources for backup:  60s   Restore controller  acm-credentials-cluster-schedule-20220325220057
+  Normal  Prepare to restore, cleaning up resources for backup:  59s   Restore controller  acm-credentials-schedule-20220325220057
+  Normal  Velero restore created:                                58s   Restore controller  example-acm-credentials-hive-schedule-20220325220057
+  Normal  Velero restore created:                                58s   Restore controller  example-acm-credentials-cluster-schedule-20220325220057
+  Normal  Velero restore created:                                58s   Restore controller  example-acm-credentials-schedule-20220325220057
+  Normal  Velero restore created:                                58s   Restore controller  example-acm-resources-generic-schedule-20220325220057
+  Normal  Velero restore created:                                58s   Restore controller  example-acm-resources-schedule-20220325220057
+  Normal  Processing restore request                             43s   Restore controller  Restore sync found no new backups
+
+```
 
 ## Backup validation using a Policy
 

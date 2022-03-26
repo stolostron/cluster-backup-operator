@@ -24,6 +24,7 @@ import (
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -240,8 +241,9 @@ func deleteDynamicResource(
 }
 
 // clean up resources for the restored backup resources
-func prepareRestoreForBackup(
+func (r *RestoreReconciler) prepareRestoreForBackup(
 	ctx context.Context,
+	acmRestore *v1beta1.Restore,
 	restoreOptions RestoreOptions,
 	restoreType ResourceType,
 	veleroBackup *veleroapi.Backup,
@@ -250,6 +252,13 @@ func prepareRestoreForBackup(
 	logger := log.FromContext(ctx)
 
 	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
+
+	r.Recorder.Event(
+		acmRestore,
+		corev1.EventTypeNormal,
+		"Prepare to restore, cleaning up resources for backup:",
+		veleroBackup.Name,
+	)
 
 	labelSelector := ""
 	if restoreOptions.cleanupType == v1beta1.CleanupTypeRestored ||
