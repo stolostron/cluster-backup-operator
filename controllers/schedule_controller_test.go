@@ -24,21 +24,25 @@ import (
 var _ = Describe("BackupSchedule controller", func() {
 
 	var (
-		ctx                   context.Context
-		managedClusters       []clusterv1.ManagedCluster
-		channels              []chnv1.Channel
-		clusterPools          []hivev1.ClusterPool
-		backupStorageLocation *veleroapi.BackupStorageLocation
-		veleroBackups         []veleroapi.Backup
-		veleroNamespaceName   string
-		acmNamespaceName      string
-		chartsv1NSName        string
-		clusterPoolNSName     string
-		veleroNamespace       *corev1.Namespace
-		acmNamespace          *corev1.Namespace
-		chartsv1NS            *corev1.Namespace
-		clusterPoolNS         *corev1.Namespace
-		clusterPoolSecrets    []corev1.Secret
+		ctx                     context.Context
+		managedClusters         []clusterv1.ManagedCluster
+		clusterDeployments      []hivev1.ClusterDeployment
+		channels                []chnv1.Channel
+		clusterPools            []hivev1.ClusterPool
+		backupStorageLocation   *veleroapi.BackupStorageLocation
+		veleroBackups           []veleroapi.Backup
+		veleroNamespaceName     string
+		acmNamespaceName        string
+		chartsv1NSName          string
+		clusterPoolNSName       string
+		veleroNamespace         *corev1.Namespace
+		acmNamespace            *corev1.Namespace
+		chartsv1NS              *corev1.Namespace
+		clusterPoolNS           *corev1.Namespace
+		clusterPoolSecrets      []corev1.Secret
+		clusterDeplSecrets      []corev1.Secret
+		clusterDeploymentNSName string
+		clusterDeploymentNS     *corev1.Namespace
 
 		backupTimestamps = []string{
 			"20210910181336",
@@ -65,6 +69,8 @@ var _ = Describe("BackupSchedule controller", func() {
 		acmNamespaceName = "acm-ns"
 		chartsv1NSName = "acm-channel-ns"
 		clusterPoolNSName = "app"
+		clusterDeploymentNSName = "vb-pool-fhbjs"
+
 		managedClusters = []clusterv1.ManagedCluster{
 			{
 				TypeMeta: metav1.TypeMeta{
@@ -109,6 +115,15 @@ var _ = Describe("BackupSchedule controller", func() {
 				Name: clusterPoolNSName,
 			},
 		}
+		clusterDeploymentNS = &corev1.Namespace{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Namespace",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: clusterDeploymentNSName,
+			},
+		}
 		veleroNamespace = &corev1.Namespace{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: "v1",
@@ -139,6 +154,18 @@ var _ = Describe("BackupSchedule controller", func() {
 				},
 			},
 		}
+		clusterDeplSecrets = []corev1.Secret{
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Secret",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clusterDeploymentNSName + "-abcd",
+					Namespace: clusterDeploymentNSName,
+				},
+			},
+		}
 		clusterPools = []hivev1.ClusterPool{
 			{
 				TypeMeta: metav1.TypeMeta{
@@ -156,6 +183,25 @@ var _ = Describe("BackupSchedule controller", func() {
 						},
 					},
 					Size:       4,
+					BaseDomain: "dev06.red-chesterfield.com",
+				},
+			},
+		}
+		clusterDeployments = []hivev1.ClusterDeployment{
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "hive.openshift.io/v1",
+					Kind:       "ClusterDeployment",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clusterDeploymentNSName,
+					Namespace: clusterDeploymentNSName,
+				},
+				Spec: hivev1.ClusterDeploymentSpec{
+					ClusterPoolRef: &hivev1.ClusterPoolReference{
+						Namespace: clusterPoolNSName,
+						PoolName:  clusterPoolNSName,
+					},
 					BaseDomain: "dev06.red-chesterfield.com",
 				},
 			},
@@ -266,6 +312,25 @@ var _ = Describe("BackupSchedule controller", func() {
 
 		var zero int64 = 0
 
+		if clusterDeploymentNS != nil {
+
+			for i := range clusterDeplSecrets {
+				Expect(k8sClient.Delete(ctx, &clusterDeplSecrets[i])).Should(Succeed())
+			}
+
+			for i := range clusterDeployments {
+				Expect(k8sClient.Delete(ctx, &clusterDeployments[i])).Should(Succeed())
+			}
+
+			Expect(
+				k8sClient.Delete(
+					ctx,
+					clusterDeploymentNS,
+					&client.DeleteOptions{GracePeriodSeconds: &zero},
+				),
+			).Should(Succeed())
+		}
+
 		if clusterPoolNS != nil {
 
 			for i := range clusterPoolSecrets {
@@ -312,6 +377,18 @@ var _ = Describe("BackupSchedule controller", func() {
 		Expect(k8sClient.Create(ctx, veleroNamespace)).Should(Succeed())
 		Expect(k8sClient.Create(ctx, acmNamespace)).Should(Succeed())
 		Expect(k8sClient.Create(ctx, chartsv1NS)).Should(Succeed())
+
+		if clusterDeploymentNS != nil {
+			Expect(k8sClient.Create(ctx, clusterDeploymentNS)).Should(Succeed())
+
+			for i := range clusterDeplSecrets {
+				Expect(k8sClient.Create(ctx, &clusterDeplSecrets[i])).Should(Succeed())
+			}
+
+			for i := range clusterDeployments {
+				Expect(k8sClient.Create(ctx, &clusterDeployments[i])).Should(Succeed())
+			}
+		}
 
 		if clusterPoolNS != nil {
 			Expect(k8sClient.Create(ctx, clusterPoolNS)).Should(Succeed())
@@ -830,6 +907,7 @@ var _ = Describe("BackupSchedule controller", func() {
 
 		BeforeEach(func() {
 			clusterPoolNS = nil
+			clusterDeploymentNS = nil
 			chartsv1NS = &corev1.Namespace{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "v1",
