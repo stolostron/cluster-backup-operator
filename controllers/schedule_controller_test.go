@@ -464,6 +464,14 @@ var _ = Describe("BackupSchedule controller", func() {
 				createdBackupSchedule.Status.VeleroScheduleResources.Spec.Template.TTL,
 			).Should(Equal(metav1.Duration{Duration: time.Hour * 72}))
 
+			// local-cluster managed cluster should have this label velero.io/exclude-from-backup = "true"
+			localcluster := &clusterv1.ManagedCluster{}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: "local-cluster"}, localcluster)
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
+			Expect(localcluster.GetLabels()["velero.io/exclude-from-backup"]).To(BeIdenticalTo("true"))
+
 			// update schedule, it should trigger velero schedules deletion
 			createdBackupSchedule.Spec.VeleroTTL = metav1.Duration{Duration: time.Hour * 150}
 			Expect(
