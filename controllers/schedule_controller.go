@@ -110,13 +110,15 @@ func (r *BackupScheduleReconciler) Reconcile(
 	req ctrl.Request,
 ) (ctrl.Result, error) {
 	scheduleLogger := log.FromContext(ctx)
-	backupSchedule := &v1beta1.BackupSchedule{}
 
 	// velero doesn't delete expired backups if they are in FailedValidation
 	// workaround and delete expired or invalid validation backups them now
 	cleanupExpiredValidationBackups(ctx, req.Namespace, r.Client)
 
-	if result, validConfiguration, err := r.isValidateConfiguration(ctx, req); !validConfiguration {
+	backupSchedule := &v1beta1.BackupSchedule{}
+
+	if result, validConfiguration, err := r.isValidateConfiguration(ctx, req,
+		backupSchedule); !validConfiguration {
 		// return if the backup configuration on this hub is not properly set
 		return result, err
 	}
@@ -239,12 +241,12 @@ func (r *BackupScheduleReconciler) Reconcile(
 func (r *BackupScheduleReconciler) isValidateConfiguration(
 	ctx context.Context,
 	req ctrl.Request,
+	backupSchedule *v1beta1.BackupSchedule,
 ) (ctrl.Result, bool, error) {
 
 	validConfiguration := false
 	scheduleLogger := log.FromContext(ctx)
 
-	backupSchedule := &v1beta1.BackupSchedule{}
 	if err := r.Get(ctx, req.NamespacedName, backupSchedule); err != nil {
 		return ctrl.Result{}, validConfiguration, client.IgnoreNotFound(err)
 	}
