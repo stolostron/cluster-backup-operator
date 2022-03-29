@@ -110,97 +110,17 @@ func (r *BackupScheduleReconciler) Reconcile(
 	req ctrl.Request,
 ) (ctrl.Result, error) {
 	scheduleLogger := log.FromContext(ctx)
-	backupSchedule := &v1beta1.BackupSchedule{}
 
 	// velero doesn't delete expired backups if they are in FailedValidation
 	// workaround and delete expired or invalid validation backups them now
 	cleanupExpiredValidationBackups(ctx, req.Namespace, r.Client)
 
-	if err := r.Get(ctx, req.NamespacedName, backupSchedule); err != nil {
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
+	backupSchedule := &v1beta1.BackupSchedule{}
 
-	if backupSchedule.Status.Phase == v1beta1.SchedulePhaseBackupCollision {
-		scheduleLogger.Info("ignore resource in SchedulePhaseBackupCollision state")
-		return ctrl.Result{}, nil
-	}
-
-	// don't create schedule if an active restore exists
-	restoreName, err := r.isRestoreRunning(ctx, backupSchedule)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if restoreName != "" {
-		msg := "Restore resource " + restoreName + " is currently active, " +
-			"verify that any active restores are removed."
-		scheduleLogger.Info(msg)
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = msg
-		// retry after failureInterval
-		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
-			r.Client.Status().Update(ctx, backupSchedule),
-			msg,
-		)
-	}
-
-	// don't create schedules if backup storage location doesn't exist or is not avaialble
-	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
-	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
-		veleroStorageLocations == nil || len(veleroStorageLocations.Items) == 0 {
-
-		msg := "velero.io.BackupStorageLocation resources not found. " +
-			"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."
-		scheduleLogger.Info(msg)
-
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = msg
-
-		// retry after failureInterval
-		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
-			r.Client.Status().Update(ctx, backupSchedule),
-			msg,
-		)
-	}
-
-	// look for available VeleroStorageLocation
-	// and keep track of the velero oadp namespace
-	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(
-		*veleroStorageLocations,
-	)
-
-	// if no valid storage location found wait for valid value
-	if !isValidStorageLocation {
-		msg := "Backup storage location is not available. " +
-			"Check velero.io.BackupStorageLocation and validate storage credentials."
-		scheduleLogger.Info(msg)
-
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = msg
-
-		// retry after failureInterval
-		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
-			r.Client.Status().Update(ctx, backupSchedule),
-			msg,
-		)
-	}
-
-	// return error if the cluster restore file is not in the same namespace with velero
-	if veleroNamespace != req.Namespace {
-		msg := fmt.Sprintf(
-			"Schedule resource [%s/%s] must be created in the velero namespace [%s]",
-			req.Namespace,
-			req.Name,
-			veleroNamespace,
-		)
-		scheduleLogger.Info(msg)
-
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = msg
-
-		return ctrl.Result{}, errors.Wrap(
-			r.Client.Status().Update(ctx, backupSchedule),
-			msg,
-		)
+	if result, validConfiguration, err := r.isValidateConfiguration(ctx, req,
+		backupSchedule); !validConfiguration {
+		// return if the backup configuration on this hub is not properly set
+		return result, err
 	}
 
 	// validate the cron job schedule
@@ -306,7 +226,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 	setSchedulePhase(&veleroScheduleList, backupSchedule)
 
-	err = r.Client.Status().Update(ctx, backupSchedule)
+	err := r.Client.Status().Update(ctx, backupSchedule)
 	return ctrl.Result{RequeueAfter: collisionControlInterval}, errors.Wrap(
 		err,
 		fmt.Sprintf(
@@ -315,6 +235,114 @@ func (r *BackupScheduleReconciler) Reconcile(
 			backupSchedule.Name,
 		),
 	)
+}
+
+// validate backup configuration
+func (r *BackupScheduleReconciler) isValidateConfiguration(
+	ctx context.Context,
+	req ctrl.Request,
+	backupSchedule *v1beta1.BackupSchedule,
+) (ctrl.Result, bool, error) {
+
+	validConfiguration := false
+	scheduleLogger := log.FromContext(ctx)
+
+	if err := r.Get(ctx, req.NamespacedName, backupSchedule); err != nil {
+		return ctrl.Result{}, validConfiguration, client.IgnoreNotFound(err)
+	}
+
+	if backupSchedule.Status.Phase == v1beta1.SchedulePhaseBackupCollision {
+		scheduleLogger.Info("ignore resource in SchedulePhaseBackupCollision state")
+		return ctrl.Result{}, validConfiguration, nil
+	}
+
+	// don't create schedule if an active restore exists
+	restoreName, err := r.isRestoreRunning(ctx, backupSchedule)
+	if err != nil {
+		return ctrl.Result{}, validConfiguration, err
+	}
+	if restoreName != "" {
+		msg := "Restore resource " + restoreName + " is currently active, " +
+			"verify that any active restores are removed."
+		scheduleLogger.Info(msg)
+		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
+		backupSchedule.Status.LastMessage = msg
+		// retry after failureInterval
+		return ctrl.Result{RequeueAfter: failureInterval},
+			validConfiguration,
+			errors.Wrap(
+				r.Client.Status().Update(ctx, backupSchedule),
+				msg,
+			)
+	}
+
+	// don't create schedules if backup storage location doesn't exist or is not avaialble
+	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
+	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
+		veleroStorageLocations == nil || len(veleroStorageLocations.Items) == 0 {
+
+		msg := "velero.io.BackupStorageLocation resources not found. " +
+			"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."
+		scheduleLogger.Info(msg)
+
+		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
+		backupSchedule.Status.LastMessage = msg
+
+		// retry after failureInterval
+		return ctrl.Result{RequeueAfter: failureInterval},
+			validConfiguration,
+			errors.Wrap(
+				r.Client.Status().Update(ctx, backupSchedule),
+				msg,
+			)
+	}
+
+	// look for available VeleroStorageLocation
+	// and keep track of the velero oadp namespace
+	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(
+		*veleroStorageLocations,
+	)
+
+	// if no valid storage location found wait for valid value
+	if !isValidStorageLocation {
+		msg := "Backup storage location is not available. " +
+			"Check velero.io.BackupStorageLocation and validate storage credentials."
+		scheduleLogger.Info(msg)
+
+		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
+		backupSchedule.Status.LastMessage = msg
+
+		// retry after failureInterval
+		return ctrl.Result{RequeueAfter: failureInterval},
+			validConfiguration,
+			errors.Wrap(
+				r.Client.Status().Update(ctx, backupSchedule),
+				msg,
+			)
+	}
+
+	// return error if the cluster restore file is not in the same namespace with velero
+	if veleroNamespace != req.Namespace {
+		msg := fmt.Sprintf(
+			"Schedule resource [%s/%s] must be created in the velero namespace [%s]",
+			req.Namespace,
+			req.Name,
+			veleroNamespace,
+		)
+		scheduleLogger.Info(msg)
+
+		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
+		backupSchedule.Status.LastMessage = msg
+
+		return ctrl.Result{},
+			validConfiguration, errors.Wrap(
+				r.Client.Status().Update(ctx, backupSchedule),
+				msg,
+			)
+	}
+
+	validConfiguration = true
+	return ctrl.Result{}, validConfiguration, nil
 }
 
 // create velero.io.Schedule resource for each resource type that needs backup

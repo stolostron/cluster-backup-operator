@@ -372,7 +372,6 @@ func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.Restore{}).
 		Owns(&veleroapi.Restore{}).
-		//WithOptions(controller.Options{MaxConcurrentReconciles: 3}). TODO: enable parallelism as soon attaching works
 		Complete(r)
 }
 
