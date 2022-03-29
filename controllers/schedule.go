@@ -27,6 +27,8 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -249,6 +251,21 @@ func prepareForBackup(ctx context.Context,
 	c client.Client,
 ) {
 	logger := log.FromContext(ctx)
+
+	localcluster := &clusterv1.ManagedCluster{}
+	if err := c.Get(ctx, types.NamespacedName{Name: "local-cluster"}, localcluster); err == nil {
+		// exclude local cluster from backup
+		labels := localcluster.GetLabels()
+		if labels == nil {
+			labels = make(map[string]string)
+		}
+		labels["velero.io/exclude-from-backup"] = "true"
+		localcluster.SetLabels(labels)
+		if err := c.Update(ctx, localcluster, &client.UpdateOptions{}); err != nil {
+			logger.Error(err, "failed to add velero.io/exclude-from-backup=true to localcluster")
+		}
+	}
+
 	// update secrets for clusterDeployments created by cluster claims
 	clusterDeployments := &hivev1.ClusterDeploymentList{}
 	if err := c.List(ctx, clusterDeployments, &client.ListOptions{}); err == nil {
