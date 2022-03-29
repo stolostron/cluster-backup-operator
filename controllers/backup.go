@@ -341,11 +341,12 @@ func setValidationBackupInfo(
 		return veleroBackupTemplate, err
 	} else {
 		currentTime := v1.Now().Time
+		nextRunTime := cronSchedule.Next(currentTime)
 		// add extra 5 minutes to the cron job time before deleting this backup
-		nextRunTime := cronSchedule.Next(currentTime).Add(time.Minute * 5)
+		secondNextRunTime := cronSchedule.Next(nextRunTime).Add(time.Minute * 5)
 
 		veleroBackupTemplate.TTL = v1.Duration{
-			Duration: nextRunTime.Sub(currentTime),
+			Duration: secondNextRunTime.Sub(nextRunTime),
 		}
 
 		return veleroBackupTemplate, nil
@@ -412,9 +413,11 @@ func getResourcesToBackup(
 			//get all resources for each group version
 			resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
 			if err != nil {
-				backupLogger.Info(fmt.Sprintf("Failed to get server resources for group=%s, version=%s, error:%s",
-					group.Name, version.GroupVersion,
-					err.Error()))
+				backupLogger.Info(
+					fmt.Sprintf("Failed to get server resources for group=%s, version=%s, error:%s",
+						group.Name, version.GroupVersion,
+						err.Error()),
+				)
 				continue
 			}
 			if resourceList == nil {
