@@ -24,21 +24,25 @@ import (
 var _ = Describe("BackupSchedule controller", func() {
 
 	var (
-		ctx                   context.Context
-		managedClusters       []clusterv1.ManagedCluster
-		channels              []chnv1.Channel
-		clusterPools          []hivev1.ClusterPool
-		backupStorageLocation *veleroapi.BackupStorageLocation
-		veleroBackups         []veleroapi.Backup
-		veleroNamespaceName   string
-		acmNamespaceName      string
-		chartsv1NSName        string
-		clusterPoolNSName     string
-		veleroNamespace       *corev1.Namespace
-		acmNamespace          *corev1.Namespace
-		chartsv1NS            *corev1.Namespace
-		clusterPoolNS         *corev1.Namespace
-		clusterPoolSecrets    []corev1.Secret
+		ctx                     context.Context
+		managedClusters         []clusterv1.ManagedCluster
+		clusterDeployments      []hivev1.ClusterDeployment
+		channels                []chnv1.Channel
+		clusterPools            []hivev1.ClusterPool
+		backupStorageLocation   *veleroapi.BackupStorageLocation
+		veleroBackups           []veleroapi.Backup
+		veleroNamespaceName     string
+		acmNamespaceName        string
+		chartsv1NSName          string
+		clusterPoolNSName       string
+		veleroNamespace         *corev1.Namespace
+		acmNamespace            *corev1.Namespace
+		chartsv1NS              *corev1.Namespace
+		clusterPoolNS           *corev1.Namespace
+		clusterPoolSecrets      []corev1.Secret
+		clusterDeplSecrets      []corev1.Secret
+		clusterDeploymentNSName string
+		clusterDeploymentNS     *corev1.Namespace
 
 		backupTimestamps = []string{
 			"20210910181336",
@@ -50,12 +54,12 @@ var _ = Describe("BackupSchedule controller", func() {
 
 		backupSchedule string = "0 */6 * * *"
 
-		timeout  = time.Second * 70
+		timeout  = time.Second * 7
 		interval = time.Millisecond * 250
 
 		labelsClsU = map[string]string{
 			"velero.io/schedule-name":  "acm-resources-schedule",
-			BackupScheduleClusterLabel: "unknown",
+			BackupScheduleClusterLabel: "abcd",
 		}
 	)
 
@@ -65,6 +69,8 @@ var _ = Describe("BackupSchedule controller", func() {
 		acmNamespaceName = "acm-ns"
 		chartsv1NSName = "acm-channel-ns"
 		clusterPoolNSName = "app"
+		clusterDeploymentNSName = "vb-pool-fhbjs"
+
 		managedClusters = []clusterv1.ManagedCluster{
 			{
 				TypeMeta: metav1.TypeMeta{
@@ -109,6 +115,15 @@ var _ = Describe("BackupSchedule controller", func() {
 				Name: clusterPoolNSName,
 			},
 		}
+		clusterDeploymentNS = &corev1.Namespace{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Namespace",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: clusterDeploymentNSName,
+			},
+		}
 		veleroNamespace = &corev1.Namespace{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: "v1",
@@ -139,6 +154,18 @@ var _ = Describe("BackupSchedule controller", func() {
 				},
 			},
 		}
+		clusterDeplSecrets = []corev1.Secret{
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Secret",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clusterDeploymentNSName + "-abcd",
+					Namespace: clusterDeploymentNSName,
+				},
+			},
+		}
 		clusterPools = []hivev1.ClusterPool{
 			{
 				TypeMeta: metav1.TypeMeta{
@@ -156,6 +183,25 @@ var _ = Describe("BackupSchedule controller", func() {
 						},
 					},
 					Size:       4,
+					BaseDomain: "dev06.red-chesterfield.com",
+				},
+			},
+		}
+		clusterDeployments = []hivev1.ClusterDeployment{
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "hive.openshift.io/v1",
+					Kind:       "ClusterDeployment",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clusterDeploymentNSName,
+					Namespace: clusterDeploymentNSName,
+				},
+				Spec: hivev1.ClusterDeploymentSpec{
+					ClusterPoolRef: &hivev1.ClusterPoolReference{
+						Namespace: clusterPoolNSName,
+						PoolName:  clusterPoolNSName,
+					},
 					BaseDomain: "dev06.red-chesterfield.com",
 				},
 			},
@@ -266,6 +312,25 @@ var _ = Describe("BackupSchedule controller", func() {
 
 		var zero int64 = 0
 
+		if clusterDeploymentNS != nil {
+
+			for i := range clusterDeplSecrets {
+				Expect(k8sClient.Delete(ctx, &clusterDeplSecrets[i])).Should(Succeed())
+			}
+
+			for i := range clusterDeployments {
+				Expect(k8sClient.Delete(ctx, &clusterDeployments[i])).Should(Succeed())
+			}
+
+			Expect(
+				k8sClient.Delete(
+					ctx,
+					clusterDeploymentNS,
+					&client.DeleteOptions{GracePeriodSeconds: &zero},
+				),
+			).Should(Succeed())
+		}
+
 		if clusterPoolNS != nil {
 
 			for i := range clusterPoolSecrets {
@@ -312,6 +377,18 @@ var _ = Describe("BackupSchedule controller", func() {
 		Expect(k8sClient.Create(ctx, veleroNamespace)).Should(Succeed())
 		Expect(k8sClient.Create(ctx, acmNamespace)).Should(Succeed())
 		Expect(k8sClient.Create(ctx, chartsv1NS)).Should(Succeed())
+
+		if clusterDeploymentNS != nil {
+			Expect(k8sClient.Create(ctx, clusterDeploymentNS)).Should(Succeed())
+
+			for i := range clusterDeplSecrets {
+				Expect(k8sClient.Create(ctx, &clusterDeplSecrets[i])).Should(Succeed())
+			}
+
+			for i := range clusterDeployments {
+				Expect(k8sClient.Create(ctx, &clusterDeployments[i])).Should(Succeed())
+			}
+		}
 
 		if clusterPoolNS != nil {
 			Expect(k8sClient.Create(ctx, clusterPoolNS)).Should(Succeed())
@@ -516,6 +593,40 @@ var _ = Describe("BackupSchedule controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleNoTTL)).Should(Succeed())
+
+			// execute a backup collission validation
+			// first make sure the schedule is in enabled state
+			createdBackupSchedule.Status.Phase = v1beta1.SchedulePhaseEnabled
+			Expect(
+				k8sClient.
+					Status().Update(context.Background(), &createdBackupSchedule, &client.UpdateOptions{}),
+			).Should(Succeed())
+			Eventually(func() string {
+				err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
+				if err != nil {
+					return "unknown"
+				}
+				return string(createdBackupSchedule.Status.Phase)
+			}, timeout, interval).Should(BeIdenticalTo(string(v1beta1.SchedulePhaseEnabled)))
+			// then sleep 7 seconds to let the schedule timestamp be older then 5 sec from now
+			// then update the schedule, which will try to create a new set of velero schedules
+			// when the clusterID is checked, it is going to be (unkonwn) - since we have no cluster resource on test
+			// and the previous schedules had used abcd as clusterId
+			time.Sleep(time.Second * 7)
+			createdBackupSchedule.Spec.VeleroTTL = metav1.Duration{Duration: time.Hour * 50}
+			Expect(
+				k8sClient.
+					Update(context.Background(), &createdBackupSchedule, &client.UpdateOptions{}),
+			).Should(Succeed())
+			// schedule should be in backup collission because the latest schedules were using a
+			// different clusterID, so they look as they are generated by another cluster
+			Eventually(func() string {
+				err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
+				if err != nil {
+					return "unknown"
+				}
+				return string(createdBackupSchedule.Status.Phase)
+			}, timeout, interval).Should(BeIdenticalTo(string(v1beta1.SchedulePhaseBackupCollision)))
 
 			// new schedule backup
 			backupScheduleName3 := backupScheduleName + "-3"
@@ -796,6 +907,7 @@ var _ = Describe("BackupSchedule controller", func() {
 
 		BeforeEach(func() {
 			clusterPoolNS = nil
+			clusterDeploymentNS = nil
 			chartsv1NS = &corev1.Namespace{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "v1",
