@@ -934,8 +934,8 @@ var _ = Describe("Basic Restore controller", func() {
 				},
 				Status: v1beta1.RestoreStatus{
 					Phase:                        v1beta1.RestorePhaseEnabled,
-					VeleroResourcesRestoreName:   "acm-resources-schedule-good-old-backup",
-					VeleroCredentialsRestoreName: "acm-credentials-schedule-good-old-backup",
+					VeleroResourcesRestoreName:   "rhacm-restore-1-acm-resources-schedule-good-old-backup",
+					VeleroCredentialsRestoreName: "rhacm-restore-1-acm-credentials-schedule-good-old-backup",
 				},
 			}
 			oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
@@ -1256,7 +1256,7 @@ var _ = Describe("Basic Restore controller", func() {
 				}
 				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
 				return createdRestore.Status.VeleroCredentialsRestoreName
-			}, timeout, interval).ShouldNot(BeEmpty())
+			}, timeout, interval).Should(BeIdenticalTo("rhacm-restore-1-acm-credentials-schedule-good-recent-backup"))
 			Eventually(func() string {
 				restoreLookupKey := types.NamespacedName{
 					Name:      restoreName,
@@ -1264,7 +1264,7 @@ var _ = Describe("Basic Restore controller", func() {
 				}
 				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
 				return createdRestore.Status.VeleroResourcesRestoreName
-			}, timeout, interval).ShouldNot(BeEmpty())
+			}, timeout, interval).Should(BeIdenticalTo("rhacm-restore-1-acm-resources-schedule-good-recent-backup"))
 
 			veleroRestore := veleroapi.Restore{}
 			Expect(
@@ -1283,6 +1283,45 @@ var _ = Describe("Basic Restore controller", func() {
 					types.NamespacedName{
 						Namespace: veleroNamespace.Name,
 						Name:      restoreName + "-acm-resources-schedule-good-recent-backup",
+					},
+					&veleroRestore,
+				),
+			).ShouldNot(HaveOccurred())
+
+			// now trigger a resource update with managed clusters set to latest
+			restoreLookupKey := types.NamespacedName{
+				Name:      restoreName,
+				Namespace: veleroNamespace.Name,
+			}
+			// set back restore phase to enabled
+			Eventually(func() string {
+				if err := k8sClient.Get(ctx, restoreLookupKey, &rhacmRestore); err == nil {
+					// update rhacmRestore status to Enabled
+					rhacmRestore.Status.Phase = v1beta1.RestorePhaseEnabled
+					Expect(k8sClient.Status().Update(ctx, &rhacmRestore)).Should(Succeed())
+					return string(rhacmRestore.Status.Phase)
+				}
+				return "notset"
+			}, timeout, interval).Should(BeIdenticalTo(v1beta1.RestorePhaseEnabled))
+			// update restore with managed clusters set to latest
+			if err := k8sClient.Get(ctx, restoreLookupKey, &rhacmRestore); err == nil {
+				rhacmRestore.Spec.VeleroManagedClustersBackupName = &latestBackup
+				Expect(k8sClient.Update(ctx, &rhacmRestore)).Should(Succeed())
+			}
+			Eventually(func() string {
+				restoreLookupKey := types.NamespacedName{
+					Name:      restoreName,
+					Namespace: veleroNamespace.Name,
+				}
+				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+				return createdRestore.Status.VeleroManagedClustersRestoreName
+			}, timeout, interval).Should(BeIdenticalTo("rhacm-restore-1-acm-managed-clusters-schedule-good-recent-backup"))
+			Expect(
+				k8sClient.Get(
+					ctx,
+					types.NamespacedName{
+						Namespace: veleroNamespace.Name,
+						Name:      restoreName + "-acm-managed-clusters-schedule-good-recent-backup",
 					},
 					&veleroRestore,
 				),
