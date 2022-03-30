@@ -236,11 +236,6 @@ var _ = Describe("BackupSchedule controller", func() {
 		oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
 		aFewSecondsAgo := metav1.NewTime(time.Now().Add(-2 * time.Second))
 
-		restoreKeys := make([]ResourceType, 0, len(veleroScheduleNames))
-		for key := range veleroScheduleNames {
-			restoreKeys = append(restoreKeys, key)
-		}
-
 		//create 3 sets of backups, for each timestamp
 		for _, timestampStr := range backupTimestamps {
 
@@ -271,11 +266,10 @@ var _ = Describe("BackupSchedule controller", func() {
 
 				if key == ValidationSchedule {
 
-					//if i == len(backupTimestamps)-1 {
 					// mark it as expired
 					backup.Spec.TTL = metav1.Duration{Duration: time.Second * 5}
 					backup.Status.Expiration = &oneHourAgo
-					//}
+
 				}
 
 				veleroBackups = append(veleroBackups, backup)
