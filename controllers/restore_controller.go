@@ -85,6 +85,7 @@ type RestoreReconciler struct {
 //+kubebuilder:rbac:groups=velero.io,resources=restores,verbs=get;list;watch;create;update
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 //+kubebuilder:rbac:groups=velero.io,resources=backupstoragelocations,verbs=get;list;watch
+//+kubebuilder:rbac:groups=velero.io,resources=deletebackuprequests,verbs=create;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
