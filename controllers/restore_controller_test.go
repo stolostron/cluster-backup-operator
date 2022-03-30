@@ -61,7 +61,7 @@ var _ = Describe("Basic Restore controller", func() {
 		latestBackup  string
 		invalidBackup string
 
-		timeout  = time.Second * 30
+		timeout  = time.Second * 10
 		interval = time.Millisecond * 250
 
 		includedResources = []string{
