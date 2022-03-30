@@ -830,7 +830,49 @@ var _ = Describe("Basic Restore controller", func() {
 					&veleroRestore,
 				),
 			).ShouldNot(HaveOccurred())
+
+			if rhacmRestore.Spec.SyncRestoreWithNewBackups {
+				restoreLookupKey := types.NamespacedName{
+					Name:      rhacmRestore.Name,
+					Namespace: rhacmRestore.Namespace,
+				}
+
+				Eventually(func() string {
+					if err := k8sClient.Get(ctx, restoreLookupKey, &rhacmRestore); err == nil {
+						// update rhacmRestore status to Enabled
+						rhacmRestore.Status.Phase = v1beta1.RestorePhaseEnabled
+						Expect(k8sClient.Status().Update(ctx, &rhacmRestore)).Should(Succeed())
+						return string(rhacmRestore.Status.Phase)
+					}
+					return "notset"
+				}, timeout, interval).Should(BeIdenticalTo(v1beta1.RestorePhaseEnabled))
+
+				// now trigger a resource update with managed clusters set to latest
+				if err := k8sClient.Get(ctx, restoreLookupKey, &rhacmRestore); err == nil {
+					//
+					rhacmRestore.Spec.VeleroManagedClustersBackupName = &latestBackup
+					Expect(k8sClient.Update(ctx, &rhacmRestore)).Should(Succeed())
+
+				}
+
+				Eventually(func() string {
+					if err := k8sClient.Get(ctx, restoreLookupKey, &rhacmRestore); err == nil {
+						return *rhacmRestore.Spec.VeleroManagedClustersBackupName
+					}
+					return "unknown"
+				}, timeout, interval).Should(BeIdenticalTo(latestBackup))
+
+				Eventually(func() string {
+					if err := k8sClient.Get(ctx, restoreLookupKey, &rhacmRestore); err == nil {
+						// update rhacmRestore status to Enabled
+						return string(rhacmRestore.Status.Phase)
+					}
+					return "notset"
+				}, timeout, interval).Should(BeIdenticalTo(v1beta1.RestorePhaseEnabled))
+
+			}
 		})
+
 	})
 
 	Context("When creating a Restore with backup names set to skip", func() {
