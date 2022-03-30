@@ -473,7 +473,7 @@ func cleanupExpiredValidationBackups(
 	backupLogger := log.FromContext(ctx)
 
 	validationLabel := labels.SelectorFromSet(
-		map[string]string{"velero.io/schedule-name": "acm-validation-policy-schedule"})
+		map[string]string{"velero.io/schedule-name": veleroScheduleNames[ValidationSchedule]})
 	veleroBackupList := veleroapi.BackupList{}
 	if err := c.List(ctx, &veleroBackupList, &client.ListOptions{
 		Namespace:     veleroNS,

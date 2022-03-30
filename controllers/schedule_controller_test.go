@@ -56,11 +56,6 @@ var _ = Describe("BackupSchedule controller", func() {
 
 		timeout  = time.Second * 7
 		interval = time.Millisecond * 250
-
-		labelsClsU = map[string]string{
-			"velero.io/schedule-name":  "acm-resources-schedule",
-			BackupScheduleClusterLabel: "abcd",
-		}
 	)
 
 	BeforeEach(func() {
@@ -241,9 +236,15 @@ var _ = Describe("BackupSchedule controller", func() {
 		oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
 		aFewSecondsAgo := metav1.NewTime(time.Now().Add(-2 * time.Second))
 
+		restoreKeys := make([]ResourceType, 0, len(veleroScheduleNames))
+		for key := range veleroScheduleNames {
+			restoreKeys = append(restoreKeys, key)
+		}
+
 		//create 3 sets of backups, for each timestamp
-		for i, timestampStr := range backupTimestamps {
-			for _, value := range veleroScheduleNames {
+		for _, timestampStr := range backupTimestamps {
+
+			for key, value := range veleroScheduleNames {
 
 				backup := veleroapi.Backup{
 					TypeMeta: metav1.TypeMeta{
@@ -253,7 +254,10 @@ var _ = Describe("BackupSchedule controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      value + "-" + timestampStr,
 						Namespace: veleroNamespaceName,
-						Labels:    labelsClsU,
+						Labels: map[string]string{
+							"velero.io/schedule-name":  value,
+							BackupScheduleClusterLabel: "abcd",
+						},
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
@@ -265,12 +269,13 @@ var _ = Describe("BackupSchedule controller", func() {
 					},
 				}
 
-				if value == ValidationSchedule {
+				if key == ValidationSchedule {
 
-					if i == len(backupTimestamps)-1 {
-						// mark it as expired
-						backup.Status.Expiration = &oneHourAgo
-					}
+					//if i == len(backupTimestamps)-1 {
+					// mark it as expired
+					backup.Spec.TTL = metav1.Duration{Duration: time.Second * 5}
+					backup.Status.Expiration = &oneHourAgo
+					//}
 				}
 
 				veleroBackups = append(veleroBackups, backup)
