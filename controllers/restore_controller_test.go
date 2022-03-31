@@ -1844,9 +1844,9 @@ var _ = Describe("Basic Restore controller", func() {
 				},
 				Spec: v1beta1.RestoreSpec{
 					CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
-					VeleroManagedClustersBackupName: &latestBackup,
-					VeleroCredentialsBackupName:     &skipRestore,
-					VeleroResourcesBackupName:       &skipRestore,
+					VeleroManagedClustersBackupName: &skipRestore,
+					VeleroCredentialsBackupName:     &latestBackup,
+					VeleroResourcesBackupName:       &latestBackup,
 				},
 			}
 			oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
@@ -1857,7 +1857,26 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "acm-managed-clusters-schedule-good-very-recent-backup",
+						Name:      "acm-resources-schedule-good-very-recent-backup",
+						Namespace: veleroNamespace.Name,
+					},
+					Spec: veleroapi.BackupSpec{
+						IncludedNamespaces: []string{"please-keep-this-one"},
+						IncludedResources:  includedResources,
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseCompleted,
+						Errors:         0,
+						StartTimestamp: &oneHourAgo,
+					},
+				},
+				veleroapi.Backup{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "velero/v1",
+						Kind:       "Backup",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-credentials-schedule-good-very-recent-backup",
 						Namespace: veleroNamespace.Name,
 					},
 					Spec: veleroapi.BackupSpec{
@@ -1882,7 +1901,7 @@ var _ = Describe("Basic Restore controller", func() {
 						Name:      restoreName,
 						Namespace: veleroNamespace.Name,
 					}, &createdRestore)
-				return createdRestore.Status.VeleroManagedClustersRestoreName
+				return createdRestore.Status.VeleroResourcesRestoreName
 			}, timeout, interval).ShouldNot(BeEmpty())
 
 			veleroRestores := veleroapi.RestoreList{
@@ -1897,11 +1916,11 @@ var _ = Describe("Basic Restore controller", func() {
 							Kind:       "Restore",
 						},
 						ObjectMeta: metav1.ObjectMeta{
-							Name:      "acm-managed-clusters-restore",
+							Name:      "acm-credentials-restore",
 							Namespace: veleroNamespace.Name,
 						},
 						Spec: veleroapi.RestoreSpec{
-							BackupName: "acm-managed-clusters-backup",
+							BackupName: "acm-credentials-backup",
 						},
 						Status: veleroapi.RestoreStatus{
 							Phase: "",
@@ -1966,6 +1985,12 @@ var _ = Describe("Basic Restore controller", func() {
 			Expect(
 				createdRestore.Status.Phase,
 			).Should(BeEquivalentTo(v1beta1.RestorePhaseFinished))
+
+			createdRestore.Spec.SyncRestoreWithNewBackups = true
+			setRestorePhase(&veleroRestores, &createdRestore)
+			Expect(
+				createdRestore.Status.Phase,
+			).Should(BeEquivalentTo(v1beta1.RestorePhaseEnabled))
 		})
 
 	})
