@@ -122,7 +122,7 @@ var _ = Describe("Basic Restore controller", func() {
 		ctx = context.Background()
 		veleroManagedClustersBackupName = "acm-managed-clusters-schedule-20210910181336"
 		veleroResourcesBackupName = "acm-resources-schedule-20210910181336"
-		veleroResourcesGenericBackupName = "acm-resources-generic-schedule-20210910181336"
+		veleroResourcesGenericBackupName = "acm-resources-generic-schedule-20210910181346"
 		veleroCredentialsBackupName = "acm-credentials-schedule-20210910181336"
 		veleroCredentialsHiveBackupName = "acm-credentials-hive-schedule-20210910181336"
 		veleroCredentialsClusterBackupName = "acm-credentials-cluster-schedule-20210910181336"
@@ -130,6 +130,12 @@ var _ = Describe("Basic Restore controller", func() {
 		latestBackup = "latest"
 		invalidBackup = "invalid-backup-name"
 		restoreName = "rhacm-restore-1"
+		resourcesTimestamp, _ := time.Parse("20060102150405", "20210910181336")
+		resourcesGenericTimestamp, _ := time.Parse("20060102150405", "20210910181346")
+		resourcesStartTime := metav1.NewTime(resourcesTimestamp)
+		resourcesGenericStartTime := metav1.NewTime(resourcesGenericTimestamp)
+		unrelatedResourcesGenericTimestamp, _ := time.Parse("20060102150405", "20210910181420")
+		unrelatedResourcesGenericStartTime := metav1.NewTime(unrelatedResourcesGenericTimestamp)
 
 		channels = []chnv1.Channel{
 			{
@@ -255,8 +261,9 @@ var _ = Describe("Basic Restore controller", func() {
 					IncludedResources:  includedResources,
 				},
 				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
+					Phase:          veleroapi.BackupPhaseCompleted,
+					Errors:         0,
+					StartTimestamp: &resourcesStartTime,
 				},
 			},
 			veleroapi.Backup{
@@ -273,8 +280,28 @@ var _ = Describe("Basic Restore controller", func() {
 					IncludedResources:  includedResources,
 				},
 				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
+					Phase:          veleroapi.BackupPhaseCompleted,
+					Errors:         0,
+					StartTimestamp: &resourcesGenericStartTime,
+				},
+			},
+			veleroapi.Backup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "Backup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "acm-resources-generic-schedule-20210910181420",
+					Namespace: veleroNamespace.Name,
+				},
+				Spec: veleroapi.BackupSpec{
+					IncludedNamespaces: []string{"please-keep-this-one"},
+					IncludedResources:  includedResources,
+				},
+				Status: veleroapi.BackupStatus{
+					Phase:          veleroapi.BackupPhaseCompleted,
+					Errors:         0,
+					StartTimestamp: &unrelatedResourcesGenericStartTime,
 				},
 			},
 			veleroapi.Backup{
@@ -348,7 +375,7 @@ var _ = Describe("Basic Restore controller", func() {
 				CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
 				SyncRestoreWithNewBackups:       true,
 				VeleroManagedClustersBackupName: &veleroManagedClustersBackupName,
-				VeleroCredentialsBackupName:     &latestBackup,
+				VeleroCredentialsBackupName:     &veleroCredentialsBackupName,
 				VeleroResourcesBackupName:       &veleroResourcesBackupName,
 			},
 		}
