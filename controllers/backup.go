@@ -462,7 +462,6 @@ func cleanupExpiredValidationBackups(
 	c client.Client,
 ) {
 	backupLogger := log.FromContext(ctx)
-
 	validationLabel := labels.SelectorFromSet(
 		map[string]string{"velero.io/schedule-name": veleroScheduleNames[ValidationSchedule]})
 	veleroBackupList := veleroapi.BackupList{}
