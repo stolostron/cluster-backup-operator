@@ -953,20 +953,14 @@ var _ = Describe("Basic Restore controller", func() {
 					Namespace: veleroNamespace.Name,
 				},
 				Spec: v1beta1.RestoreSpec{
-					SyncRestoreWithNewBackups:       true,
+					SyncRestoreWithNewBackups:       false,
 					CleanupBeforeRestore:            v1beta1.CleanupTypeRestored,
 					VeleroManagedClustersBackupName: &skipRestore,
 					VeleroCredentialsBackupName:     &latestBackup,
 					VeleroResourcesBackupName:       &latestBackup,
 				},
-				Status: v1beta1.RestoreStatus{
-					Phase:                        v1beta1.RestorePhaseEnabled,
-					VeleroResourcesRestoreName:   "rhacm-restore-1-acm-resources-schedule-good-old-backup",
-					VeleroCredentialsRestoreName: "rhacm-restore-1-acm-credentials-schedule-good-old-backup",
-				},
 			}
 			oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
-			twoHoursAgo := metav1.NewTime(time.Now().Add(-2 * time.Hour))
 			threeHoursAgo := metav1.NewTime(time.Now().Add(-3 * time.Hour))
 			fourHoursAgo := metav1.NewTime(time.Now().Add(-4 * time.Hour))
 			veleroBackups = []veleroapi.Backup{
@@ -987,25 +981,6 @@ var _ = Describe("Basic Restore controller", func() {
 						Phase:          veleroapi.BackupPhaseCompleted,
 						Errors:         0,
 						StartTimestamp: &threeHoursAgo,
-					},
-				},
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "acm-managed-clusters-schedule-good-recent-backup",
-						Namespace: veleroNamespace.Name,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						Errors:         0,
-						StartTimestamp: &twoHoursAgo,
 					},
 				},
 				veleroapi.Backup{
@@ -1072,44 +1047,6 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "acm-resources-generic-schedule-good-old-backup",
-						Namespace: veleroNamespace.Name,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						Errors:         0,
-						StartTimestamp: &threeHoursAgo,
-					},
-				},
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "acm-resources-schedule-good-recent-backup",
-						Namespace: veleroNamespace.Name,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						Errors:         0,
-						StartTimestamp: &twoHoursAgo,
-					},
-				},
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
 						Name:      "acm-resources-schedule-not-completed-recent-backup",
 						Namespace: veleroNamespace.Name,
 					},
@@ -1130,25 +1067,6 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "acm-resources-schedule-bad-old-backup",
-						Namespace: veleroNamespace.Name,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						Errors:         10,
-						StartTimestamp: &fourHoursAgo,
-					},
-				},
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "acm-resources-generic-schedule-bad-old-backup",
 						Namespace: veleroNamespace.Name,
 					},
 					Spec: veleroapi.BackupSpec{
@@ -1187,24 +1105,6 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "acm-credentials-schedule-good-recent-backup",
-						Namespace: veleroNamespace.Name,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						Errors:         0,
-						StartTimestamp: &twoHoursAgo,
-					},
-				},
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
 						Name:      "acm-credentials-schedule-not-completed-recent-backup",
 						Namespace: veleroNamespace.Name,
 					},
@@ -1235,13 +1135,61 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &fourHoursAgo,
 					},
 				},
+			}
+		})
+		It("Should sync with the most recent backups without errors", func() {
+			createdRestore := v1beta1.Restore{}
+			restoreLookupKey := types.NamespacedName{
+				Name:      restoreName,
+				Namespace: veleroNamespace.Name,
+			}
+			By("created restore should contain velero restore in status")
+			Eventually(func() string {
+				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+				return createdRestore.Status.VeleroCredentialsRestoreName
+			}, timeout, interval).Should(BeIdenticalTo("rhacm-restore-1-acm-credentials-schedule-good-old-backup"))
+			Eventually(func() string {
+				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+				return createdRestore.Status.VeleroResourcesRestoreName
+			}, timeout, interval).Should(BeIdenticalTo("rhacm-restore-1-acm-resources-schedule-good-old-backup"))
+
+			Eventually(func() v1beta1.RestorePhase {
+				err := k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+				Expect(err).NotTo(HaveOccurred())
+				return createdRestore.Status.Phase
+			}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseUnknown))
+
+			veleroRestore := veleroapi.Restore{}
+			Expect(
+				k8sClient.Get(
+					ctx,
+					types.NamespacedName{
+						Namespace: veleroNamespace.Name,
+						Name:      restoreName + "-acm-credentials-schedule-good-old-backup",
+					},
+					&veleroRestore,
+				),
+			).ShouldNot(HaveOccurred())
+			Expect(
+				k8sClient.Get(
+					ctx,
+					types.NamespacedName{
+						Namespace: veleroNamespace.Name,
+						Name:      restoreName + "-acm-resources-schedule-good-old-backup",
+					},
+					&veleroRestore,
+				),
+			).ShouldNot(HaveOccurred())
+
+			twoHoursAgo := metav1.NewTime(time.Now().Add(-2 * time.Hour))
+			newVeleroBackups := []veleroapi.Backup{
 				veleroapi.Backup{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "acm-credentials-hive-schedule-good-recent-backup",
+						Name:      "acm-credentials-schedule-good-recent-backup",
 						Namespace: veleroNamespace.Name,
 					},
 					Spec: veleroapi.BackupSpec{
@@ -1259,11 +1207,31 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "Backup",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "acm-credentials-cluster-schedule-good-recent-backup",
+						Name:      "acm-resources-schedule-good-recent-backup",
 						Namespace: veleroNamespace.Name,
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
+						IncludedResources:  includedResources,
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseCompleted,
+						Errors:         0,
+						StartTimestamp: &twoHoursAgo,
+					},
+				},
+				veleroapi.Backup{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "velero/v1",
+						Kind:       "Backup",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-managed-clusters-schedule-good-recent-backup",
+						Namespace: veleroNamespace.Name,
+					},
+					Spec: veleroapi.BackupSpec{
+						IncludedNamespaces: []string{"please-keep-this-one"},
+						IncludedResources:  includedResources,
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
@@ -1272,28 +1240,38 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 				},
 			}
-		})
-		It("Should sync with the most recent backups without errors", func() {
-			createdRestore := v1beta1.Restore{}
-			By("created restore should contain velero restore in status")
+
+			// create new backups to sync with
+			for i := range newVeleroBackups {
+				Expect(k8sClient.Create(ctx, &newVeleroBackups[i])).Should(Succeed())
+			}
+
 			Eventually(func() string {
-				restoreLookupKey := types.NamespacedName{
-					Name:      restoreName,
-					Namespace: veleroNamespace.Name,
+				if err := k8sClient.Get(ctx, restoreLookupKey, &createdRestore); err == nil {
+					// update createdRestore status to Enabled
+					createdRestore.Status.Phase = v1beta1.RestorePhaseEnabled
+					Expect(k8sClient.Status().Update(ctx, &createdRestore)).Should(Succeed())
+					return string(createdRestore.Status.Phase)
 				}
+				return "notset"
+			}, timeout, interval).Should(BeIdenticalTo(v1beta1.RestorePhaseEnabled))
+
+			// now trigger a resource update by setting sync option to true
+			if err := k8sClient.Get(ctx, restoreLookupKey, &createdRestore); err == nil {
+				createdRestore.Spec.SyncRestoreWithNewBackups = true
+				Expect(k8sClient.Update(ctx, &createdRestore)).Should(Succeed())
+			}
+
+			By("created restore should now contain new velero backup names in status")
+			Eventually(func() string {
 				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
 				return createdRestore.Status.VeleroCredentialsRestoreName
 			}, timeout, interval).Should(BeIdenticalTo("rhacm-restore-1-acm-credentials-schedule-good-recent-backup"))
 			Eventually(func() string {
-				restoreLookupKey := types.NamespacedName{
-					Name:      restoreName,
-					Namespace: veleroNamespace.Name,
-				}
 				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
 				return createdRestore.Status.VeleroResourcesRestoreName
 			}, timeout, interval).Should(BeIdenticalTo("rhacm-restore-1-acm-resources-schedule-good-recent-backup"))
-
-			veleroRestore := veleroapi.Restore{}
+			// check if new velero restores are created
 			Expect(
 				k8sClient.Get(
 					ctx,
