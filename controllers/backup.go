@@ -313,7 +313,7 @@ func setValidationBackupInfo(
 	veleroBackupTemplate *veleroapi.BackupSpec,
 	backupSchedule *v1beta1.BackupSchedule,
 	c client.Client,
-) (*veleroapi.BackupSpec, error) {
+) *veleroapi.BackupSpec {
 
 	veleroBackupTemplate.IncludedNamespaces = appendUnique(
 		veleroBackupTemplate.IncludedNamespaces,
@@ -330,16 +330,8 @@ func setValidationBackupInfo(
 	// with the new validation backup; doing that so that policy doesn't report an error
 	// in this short interval when the old validation backup is deleted
 	// and the old one is recreated by the cron job validation schedule
-	scheduleLogger := log.FromContext(ctx)
-	if cronSchedule, err := cron.ParseStandard(backupSchedule.Spec.VeleroSchedule); err != nil {
-		scheduleLogger.Error(
-			err,
-			"Error parsing schedule",
-			"schedule", backupSchedule.Spec.VeleroSchedule,
-		)
-		veleroBackupTemplate.TTL = v1.Duration{Duration: time.Hour * 1}
-		return veleroBackupTemplate, err
-	} else {
+	veleroBackupTemplate.TTL = v1.Duration{Duration: time.Hour * 1}
+	if cronSchedule, err := cron.ParseStandard(backupSchedule.Spec.VeleroSchedule); err == nil {
 		currentTime := v1.Now().Time
 		nextRunTime := cronSchedule.Next(currentTime)
 		// add extra 5 minutes to the cron job time before deleting this backup
@@ -348,9 +340,8 @@ func setValidationBackupInfo(
 		veleroBackupTemplate.TTL = v1.Duration{
 			Duration: secondNextRunTime.Sub(nextRunTime),
 		}
-
-		return veleroBackupTemplate, nil
 	}
+	return veleroBackupTemplate
 }
 
 func isBackupFinished(backups []*veleroapi.Backup) bool {
@@ -489,8 +480,6 @@ func cleanupExpiredValidationBackups(
 				deleteBackup(ctx, &backup, c)
 			}
 		}
-	} else {
-		backupLogger.Info(err.Error())
 	}
 }
 

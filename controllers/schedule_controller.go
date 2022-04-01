@@ -413,7 +413,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		case ResourcesGeneric:
 			setGenericResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
 		case ValidationSchedule:
-			veleroBackupTemplate, _ = setValidationBackupInfo(
+			veleroBackupTemplate = setValidationBackupInfo(
 				ctx,
 				veleroBackupTemplate,
 				backupSchedule,
