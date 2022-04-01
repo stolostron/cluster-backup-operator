@@ -118,6 +118,158 @@ func Test_isVeleroRestoreRunning(t *testing.T) {
 	}
 }
 
+func Test_isValidSyncOptions(t *testing.T) {
+	skipRestore := "skip"
+	latestBackup := "latest"
+	backupName := "acm-managed-clusters-schedule-111"
+	type args struct {
+		restore *v1beta1.Restore
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "Skip all",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "Restore",
+						Namespace: "veleroNamespace",
+					},
+					Spec: v1beta1.RestoreSpec{
+						SyncRestoreWithNewBackups:       true,
+						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
+						VeleroManagedClustersBackupName: &skipRestore,
+						VeleroCredentialsBackupName:     &skipRestore,
+						VeleroResourcesBackupName:       &skipRestore,
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "No backup name",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "Restore",
+						Namespace: "veleroNamespace",
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "Credentials should be set to skip or latest",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "Restore",
+						Namespace: "veleroNamespace",
+					},
+					Spec: v1beta1.RestoreSpec{
+						SyncRestoreWithNewBackups:       true,
+						CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+						VeleroManagedClustersBackupName: &skipRestore,
+						VeleroCredentialsBackupName:     &backupName,
+						VeleroResourcesBackupName:       &latestBackup,
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "Resources should be set to latest",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "Restore",
+						Namespace: "veleroNamespace",
+					},
+					Spec: v1beta1.RestoreSpec{
+						SyncRestoreWithNewBackups:       true,
+						CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+						VeleroManagedClustersBackupName: &skipRestore,
+						VeleroCredentialsBackupName:     &latestBackup,
+						VeleroResourcesBackupName:       &skipRestore,
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "InValid config, no sync",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "Restore",
+						Namespace: "veleroNamespace",
+					},
+					Spec: v1beta1.RestoreSpec{
+						CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+						VeleroManagedClustersBackupName: &skipRestore,
+						VeleroCredentialsBackupName:     &latestBackup,
+						VeleroResourcesBackupName:       &latestBackup,
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "Valid config",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "Restore",
+						Namespace: "veleroNamespace",
+					},
+					Spec: v1beta1.RestoreSpec{
+						SyncRestoreWithNewBackups:       true,
+						CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+						VeleroManagedClustersBackupName: &skipRestore,
+						VeleroCredentialsBackupName:     &latestBackup,
+						VeleroResourcesBackupName:       &latestBackup,
+					},
+				},
+			},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got, msg := isValidSyncOptions(tt.args.restore); got != tt.want {
+				t.Errorf("failed test %s isValidSyncOptions() = %v, want %v, message: %s", tt.name, got, tt.want, msg)
+			}
+		})
+	}
+}
+
 func Test_isSkipAllRestores(t *testing.T) {
 	skipRestore := "skip"
 	latestBackup := "latest"
@@ -183,6 +335,50 @@ func Test_isSkipAllRestores(t *testing.T) {
 						CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
 						VeleroManagedClustersBackupName: &skipRestore,
 						VeleroCredentialsBackupName:     &latestBackup,
+						VeleroResourcesBackupName:       &latestBackup,
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "Managed clusters name is not skip",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "Restore",
+						Namespace: "veleroNamespace",
+					},
+					Spec: v1beta1.RestoreSpec{
+						CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+						VeleroManagedClustersBackupName: &latestBackup,
+						VeleroCredentialsBackupName:     &latestBackup,
+						VeleroResourcesBackupName:       &latestBackup,
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "Resources is not skip",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "Restore",
+						Namespace: "veleroNamespace",
+					},
+					Spec: v1beta1.RestoreSpec{
+						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
+						VeleroManagedClustersBackupName: &skipRestore,
+						VeleroCredentialsBackupName:     &skipRestore,
 						VeleroResourcesBackupName:       &latestBackup,
 					},
 				},
