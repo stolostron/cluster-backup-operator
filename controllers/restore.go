@@ -151,9 +151,10 @@ func deleteDynamicResource(
 	resource unstructured.Unstructured,
 	deleteOptions v1.DeleteOptions,
 	excludedNamespaces []string,
-) bool {
+) (bool, bool) {
 	logger := log.FromContext(ctx)
 	localCluster := "local-cluster"
+	processed := true
 
 	nsSkipMsg := fmt.Sprintf(
 		"Skipping resource %s [%s.%s]",
@@ -167,7 +168,7 @@ func deleteDynamicResource(
 				findValue(excludedNamespaces, resource.GetNamespace()))) {
 		// do not clean up local-cluster resources or resources from excluded NS
 		logger.Info(nsSkipMsg)
-		return false
+		return false, false
 	}
 
 	if resource.GetLabels() != nil && (resource.GetLabels()["velero.io/exclude-from-backup"] == "true" ||
@@ -175,7 +176,7 @@ func deleteDynamicResource(
 		// do not cleanup resources with a velero.io/exclude-from-backup=true label, they are not backed up
 		// do not backup subscriptions created by the mch in a separate NS
 		logger.Info(nsSkipMsg)
-		return false
+		return false, false
 	}
 
 	nsScopedMsg := fmt.Sprintf(
@@ -205,7 +206,7 @@ func deleteDynamicResource(
 		// namespaced resources should specify the namespace
 		if err := dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions); err != nil {
 			logger.Info(err.Error())
-			return false
+			return false, processed
 		} else {
 			logger.Info(nsScopedMsg)
 			if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
@@ -214,7 +215,7 @@ func deleteDynamicResource(
 				if _, err := dr.Namespace(resource.GetNamespace()).Patch(ctx, resource.GetName(),
 					types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
 					logger.Info(err.Error())
-					return false
+					return false, processed
 				}
 			}
 		}
@@ -222,7 +223,7 @@ func deleteDynamicResource(
 		// for cluster-wide resources
 		if err := dr.Delete(ctx, resource.GetName(), deleteOptions); err != nil {
 			logger.Info(err.Error())
-			return false
+			return false, processed
 		} else {
 			logger.Info(globalResourceMsg)
 			if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
@@ -231,13 +232,13 @@ func deleteDynamicResource(
 				if _, err := dr.Patch(ctx, resource.GetName(),
 					types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
 					logger.Info(err.Error())
-					return false
+					return false, processed
 				}
 			}
 		}
 	}
 
-	return true
+	return true, processed
 }
 
 // clean up resources for the restored backup resources

@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"testing"
+	"time"
 
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
@@ -522,7 +523,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				deleteOptions:      delOptions,
 				excludedNamespaces: []string{"abc"},
 			},
-			want: false,
+			want: true,
 		},
 		{
 			name: "Delete default resource with ns excluded",
@@ -558,12 +559,12 @@ func Test_deleteDynamicResource(t *testing.T) {
 				deleteOptions:      delOptions,
 				excludedNamespaces: []string{},
 			},
-			want: false,
+			want: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := deleteDynamicResource(tt.args.ctx,
+			if _, got := deleteDynamicResource(tt.args.ctx,
 				tt.args.mapping,
 				tt.args.dr,
 				tt.args.resource,
@@ -574,4 +575,158 @@ func Test_deleteDynamicResource(t *testing.T) {
 		})
 	}
 
+}
+
+func Test_sendResults(t *testing.T) {
+	skipRestore := "skip"
+	type args struct {
+		restore *v1beta1.Restore
+		err     error
+	}
+	tests := []struct {
+		name string
+		args args
+		want error
+	}{
+		{
+			name: "Try restore again",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "Restore",
+						Namespace: "veleroNamespace",
+					},
+					Spec: v1beta1.RestoreSpec{
+						SyncRestoreWithNewBackups:       true,
+						RestoreSyncInterval:             v1.Duration{Duration: time.Minute * 15},
+						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
+						VeleroManagedClustersBackupName: &skipRestore,
+						VeleroCredentialsBackupName:     &skipRestore,
+						VeleroResourcesBackupName:       &skipRestore,
+					},
+					Status: v1beta1.RestoreStatus{
+						Phase: v1beta1.RestorePhaseEnabled,
+					},
+				},
+				err: nil,
+			},
+			want: nil,
+		},
+		{
+			name: "Skip restore again",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "Restore",
+						Namespace: "veleroNamespace",
+					},
+					Spec: v1beta1.RestoreSpec{
+						SyncRestoreWithNewBackups:       true,
+						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
+						VeleroManagedClustersBackupName: &skipRestore,
+						VeleroCredentialsBackupName:     &skipRestore,
+						VeleroResourcesBackupName:       &skipRestore,
+					},
+					Status: v1beta1.RestoreStatus{
+						Phase: v1beta1.RestorePhaseFinished,
+					},
+				},
+				err: nil,
+			},
+			want: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := sendResult(tt.args.restore, tt.args.err); err != tt.want {
+				t.Errorf("isSkipAllRestores() = %v, want %v", err, tt.want)
+			}
+		})
+	}
+}
+
+func Test_setRestorePhase(t *testing.T) {
+	skipRestore := "skip"
+	latestBackupStr := "latest"
+	type args struct {
+		restore     *v1beta1.Restore
+		restoreList *veleroapi.RestoreList
+	}
+	tests := []struct {
+		name string
+		args args
+		want v1beta1.RestorePhase
+	}{
+		{
+			name: "Restore list empty and skip all, return finished phase",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "Restore",
+						Namespace: "veleroNamespace",
+					},
+					Spec: v1beta1.RestoreSpec{
+						SyncRestoreWithNewBackups:       true,
+						RestoreSyncInterval:             v1.Duration{Duration: time.Minute * 15},
+						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
+						VeleroManagedClustersBackupName: &skipRestore,
+						VeleroCredentialsBackupName:     &skipRestore,
+						VeleroResourcesBackupName:       &skipRestore,
+					},
+					Status: v1beta1.RestoreStatus{
+						Phase: v1beta1.RestorePhaseRunning,
+					},
+				},
+				restoreList: nil,
+			},
+			want: v1beta1.RestorePhaseFinished,
+		},
+		{
+			name: "Restore list empty and NOT skip all, return finished RestorePhaseStarted",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "Restore",
+						Namespace: "veleroNamespace",
+					},
+					Spec: v1beta1.RestoreSpec{
+						SyncRestoreWithNewBackups:       true,
+						RestoreSyncInterval:             v1.Duration{Duration: time.Minute * 15},
+						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
+						VeleroManagedClustersBackupName: &latestBackupStr,
+						VeleroCredentialsBackupName:     &skipRestore,
+						VeleroResourcesBackupName:       &skipRestore,
+					},
+					Status: v1beta1.RestoreStatus{
+						Phase: v1beta1.RestorePhaseRunning,
+					},
+				},
+				restoreList: nil,
+			},
+			want: v1beta1.RestorePhaseStarted,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if phase := setRestorePhase(tt.args.restoreList, tt.args.restore); phase != tt.want {
+				t.Errorf("setRestorePhase() = %v, want %v", phase, tt.want)
+			}
+		})
+	}
 }
