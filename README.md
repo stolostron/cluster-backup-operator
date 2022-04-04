@@ -410,15 +410,17 @@ The passive hubs restore this data, except for the managed clusters activation d
 
 ## Disaster recovery
 
-When the primary hub goes down, one of the passive hubs is chosen by the admin to take over the managed clusters. In the image below, the admin decides to use Hub D as the new primary hub. These are the steps taken to have Hub D become a primary hub: 
-1. Hub D restores the [Managed Cluster activation data](#managed-clusters-activation-data). At this point, the managed clusters connect with Hub D.
-2. The admin starts a backup on the new primary Hub D, by creating a `BackupSchedule.cluster.open-cluster-management.io` resource and storing the backups at the same storage location as the initial primary hub. All other passive hubs will now restore [passive data](#passive-data) using the backup data created by the new primary hub, unaware that the primary hub has changed. Hub D behaves now as the primary hub, managing clusters and backing up data.
+When the primary hub goes down, one of the passive hubs is chosen by the admin to take over the managed clusters. In the image below, the admin decides to use Hub N as the new primary hub. These are the steps taken to have Hub N become a primary hub: 
+1. Hub N restores the [Managed Cluster activation data](#managed-clusters-activation-data). At this point, the managed clusters connect with Hub N.
+2. The admin starts a backup on the new primary Hub N, by creating a `BackupSchedule.cluster.open-cluster-management.io` resource and storing the backups at the same storage location as the initial primary hub. All other passive hubs will now restore [passive data](#passive-data) using the backup data created by the new primary hub, unaware that the primary hub has changed. Hub N behaves now as the primary hub, managing clusters and backing up data.
+
+
+![Disaster Recovery](images/disaster-recovery.png)
 
 Note: 
 - Step 1 is not automated since the admin should decide if the primary hub is down and needs to be replaced, or there is some network communication error between the hub and managed clusters. The admin also decides which passive hub should become primary. If desired, this step could be automated using the Policy integration with Ansible jobs: the admin can setup an Ansible job to be executed when the [Backup Policy](#backup-validation-using-a-policy) reports backup execution errors.
 - Although Step 2 above is manual, the admin will be notified using the [Backups are actively running as a cron job](#backups-are-actively-running-as-a-cron-job) if he omits to start creating backups from the new primary hub. 
 
-![Disaster Recovery](images/disaster-recovery.png)
 
 
 # Setting up Your Dev Environment
@@ -589,3 +591,4 @@ spec:
   veleroCredentialsBackupName: skip
   veleroResourcesBackupName: skip
 ```
+
