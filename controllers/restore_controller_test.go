@@ -98,7 +98,6 @@ var _ = Describe("Basic Restore controller", func() {
 		}
 
 		Expect(k8sClient.Create(ctx, &rhacmRestore)).Should(Succeed())
-
 	})
 
 	JustAfterEach(func() {
@@ -374,6 +373,7 @@ var _ = Describe("Basic Restore controller", func() {
 			Spec: v1beta1.RestoreSpec{
 				CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
 				SyncRestoreWithNewBackups:       true,
+				RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
 				VeleroManagedClustersBackupName: &veleroManagedClustersBackupName,
 				VeleroCredentialsBackupName:     &veleroCredentialsBackupName,
 				VeleroResourcesBackupName:       &veleroResourcesBackupName,
@@ -483,9 +483,10 @@ var _ = Describe("Basic Restore controller", func() {
 					Namespace: veleroNamespace.Name,
 				},
 				Spec: v1beta1.RestoreSpec{
-					SyncRestoreWithNewBackups:       false,
+					SyncRestoreWithNewBackups:       true,
+					RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
 					CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
-					VeleroManagedClustersBackupName: &latestBackup,
+					VeleroManagedClustersBackupName: &skipRestore,
 					VeleroCredentialsBackupName:     &latestBackup,
 					VeleroResourcesBackupName:       &latestBackup,
 				},
@@ -808,7 +809,7 @@ var _ = Describe("Basic Restore controller", func() {
 				}
 				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
 				return createdRestore.Status.VeleroManagedClustersRestoreName
-			}, timeout, interval).ShouldNot(BeEmpty())
+			}, timeout, interval).Should(BeEmpty())
 			Eventually(func() string {
 				restoreLookupKey := types.NamespacedName{
 					Name:      restoreName,
@@ -827,16 +828,6 @@ var _ = Describe("Basic Restore controller", func() {
 			}, timeout, interval).ShouldNot(BeEmpty())
 
 			veleroRestore := veleroapi.Restore{}
-			Expect(
-				k8sClient.Get(
-					ctx,
-					types.NamespacedName{
-						Namespace: veleroNamespace.Name,
-						Name:      restoreName + "-acm-managed-clusters-schedule-good-recent-backup",
-					},
-					&veleroRestore,
-				),
-			).ShouldNot(HaveOccurred())
 			Expect(
 				k8sClient.Get(
 					ctx,
@@ -1951,6 +1942,7 @@ var _ = Describe("Basic Restore controller", func() {
 			).Should(BeEquivalentTo(v1beta1.RestorePhaseFinished))
 
 			createdRestore.Spec.SyncRestoreWithNewBackups = true
+			createdRestore.Spec.RestoreSyncInterval = metav1.Duration{Duration: time.Minute * 20}
 			setRestorePhase(&veleroRestores, &createdRestore)
 			Expect(
 				createdRestore.Status.Phase,
