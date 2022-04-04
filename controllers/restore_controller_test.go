@@ -2009,7 +2009,7 @@ var _ = Describe("Basic Restore controller", func() {
 
 	})
 
-	Context("When creating a Restore and no storage location is available", func() {
+	Context("When creating a Restore and skip resources", func() {
 		BeforeEach(func() {
 			restoreName = "my-restore"
 			veleroNamespace = &corev1.Namespace{
