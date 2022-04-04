@@ -822,7 +822,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				err := k8sClient.List(ctx, &acmSchedulesList, &client.ListOptions{})
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
-			Expect(len(acmSchedulesList.Items)).To(BeNumerically("==", 5))
+			Expect(len(acmSchedulesList.Items)).To(BeNumerically(">=", 5))
 
 			// count velero schedules
 			veleroScheduleList := veleroapi.ScheduleList{}

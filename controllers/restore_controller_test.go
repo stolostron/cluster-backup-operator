@@ -1941,12 +1941,70 @@ var _ = Describe("Basic Restore controller", func() {
 				createdRestore.Status.Phase,
 			).Should(BeEquivalentTo(v1beta1.RestorePhaseFinished))
 
+			// failing to create schedule, restore is running
+			rhacmBackupScheduleErr := v1beta1.BackupSchedule{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
+					Kind:       "BackupSchedule",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "backup-sch-to-error-restore",
+					Namespace: veleroNamespace.Name,
+				},
+				Spec: v1beta1.BackupScheduleSpec{
+					VeleroSchedule: "backup-schedule",
+					VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleErr)).Should(Succeed())
+			Eventually(func() v1beta1.SchedulePhase {
+				k8sClient.Get(ctx,
+					types.NamespacedName{
+						Name:      rhacmBackupScheduleErr.Name,
+						Namespace: veleroNamespace.Name,
+					}, &rhacmBackupScheduleErr)
+				return rhacmBackupScheduleErr.Status.Phase
+			}, timeout, interval).Should(BeEquivalentTo(v1beta1.SchedulePhaseFailedValidation))
+
 			createdRestore.Spec.SyncRestoreWithNewBackups = true
 			createdRestore.Spec.RestoreSyncInterval = metav1.Duration{Duration: time.Minute * 20}
 			setRestorePhase(&veleroRestores, &createdRestore)
 			Expect(
 				createdRestore.Status.Phase,
 			).Should(BeEquivalentTo(v1beta1.RestorePhaseEnabled))
+
+			// cannot create another restore, one is enabled
+			restoreFailing := v1beta1.Restore{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
+					Kind:       "Restore",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      restoreName + "-fail",
+					Namespace: veleroNamespace.Name,
+				},
+				Spec: v1beta1.RestoreSpec{
+					CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+					SyncRestoreWithNewBackups:       true,
+					RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
+					VeleroManagedClustersBackupName: &skipRestore,
+					VeleroCredentialsBackupName:     &veleroCredentialsBackupName,
+					VeleroResourcesBackupName:       &veleroResourcesBackupName,
+				},
+			}
+			Expect(k8sClient.Create(ctx, &restoreFailing)).Should(Succeed())
+			// one is already enabled
+			Eventually(func() v1beta1.RestorePhase {
+				k8sClient.Get(ctx,
+					types.NamespacedName{
+						Name:      restoreFailing.Name,
+						Namespace: veleroNamespace.Name,
+					}, &restoreFailing)
+				return restoreFailing.Status.Phase
+			}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseFinishedWithErrors))
+			Expect(k8sClient.Delete(ctx, &restoreFailing)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, &rhacmBackupScheduleErr)).Should(Succeed())
+
 		})
 
 	})
