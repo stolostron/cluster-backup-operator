@@ -2009,7 +2009,7 @@ var _ = Describe("Basic Restore controller", func() {
 
 	})
 
-	Context("When creating a Restore and no storage location is available", func() {
+	Context("When creating a Restore and skip resources", func() {
 		BeforeEach(func() {
 			restoreName = "my-restore"
 			veleroNamespace = &corev1.Namespace{
@@ -2034,7 +2034,7 @@ var _ = Describe("Basic Restore controller", func() {
 				},
 				Spec: v1beta1.RestoreSpec{
 					CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
-					VeleroManagedClustersBackupName: &latestBackup,
+					VeleroManagedClustersBackupName: &skipRestore,
 					VeleroCredentialsBackupName:     &skipRestore,
 					VeleroResourcesBackupName:       &skipRestore,
 				},
@@ -2105,4 +2105,115 @@ var _ = Describe("Basic Restore controller", func() {
 
 	})
 
+	Context("When creating a Restore and no storage location is available", func() {
+		BeforeEach(func() {
+			restoreName = "my-restore"
+			veleroNamespace = &corev1.Namespace{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Namespace",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "velero-restore-ns-99",
+				},
+			}
+			backupStorageLocation = &veleroapi.BackupStorageLocation{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "BackupStorageLocation",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "default",
+					Namespace: veleroNamespace.Name,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "oadp.openshift.io/v1alpha1",
+							Kind:       "Velero",
+							Name:       "velero-instnace",
+							UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
+						},
+					},
+				},
+				Spec: veleroapi.BackupStorageLocationSpec{
+					AccessMode: "ReadWrite",
+					StorageType: veleroapi.StorageType{
+						ObjectStorage: &veleroapi.ObjectStorageLocation{
+							Bucket: "velero-backup-acm-dr",
+							Prefix: "velero",
+						},
+					},
+					Provider: "aws",
+				},
+			}
+
+			backupName := "acm-managed-clusters-schedule-good-very-recent-backup"
+			rhacmRestore = v1beta1.Restore{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
+					Kind:       "Restore",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      restoreName,
+					Namespace: veleroNamespace.Name,
+				},
+				Spec: v1beta1.RestoreSpec{
+					CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+					VeleroManagedClustersBackupName: &backupName,
+					VeleroCredentialsBackupName:     &skipRestore,
+					VeleroResourcesBackupName:       &skipRestore,
+				},
+			}
+			oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
+			veleroBackups = []veleroapi.Backup{
+				veleroapi.Backup{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "velero/v1",
+						Kind:       "Backup",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      backupName,
+						Namespace: veleroNamespace.Name,
+					},
+					Spec: veleroapi.BackupSpec{
+						IncludedNamespaces: []string{"please-keep-this-one"},
+						IncludedResources:  includedResources,
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseCompleted,
+						Errors:         0,
+						StartTimestamp: &oneHourAgo,
+					},
+				},
+			}
+		})
+
+		It(
+			"Should create velero restore resource with only managec clusters",
+			func() {
+				createdRestore := v1beta1.Restore{}
+				By("created restore should not contain velero restores in status")
+				Eventually(func() string {
+					k8sClient.Get(ctx,
+						types.NamespacedName{
+							Name:      restoreName,
+							Namespace: veleroNamespace.Name,
+						}, &createdRestore)
+					return createdRestore.Status.VeleroManagedClustersRestoreName
+				}, timeout, interval).ShouldNot(BeEmpty())
+
+				By("Checking ACM restore phase when velero restore is in error", func() {
+					Eventually(func() v1beta1.RestorePhase {
+						k8sClient.Get(ctx,
+							types.NamespacedName{
+								Name:      restoreName,
+								Namespace: veleroNamespace.Name,
+							}, &createdRestore)
+						return createdRestore.Status.Phase
+					}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseUnknown))
+				})
+
+			},
+		)
+
+	})
 })
