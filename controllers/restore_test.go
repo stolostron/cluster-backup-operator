@@ -17,11 +17,20 @@ limitations under the License.
 package controllers
 
 import (
+	"context"
 	"testing"
 
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
+
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 )
 
 func Test_isVeleroRestoreFinished(t *testing.T) {
@@ -164,6 +173,10 @@ func Test_isValidSyncOptions(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "Restore",
 						Namespace: "veleroNamespace",
+					},
+					Spec: v1beta1.RestoreSpec{
+						SyncRestoreWithNewBackups: true,
+						CleanupBeforeRestore:      v1beta1.CleanupTypeNone,
 					},
 				},
 			},
@@ -393,4 +406,172 @@ func Test_isSkipAllRestores(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_deleteDynamicResource(t *testing.T) {
+
+	res_local_ns := &unstructured.Unstructured{}
+	res_local_ns.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":      "channel-new",
+			"namespace": "local-cluster",
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
+	res_default := &unstructured.Unstructured{}
+	res_default.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":      "channel-new",
+			"namespace": "default",
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
+	res_exclude_from_backup := &unstructured.Unstructured{}
+	res_exclude_from_backup.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":      "channel-new",
+			"namespace": "default",
+			"labels": map[string]interface{}{
+				"velero.io/exclude-from-backup": "true",
+			},
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
+	res_global := &unstructured.Unstructured{}
+	res_global.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name": "channel-new",
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
+	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), res_local_ns)
+
+	targetGVK := schema.GroupVersionKind{Group: "apps.open-cluster-management.io", Version: "v1", Kind: "Channel"}
+	targetGVR := targetGVK.GroupVersion().WithResource("somecrs")
+	targetMapping := meta.RESTMapping{Resource: targetGVR, GroupVersionKind: targetGVK,
+		Scope: meta.RESTScopeNamespace}
+
+	targetMappingGlobal := meta.RESTMapping{Resource: targetGVR, GroupVersionKind: targetGVK,
+		Scope: meta.RESTScopeRoot}
+
+	var monboDBResource = schema.GroupVersionResource{Group: "apps.open-cluster-management.io", Version: "v1", Resource: "channel"}
+
+	resInterface := dynClient.Resource(monboDBResource)
+
+	deletePolicy := metav1.DeletePropagationForeground
+	delOptions := metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}
+
+	type args struct {
+		ctx                context.Context
+		mapping            *meta.RESTMapping
+		dr                 dynamic.NamespaceableResourceInterface
+		resource           unstructured.Unstructured
+		deleteOptions      v1.DeleteOptions
+		excludedNamespaces []string
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "Delete local cluster resource",
+			args: args{
+				ctx:                context.Background(),
+				mapping:            &targetMapping,
+				dr:                 resInterface,
+				resource:           *res_local_ns,
+				deleteOptions:      delOptions,
+				excludedNamespaces: []string{"abc"},
+			},
+			want: false,
+		},
+		{
+			name: "Delete default resource",
+			args: args{
+				ctx:                context.Background(),
+				mapping:            &targetMapping,
+				dr:                 resInterface,
+				resource:           *res_default,
+				deleteOptions:      delOptions,
+				excludedNamespaces: []string{"abc"},
+			},
+			want: false,
+		},
+		{
+			name: "Delete default resource with ns excluded",
+			args: args{
+				ctx:                context.Background(),
+				mapping:            &targetMapping,
+				dr:                 resInterface,
+				resource:           *res_default,
+				deleteOptions:      delOptions,
+				excludedNamespaces: []string{"default"},
+			},
+			want: false,
+		},
+		{
+			name: "Delete default resource, excluded from backup",
+			args: args{
+				ctx:                context.Background(),
+				mapping:            &targetMapping,
+				dr:                 resInterface,
+				resource:           *res_exclude_from_backup,
+				deleteOptions:      delOptions,
+				excludedNamespaces: []string{"abc"},
+			},
+			want: false,
+		},
+		{
+			name: "Delete global resource",
+			args: args{
+				ctx:                context.Background(),
+				mapping:            &targetMappingGlobal,
+				dr:                 resInterface,
+				resource:           *res_global,
+				deleteOptions:      delOptions,
+				excludedNamespaces: []string{},
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := deleteDynamicResource(tt.args.ctx,
+				tt.args.mapping,
+				tt.args.dr,
+				tt.args.resource,
+				tt.args.deleteOptions,
+				tt.args.excludedNamespaces); got != tt.want {
+				t.Errorf("deleteDynamicResource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+
 }
