@@ -105,6 +105,13 @@ var _ = BeforeSuite(func() {
 			{Name: "subscriptions", Namespaced: true, Kind: "Subscription"},
 		},
 	}
+	appsInfoV1 := metav1.APIResourceList{
+		GroupVersion: "apps.open-cluster-management.io/v1",
+		APIResources: []metav1.APIResource{
+			{Name: "channels", Namespaced: true, Kind: "Channel"},
+			{Name: "subscriptions", Namespaced: true, Kind: "Subscription"},
+		},
+	}
 	clusterv1beta1Info := metav1.APIResourceList{
 		GroupVersion: "cluster.open-cluster-management.io/v1beta1",
 		APIResources: []metav1.APIResource{
@@ -150,6 +157,8 @@ var _ = BeforeSuite(func() {
 			list = &hiveInfo
 		case "/apis/apps.open-cluster-management.io/v1beta1":
 			list = &appsInfo
+		case "/apis/apps.open-cluster-management.io/v1":
+			list = &appsInfoV1
 		case "/apis/argoproj.io/v1alpha1":
 			list = &argov1alphaInfo
 		case "/apis/config.openshift.io/v1":
@@ -159,6 +168,7 @@ var _ = BeforeSuite(func() {
 			list = &metav1.APIVersions{
 				Versions: []string{
 					"v1",
+					"v1beta1",
 				},
 			}
 		case "/apis":
@@ -171,14 +181,22 @@ var _ = BeforeSuite(func() {
 								GroupVersion: "config.openshift.io/v1",
 								Version:      "v1",
 							},
+							{
+								GroupVersion: "config.openshift.io/v1beta1",
+								Version:      "v1beta1",
+							},
 						},
 					},
 					{
 						Name: "argoproj.io",
 						Versions: []metav1.GroupVersionForDiscovery{
 							{
-								GroupVersion: "argoproj.io/v1alpha1",
-								Version:      "v1alpha1",
+								GroupVersion: "argoproj.io/v1",
+								Version:      "v1",
+							},
+							{
+								GroupVersion: "argoproj.io/v1beta1",
+								Version:      "v1beta1",
 							},
 						},
 					},
@@ -202,18 +220,24 @@ var _ = BeforeSuite(func() {
 								GroupVersion: "admission.cluster.open-cluster-management.io/v1beta1",
 								Version:      "v1beta1",
 							},
+							{
+								GroupVersion: "admission.cluster.open-cluster-management.io/v1",
+								Version:      "v1",
+							},
 						},
 					},
 					{
 						Name: "hive.openshift.io",
 						Versions: []metav1.GroupVersionForDiscovery{
 							{GroupVersion: "hive.openshift.io/v1beta1", Version: "v1beta1"},
+							{GroupVersion: "hive.openshift.io/v1", Version: "v1"},
 						},
 					},
 					{
 						Name: "apps.open-cluster-management.io",
 						Versions: []metav1.GroupVersionForDiscovery{
 							{GroupVersion: "apps.open-cluster-management.io/v1beta1", Version: "v1beta1"},
+							{GroupVersion: "apps.open-cluster-management.io/v1", Version: "v1"},
 						},
 					},
 				},
