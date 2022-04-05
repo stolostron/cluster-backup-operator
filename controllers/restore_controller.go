@@ -274,7 +274,8 @@ func setRestorePhase(
 	restore *v1beta1.Restore,
 ) v1beta1.RestorePhase {
 
-	if restore.Status.Phase == v1beta1.RestorePhaseEnabled {
+	if restore.Status.Phase == v1beta1.RestorePhaseEnabled &&
+		restore.Spec.SyncRestoreWithNewBackups {
 		return restore.Status.Phase
 	}
 
