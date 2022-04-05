@@ -644,7 +644,7 @@ var _ = Describe("Basic Restore controller", func() {
 						IncludedResources:  includedResources,
 					},
 					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhasePartiallyFailed,
+						Phase:          veleroapi.BackupPhaseFailed,
 						Errors:         0,
 						StartTimestamp: &oneHourAgo,
 					},
@@ -903,7 +903,7 @@ var _ = Describe("Basic Restore controller", func() {
 					Namespace: veleroNamespace.Name,
 				},
 				Spec: v1beta1.RestoreSpec{
-					SyncRestoreWithNewBackups:       false,
+					SyncRestoreWithNewBackups:       true,
 					CleanupBeforeRestore:            v1beta1.CleanupTypeRestored,
 					VeleroManagedClustersBackupName: &skipRestore,
 					VeleroCredentialsBackupName:     &latestBackup,
@@ -1005,7 +1005,7 @@ var _ = Describe("Basic Restore controller", func() {
 						IncludedResources:  includedResources,
 					},
 					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhasePartiallyFailed,
+						Phase:          veleroapi.BackupPhaseFailed,
 						Errors:         0,
 						StartTimestamp: &oneHourAgo,
 					},
