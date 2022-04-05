@@ -82,7 +82,7 @@ Starting with Red Hat Advanced Cluster Management version 2.5, the Cluster Back 
 The Cluster Back up and Restore Operator chart in turn automatically installs the [OADP Operator](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md), in the same namespace with the backup chart. 
 
 <b>Note</b>: 
-- The OADP Operator 1.0 has disabled building multi-arch builds and only produces x86_64 builds for the official release. This means that if you are using an architecture other than x86_64, the OADP Operator installed by the chart will have to be replaced with the right version. In this case, uninstall the OADP Operator and find the operator matching your architecture than install it.
+- The OADP Operator 1.0 has disabled building multi-arch builds and only produces x86_64 builds for the official release. This means that if you are using an architecture other than x86_64, the OADP Operator installed by the chart will have to be replaced with the right version. In this case, uninstall the OADP Operator and find the operator matching your architecture then install it.
 - If you have previously installed and used the OADP Operator on this hub, you should uninstall this version since the backup chart works now with the operator installed in the chart's namespace. This should not affect your old backups and previous work. Just use the same storage location for the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) owned by the OADP Operator installed with the backup chart and it will access the same backup data as the previous operator. The only difference is that velero backup resources are now loaded under the new OADP Operator namespace on this hub.
 
 
@@ -214,7 +214,7 @@ Situations when a backup collision could happen:
 
 In order to avoid and to report this type of backup collisions, a BackupCollision state exists for a  `BackupSchedule.cluster.open-cluster-management.io` resource. The controller checks regularly if the latest backup in the storage location has been generated from the current cluster. If not, it means that another cluster has more recently written backup data to the storage location so this hub is in collision with another hub.
 
-In this case, the current hub `BackupSchedule.cluster.open-cluster-management.io` resource status is set to BackupCollision and the `Schedule.velero.io` resources created by this resource are deleted to avoid data corruption. The BackupCollision is reported by the [backup Policy](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml). The admin should verify what hub must be the one writting data to the  storage location, than remove the `BackupSchedule.cluster.open-cluster-management.io` resource from the invalid hub and recreated a new `BackupSchedule.cluster.open-cluster-management.io` resource on the valid, primary hub, to resume the backup on this hub. 
+In this case, the current hub `BackupSchedule.cluster.open-cluster-management.io` resource status is set to BackupCollision and the `Schedule.velero.io` resources created by this resource are deleted to avoid data corruption. The BackupCollision is reported by the [backup Policy](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml). The admin should verify what hub must be the one writting data to the  storage location, then remove the `BackupSchedule.cluster.open-cluster-management.io` resource from the invalid hub and recreated a new `BackupSchedule.cluster.open-cluster-management.io` resource on the valid, primary hub, to resume the backup on this hub. 
 
 Example of a schedule in `BackupCollision` state:
 
@@ -227,9 +227,10 @@ openshift-adp   schedule-hub-1   BackupCollision   Backup acm-resources-schedule
 ## Restoring a backup
 
 ### Prepare the new hub
-Before running the restore operation on a new hub, you need to manually configure the hub and install the same operators as on the initial hub. For example, you have to install the Red Hat Advanced Cluster Management for Kubernetes operator, in the same namespace as the initial hub, then create the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) and connect to the same storage location where the initial hub had backed up data. If the initial hub had any other operators installed, you have to install them now, before running the restore operation. This ensure the new hub is configured in the same way as the initial hub.
+Before running the restore operation on a new hub, you need to manually configure the hub and install the same operators as on the initial hub. 
+You have to install the Red Hat Advanced Cluster Management for Kubernetes operator, in the same namespace as the initial hub, then create the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) and connect to the same storage location where the initial hub had backed up data.
 
-The new hub must use the same namespace names as the old hub when installing the Red Hat Advanced Cluster Management for Kubernetes operator and any other operators configured on the previous hub.
+If the initial hub had any other operators installed, such as `Ansible Automation Platform`, `Red Hat OpenShift GitOps`, `cert-manager` you have to install them now, before running the restore operation, and using the same namespace as the primary hub operators. This ensure the new hub is configured in the same way as the initial hub. 
 
 ### Restoring backups
 In a usual restore scenario, the hub where the backups have been executed becomes unavailable and data backed up needs to be moved to a new hub. This is done by running the restore operation on the hub where the backed up data needs to be moved to. In this case, the restore operation is executed on a different hub than the one where the backup was created. 
@@ -404,7 +405,7 @@ In an active passive configuration you have
 - one or more passive hubs, which are continously retrieving the latest backups and restoring the [passive data](#passive-data). The passive hubs use the `Restore.cluster.open-cluster-management.io` resource to keep restoring passive data posted by the primary hub, when new backup data is available. These hubs are on standby to become a primary hub when the primary hub goes down. They are connected to the same storage location where the primary hub backs up data so they can access the primary hub backups. For more details on how to setup this automatic restore configuration see the [Restoring passive resources and check for new backups](#restoring-passive-resources-and-check-for-new-backups) section.
 
 In the image below, the active hub manages the remote clusters and backs up hub data at regular intervals.
-The passive hubs restore this data, except for the managed clusters activation data, which would move the managed clusters to the passive hub. The passive hubs can restore the passive data continously, or as a one time operation.
+The passive hubs restore this data, except for the managed clusters activation data, which would move the managed clusters to the passive hub. The passive hubs can restore the passive data [continously](#restoring-passive-resources-and-check-for-new-backups), or as a [one time operation](#restoring-passive-resources).
 
 ![Active Passive Configuration Dataflow](images/active-passive-configuration-dataflow.png)
 
