@@ -504,22 +504,9 @@ func (r *RestoreReconciler) initVeleroRestores(
 			// allow that now
 			restoreOnlyManagedClusters = true
 		} else {
-			r.Recorder.Event(
-				restore,
-				v1.EventTypeNormal,
-				"Processing restore request",
-				"Restore sync found no new backups",
-			)
 			return nil
 		}
 	}
-
-	r.Recorder.Event(
-		restore,
-		v1.EventTypeNormal,
-		"Processing restore request",
-		"Restore sync found new backups",
-	)
 
 	// loop through resourceTypes to create a Velero restore per type
 	veleroRestoresToCreate, backupsForVeleroRestores, err := r.retrieveRestoreDetails(
