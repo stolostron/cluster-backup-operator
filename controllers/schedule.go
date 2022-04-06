@@ -27,6 +27,8 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -260,7 +262,9 @@ func prepareForBackup(ctx context.Context,
 					Namespace: clusterDeployments.Items[i].Namespace,
 				}); err == nil {
 					// add backup labels if not set yet
-					updateSecretsLabels(ctx, c, *secrets, clusterDeployments.Items[i].Name)
+					updateSecretsLabels(ctx, c, *secrets, clusterDeployments.Items[i].Name,
+						backupCredsClusterLabel,
+						"clusterpool")
 				}
 
 				// add a label annnotation to the resource
@@ -289,7 +293,45 @@ func prepareForBackup(ctx context.Context,
 			if err := c.List(ctx, secrets, &client.ListOptions{
 				Namespace: clusterPools.Items[i].Namespace,
 			}); err == nil {
-				updateSecretsLabels(ctx, c, *secrets, clusterPools.Items[i].Name)
+				updateSecretsLabels(ctx, c, *secrets, clusterPools.Items[i].Name,
+					backupCredsClusterLabel,
+					"clusterpool")
+			}
+		}
+	}
+	// update infraSecrets
+	aiSecrets := &corev1.SecretList{}
+	if agentInstallLabel, err := labels.NewRequirement("agent-install.openshift.io/watch",
+		selection.In, []string{"true"}); err == nil {
+
+		// Init and add to selector.
+		selector := labels.NewSelector()
+		selector = selector.Add(*agentInstallLabel)
+		if err := c.List(ctx, aiSecrets, &client.ListOptions{
+			LabelSelector: selector,
+		}); err == nil {
+			for s := range aiSecrets.Items {
+				updateSecret(ctx, c, aiSecrets.Items[s],
+					backupCredsClusterLabel,
+					"agent-install")
+			}
+		}
+	}
+	// update metal
+	metalSecrets := &corev1.SecretList{}
+	if metalInstallLabel, err := labels.NewRequirement("environment.metal3.io",
+		selection.In, []string{"baremetal"}); err == nil {
+
+		// Init and add to selector.
+		selector := labels.NewSelector()
+		selector = selector.Add(*metalInstallLabel)
+		if err := c.List(ctx, metalSecrets, &client.ListOptions{
+			LabelSelector: selector,
+		}); err == nil {
+			for s := range metalSecrets.Items {
+				updateSecret(ctx, c, metalSecrets.Items[s],
+					backupCredsClusterLabel,
+					"baremetal")
 			}
 		}
 	}
@@ -300,30 +342,41 @@ func updateSecretsLabels(ctx context.Context,
 	c client.Client,
 	secrets corev1.SecretList,
 	prefix string,
+	labelName string,
+	labelValue string,
 ) {
-	logger := log.FromContext(ctx)
-
 	for s := range secrets.Items {
 		secret := secrets.Items[s]
-
 		if strings.HasPrefix(secret.Name, prefix) &&
 			!strings.Contains(secret.Name, "-bootstrap-") {
-			labels := secret.GetLabels()
-			if labels == nil {
-				labels = make(map[string]string)
-			}
-			if labels[backupCredsHiveLabel] == "" &&
-				labels[backupCredsUserLabel] == "" &&
-				labels[backupCredsClusterLabel] == "" {
-				// and set backup labels for secrets created by cluster claim
-				labels[backupCredsClusterLabel] = "clusterpool"
-				secret.SetLabels(labels)
-				msg := "update secret " + secret.Name
-				logger.Info(msg)
-				if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err != nil {
-					logger.Error(err, "failed to update secret")
-				}
-			}
+			updateSecret(ctx, c, secret, labelName, labelValue)
+		}
+	}
+
+}
+
+// set backup label for hive secrets not having the label set
+func updateSecret(ctx context.Context,
+	c client.Client,
+	secret corev1.Secret,
+	labelName string,
+	labelValue string,
+) {
+	logger := log.FromContext(ctx)
+	labels := secret.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	if labels[backupCredsHiveLabel] == "" &&
+		labels[backupCredsUserLabel] == "" &&
+		labels[backupCredsClusterLabel] == "" {
+		// and set backup labels for secrets
+		labels[labelName] = labelValue
+		secret.SetLabels(labels)
+		msg := "update secret " + secret.Name
+		logger.Info(msg)
+		if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err != nil {
+			logger.Error(err, "failed to update secret")
 		}
 	}
 

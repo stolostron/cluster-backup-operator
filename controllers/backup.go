@@ -56,6 +56,7 @@ var (
 		"core.observatorium.io",
 		"hive.openshift.io",
 		"agent-install.openshift.io",
+		"metal3.io",
 	}
 
 	// exclude resources from these api groups
