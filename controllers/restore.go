@@ -257,8 +257,8 @@ func (r *RestoreReconciler) prepareRestoreForBackup(
 	r.Recorder.Event(
 		acmRestore,
 		corev1.EventTypeNormal,
-		"Prepare to restore, cleaning up resources for backup:",
-		veleroBackup.Name,
+		"Prepare to restore:",
+		"Cleaning up resources for backup "+veleroBackup.Name,
 	)
 
 	labelSelector := ""
