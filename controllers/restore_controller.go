@@ -53,6 +53,7 @@ const (
 	skipRestoreStr      string = "skip"
 	latestBackupStr     string = "latest"
 	restoreSyncInterval        = time.Minute * 30
+	noopMsg                    = "Nothing to do for restore %s"
 )
 
 type DynamicStruct struct {
@@ -282,7 +283,7 @@ func setRestorePhase(
 	if veleroRestoreList == nil || len(veleroRestoreList.Items) == 0 {
 		if isSkipAllRestores(restore) {
 			restore.Status.Phase = v1beta1.RestorePhaseFinished
-			restore.Status.LastMessage = fmt.Sprintf("Nothing to do for restore %s", restore.Name)
+			restore.Status.LastMessage = fmt.Sprintf(noopMsg, restore.Name)
 			return restore.Status.Phase
 		}
 		restore.Status.Phase = v1beta1.RestorePhaseStarted
@@ -520,7 +521,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 	}
 	if len(veleroRestoresToCreate) == 0 {
 		restore.Status.Phase = v1beta1.RestorePhaseFinished
-		restore.Status.LastMessage = fmt.Sprintf("Nothing to do for restore %s", restore.Name)
+		restore.Status.LastMessage = fmt.Sprintf(noopMsg, restore.Name)
 		return nil
 	}
 
@@ -616,7 +617,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 		restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
 	} else {
 		restore.Status.Phase = v1beta1.RestorePhaseFinished
-		restore.Status.LastMessage = fmt.Sprintf("Nothing to do for restore %s", restore.Name)
+		restore.Status.LastMessage = fmt.Sprintf(noopMsg, restore.Name)
 	}
 	return nil
 }
