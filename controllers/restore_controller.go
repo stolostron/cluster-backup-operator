@@ -492,7 +492,8 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 	restoreOnlyManagedClusters := false
 	if sync {
-		if r.isNewBackupAvailable(ctx, restore, Resources) {
+		if r.isNewBackupAvailable(ctx, restore, Resources) ||
+			r.isNewBackupAvailable(ctx, restore, Credentials) {
 			restoreLogger.Info(
 				"new backups available to sync with for this restore",
 				"name", restore.Name,
@@ -530,6 +531,8 @@ func (r *RestoreReconciler) initVeleroRestores(
 		// we don't know how much was cleaned up prior to the error so don't abort the action now
 		restoreLogger.Error(err, "Prepare for restore returned error")
 	}
+
+	newVeleroRestoreCreated := false
 
 	// now create the restore resources and start the actual restore
 	for key := range veleroRestoresToCreate {
@@ -575,41 +578,46 @@ func (r *RestoreReconciler) initVeleroRestores(
 				*req,
 			)
 		}
-		if err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{}); err != nil {
+		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
+		if err != nil {
 			restoreLogger.Error(
 				err,
 				"unable to create Velero restore for restore",
 				"namespace", veleroRestoresToCreate[key].Namespace,
 				"name", veleroRestoresToCreate[key].Name,
 			)
-			restore.Status.LastMessage = fmt.Sprintf(
-				"Cannot create velero restore resource %s/%s: %v",
-				veleroRestoresToCreate[key].Namespace,
+			r.Recorder.Event(
+				restore,
+				v1.EventTypeNormal,
+				"Velero restore already exists:",
 				veleroRestoresToCreate[key].Name,
-				err,
 			)
-			return err
-		}
-
-		r.Recorder.Event(
-			restore,
-			v1.EventTypeNormal,
-			"Velero restore created:",
-			veleroRestoresToCreate[key].Name,
-		)
-
-		switch key {
-		case ManagedClusters:
-			restore.Status.VeleroManagedClustersRestoreName = veleroRestoresToCreate[key].Name
-		case Credentials:
-			restore.Status.VeleroCredentialsRestoreName = veleroRestoresToCreate[key].Name
-		case Resources:
-			restore.Status.VeleroResourcesRestoreName = veleroRestoresToCreate[key].Name
+		} else {
+			newVeleroRestoreCreated = true
+			r.Recorder.Event(
+				restore,
+				v1.EventTypeNormal,
+				"Velero restore created:",
+				veleroRestoresToCreate[key].Name,
+			)
+			switch key {
+			case ManagedClusters:
+				restore.Status.VeleroManagedClustersRestoreName = veleroRestoresToCreate[key].Name
+			case Credentials:
+				restore.Status.VeleroCredentialsRestoreName = veleroRestoresToCreate[key].Name
+			case Resources:
+				restore.Status.VeleroResourcesRestoreName = veleroRestoresToCreate[key].Name
+			}
 		}
 	}
-	restore.Status.Phase = v1beta1.RestorePhaseStarted
-	restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
 
+	if newVeleroRestoreCreated {
+		restore.Status.Phase = v1beta1.RestorePhaseStarted
+		restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
+	} else {
+		restore.Status.Phase = v1beta1.RestorePhaseFinished
+		restore.Status.LastMessage = fmt.Sprintf("Nothing to do for restore %s", restore.Name)
+	}
 	return nil
 }
 
@@ -782,9 +790,24 @@ func (r *RestoreReconciler) prepareForRestore(
 
 	for key := range veleroRestoresToCreate {
 
+		veleroRestore := veleroapi.Restore{}
+		err := r.Get(
+			ctx,
+			types.NamespacedName{
+				Name:      veleroRestoresToCreate[key].Name,
+				Namespace: veleroRestoresToCreate[key].Namespace,
+			},
+			&veleroRestore,
+		)
+		if err == nil {
+			// restore with this name already exists
+			// so ignore the cleanup because the restore won't be created afterwards
+			continue
+		}
+
 		additionalLabel := ""
-		if key == ManagedClusters &&
-			veleroRestoresToCreate[ResourcesGeneric] == nil {
+		if key == ManagedClusters && veleroRestoresToCreate[ResourcesGeneric] == nil &&
+			!acmRestore.Spec.SyncRestoreWithNewBackups {
 			// process here generic resources with an activation label
 			// since generic resources are not restored
 			additionalLabel = "cluster.open-cluster-management.io/backup in (cluster-activation)"

@@ -171,8 +171,9 @@ func deleteDynamicResource(
 		return false, false
 	}
 
-	if resource.GetLabels() != nil && (resource.GetLabels()["velero.io/exclude-from-backup"] == "true" ||
-		resource.GetLabels()["installer.name"] == "multiclusterhub") {
+	if resource.GetLabels() != nil &&
+		(resource.GetLabels()["velero.io/exclude-from-backup"] == "true" ||
+			resource.GetLabels()["installer.name"] == "multiclusterhub") {
 		// do not cleanup resources with a velero.io/exclude-from-backup=true label, they are not backed up
 		// do not backup subscriptions created by the mch in a separate NS
 		logger.Info(nsSkipMsg)
@@ -496,6 +497,8 @@ func (r *RestoreReconciler) isNewBackupAvailable(
 	switch resourceType {
 	case Resources:
 		latestVeleroRestoreName = restore.Status.VeleroResourcesRestoreName
+	case Credentials:
+		latestVeleroRestoreName = restore.Status.VeleroCredentialsRestoreName
 	}
 	if latestVeleroRestoreName == "" {
 		logger.Info(
