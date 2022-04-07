@@ -329,6 +329,10 @@ func prepareForBackup(ctx context.Context,
 			LabelSelector: selector,
 		}); err == nil {
 			for s := range metalSecrets.Items {
+				if metalSecrets.Items[s].Namespace == "openshift-machine-api" {
+					// skip secrets from openshift-machine-api ns, these hosts are not backed up
+					continue
+				}
 				updateSecret(ctx, c, metalSecrets.Items[s],
 					backupCredsClusterLabel,
 					"baremetal")

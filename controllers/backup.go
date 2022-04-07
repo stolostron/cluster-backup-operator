@@ -294,6 +294,11 @@ func setManagedClustersBackupInfo(
 		"local-cluster",
 	)
 
+	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
+		veleroBackupTemplate.ExcludedNamespaces,
+		"openshift-machine-api",
+	)
+
 	for i := range backupManagedClusterResources { // managed clusters required resources, from namespace or cluster level
 		veleroBackupTemplate.IncludedResources = appendUnique(
 			veleroBackupTemplate.IncludedResources,
