@@ -56,7 +56,6 @@ var (
 		"core.observatorium.io",
 		"hive.openshift.io",
 		"agent-install.openshift.io",
-		"metal3.io",
 	}
 
 	// exclude resources from these api groups
@@ -104,6 +103,7 @@ var (
 		"clusterpool.hive.openshift.io",
 		"clusterclaim.hive.openshift.io",
 		"clustercurator.cluster.open-cluster-management.io",
+		"baremetalhost.metal3.io",
 	}
 
 	// all backup resources, except secrets, configmaps and managed cluster activation resources
