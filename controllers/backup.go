@@ -104,6 +104,8 @@ var (
 		"clusterclaim.hive.openshift.io",
 		"clustercurator.cluster.open-cluster-management.io",
 		"baremetalhost.metal3.io",
+		"bmceventsubscription.metal3.io",
+		"hostfirmwaresettings.metal3.io",
 	}
 
 	// all backup resources, except secrets, configmaps and managed cluster activation resources
