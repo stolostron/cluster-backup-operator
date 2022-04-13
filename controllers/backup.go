@@ -94,6 +94,7 @@ var (
 	// resources used to activate the connection between hub and managed clusters - activation resources
 	backupManagedClusterResources = []string{
 		"managedcluster.cluster.open-cluster-management.io", //global
+		"clustersync.hiveinternal.openshift.io",
 		"managedcluster.clusterview.open-cluster-management.io",
 		"klusterletaddonconfig.agent.open-cluster-management.io",
 		"managedclusteraddon.addon.open-cluster-management.io",
