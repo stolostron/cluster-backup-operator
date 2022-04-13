@@ -90,6 +90,23 @@ The Cluster Back up and Restore Operator chart in turn automatically installs th
 The Cluster Back up and Restore Operator chart installs the [backup-restore-enabled](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. The Policy templates check if the required pods are running, storage location is available, backups are available at the defined location and no error status is reported by the main resources. This Policy is intended to help notify the Hub admin of any backup issues as the hub is active and expected to produce backups.
 
 
+### Protecting data using Server-Side Encryption
+Server-side encryption is the encryption of data at its destination by the application or service that receives it. Our backup mechanism itself does not encrypt data while in-transit (as it travels to and from backup storage location) or at rest (while it is stored on disks at backup storage location), instead it relies on the native mechanisms in the object and snapshot systems.
+
+For server-side encryption using AWS provider, you can use `serverSideEncryption` and `kmsKeyId` configurations as explained in [this sample AWS BackupStorageLocation](https://github.com/vmware-tanzu/velero-plugin-for-aws/blob/main/backupstoragelocation.md).
+The following sample specifies an AWS KMS key ID when setting up the DataProtectionApplication resource:
+```yaml
+spec:
+  backupLocations:
+    - velero:
+        config:
+          kmsKeyId: 502b409c-4da1-419f-a16e-eif453b3i49f
+          profile: default
+          region: us-east-1
+```
+Refer to [Velero supported storage providers](https://github.com/vmware-tanzu/velero/blob/main/site/content/docs/main/supported-providers.md) to find out about all of the configurable parameters of other storage providers.
+
+
 ## Design
 
 The content below describes the backup and restore flow using the Cluster Back up and Restore Operator solution, with details on what and how the data is backed up and restored.
