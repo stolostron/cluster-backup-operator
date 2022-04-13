@@ -1,53 +1,56 @@
 # cluster-backup-operator
-Cluster Back up and Restore Operator. 
+Cluster Back up and Restore Operator 
 ------
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
-  - [Work in Progress](#work-in-progress)
-  - [Community, discussion, contribution, and support](#community-discussion-contribution-and-support)
-  - [License](#license)
-  - [Getting Started](#getting-started)
-    - [OADP Operator installed by the backup chart](#oadp-operator-installed-by-the-backup-chart)
-    - [Policy to inform on backup configuration issues](#policy-to-inform-on-backup-configuration-issues)
-  - [Design](#design)
-    - [Cluster Backup and Restore flow](#cluster-backup-and-restore-flow)
-    - [What is backed up](#what-is-backed-up)
-      - [Steps to identify backup data](#steps-to-identify-backup-data)
-      - [Extending backup data](#extending-backup-data)
-      - [Resources restored at managed clusters activation time](#resources-restored-at-managed-clusters-activation-time)
-    - [Passive data](#passive-data)
-    - [Managed clusters activation data](#managed-clusters-activation-data)
-    - [Scheduling a cluster backup](#scheduling-a-cluster-backup)
-      - [Backup Collisions](#backup-collisions)
-    - [Restoring a backup](#restoring-a-backup)
-      - [Prepare the new hub](#prepare-the-new-hub)
-      - [Restoring backups](#restoring-backups)
-        - [Restoring passive resources and check for new backups](#restoring-passive-resources-and-check-for-new-backups)
-        - [Restoring passive resources](#restoring-passive-resources)
-        - [Restoring activation resources](#restoring-activation-resources)
-        - [Restoring all resources](#restoring-all-resources)
-      - [Cleaning up the hub before restore](#cleaning-up-the-hub-before-restore)
-      - [View restore events](#view-restore-events)
-    - [Backup validation using a Policy](#backup-validation-using-a-policy)
-      - [Pod validation](#pod-validation)
-      - [Backup Storage validation](#backup-storage-validation)
-      - [BackupSchedule collision validation](#backupschedule-collision-validation)
-      - [BackupSchedule and Restore status validation](#backupschedule-and-restore-status-validation)
-      - [Backups exist validation](#backups-exist-validation)
-      - [Backups are actively running as a cron job](#backups-are-actively-running-as-a-cron-job)
+- [Work in Progress](#work-in-progress)
+- [Community, discussion, contribution, and support](#community-discussion-contribution-and-support)
+- [License](#license)
+- [Getting Started](#getting-started)
+  - [OADP Operator installed by the backup chart](#oadp-operator-installed-by-the-backup-chart)
+  - [Policy to inform on backup configuration issues](#policy-to-inform-on-backup-configuration-issues)
+  - [Protecting data using Server-Side Encryption](#protecting-data-using-server-side-encryption)
+- [Design](#design)
+  - [Cluster Backup and Restore flow](#cluster-backup-and-restore-flow)
+  - [What is backed up](#what-is-backed-up)
+    - [Steps to identify backup data](#steps-to-identify-backup-data)
+    - [Extending backup data](#extending-backup-data)
+    - [Resources restored at managed clusters activation time](#resources-restored-at-managed-clusters-activation-time)
+  - [Passive data](#passive-data)
+  - [Managed clusters activation data](#managed-clusters-activation-data)
+- [Scheduling a cluster backup](#scheduling-a-cluster-backup)
+  - [Backup Collisions](#backup-collisions)
+- [Restoring a backup](#restoring-a-backup)
+  - [Prepare the new hub](#prepare-the-new-hub)
+  - [Restoring backups](#restoring-backups)
+    - [Restoring passive resources and check for new backups](#restoring-passive-resources-and-check-for-new-backups)
+    - [Restoring passive resources](#restoring-passive-resources)
+    - [Restoring activation resources](#restoring-activation-resources)
+    - [Restoring all resources](#restoring-all-resources)
+  - [Cleaning up the hub before restore](#cleaning-up-the-hub-before-restore)
+  - [View restore events](#view-restore-events)
+- [Backup validation using a Policy](#backup-validation-using-a-policy)
+  - [Pod validation](#pod-validation)
+  - [Backup Storage validation](#backup-storage-validation)
+  - [BackupSchedule collision validation](#backupschedule-collision-validation)
+  - [BackupSchedule and Restore status validation](#backupschedule-and-restore-status-validation)
+  - [Backups exist validation](#backups-exist-validation)
+  - [Backups are actively running as a cron job](#backups-are-actively-running-as-a-cron-job)
 - [Active passive configuration design](#active-passive-configuration-design)
   - [Setting up an active passive configuration](#setting-up-an-active-passive-configuration)
   - [Disaster recovery](#disaster-recovery)
-- [Setting up Your Dev Environment](#setting-up-your-dev-environment)
-  - [Prerequiste Tools](#prerequiste-tools)
+- [Setting up your development environment](#setting-up-your-development-environment)
+  - [Prerequiste tools](#prerequiste-tools)
   - [Installation](#installation)
-    - [Outside the Cluster](#outside-the-cluster)
-    - [Inside the Cluster](#inside-the-cluster)
-- [Usage](#usage)
-- [Testing](#testing)
+    - [Outside the cluster](#outside-the-cluster)
+    - [Inside the cluster](#inside-the-cluster)
+  - [Usage](#usage)
+  - [Testing](#testing)
+    - [Schedule  a backup](#schedule--a-backup)
+    - [Restore a backup](#restore-a-backup)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -113,21 +116,21 @@ The content below describes the backup and restore flow using the Cluster Back u
 Once you are familiar with these concepts you can follow the [Active passive configuration design](#active-passive-configuration-design) section to understand how to build a complete DR solution with an ACM hub set as a primary, active configuration, managing clusters, and one or more ACM hubs setup to take over in a disaster scenario.
 
 
-## Cluster Backup and Restore flow
+### Cluster Backup and Restore flow
 
 The operator defines the `BackupSchedule.cluster.open-cluster-management.io` resource, used to setup Red Hat Advanced Cluster Management for Kubernetes backup schedules, and the `Restore.cluster.open-cluster-management.io` resource, used to process and restore these backups.
 The operator sets the options required to backup remote clusters configuration and any other hub resources that need to be restored.
 
 ![Cluster Backup Controller Dataflow](images/cluster-backup-controller-dataflow.png)
 
-## What is backed up
+### What is backed up
 
 The Cluster Back up and Restore Operator solution provides backup and restore support for all Red Hat Advanced Cluster Management for Kubernetes hub resources like managed clusters, applications, policies, bare metal assets.
 It  provides support for backing up any third party resources extending the basic hub installation. 
 With this backup solution, you can define a cron based backup schedule which runs at specified time intervals and continuously backs up the latest version of the hub content.
 When the hub needs to be replaced or in a disaster scenario when the hub goes down, a new hub can be deployed and backed up data moved to the new hub, so that the new hub replaces the old one.
 
-### Steps to identify backup data
+#### Steps to identify backup data
 
 The steps below show how the Cluster Back up and Restore Operator finds the resources to be backed up.
 With this approach the backup includes all CRDs installed on the hub, including any extensions using third parties components.
@@ -150,13 +153,13 @@ With this approach the backup includes all CRDs installed on the hub, including 
 7. Use this label annotation for any other resources that should be backed up and are not included in the above criteria: `cluster.open-cluster-management.io/backup`
 8. Resources picked up by the above rules that should not be backed up, can be explicitly excluded when setting this label annotation: `velero.io/exclude-from-backup=true` 
 
-### Extending backup data
+#### Extending backup data
 Third party components can choose to back up their resources with the ACM backup by adding the `cluster.open-cluster-management.io/backup` label to these resources. The value of the label could be any string, including an empty string. It is indicated though to set a value that can be later on used to easily identify the component backing up this resource. For example `cluster.open-cluster-management.io/backup: idp` if the components are provided by an idp solution.
 
 <b>Note:</b> 
 Use the `cluster-activation` value for the `cluster.open-cluster-management.io/backup` label if you want the resources to be restored when the managed clusters activation resources are restored. Restoring the managed clusters activation resources result in managed clusters being actively managed by the hub where the restore was executed. 
 
-### Resources restored at managed clusters activation time
+#### Resources restored at managed clusters activation time
 
 As mentioned above, when you add the `cluster.open-cluster-management.io/backup` label to a resource, this resource is automatically backed up under the `acm-resources-generic-schedule` backup. If any of these resources need to be restored only when the managed clusters are moved to the new hub, so when the `veleroManagedClustersBackupName:latest` is used on the restored resource, then you have to set the label value to `cluster-activation`. This will ensure the resource is not restored unless the managed cluster activation is called.
 Example :
@@ -180,11 +183,11 @@ Aside of these activation data resources, identified by using the `cluster.open-
   - clusterclaim.hive.openshift.io
   - clustercurator.cluster.open-cluster-management.io
 
-## Passive data
+### Passive data
 
 Passive data is backup data such as secrets, configmaps, apps, policies and all the managed cluster custom resources which are not resulting in activating the connection between managed clusters and hub where these resources are being restored on. These resources are stored by the credentials backup and resources backup files.
 
-## Managed clusters activation data
+### Managed clusters activation data
 
 Managed clusters activation data or activation data, is backup data which when restored on a new hub will result in managed clusters being actively managed by the hub where the restore was executed. Activation data resources are stored by the managed clusters backup, and by the resources-generic backup, using the `cluster.open-cluster-management.io/backup: cluster-activations` label. More details about the activation resources are available with the [backup section](#resources-restored-at-managed-clusters-activation-time)
 
@@ -262,7 +265,6 @@ By activation data we mean resources that, when restored on the new hub, result 
 
 #### Restoring passive resources and check for new backups
 
-
 Use the [restore passive with sync sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore_passive_sync.yaml) if you want to restore passive data then keep checking if new backups are available and restore them automatically. For this automatic restore of new backups to work, the restore must set `syncRestoreWithNewBackups` property to `true` and must only restore latest, passive data. So for this option to work, you need to set `VeleroResourcesBackupName` and `VeleroCredentialsBackupName` to `latest` and the `VeleroManagedClustersBackupName` to `skip` - as soon as the `VeleroManagedClustersBackupName` is set to `latest`, the managed clusters are activated on the new hub and this hub becomes a primary hub. When this happens, the restore resource is set to `Finished` and the `syncRestoreWithNewBackups` is ignored, even if set to `true`. The restore operation has completed.
 
 By default, when `syncRestoreWithNewBackups` is set to `true`, the controller checks for new backups every 30 minutes. If new backups are found, it restores the backed up resources. You can update the duration after which you want the controller to check for new backups using this property `restoreSyncInterval`. 
@@ -322,7 +324,7 @@ The prepare for cleanup option uses the `cleanupBeforeRestore` property to ident
 
 4. The restore operation allows to restore all 3 backup types created by the backup operation, although you can choose to install only a certain type (only managed clusters or only user credentials or only hub resources). 
 
-The restore defines 3 required spec properties, defining the restore logic for the 3 type of backed up files. 
+The restore defines 3 required spec properties, defining the restore logic for the 3 types of backed up files. 
 - `veleroManagedClustersBackupName` is used to define the restore option for the managed clusters. 
 - `veleroCredentialsBackupName` is used to define the restore option for the user credentials. 
 - `veleroResourcesBackupName` is used to define the restore option for the hub resources (applications and policies). 
@@ -432,9 +434,9 @@ The following templates check the pod status for the backup component and depend
 
 This Policy is intended to help notify the Hub admin of any backup issues as the hub is active and expected to produce or restore backups.
 
-# Active passive configuration design
+## Active passive configuration design
 
-## Setting up an active passive configuration
+### Setting up an active passive configuration
 
 In an active passive configuration you have 
 - one hub, called active or primary hub, which manages the clusters and is backing up resources at defined time intervals, using the `BackupSchedule.cluster.open-cluster-management.io` resource
@@ -445,7 +447,7 @@ The passive hubs restore this data, except for the managed clusters activation d
 
 ![Active Passive Configuration Dataflow](images/active-passive-configuration-dataflow.png)
 
-## Disaster recovery
+### Disaster recovery
 
 When the primary hub goes down, one of the passive hubs is chosen by the admin to take over the managed clusters. In the image below, the admin decides to use Hub N as the new primary hub. These are the steps taken to have Hub N become a primary hub: 
 1. Hub N restores the [Managed Cluster activation data](#managed-clusters-activation-data). At this point, the managed clusters connect with Hub N.
@@ -460,12 +462,12 @@ Note:
 
 
 
-# Setting up Your Dev Environment
+## Setting up your development environment
 
-## Prerequiste Tools
+### Prerequiste tools
 - Operator SDK
 
-## Installation
+### Installation
 
 To install the Cluster Back up and Restore Operator, you can either run it outside the cluster,
 for faster iteration during development, or inside the cluster.
@@ -479,7 +481,7 @@ make install
 
 Then proceed to the installation method you prefer below.
 
-### Outside the Cluster
+#### Outside the cluster
 
 If you would like to run the Cluster Back up and Restore Operator outside the cluster, execute:
 
@@ -487,7 +489,7 @@ If you would like to run the Cluster Back up and Restore Operator outside the cl
 make run
 ```
 
-### Inside the Cluster
+#### Inside the cluster
 
 If you would like to run the Operator inside the cluster, you'll need to build
 a container image. You can use a local private registry, or host it on a public
@@ -507,7 +509,7 @@ registry service like [quay.io](https://quay.io).
     ```
 
 
-## Usage
+### Usage
 
 Here you can find an example of a `backupschedule.cluster.open-cluster-management.io` resource definition:
 
@@ -550,9 +552,9 @@ kubectl create -n <oadp-operator-ns> -f config/samples/cluster_v1beta1_backupsch
 kubectl create -n <oadp-operator-ns> -f config/samples/cluster_v1beta1_restore.yaml
 ```
 
-# Testing
+### Testing
 
-## Schedule  a backup 
+#### Schedule  a backup 
 
 After you create a `backupschedule.cluster.open-cluster-management.io` resource you should be able to run `oc get bsch -n <oadp-operator-ns>` and get the status of the scheduled cluster backups.
 
@@ -566,13 +568,13 @@ NAME           PHASE
 schedule-acm   
 ```
 
-## Restore a backup
+#### Restore a backup
 
 After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on the new hub that the backed up resources contained by the backup file have been created.
 
 Velero sets a `PartiallyFailed` status for a velero restore resource if the backup restored had no resources. This means that a `restore.cluster.open-cluster-management.io` resource could be in `PartiallyFailed` status if any of the `restore.velero.io` resources created did not restore any resources because the corresponding backup was empty. 
 
-The restore defines 3 required spec properties, defining the restore logic for the 3 type of backed up files. 
+The restore defines 3 required spec properties, defining the restore logic for the 3 types of backed up files. 
 - `veleroManagedClustersBackupName` is used to define the restore option for the managed clusters. 
 - `veleroCredentialsBackupName` is used to define the restore option for the user credentials. 
 - `veleroResourcesBackupName` is used to define the restore option for the hub resources (applications and policies). 
