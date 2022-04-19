@@ -3,10 +3,14 @@
 # restored managed clusters will show as detached on the current hub, where this resource is applied
 
 ######
-# syncRestoreWithNewBackups - keep checking for new backups and restore if updates are available.
+# syncRestoreWithNewBackups - enable this restore and keep checking for new backups and restore if updates are available.
 #                             For this option to work, you need to set VeleroResourcesBackupName and VeleroCredentialsBackupName to latest
-#                             and set VeleroManagedClustersBackupName to skip ( as soon as the cluster activation data is latest, the restore is completed)
+#                             and set VeleroManagedClustersBackupName to skip (as soon as the cluster activation data is latest, the restore is completed)
 #                             If not defined, the value is set to false.
+
+# If veleroManagedClustersBackupName is set to latest after this restore resource has been Enabled, 
+# managed clusters activation data is restored and this resource status changes to finished.
+# 
 
 # restoreSyncInterval - defines the duration for checking on new backups 
 #                       If not defined and SyncRestoreWithNewBackups is set to true, it defaults to 30m
@@ -21,7 +25,6 @@
 #              created by the user, that should be kept even if they are not in the restored resources
 
 # None : don't clean up anything, just apply the restore
-# If this cleanupBeforeRestore option is not specified, the CleanupRestored is applied by default
 
 
 apiVersion: cluster.open-cluster-management.io/v1beta1

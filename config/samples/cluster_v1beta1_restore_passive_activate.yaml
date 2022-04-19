@@ -3,7 +3,7 @@
 # after this resource is applied, all restored managed clusters 
 # will resume connection on the current hub; hive clusters will automatically switch to this cluster
 
-# cleanupBeforeRestore - optional, asks to clean up cluster before applying restore
+# cleanupBeforeRestore - required, asks to clean up cluster before applying restore
 # valid options : 
 # CleanupRestored - clean up only resources created by a previous acm restore
 # CleanupAll - clean up all resources defined by the acm backups IncludedResources spec
@@ -11,7 +11,6 @@
 #              Use this option with caution as this could cleanup resources on the hub
 #              created by the user, that should be kept even if they are not in the restored resources
 # None : don't clean up anything, just apply the restore
-# If this cleanupBeforeRestore option is not specified, the CleanupRestored is applied by default
 
 apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Restore
