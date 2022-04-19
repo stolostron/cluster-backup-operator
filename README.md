@@ -34,6 +34,7 @@ Cluster Back up and Restore Operator
   - [View restore events](#view-restore-events)
 - [Backup validation using a Policy](#backup-validation-using-a-policy)
   - [Pod validation](#pod-validation)
+  - [Data Protection Application validation](#data-protection-application-validation)
   - [Backup Storage validation](#backup-storage-validation)
   - [BackupSchedule collision validation](#backupschedule-collision-validation)
   - [BackupSchedule and Restore status validation](#backupschedule-and-restore-status-validation)
@@ -415,6 +416,9 @@ The following templates check the pod status for the backup component and depend
 - `acm-backup-pod-running` template checks if Backup and Restore operator pod is running 
 - `oadp-pod-running` template checks if OADP operator pod is running
 - `velero-pod-running` template checks if Velero pod is running
+
+### Data Protection Application validation
+- `data-protection-application-available` template checks if a  `DataProtectionApplication.oadp.openshift.io` resource was created. This OADP resource sets up Velero configurations.  
 
 ### Backup Storage validation
 - `backup-storage-location-available` template checks if a  `BackupStorageLocation.velero.io` resource was created and the status is `Available`. This implies that the connection to the backup storage is valid.
