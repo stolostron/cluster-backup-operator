@@ -190,7 +190,7 @@ Passive data is backup data such as secrets, configmaps, apps, policies and all 
 
 ### Managed clusters activation data
 
-Managed clusters activation data or activation data, is backup data which when restored on a new hub will result in managed clusters being actively managed by the hub where the restore was executed. Activation data resources are stored by the managed clusters backup, and by the resources-generic backup, using the `cluster.open-cluster-management.io/backup: cluster-activations` label. More details about the activation resources are available with the [backup section](#resources-restored-at-managed-clusters-activation-time)
+Managed clusters activation data or activation data, is backup data which when restored on a new hub will result in managed clusters being actively managed by the hub where the restore was executed. Activation data resources are stored by the managed clusters backup, and by the resources-generic backup, using the `cluster.open-cluster-management.io/backup: cluster-activation` label. More details about the activation resources are available with the [backup section](#resources-restored-at-managed-clusters-activation-time)
 
 ## Scheduling a cluster backup 
 
