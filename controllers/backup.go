@@ -127,6 +127,7 @@ var (
 	backupCredsUserLabel    = "cluster.open-cluster-management.io/type"   // #nosec G101 -- This is a false positive
 	backupCredsHiveLabel    = "hive.openshift.io/secret-type"             // hive
 	backupCredsClusterLabel = "cluster.open-cluster-management.io/backup" // #nosec G101 -- This is a false positive
+	policyRootLabel         = "policy.open-cluster-management.io/root-policy"
 )
 
 var (
@@ -188,6 +189,22 @@ func setResourcesBackupInfo(
 			}
 		}
 	}
+
+	// exclude child policies
+	if veleroBackupTemplate.LabelSelector == nil {
+		labels := &v1.LabelSelector{}
+		veleroBackupTemplate.LabelSelector = labels
+
+		requirements := make([]v1.LabelSelectorRequirement, 0)
+		veleroBackupTemplate.LabelSelector.MatchExpressions = requirements
+	}
+	req := &v1.LabelSelectorRequirement{}
+	req.Key = policyRootLabel
+	req.Operator = "DoesNotExist"
+	veleroBackupTemplate.LabelSelector.MatchExpressions = append(
+		veleroBackupTemplate.LabelSelector.MatchExpressions,
+		*req,
+	)
 
 }
 
