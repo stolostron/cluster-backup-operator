@@ -39,6 +39,7 @@ Cluster Back up and Restore Operator
   - [BackupSchedule collision validation](#backupschedule-collision-validation)
   - [BackupSchedule and Restore status validation](#backupschedule-and-restore-status-validation)
   - [Backups exist validation](#backups-exist-validation)
+  - [Backups are running to completion](#backups-are-running-to-completion)
   - [Backups are actively running as a cron job](#backups-are-actively-running-as-a-cron-job)
 - [Active passive configuration design](#active-passive-configuration-design)
   - [Setting up an active passive configuration](#setting-up-an-active-passive-configuration)
@@ -432,6 +433,9 @@ The following templates check the pod status for the backup component and depend
 
 ### Backups exist validation
 - `acm-managed-clusters-schedule-backups-available` template checks if `Backup.velero.io` resources are available at the location specified by the `BackupStorageLocation.velero.io` and the backups were created by a `BackupSchedule.cluster.open-cluster-management.io` resource. This validates that the backups have been executed at least once, using the Backup and restore operator.
+
+### Backups are running to completion
+- `acm-backup-in-progress-report` template checks if `Backup.velero.io` resources are stuck InProgress. This validation is added because with a large number of resources, the velero pod restarts as the backup executes and the backup stays in progress without proceeding to completion. During a normal backup though, the backup resources are in progress at some point of the execution but they don't get stuck in this phase and run to completion.
 
 ### Backups are actively running as a cron job
 - This validation is done by the `backup-schedule-cron-enabled` template. It checks that a `BackupSchedule.cluster.open-cluster-management.io` is actively running and creating new backups at the storage location.  The template verifies there is a `Backup.velero.io` with a label `velero.io/schedule-name: acm-validation-policy-schedule` at the storage location. The `acm-validation-policy-schedule` backups are set to expire after the time set for the backups cron schedule. If no cron job is running anymore to create backups, the old `acm-validation-policy-schedule` backup is deleted because it expired and a new one is not created. So if no `acm-validation-policy-schedule` backup exists at any moment in time, it means that there are no active cron jobs generating acm backups.
