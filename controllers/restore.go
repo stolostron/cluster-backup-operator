@@ -270,8 +270,10 @@ func (r *RestoreReconciler) prepareRestoreForBackup(
 		labelSelector = "velero.io/backup-name,"
 	}
 	switch restoreType {
+	case Resources:
+		labelSelector = labelSelector + "!" + policyRootLabel
 	case ResourcesGeneric:
-		labelSelector = labelSelector + "cluster.open-cluster-management.io/backup"
+		labelSelector = labelSelector + backupCredsClusterLabel
 	case Credentials:
 		labelSelector = labelSelector + backupCredsUserLabel
 	case CredentialsHive:
