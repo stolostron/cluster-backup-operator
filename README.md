@@ -12,6 +12,7 @@ Cluster Back up and Restore Operator
 - [Getting Started](#getting-started)
   - [OADP Operator installed by the backup chart](#oadp-operator-installed-by-the-backup-chart)
   - [Policy to inform on backup configuration issues](#policy-to-inform-on-backup-configuration-issues)
+  - [Resource Requests and Limits Customization](#resource-requests-and-limits-customization)
   - [Protecting data using Server-Side Encryption](#protecting-data-using-server-side-encryption)
 - [Design](#design)
   - [Cluster Backup and Restore flow](#cluster-backup-and-restore-flow)
@@ -94,6 +95,55 @@ The Cluster Back up and Restore Operator chart in turn automatically installs th
 ### Policy to inform on backup configuration issues
 The Cluster Back up and Restore Operator chart installs the [backup-restore-enabled](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. The Policy templates check if the required pods are running, storage location is available, backups are available at the defined location and no error status is reported by the main resources. This Policy is intended to help notify the Hub admin of any backup issues as the hub is active and expected to produce backups.
 
+### Resource Requests and Limits Customization
+When Velero is initially installed, Velero pod is set with default cpu and memory limits as defined below.
+
+```
+resources:
+  limits:
+    cpu: "1"
+    memory: 256Mi
+  requests:
+    cpu: 500m
+    memory: 128Mi
+```
+
+These limits work well with regular scenarios but may need to be updated when your cluster backs up a large number of resources. For instance, when back up is executed on a hub managing 2000 clusters, Velero pod crashes due to the out-of-memory error (OOM). The following configuration allows backup to complete for this scenario.
+
+```
+  limits:
+    cpu: "2"
+    memory: 512Mi
+  requests:
+    cpu: 500m
+    memory: 256Mi
+```
+
+In order to update the Velero pod resource(cpu, memory) limits and requests, you need to update the `DataProtectionApplication` resource and insert the resourceAllocation template for the Velero pod, as described below:
+
+```
+apiVersion: oadp.openshift.io/v1alpha1
+kind: DataProtectionApplication
+metadata:
+  name: velero
+  namespace: open-cluster-management-backup
+spec:
+...
+  configuration:
+...
+    velero:
+      podConfig:
+        resourceAllocations:
+          limits:
+            cpu: "2"
+            memory: 1Gi
+          requests:
+            cpu: 500m
+            memory: 256Mi
+```
+
+Refer to [Velero Resource Requests and Limits Customization](https://github.com/openshift/oadp-operator/blob/master/docs/config/resource_req_limits.md) to find out more about the `DataProtectionApplication` parameters for setting the Velero pod resource requests and limits.
+
 
 ### Protecting data using Server-Side Encryption
 Server-side encryption is the encryption of data at its destination by the application or service that receives it. Our backup mechanism itself does not encrypt data while in-transit (as it travels to and from backup storage location) or at rest (while it is stored on disks at backup storage location), instead it relies on the native mechanisms in the object and snapshot systems.
@@ -153,7 +203,7 @@ With this approach the backup includes all CRDs installed on the hub, including 
 6. Backup secrets and configmaps with one of the following label annotations:
 `cluster.open-cluster-management.io/type`, `hive.openshift.io/secret-type`, `cluster.open-cluster-management.io/backup`
 7. Use this label annotation for any other resources that should be backed up and are not included in the above criteria: `cluster.open-cluster-management.io/backup`
-8. Resources picked up by the above rules that should not be backed up, can be explicitly excluded when setting this label annotation: `velero.io/exclude-from-backup=true` 
+8. Resources picked up by the above rules that should not be backed up, can be explicitly excluded when setting this label annotation: `velero.io/exclude-from-backup: "true"` 
 
 #### Extending backup data
 Third party components can choose to back up their resources with the ACM backup by adding the `cluster.open-cluster-management.io/backup` label to these resources. The value of the label could be any string, including an empty string. It is indicated though to set a value that can be later on used to easily identify the component backing up this resource. For example `cluster.open-cluster-management.io/backup: idp` if the components are provided by an idp solution.
