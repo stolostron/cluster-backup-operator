@@ -49,12 +49,12 @@ var (
 	// include resources from these api groups
 	includedAPIGroupsSuffix = []string{
 		".open-cluster-management.io",
+		".hive.openshift.io",
 	}
 	includedAPIGroupsByName = []string{
 		"argoproj.io",
 		"app.k8s.io",
 		"core.observatorium.io",
-		"hive.openshift.io",
 		"agent-install.openshift.io",
 	}
 
