@@ -113,7 +113,7 @@ These limits work well with regular scenarios but may need to be updated when yo
 ```
   limits:
     cpu: "2"
-    memory: 512Mi
+    memory: 1Gi
   requests:
     cpu: 500m
     memory: 256Mi

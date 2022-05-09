@@ -334,16 +334,6 @@ func (r *RestoreReconciler) prepareRestoreForBackup(
 			continue
 		}
 
-		if resources[i] == "managedclusterset.cluster.open-cluster-management.io" &&
-			restoreType == ManagedClusters &&
-			restoreOptions.cleanupType == v1beta1.CleanupTypeRestored {
-			// the "default" managedclusterset is created when acm is installed
-			// which means this is not going to be cleaned up when using the CleanupTypeRestored option
-			// we still want to clean it up though when CleanupTypeRestored is set, to pick up namespace bindings
-			// so we clean up all managedclusterset here, even if they were not created by a previous restore
-			labelSelector = additionalLabels
-		}
-
 		var listOptions = v1.ListOptions{}
 		if labelSelector != "" {
 			listOptions = v1.ListOptions{LabelSelector: labelSelector}
