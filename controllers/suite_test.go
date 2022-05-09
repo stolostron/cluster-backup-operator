@@ -117,6 +117,7 @@ var _ = BeforeSuite(func() {
 		APIResources: []metav1.APIResource{
 			{Name: "placements", Namespaced: true, Kind: "Placement"},
 			{Name: "clustercurators", Namespaced: true, Kind: "ClusterCurator"},
+			{Name: "managedclustersets", Namespaced: false, Kind: "ManagedClusterSet"},
 			{Name: "backupschedules", Namespaced: true, Kind: "BackupSchedule"},
 			{Name: "managedclusters", Namespaced: true, Kind: "ManagedCluster"},
 		},
@@ -126,6 +127,7 @@ var _ = BeforeSuite(func() {
 		APIResources: []metav1.APIResource{
 			{Name: "placements", Namespaced: true, Kind: "Placement"},
 			{Name: "clustercurators", Namespaced: true, Kind: "ClusterCurator"},
+			{Name: "managedclustersets", Namespaced: false, Kind: "ManagedClusterSet"},
 			{Name: "backupschedules", Namespaced: true, Kind: "BackupSchedule"},
 			{Name: "managedclusters", Namespaced: true, Kind: "ManagedCluster"},
 		},
@@ -137,8 +139,10 @@ var _ = BeforeSuite(func() {
 		},
 	}
 	hiveInfo := metav1.APIResourceList{
-		GroupVersion: "hive.openshift.io/v1beta1",
+		GroupVersion: "hive.openshift.io/v1",
 		APIResources: []metav1.APIResource{
+			{Name: "clusterpools", Namespaced: true, Kind: "ClusterPool"},
+			{Name: "clusterdeployments", Namespaced: false, Kind: "ClusterDeployment"},
 			{Name: "dnszones", Namespaced: false, Kind: "DNSZone"},
 			{Name: "clusterimageset", Namespaced: false, Kind: "ClusterImageSet"},
 			{Name: "hiveconfig", Namespaced: false, Kind: "HiveConfig"},
@@ -153,7 +157,7 @@ var _ = BeforeSuite(func() {
 			list = &clusterv1Info
 		case "/apis/admission.cluster.open-cluster-management.io/v1beta1":
 			list = &excluded
-		case "/apis/hive.openshift.io/v1beta1":
+		case "/apis/hive.openshift.io/v1":
 			list = &hiveInfo
 		case "/apis/apps.open-cluster-management.io/v1beta1":
 			list = &appsInfo
@@ -229,8 +233,8 @@ var _ = BeforeSuite(func() {
 					{
 						Name: "hive.openshift.io",
 						Versions: []metav1.GroupVersionForDiscovery{
-							{GroupVersion: "hive.openshift.io/v1beta1", Version: "v1beta1"},
 							{GroupVersion: "hive.openshift.io/v1", Version: "v1"},
+							{GroupVersion: "hive.openshift.io/v1beta1", Version: "v1beta1"},
 						},
 					},
 					{
@@ -293,8 +297,8 @@ var _ = BeforeSuite(func() {
 		},
 		{
 			resourcesList: &hiveInfo,
-			path:          "/apis/hive.openshift.io/v1beta1",
-			request:       "hive.openshift.io/v1beta1",
+			path:          "/apis/hive.openshift.io/v1",
+			request:       "hive.openshift.io/v1",
 			expectErr:     false,
 		},
 		{

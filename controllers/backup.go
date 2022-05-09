@@ -99,8 +99,6 @@ var (
 		"klusterletaddonconfig.agent.open-cluster-management.io",
 		"managedclusteraddon.addon.open-cluster-management.io",
 		"managedclusterset.cluster.open-cluster-management.io",
-		"managedclusterset.clusterview.open-cluster-management.io",
-		"managedclustersetbinding.cluster.open-cluster-management.io",
 		"clusterpool.hive.openshift.io",
 		"clusterclaim.hive.openshift.io",
 		"clustercurator.cluster.open-cluster-management.io",

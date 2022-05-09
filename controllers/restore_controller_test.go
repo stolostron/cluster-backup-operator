@@ -239,7 +239,7 @@ var _ = Describe("Basic Restore controller", func() {
 				},
 				Spec: veleroapi.BackupSpec{
 					IncludedNamespaces: []string{"please-keep-this-one"},
-					IncludedResources:  includedResources,
+					IncludedResources:  backupManagedClusterResources,
 				},
 				Status: veleroapi.BackupStatus{
 					Phase:  veleroapi.BackupPhaseCompleted,
@@ -314,7 +314,7 @@ var _ = Describe("Basic Restore controller", func() {
 				},
 				Spec: veleroapi.BackupSpec{
 					IncludedNamespaces: []string{"please-keep-this-one"},
-					IncludedResources:  includedResources,
+					IncludedResources:  backupCredsResources,
 				},
 				Status: veleroapi.BackupStatus{
 					Phase:  veleroapi.BackupPhaseCompleted,
@@ -332,7 +332,7 @@ var _ = Describe("Basic Restore controller", func() {
 				},
 				Spec: veleroapi.BackupSpec{
 					IncludedNamespaces: []string{"please-keep-this-one"},
-					IncludedResources:  includedResources,
+					IncludedResources:  backupCredsResources,
 				},
 				Status: veleroapi.BackupStatus{
 					Phase:  veleroapi.BackupPhaseCompleted,
@@ -350,7 +350,7 @@ var _ = Describe("Basic Restore controller", func() {
 				},
 				Spec: veleroapi.BackupSpec{
 					IncludedNamespaces: []string{"please-keep-this-one"},
-					IncludedResources:  includedResources,
+					IncludedResources:  backupCredsResources,
 				},
 				Status: veleroapi.BackupStatus{
 					Phase:  veleroapi.BackupPhaseCompleted,
@@ -507,7 +507,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
+						IncludedResources:  backupManagedClusterResources,
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
@@ -526,7 +526,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
+						IncludedResources:  backupManagedClusterResources,
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
@@ -545,7 +545,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
+						IncludedResources:  backupManagedClusterResources,
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseFailed,
@@ -564,7 +564,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
+						IncludedResources:  backupManagedClusterResources,
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
@@ -699,7 +699,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
+						IncludedResources:  backupCredsResources,
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
@@ -925,7 +925,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
+						IncludedResources:  backupManagedClusterResources,
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
@@ -944,7 +944,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
+						IncludedResources:  backupManagedClusterResources,
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseFailed,
@@ -963,7 +963,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
+						IncludedResources:  backupManagedClusterResources,
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
@@ -1041,7 +1041,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
+						IncludedResources:  backupCredsResources,
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
@@ -1181,7 +1181,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
+						IncludedResources:  backupManagedClusterResources,
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
@@ -1836,7 +1836,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
+						IncludedResources:  backupCredsResources,
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
@@ -2052,7 +2052,7 @@ var _ = Describe("Basic Restore controller", func() {
 					},
 					Spec: veleroapi.BackupSpec{
 						IncludedNamespaces: []string{"please-keep-this-one"},
-						IncludedResources:  includedResources,
+						IncludedResources:  backupManagedClusterResources,
 					},
 					Status: veleroapi.BackupStatus{
 						Phase:          veleroapi.BackupPhaseCompleted,
