@@ -304,6 +304,10 @@ You have to install the Red Hat Advanced Cluster Management for Kubernetes opera
 
 If the initial hub had any other operators installed, such as `Ansible Automation Platform`, `Red Hat OpenShift GitOps`, `cert-manager` you have to install them now, before running the restore operation, and using the same namespace as the primary hub operators. This ensure the new hub is configured in the same way as the initial hub. 
 
+<b>Note:</b><br>
+The settings for the `local-cluster` managed cluster resource, such as owning managed cluster set, are not restored on new hubs.
+This is because the `local-cluster` managed cluster resource is not being backed up since the resource contains local cluster specific information, such as cluster url details. Restoring this content and overwriting the `local-cluster` data on a new hub would corrupt the cluster where the restore is executed. As a result, any configuration changes applied to the `local-cluster` resource on the primary hub - such as updating the owning managed cluster set from `default` to another managed cluster set - should be manually applied on the restored cluster.
+
 ### Restoring backups
 In a usual restore scenario, the hub where the backups have been executed becomes unavailable and data backed up needs to be moved to a new hub. This is done by running the restore operation on the hub where the backed up data needs to be moved to. In this case, the restore operation is executed on a different hub than the one where the backup was created. 
 
