@@ -202,6 +202,14 @@ func setResourcesBackupInfo(
 		veleroBackupTemplate.LabelSelector.MatchExpressions,
 		*req,
 	)
+	// exclude resources backed up by the generic resources backup
+	req = &v1.LabelSelectorRequirement{}
+	req.Key = backupCredsClusterLabel
+	req.Operator = "DoesNotExist"
+	veleroBackupTemplate.LabelSelector.MatchExpressions = append(
+		veleroBackupTemplate.LabelSelector.MatchExpressions,
+		*req,
+	)
 
 }
 
@@ -209,17 +217,16 @@ func setResourcesBackupInfo(
 func setGenericResourcesBackupInfo(
 	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
-	resourcesAlreadyBackedup []string,
 	c client.Client,
 ) {
 
 	var clusterResource bool = true // check global resources
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 
-	for i := range resourcesAlreadyBackedup { // exclude resources already backed up resources backup
+	for i := range excludedCRDs { // exclude resources not backed up
 		veleroBackupTemplate.ExcludedResources = appendUnique(
 			veleroBackupTemplate.ExcludedResources,
-			resourcesAlreadyBackedup[i],
+			excludedCRDs[i],
 		)
 	}
 
