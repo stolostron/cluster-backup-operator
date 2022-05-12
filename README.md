@@ -200,10 +200,26 @@ With this approach the backup includes all CRDs installed on the hub, including 
   `admission.hive.openshift.io`,
   `velero.io`
 5. Exclude the following CRDs; they are part of the included api groups but are either not needed or they are being recreated by owner resources, which are also backed up: `clustermanagementaddon`, `observabilityaddon`, `applicationmanager`,`certpolicycontroller`,`iampolicycontroller`,`policycontroller`,`searchcollector`,`workmanager`,`backupschedule`,`restore`,`clusterclaim.cluster.open-cluster-management.io`
-6. Backup secrets and configmaps with one of the following label annotations:
+6. Backup secrets and configmaps with one of the following labels:
 `cluster.open-cluster-management.io/type`, `hive.openshift.io/secret-type`, `cluster.open-cluster-management.io/backup`
-7. Use this label annotation for any other resources that should be backed up and are not included in the above criteria: `cluster.open-cluster-management.io/backup`
-8. Resources picked up by the above rules that should not be backed up, can be explicitly excluded when setting this label annotation: `velero.io/exclude-from-backup: "true"` 
+7. Use this label for any other resources that should be backed up and are not included in the above criteria: `cluster.open-cluster-management.io/backup`
+Example :
+```yaml
+apiVersion: my.group/v1alpha1
+kind: MyResource
+metadata:
+  labels:
+    cluster.open-cluster-management.io/backup: ""
+```
+8. Resources picked up by the above rules that should not be backed up, can be explicitly excluded when setting this label: `velero.io/exclude-from-backup: "true"`
+Example :
+```yaml
+apiVersion: my.group/v1alpha1
+kind: MyResource
+metadata:
+  labels:
+    velero.io/exclude-from-backup: "true"
+```
 
 #### Extending backup data
 Third party components can choose to back up their resources with the ACM backup by adding the `cluster.open-cluster-management.io/backup` label to these resources. The value of the label could be any string, including an empty string. It is indicated though to set a value that can be later on used to easily identify the component backing up this resource. For example `cluster.open-cluster-management.io/backup: idp` if the components are provided by an idp solution.
