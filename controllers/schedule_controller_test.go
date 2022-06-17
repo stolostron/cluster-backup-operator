@@ -596,10 +596,11 @@ var _ = Describe("BackupSchedule controller", func() {
 			// execute a backup collission validation
 			// first make sure the schedule is in enabled state
 			createdBackupSchedule.Status.Phase = v1beta1.SchedulePhaseEnabled
-			Expect(
-				k8sClient.
-					Status().Update(context.Background(), &createdBackupSchedule, &client.UpdateOptions{}),
-			).Should(Succeed())
+			Eventually(func() bool {
+				err := k8sClient.
+					Status().Update(context.Background(), &createdBackupSchedule, &client.UpdateOptions{})
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
 			Eventually(func() string {
 				err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
 				if err != nil {
