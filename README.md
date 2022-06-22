@@ -267,7 +267,7 @@ After you create a `backupschedule.cluster.open-cluster-management.io` resource 
 
 The `backupschedule.cluster.open-cluster-management.io` creates 6 `schedule.velero.io` resources, used to generate the backups.
 
-Run `os get schedules -A | grep acm` to view the list of backup scheduled.
+Run `oc get schedules -A | grep acm` to view the list of backup scheduled.
 
 Resources are backed up in 3 separate groups:
 1. credentials backup ( 3 backup files, for hive, ACM and generic backups )
