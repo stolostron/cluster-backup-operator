@@ -161,8 +161,8 @@ func prepareImportedClusters(ctx context.Context,
 			// in the managed cluster namespace
 			if len(getMSASecrets(ctx, c, managedCluster.Name)) == 0 {
 
-				msa_rc := &unstructured.Unstructured{}
-				msa_rc.SetUnstructuredContent(map[string]interface{}{
+				msaRC := &unstructured.Unstructured{}
+				msaRC.SetUnstructuredContent(map[string]interface{}{
 					"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
 					"kind":       "ManagedServiceAccount",
 					"metadata": map[string]interface{}{
@@ -181,7 +181,7 @@ func prepareImportedClusters(ctx context.Context,
 					},
 				})
 				// attempt to create managedservice account for auto-import
-				if _, err := dr.Namespace(managedCluster.Name).Create(ctx, msa_rc, v1.CreateOptions{}); err != nil {
+				if _, err := dr.Namespace(managedCluster.Name).Create(ctx, msaRC, v1.CreateOptions{}); err != nil {
 					logger.Info(fmt.Sprintf("Failed to create ManagedServiceAccount for cluster =%s, error : %s",
 						managedCluster.Name, err.Error()))
 				} else {
@@ -365,28 +365,6 @@ func updateAISecrets(ctx context.Context,
 				updateSecret(ctx, c, aiSecrets.Items[s],
 					backupCredsClusterLabel,
 					"agent-install")
-			}
-		}
-	}
-	// update metal
-	metalSecrets := &corev1.SecretList{}
-	if metalInstallLabel, err := labels.NewRequirement("environment.metal3.io",
-		selection.In, []string{"baremetal"}); err == nil {
-
-		// Init and add to selector.
-		selector := labels.NewSelector()
-		selector = selector.Add(*metalInstallLabel)
-		if err := c.List(ctx, metalSecrets, &client.ListOptions{
-			LabelSelector: selector,
-		}); err == nil {
-			for s := range metalSecrets.Items {
-				if metalSecrets.Items[s].Namespace == "openshift-machine-api" {
-					// skip secrets from openshift-machine-api ns, these hosts are not backed up
-					continue
-				}
-				updateSecret(ctx, c, metalSecrets.Items[s],
-					backupCredsClusterLabel,
-					"baremetal")
 			}
 		}
 	}
