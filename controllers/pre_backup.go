@@ -53,7 +53,7 @@ const (
 		"apiVersion": "rbac.authorization.k8s.io/v1",
 		"kind": "ClusterRoleBinding",
 		"metadata": {
-			"name": "msa-work-cls-admin"
+			"name": "msa-admin"
 		},
 		"roleRef": {
 			"apiGroup": "rbac.authorization.k8s.io",
@@ -63,7 +63,7 @@ const (
 		"subjects": [
 			{
 				"kind": "ServiceAccount",
-				"name": "vb-sno-managed-1-msa",
+				"name": "%s-msa",
 				"namespace": "open-cluster-management-agent-addon"
 			}
 		]
@@ -218,7 +218,7 @@ func createManifestWork(
 				manifestWork.Labels = map[string]string{addon_work_label: msa_addon}
 
 				manifest := &workv1.Manifest{}
-				manifest.Raw = []byte(manifestwork)
+				manifest.Raw = []byte(fmt.Sprintf(manifestwork, namespace))
 
 				manifestWork.Spec.Workload.Manifests = []workv1.Manifest{
 					*manifest,
