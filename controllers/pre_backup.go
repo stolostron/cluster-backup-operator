@@ -77,13 +77,17 @@ const (
 func (r *BackupScheduleReconciler) prepareForBackup(
 	ctx context.Context,
 ) {
-	prepareImportedClusters(ctx, r.Client, r.DiscoveryClient,
+	err := prepareImportedClusters(ctx, r.Client, r.DiscoveryClient,
 		r.DynamicClient, r.RESTMapper)
 
 	updateHiveResources(ctx, r.Client)
 	updateAISecrets(ctx, r.Client)
 	updateMetalSecrets(ctx, r.Client)
-	updateMSAResources(ctx, r.Client)
+
+	if err == nil {
+		// managedserviceaccount is enabled
+		updateMSAResources(ctx, r.Client)
+	}
 }
 
 // here we go over all managed clusters and find the ones imported with the hub
