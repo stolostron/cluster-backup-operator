@@ -148,6 +148,12 @@ var _ = BeforeSuite(func() {
 			{Name: "hiveconfig", Namespaced: false, Kind: "HiveConfig"},
 		},
 	}
+	authAlpha1 := metav1.APIResourceList{
+		GroupVersion: "authentication.open-cluster-management.io/v1alpha1",
+		APIResources: []metav1.APIResource{
+			{Name: "managedserviceaccounts", Namespaced: true, Kind: "ManagedServiceAccount"},
+		},
+	}
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var list interface{}
 		switch req.URL.Path {
@@ -159,6 +165,8 @@ var _ = BeforeSuite(func() {
 			list = &excluded
 		case "/apis/hive.openshift.io/v1":
 			list = &hiveInfo
+		case "/apis/authentication.open-cluster-management.io/v1alpha1":
+			list = authAlpha1
 		case "/apis/apps.open-cluster-management.io/v1beta1":
 			list = &appsInfo
 		case "/apis/apps.open-cluster-management.io/v1":
@@ -244,6 +252,12 @@ var _ = BeforeSuite(func() {
 							{GroupVersion: "apps.open-cluster-management.io/v1", Version: "v1"},
 						},
 					},
+					{
+						Name: "authentication.open-cluster-management.io",
+						Versions: []metav1.GroupVersionForDiscovery{
+							{GroupVersion: "authentication.open-cluster-management.io/v1alpha1", Version: "v1alpha1"},
+						},
+					},
 				},
 			}
 		default:
@@ -271,6 +285,12 @@ var _ = BeforeSuite(func() {
 		request       string
 		expectErr     bool
 	}{
+		{
+			resourcesList: &authAlpha1,
+			path:          "/apis/authentication.open-cluster-management.io/v1alpha1",
+			request:       "authentication.open-cluster-management.io/v1alpha1",
+			expectErr:     false,
+		},
 		{
 			resourcesList: &clusterv1beta1Info,
 			path:          "/apis/cluster.open-cluster-management.io/v1beta1",
