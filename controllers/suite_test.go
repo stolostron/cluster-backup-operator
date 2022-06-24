@@ -41,8 +41,10 @@ import (
 
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	backupv1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
+	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	operatorapiv1 "open-cluster-management.io/api/operator/v1"
+	workv1 "open-cluster-management.io/api/work/v1"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -148,6 +150,12 @@ var _ = BeforeSuite(func() {
 			{Name: "hiveconfig", Namespaced: false, Kind: "HiveConfig"},
 		},
 	}
+	authAlpha1 := metav1.APIResourceList{
+		GroupVersion: "authentication.open-cluster-management.io/v1alpha1",
+		APIResources: []metav1.APIResource{
+			{Name: "managedserviceaccounts", Namespaced: true, Kind: "ManagedServiceAccount"},
+		},
+	}
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var list interface{}
 		switch req.URL.Path {
@@ -159,6 +167,8 @@ var _ = BeforeSuite(func() {
 			list = &excluded
 		case "/apis/hive.openshift.io/v1":
 			list = &hiveInfo
+		case "/apis/authentication.open-cluster-management.io/v1alpha1":
+			list = authAlpha1
 		case "/apis/apps.open-cluster-management.io/v1beta1":
 			list = &appsInfo
 		case "/apis/apps.open-cluster-management.io/v1":
@@ -244,6 +254,18 @@ var _ = BeforeSuite(func() {
 							{GroupVersion: "apps.open-cluster-management.io/v1", Version: "v1"},
 						},
 					},
+					{
+						Name: "authentication.open-cluster-management.io",
+						Versions: []metav1.GroupVersionForDiscovery{
+							{GroupVersion: "authentication.open-cluster-management.io/v1alpha1", Version: "v1alpha1"},
+						},
+					},
+					{
+						Name: "addon.open-cluster-management.io",
+						Versions: []metav1.GroupVersionForDiscovery{
+							{GroupVersion: "addon.open-cluster-management.io/v1alpha1", Version: "v1alpha1"},
+						},
+					},
 				},
 			}
 		default:
@@ -271,6 +293,12 @@ var _ = BeforeSuite(func() {
 		request       string
 		expectErr     bool
 	}{
+		{
+			resourcesList: &authAlpha1,
+			path:          "/apis/authentication.open-cluster-management.io/v1alpha1",
+			request:       "authentication.open-cluster-management.io/v1alpha1",
+			expectErr:     false,
+		},
 		{
 			resourcesList: &clusterv1beta1Info,
 			path:          "/apis/cluster.open-cluster-management.io/v1beta1",
@@ -350,6 +378,12 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = chnv1.AddToScheme(scheme.Scheme) // for channels
+	Expect(err).NotTo(HaveOccurred())
+
+	err = addonv1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = workv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	err = hivev1.AddToScheme(scheme.Scheme) // for clusterpools
