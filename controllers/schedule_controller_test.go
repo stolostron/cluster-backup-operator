@@ -191,6 +191,32 @@ var _ = Describe("BackupSchedule controller", func() {
 					},
 				},
 			},
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Secret",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "baremetal",
+					Namespace: clusterPoolNSName,
+					Labels: map[string]string{
+						"environment.metal3.io": "baremetal",
+					},
+				},
+			},
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Secret",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ai-secret",
+					Namespace: clusterPoolNSName,
+					Labels: map[string]string{
+						"agent-install.openshift.io/watch": "true",
+					},
+				},
+			},
 		}
 		clusterDeplSecrets = []corev1.Secret{
 			{
@@ -555,6 +581,36 @@ var _ = Describe("BackupSchedule controller", func() {
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
 				return err == nil
+			}, timeout, interval).Should(BeTrue())
+
+			// validate baremetal secret has backup annotation
+			baremetalSecret := corev1.Secret{}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "baremetal",
+					Namespace: clusterPoolNSName,
+				}, &baremetalSecret)
+				return err == nil && baremetalSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "baremetal"
+			}, timeout, interval).Should(BeTrue())
+
+			// validate auto-import secret secret has backup annotation
+			autoImportSecret := corev1.Secret{}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "auto-import",
+					Namespace: clusterPoolNSName,
+				}, &autoImportSecret)
+				return err == nil && autoImportSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "msa"
+			}, timeout, interval).Should(BeTrue())
+
+			// validate AI secret has backup annotation
+			secretAI := corev1.Secret{}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "ai-secret",
+					Namespace: clusterPoolNSName,
+				}, &secretAI)
+				return err == nil && secretAI.GetLabels()["cluster.open-cluster-management.io/backup"] == "agent-install"
 			}, timeout, interval).Should(BeTrue())
 
 			Expect(createdBackupSchedule.CreationTimestamp.Time).NotTo(BeNil())
