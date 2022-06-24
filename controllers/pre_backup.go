@@ -184,10 +184,9 @@ func prepareImportedClusters(ctx context.Context,
 				if _, err := dr.Namespace(managedCluster.Name).Create(ctx, msaRC, v1.CreateOptions{}); err != nil {
 					logger.Info(fmt.Sprintf("Failed to create ManagedServiceAccount for cluster =%s, error : %s",
 						managedCluster.Name, err.Error()))
-				} else {
-					// create ManifestWork to push the role binding
-					createManifestWork(ctx, c, managedCluster.Name)
 				}
+				// create ManifestWork to push the role binding
+				createManifestWork(ctx, c, managedCluster.Name)
 			}
 		}
 	}

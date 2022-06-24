@@ -18,6 +18,7 @@ import (
 
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 )
 
@@ -26,6 +27,7 @@ var _ = Describe("BackupSchedule controller", func() {
 	var (
 		ctx                     context.Context
 		managedClusters         []clusterv1.ManagedCluster
+		managedClustersAddons   []addonv1alpha1.ManagedClusterAddOn
 		clusterDeployments      []hivev1.ClusterDeployment
 		channels                []chnv1.Channel
 		clusterPools            []hivev1.ClusterPool
@@ -34,11 +36,13 @@ var _ = Describe("BackupSchedule controller", func() {
 		veleroNamespaceName     string
 		acmNamespaceName        string
 		chartsv1NSName          string
+		managedClusterNSName    string
 		clusterPoolNSName       string
 		veleroNamespace         *corev1.Namespace
 		acmNamespace            *corev1.Namespace
 		chartsv1NS              *corev1.Namespace
 		clusterPoolNS           *corev1.Namespace
+		managedClusterNS        *corev1.Namespace
 		clusterPoolSecrets      []corev1.Secret
 		clusterDeplSecrets      []corev1.Secret
 		clusterDeploymentNSName string
@@ -63,8 +67,25 @@ var _ = Describe("BackupSchedule controller", func() {
 		veleroNamespaceName = "velero-ns"
 		acmNamespaceName = "acm-ns"
 		chartsv1NSName = "acm-channel-ns"
+		managedClusterNSName = "managed1"
 		clusterPoolNSName = "app"
 		clusterDeploymentNSName = "vb-pool-fhbjs"
+
+		managedClustersAddons = []addonv1alpha1.ManagedClusterAddOn{
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "addon.open-cluster-management.io/v1alpha1",
+					Kind:       "ManagedClusterAddOn",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "managed1-addon",
+					Namespace: managedClusterNSName,
+				},
+				Spec: addonv1alpha1.ManagedClusterAddOnSpec{
+					InstallNamespace: "managed1",
+				},
+			},
+		}
 
 		managedClusters = []clusterv1.ManagedCluster{
 			{
@@ -85,11 +106,20 @@ var _ = Describe("BackupSchedule controller", func() {
 					Kind:       "ManagedCluster",
 				},
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "managed1",
+					Name: managedClusterNSName,
 				},
 				Spec: clusterv1.ManagedClusterSpec{
 					HubAcceptsClient: true,
 				},
+			},
+		}
+		managedClusterNS = &corev1.Namespace{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Namespace",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: managedClusterNSName,
 			},
 		}
 		chartsv1NS = &corev1.Namespace{
@@ -146,6 +176,19 @@ var _ = Describe("BackupSchedule controller", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "app-prow-47-aws-creds",
 					Namespace: clusterPoolNSName,
+				},
+			},
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Secret",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "auto-import",
+					Namespace: clusterPoolNSName,
+					Labels: map[string]string{
+						"authentication.open-cluster-management.io/is-managed-serviceaccount": "true",
+					},
 				},
 			},
 		}
@@ -298,6 +341,12 @@ var _ = Describe("BackupSchedule controller", func() {
 	})
 
 	AfterEach(func() {
+		if managedClusterNS != nil {
+			for i := range managedClustersAddons {
+				Expect(k8sClient.Delete(ctx, &managedClustersAddons[i])).Should(Succeed())
+			}
+		}
+
 		for i := range managedClusters {
 			Expect(k8sClient.Delete(ctx, &managedClusters[i])).Should(Succeed())
 		}
@@ -376,6 +425,14 @@ var _ = Describe("BackupSchedule controller", func() {
 		Expect(k8sClient.Create(ctx, veleroNamespace)).Should(Succeed())
 		Expect(k8sClient.Create(ctx, acmNamespace)).Should(Succeed())
 		Expect(k8sClient.Create(ctx, chartsv1NS)).Should(Succeed())
+
+		if managedClusterNS != nil {
+			Expect(k8sClient.Create(ctx, managedClusterNS)).Should(Succeed())
+
+			for i := range managedClustersAddons {
+				Expect(k8sClient.Create(ctx, &managedClustersAddons[i])).Should(Succeed())
+			}
+		}
 
 		if clusterDeploymentNS != nil {
 			Expect(k8sClient.Create(ctx, clusterDeploymentNS)).Should(Succeed())
@@ -907,6 +964,7 @@ var _ = Describe("BackupSchedule controller", func() {
 		BeforeEach(func() {
 			clusterPoolNS = nil
 			clusterDeploymentNS = nil
+			managedClusterNS = nil
 			chartsv1NS = &corev1.Namespace{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "v1",
