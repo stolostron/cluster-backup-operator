@@ -20,6 +20,8 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
+
+	ocinfrav1 "github.com/openshift/api/config/v1"
 )
 
 var _ = Describe("BackupSchedule controller", func() {
@@ -31,6 +33,7 @@ var _ = Describe("BackupSchedule controller", func() {
 		clusterDeployments      []hivev1.ClusterDeployment
 		channels                []chnv1.Channel
 		clusterPools            []hivev1.ClusterPool
+		clusterVersions         []ocinfrav1.ClusterVersion
 		backupStorageLocation   *veleroapi.BackupStorageLocation
 		veleroBackups           []veleroapi.Backup
 		veleroNamespaceName     string
@@ -71,6 +74,20 @@ var _ = Describe("BackupSchedule controller", func() {
 		clusterPoolNSName = "app"
 		clusterDeploymentNSName = "vb-pool-fhbjs"
 
+		clusterVersions = []ocinfrav1.ClusterVersion{
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "config.openshift.io/v1",
+					Kind:       "ClusterVersion",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "version",
+				},
+				Spec: ocinfrav1.ClusterVersionSpec{
+					ClusterID: "aaa",
+				},
+			},
+		}
 		managedClustersAddons = []addonv1alpha1.ManagedClusterAddOn{
 			{
 				TypeMeta: metav1.TypeMeta{
@@ -458,6 +475,10 @@ var _ = Describe("BackupSchedule controller", func() {
 			for i := range managedClustersAddons {
 				Expect(k8sClient.Create(ctx, &managedClustersAddons[i])).Should(Succeed())
 			}
+			for i := range clusterVersions {
+				Expect(k8sClient.Create(ctx, &clusterVersions[i])).Should(Succeed())
+			}
+
 		}
 
 		if clusterDeploymentNS != nil {
