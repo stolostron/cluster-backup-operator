@@ -107,11 +107,6 @@ var _ = Describe("Basic Restore controller", func() {
 	})
 
 	JustAfterEach(func() {
-		/*
-			for i := range clusterVersions {
-					Expect(k8sClient.Delete(ctx, &clusterVersions[i])).Should(Succeed())
-			}
-		*/
 		if backupStorageLocation != nil {
 			Expect(k8sClient.Delete(ctx, backupStorageLocation)).Should(Succeed())
 		}
