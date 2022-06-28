@@ -6,6 +6,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	ocinfrav1 "github.com/openshift/api/config/v1"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -49,6 +50,7 @@ var _ = Describe("Basic Restore controller", func() {
 		veleroCredentialsHiveBackupName    string
 		veleroCredentialsClusterBackupName string
 		channels                           []chnv1.Channel
+		clusterVersions                    []ocinfrav1.ClusterVersion
 
 		acmNamespaceName         string
 		restoreName              string
@@ -81,6 +83,10 @@ var _ = Describe("Basic Restore controller", func() {
 			for i := range channels {
 				Expect(k8sClient.Create(ctx, &channels[i])).Should(Succeed())
 			}
+
+			for i := range clusterVersions {
+				Expect(k8sClient.Create(ctx, &clusterVersions[i])).Should(Succeed())
+			}
 		}
 
 		Expect(k8sClient.Create(ctx, veleroNamespace)).Should(Succeed())
@@ -101,7 +107,11 @@ var _ = Describe("Basic Restore controller", func() {
 	})
 
 	JustAfterEach(func() {
-
+		/*
+			for i := range clusterVersions {
+					Expect(k8sClient.Delete(ctx, &clusterVersions[i])).Should(Succeed())
+			}
+		*/
 		if backupStorageLocation != nil {
 			Expect(k8sClient.Delete(ctx, backupStorageLocation)).Should(Succeed())
 		}
@@ -135,6 +145,24 @@ var _ = Describe("Basic Restore controller", func() {
 		resourcesGenericStartTime := metav1.NewTime(resourcesGenericTimestamp)
 		unrelatedResourcesGenericTimestamp, _ := time.Parse("20060102150405", "20210910181420")
 		unrelatedResourcesGenericStartTime := metav1.NewTime(unrelatedResourcesGenericTimestamp)
+
+		clusterVersions = []ocinfrav1.ClusterVersion{
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "config.openshift.io/v1",
+					Kind:       "ClusterVersion",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "version-new-one",
+					Labels: map[string]string{
+						"velero.io/backup-name": "backup-123",
+					},
+				},
+				Spec: ocinfrav1.ClusterVersionSpec{
+					ClusterID: "aaa",
+				},
+			},
+		}
 
 		channels = []chnv1.Channel{
 			{

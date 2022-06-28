@@ -189,7 +189,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 	// no velero schedules, so create them
 	if len(veleroScheduleList.Items) == 0 {
-		clusterId, _ := getHubIdentification(ctx, r.DiscoveryClient, r.DynamicClient, r.RESTMapper)
+		clusterId, _ := getHubIdentification(ctx, r.Client)
 		err := r.initVeleroSchedules(ctx, backupSchedule, clusterId)
 		if err != nil {
 			msg := fmt.Errorf(FailedPhaseMsg+": %v", err)

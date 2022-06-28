@@ -19,16 +19,13 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
 
+	ocinfrav1 "github.com/openshift/api/config/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/restmapper"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -197,45 +194,17 @@ func getGenericCRDFromAPIGroups(
 // info used when switching active - passive clusters
 func getHubIdentification(
 	ctx context.Context,
-	dc discovery.DiscoveryInterface,
-	dyn dynamic.Interface,
-	mapper *restmapper.DeferredDiscoveryRESTMapper,
+	c client.Client,
 ) (string, error) {
 
-	uid := "unknown"
-	logger := log.FromContext(ctx)
-	groupKind := schema.GroupKind{
-		Group: "config.openshift.io",
-		Kind:  "ClusterVersion",
-	}
-	mapping, err := mapper.RESTMapping(groupKind, "")
-	if err != nil {
-		logger.Info(fmt.Sprintf("Failed to get dynamic mapper for group=%s, error : %s",
-			groupKind, err.Error()))
-		return uid, err
-	}
-	var dr = dyn.Resource(mapping.Resource)
-	if dr == nil {
-		return uid, nil
-	}
-	items, err := dr.List(ctx, v1.ListOptions{})
-	if err != nil || items == nil || len(items.Items) == 0 ||
-		items.Items[0].Object == nil {
-		return uid, err
+	clusterId := "unknown"
+	clusterVersions := &ocinfrav1.ClusterVersionList{}
+	if err := c.List(ctx, clusterVersions, &client.ListOptions{}); err != nil {
+		return clusterId, err
 	}
 
-	// get clusterID from the spec section
-	specInfo := items.Items[0].Object["spec"]
-	if specInfo != nil {
-		iter := reflect.ValueOf(specInfo).MapRange()
-		for iter.Next() {
-			key := iter.Key().Interface()
-			if key == "clusterID" {
-				value := iter.Value().Interface()
-				uid = value.(string)
-			}
-
-		}
+	if len(clusterVersions.Items) > 0 {
+		clusterId = string(clusterVersions.Items[0].Spec.ClusterID)
 	}
-	return uid, nil
+	return clusterId, nil
 }

@@ -195,10 +195,6 @@ var _ = BeforeSuite(func() {
 								GroupVersion: "config.openshift.io/v1",
 								Version:      "v1",
 							},
-							{
-								GroupVersion: "config.openshift.io/v1beta1",
-								Version:      "v1beta1",
-							},
 						},
 					},
 					{
@@ -370,6 +366,12 @@ var _ = BeforeSuite(func() {
 	cfg, err := testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
+
+	err = ocinfrav1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = backupv1beta1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
 
 	err = backupv1beta1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
