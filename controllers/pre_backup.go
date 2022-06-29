@@ -84,14 +84,13 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		Kind:  "ManagedServiceAccount",
 	}
 	msa_mapping, err := r.RESTMapper.RESTMapping(msaKind, "")
-	if err != nil {
-		logger.Info("ManagedServiceAccounts is not enabled, nothing to do for auto import until this function is enabled")
-		return
-	}
-
-	var dr = r.DynamicClient.Resource(msa_mapping.Resource)
-	if dr != nil {
-		prepareImportedClusters(ctx, r.Client, dr, msa_mapping)
+	var dr dynamic.NamespaceableResourceInterface
+	if err == nil {
+		logger.Info("ManagedServiceAccounts is enabled, generate MSA accounts if needed")
+		dr = r.DynamicClient.Resource(msa_mapping.Resource)
+		if dr != nil {
+			prepareImportedClusters(ctx, r.Client, dr, msa_mapping)
+		}
 	}
 
 	updateHiveResources(ctx, r.Client)
