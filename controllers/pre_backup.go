@@ -19,16 +19,17 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
+	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
-	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -77,16 +78,31 @@ const (
 func (r *BackupScheduleReconciler) prepareForBackup(
 	ctx context.Context,
 ) {
-	err := prepareImportedClusters(ctx, r.Client, r.DiscoveryClient,
-		r.DynamicClient, r.RESTMapper)
+	logger := log.FromContext(ctx)
+
+	// check if ManagedServiceAccount CRD exists,
+	// meaning the managedservice account option is enabled on MCH
+	msaKind := schema.GroupKind{
+		Group: "authentication.open-cluster-management.io",
+		Kind:  "ManagedServiceAccount",
+	}
+	msaMapping, err := r.RESTMapper.RESTMapping(msaKind, "")
+	var dr dynamic.NamespaceableResourceInterface
+	if err == nil {
+		logger.Info("ManagedServiceAccounts is enabled, generate MSA accounts if needed")
+		dr = r.DynamicClient.Resource(msaMapping.Resource)
+		if dr != nil {
+			prepareImportedClusters(ctx, r.Client, dr, msaMapping)
+		}
+	}
 
 	updateHiveResources(ctx, r.Client)
 	updateAISecrets(ctx, r.Client)
 	updateMetalSecrets(ctx, r.Client)
 
-	if err == nil {
+	if err == nil && dr != nil {
 		// managedserviceaccount is enabled
-		updateMSAResources(ctx, r.Client)
+		updateMSAResources(ctx, r.Client, dr)
 	}
 }
 
@@ -96,27 +112,12 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 // which will trigger the auto import of the cluster on the new hub
 func prepareImportedClusters(ctx context.Context,
 	c client.Client,
-	dc discovery.DiscoveryInterface,
-	dyn dynamic.Interface,
-	mapper *restmapper.DeferredDiscoveryRESTMapper,
-) error {
-	// check if ManagedServiceAccount CRD exists, meaning the managedservice account option is enabled on MCH
+	dr dynamic.NamespaceableResourceInterface,
+	msaMapping *meta.RESTMapping,
+) {
 	logger := log.FromContext(ctx)
-	msaKind := schema.GroupKind{
-		Group: "authentication.open-cluster-management.io",
-		Kind:  "ManagedServiceAccount",
-	}
-	msa_mapping, err := mapper.RESTMapping(msaKind, "")
-	if err != nil {
-		logger.Info("ManagedServiceAccounts is not enabled, nothing to do for auto import until this function is enabled")
-		return err
-	}
 
-	var dr = dyn.Resource(msa_mapping.Resource)
-	if dr == nil {
-		logger.Info("ManagedServiceAccounts resource mapping is nil")
-		return nil
-	}
+	secretsGeneratedNow := false
 
 	// get all managed clusters
 	managedClusters := &clusterv1.ManagedClusterList{}
@@ -161,6 +162,7 @@ func prepareImportedClusters(ctx context.Context,
 			// in the managed cluster namespace
 			if len(getMSASecrets(ctx, c, managedCluster.Name)) == 0 {
 
+				secretsGeneratedNow = true
 				msaRC := &unstructured.Unstructured{}
 				msaRC.SetUnstructuredContent(map[string]interface{}{
 					"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
@@ -191,7 +193,11 @@ func prepareImportedClusters(ctx context.Context,
 		}
 	}
 
-	return nil
+	if secretsGeneratedNow {
+		// sleep to allow secrets to be propagated
+		time.Sleep(2 * time.Second)
+	}
+
 }
 
 // create manifest work to push the cluster-admin role binding to the managed cluster
@@ -246,7 +252,6 @@ func getMSASecrets(
 	ctx context.Context,
 	c client.Client,
 	namespace string,
-
 ) []corev1.Secret {
 	// add backup label for msa account secrets
 	msaSecrets := &corev1.SecretList{}
@@ -278,15 +283,53 @@ func getMSASecrets(
 }
 
 // prepare managed service account secrets for backup
-func updateMSAResources(ctx context.Context,
+func updateMSAResources(
+	ctx context.Context,
 	c client.Client,
+	dr dynamic.NamespaceableResourceInterface,
 ) {
+	logger := log.FromContext(ctx)
 	// add backup label for msa account secrets
+	// get only unprocessed secrets, so the ones with no backup label
 	secrets := getMSASecrets(ctx, c, "")
 	for s := range secrets {
-		updateSecret(ctx, c, secrets[s],
+		secret := secrets[s]
+
+		secretTimestampUpdated := false
+		// add token expiration time from parent resource
+		if unstructuredObj, err := dr.Namespace(secret.Namespace).Get(ctx, secret.Name, v1.GetOptions{}); err == nil {
+			// look for the expiration timestamp under status
+			statusInfo := unstructuredObj.Object["status"]
+			if statusInfo == nil {
+				continue
+			}
+			iter := reflect.ValueOf(statusInfo).MapRange()
+			for iter.Next() {
+				key := iter.Key().Interface()
+				if key != "expirationTimestamp" {
+					continue
+				}
+				secretAnnotations := secret.GetAnnotations()
+				if secretAnnotations == nil {
+					secretAnnotations = map[string]string{}
+				}
+				// set expirationTimestamp on the secret
+				secretTimestampUpdated = secretAnnotations["expirationTimestamp"] != iter.Value().Interface().(string)
+				secretAnnotations["expirationTimestamp"] = iter.Value().Interface().(string)
+				secret.SetAnnotations(secretAnnotations)
+				break
+			}
+		}
+
+		backupLabelSet := updateSecret(ctx, c, secret,
 			backupCredsClusterLabel,
-			backup_label)
+			backup_label, false)
+
+		if secretTimestampUpdated || backupLabelSet {
+			if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err != nil {
+				logger.Error(err, "failed to update secret")
+			}
+		}
 	}
 }
 
@@ -363,7 +406,7 @@ func updateAISecrets(ctx context.Context,
 			for s := range aiSecrets.Items {
 				updateSecret(ctx, c, aiSecrets.Items[s],
 					backupCredsClusterLabel,
-					"agent-install")
+					"agent-install", true)
 			}
 		}
 	}
@@ -391,7 +434,7 @@ func updateMetalSecrets(ctx context.Context,
 				}
 				updateSecret(ctx, c, metalSecrets.Items[s],
 					backupCredsClusterLabel,
-					"baremetal")
+					"baremetal", true)
 			}
 		}
 	}
@@ -409,7 +452,7 @@ func updateSecretsLabels(ctx context.Context,
 		secret := secrets.Items[s]
 		if strings.HasPrefix(secret.Name, prefix) &&
 			!strings.Contains(secret.Name, "-bootstrap-") {
-			updateSecret(ctx, c, secret, labelName, labelValue)
+			updateSecret(ctx, c, secret, labelName, labelValue, true)
 		}
 	}
 
@@ -421,7 +464,8 @@ func updateSecret(ctx context.Context,
 	secret corev1.Secret,
 	labelName string,
 	labelValue string,
-) {
+	update bool,
+) bool {
 	logger := log.FromContext(ctx)
 	labels := secret.GetLabels()
 	if labels == nil {
@@ -435,9 +479,18 @@ func updateSecret(ctx context.Context,
 		secret.SetLabels(labels)
 		msg := "update secret " + secret.Name
 		logger.Info(msg)
+		if !update {
+			// do not call update now
+			// secret needs refresh
+			return true
+		}
 		if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err != nil {
 			logger.Error(err, "failed to update secret")
 		}
+		// secret needs refresh
+		return true
 	}
+	// secret not refreshed
+	return false
 
 }
