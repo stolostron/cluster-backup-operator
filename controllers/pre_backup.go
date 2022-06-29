@@ -79,6 +79,9 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 	ctx context.Context,
 ) {
 	logger := log.FromContext(ctx)
+
+	// check if ManagedServiceAccount CRD exists,
+	// meaning the managedservice account option is enabled on MCH
 	msaKind := schema.GroupKind{
 		Group: "authentication.open-cluster-management.io",
 		Kind:  "ManagedServiceAccount",
@@ -112,7 +115,6 @@ func prepareImportedClusters(ctx context.Context,
 	dr dynamic.NamespaceableResourceInterface,
 	msaMapping *meta.RESTMapping,
 ) {
-	// check if ManagedServiceAccount CRD exists, meaning the managedservice account option is enabled on MCH
 	logger := log.FromContext(ctx)
 
 	secretsGeneratedNow := false
