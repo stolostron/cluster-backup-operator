@@ -286,11 +286,14 @@ func updateMSAResources(
 	c client.Client,
 	dr dynamic.NamespaceableResourceInterface,
 ) {
+	logger := log.FromContext(ctx)
 	// add backup label for msa account secrets
 	// get only unprocessed secrets, so the ones with no backup label
 	secrets := getMSASecrets(ctx, c, "")
 	for s := range secrets {
 		secret := secrets[s]
+
+		secretTimestampUpdated := false
 		// add token expiration time from parent resource
 		if unstructuredObj, err := dr.Namespace(secret.Namespace).Get(ctx, secret.Name, v1.GetOptions{}); err == nil {
 			// look for the expiration timestamp under status
@@ -309,15 +312,22 @@ func updateMSAResources(
 					secretAnnotations = map[string]string{}
 				}
 				// set expirationTimestamp on the secret
+				secretTimestampUpdated = secretAnnotations["expirationTimestamp"] != iter.Value().Interface().(string)
 				secretAnnotations["expirationTimestamp"] = iter.Value().Interface().(string)
 				secret.SetAnnotations(secretAnnotations)
 				break
 			}
 		}
 
-		updateSecret(ctx, c, secret,
+		backupLabelSet := updateSecret(ctx, c, secret,
 			backupCredsClusterLabel,
-			backup_label)
+			backup_label, false)
+
+		if secretTimestampUpdated || backupLabelSet {
+			if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err != nil {
+				logger.Error(err, "failed to update secret")
+			}
+		}
 	}
 }
 
@@ -394,7 +404,7 @@ func updateAISecrets(ctx context.Context,
 			for s := range aiSecrets.Items {
 				updateSecret(ctx, c, aiSecrets.Items[s],
 					backupCredsClusterLabel,
-					"agent-install")
+					"agent-install", true)
 			}
 		}
 	}
@@ -422,7 +432,7 @@ func updateMetalSecrets(ctx context.Context,
 				}
 				updateSecret(ctx, c, metalSecrets.Items[s],
 					backupCredsClusterLabel,
-					"baremetal")
+					"baremetal", true)
 			}
 		}
 	}
@@ -440,7 +450,7 @@ func updateSecretsLabels(ctx context.Context,
 		secret := secrets.Items[s]
 		if strings.HasPrefix(secret.Name, prefix) &&
 			!strings.Contains(secret.Name, "-bootstrap-") {
-			updateSecret(ctx, c, secret, labelName, labelValue)
+			updateSecret(ctx, c, secret, labelName, labelValue, true)
 		}
 	}
 
@@ -452,7 +462,8 @@ func updateSecret(ctx context.Context,
 	secret corev1.Secret,
 	labelName string,
 	labelValue string,
-) {
+	update bool,
+) bool {
 	logger := log.FromContext(ctx)
 	labels := secret.GetLabels()
 	if labels == nil {
@@ -466,9 +477,18 @@ func updateSecret(ctx context.Context,
 		secret.SetLabels(labels)
 		msg := "update secret " + secret.Name
 		logger.Info(msg)
+		if !update {
+			// do not call update now
+			// secret needs refresh
+			return true
+		}
 		if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err != nil {
 			logger.Error(err, "failed to update secret")
 		}
+		// secret needs refresh
+		return true
 	}
+	// secret not refreshed
+	return false
 
 }
