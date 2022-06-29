@@ -232,6 +232,13 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	} else {
 		setRestorePhase(&veleroRestoreList, restore)
+
+		if (restore.Status.Phase == v1beta1.RestorePhaseFinished ||
+			restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors) &&
+			*restore.Spec.VeleroManagedClustersBackupName != skipRestoreStr {
+			// this cluster was activated so try to auto import pending managed clusters
+			r.postRestoreActivation(ctx, restore)
+		}
 	}
 
 	if restore.Spec.SyncRestoreWithNewBackups && !isValidSync {

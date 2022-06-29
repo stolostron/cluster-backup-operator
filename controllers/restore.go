@@ -20,20 +20,31 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+)
+
+const (
+	activateAutoImportSecretLabel = "cluster.open-cluster-management.io/restore-activate-auto-import-secret"
+	keepAutoImportSecretLabel     = "managedcluster-import-controller.open-cluster-management.io/keeping-auto-import-secret"
+	autoImportSecretName          = "auto-import-secret"
 )
 
 func isVeleroRestoreFinished(restore *veleroapi.Restore) bool {
@@ -359,6 +370,208 @@ func (r *RestoreReconciler) prepareRestoreForBackup(
 
 	}
 	logger.Info("exit prepareForRestoreResources for " + string(restoreType))
+}
+
+// activate managed clusters by creating auto-import-secret
+func (r *RestoreReconciler) postRestoreActivation(
+	ctx context.Context,
+	acmRestore *v1beta1.Restore,
+) error {
+	logger := log.FromContext(ctx)
+
+	logger.Info("enter postRestoreActivation for ACM restore " + acmRestore.Name)
+
+	r.Recorder.Event(
+		acmRestore,
+		corev1.EventTypeNormal,
+		"Post restore activation process:",
+		"Creating auto-import-secret to activate managed clusters",
+	)
+
+	// get dynamic resource interface for MSA
+	groupKind := schema.GroupKind{
+		Group: "authentication.open-cluster-management.io",
+		Kind:  "ManagedServiceAccount",
+	}
+	mapping, err := r.RESTMapper.RESTMapping(groupKind, "")
+	if err != nil {
+		logger.Error(err, fmt.Sprintf("Failed to get dynamic mapper for group=%s", groupKind))
+		return err
+	}
+	var dr = r.DynamicClient.Resource(mapping.Resource)
+
+	// create MSA label selector used by pre-backup process
+	msaLabel, err := labels.NewRequirement(msa_label,
+		selection.In, []string{msa_service_name})
+	if err != nil {
+		logger.Error(err, "Failed to create requirement for MSA label")
+		return err
+	}
+	selector := labels.NewSelector()
+	selector = selector.Add(*msaLabel)
+
+	// get all managed clusters
+	managedClusters := &clusterv1.ManagedClusterList{}
+	err = r.List(ctx, managedClusters, &client.ListOptions{})
+	if err != nil {
+		logger.Error(err, "Failed to list managed clusters for post restore activation")
+		return err
+	}
+	// loop through all managed clusters and try to create auto-import-secret for each
+	for i := range managedClusters.Items {
+		managedCluster := managedClusters.Items[i]
+		// skip local-cluster
+		if managedCluster.Name == "local-cluster" {
+			continue
+		}
+
+		// skip available managed clusters
+		isManagedClusterAvailable := false
+		for _, condition := range managedCluster.Status.Conditions {
+			if condition.Type == "ManagedClusterConditionAvailable" &&
+				condition.Status == v1.ConditionTrue {
+				isManagedClusterAvailable = true
+				break
+			}
+		}
+		if isManagedClusterAvailable {
+			continue
+		}
+
+		// if empty, the managed cluster has no accessible address for the hub to connect with it
+		if len(managedCluster.Spec.ManagedClusterClientConfigs) == 0 {
+			continue
+		}
+		url := managedCluster.Spec.ManagedClusterClientConfigs[0].URL
+		if url == "" {
+			continue
+		}
+
+		// find MSAs in the namespace of this managed cluster
+		// having MSA label created by pre-backup process
+		items, err := dr.Namespace(managedCluster.Name).
+			List(ctx, v1.ListOptions{LabelSelector: selector.String()})
+		if err != nil {
+			logger.Error(
+				err,
+				fmt.Sprintf(
+					"Failed to list MSAs for managed cluster : %s",
+					managedCluster.Name,
+				),
+			)
+			continue
+		}
+		if items == nil || len(items.Items) == 0 {
+			continue
+		}
+
+		// go through MSAs and try to find one having a secret with a valid token
+		secretName := ""
+		for j := range items.Items {
+			msa := items.Items[j]
+			if msa.Object == nil {
+				continue
+			}
+			tokenExpiry, found, err := unstructured.NestedString(
+				msa.Object,
+				"status",
+				"expirationTimestamp",
+			)
+			if !found || err != nil {
+				continue
+			}
+			if expiryTime, err := time.Parse(time.RFC3339, tokenExpiry); err == nil {
+				now := time.Now().In(time.UTC)
+				if expiryTime.After(now) {
+					secretRef, found, err := unstructured.NestedString(
+						msa.Object,
+						"status",
+						"tokenSecretRef",
+						"name",
+					)
+					if !found || err != nil {
+						continue
+					}
+					secretName = secretRef
+					break
+				}
+			}
+		}
+
+		if secretName == "" {
+			logger.Info(
+				"did not find any MSA secret with valid token for managed cluster " + managedCluster.Name,
+			)
+			continue
+		}
+
+		// get MSA secret with specified name in managed cluster namespace
+		msaSecret := &corev1.Secret{}
+		err = r.Get(
+			ctx,
+			types.NamespacedName{
+				Name:      secretName,
+				Namespace: managedCluster.Name,
+			},
+			msaSecret,
+		)
+		if err != nil {
+			logger.Error(
+				err,
+				fmt.Sprintf(
+					"Failed to get secret %s in namespace : %s",
+					secretName,
+					managedCluster.Name,
+				),
+			)
+			continue
+		}
+
+		// get the token from MSA secret
+		accessToken := ""
+		err = yaml.Unmarshal(msaSecret.Data["token"], &accessToken)
+		if err != nil {
+			logger.Error(
+				err,
+				fmt.Sprintf(
+					"Failed to unmarshal token from secret %s in namespace : %s",
+					secretName,
+					managedCluster.Name,
+				),
+			)
+			continue
+		}
+		if accessToken == "" {
+			continue
+		}
+
+		// create an auto-import-secret for this managed cluster
+		autoImportSecret := &corev1.Secret{}
+		autoImportSecret.Name = autoImportSecretName
+		autoImportSecret.Namespace = managedCluster.Name
+		autoImportSecret.Type = corev1.SecretTypeOpaque
+		annotations := make(map[string]string)
+		annotations[keepAutoImportSecretLabel] = ""
+		autoImportSecret.SetAnnotations(annotations)
+		labels := make(map[string]string)
+		labels[activateAutoImportSecretLabel] = ""
+		autoImportSecret.SetLabels(labels)
+		stringData := make(map[string]string)
+		stringData["autoImportRetry"] = "5"
+		stringData["server"] = url
+		stringData["token"] = accessToken
+		autoImportSecret.StringData = stringData
+
+		err = r.Create(ctx, autoImportSecret, &client.CreateOptions{})
+		if err != nil {
+			logger.Error(
+				err,
+				"Error in creating AutoImportSecret",
+				"managed cluster", managedCluster.Name,
+			)
+		}
+	}
+	return nil
 }
 
 // check if there is any active resource on this cluster
