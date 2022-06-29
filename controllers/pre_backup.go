@@ -83,13 +83,13 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		Group: "authentication.open-cluster-management.io",
 		Kind:  "ManagedServiceAccount",
 	}
-	msa_mapping, err := r.RESTMapper.RESTMapping(msaKind, "")
+	msaMapping, err := r.RESTMapper.RESTMapping(msaKind, "")
 	var dr dynamic.NamespaceableResourceInterface
 	if err == nil {
 		logger.Info("ManagedServiceAccounts is enabled, generate MSA accounts if needed")
-		dr = r.DynamicClient.Resource(msa_mapping.Resource)
+		dr = r.DynamicClient.Resource(msaMapping.Resource)
 		if dr != nil {
-			prepareImportedClusters(ctx, r.Client, dr, msa_mapping)
+			prepareImportedClusters(ctx, r.Client, dr, msaMapping)
 		}
 	}
 
@@ -99,7 +99,7 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 
 	if err == nil && dr != nil {
 		// managedserviceaccount is enabled
-		updateMSAResources(ctx, r.Client, dr, msa_mapping)
+		updateMSAResources(ctx, r.Client, dr)
 	}
 }
 
@@ -110,7 +110,7 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 func prepareImportedClusters(ctx context.Context,
 	c client.Client,
 	dr dynamic.NamespaceableResourceInterface,
-	msa_mapping *meta.RESTMapping,
+	msaMapping *meta.RESTMapping,
 ) {
 	// check if ManagedServiceAccount CRD exists, meaning the managedservice account option is enabled on MCH
 	logger := log.FromContext(ctx)
@@ -285,7 +285,6 @@ func updateMSAResources(
 	ctx context.Context,
 	c client.Client,
 	dr dynamic.NamespaceableResourceInterface,
-	msa_mapping *meta.RESTMapping,
 ) {
 	// add backup label for msa account secrets
 	// get only unprocessed secrets, so the ones with no backup label
@@ -296,24 +295,24 @@ func updateMSAResources(
 		if unstructuredObj, err := dr.Namespace(secret.Namespace).Get(ctx, secret.Name, v1.GetOptions{}); err == nil {
 			// look for the expiration timestamp under status
 			statusInfo := unstructuredObj.Object["status"]
-			if statusInfo != nil {
-				iter := reflect.ValueOf(statusInfo).MapRange()
-				for iter.Next() {
-					key := iter.Key().Interface()
-					if key == "expirationTimestamp" {
-						secretAnnotations := secret.GetAnnotations()
-						if secretAnnotations == nil {
-							secretAnnotations = map[string]string{}
-						}
-						// set expirationTimestamp on the secret
-						secretAnnotations["expirationTimestamp"] = iter.Value().Interface().(string)
-						secret.SetAnnotations(secretAnnotations)
-						break
-					}
-
-				}
+			if statusInfo == nil {
+				continue
 			}
-
+			iter := reflect.ValueOf(statusInfo).MapRange()
+			for iter.Next() {
+				key := iter.Key().Interface()
+				if key != "expirationTimestamp" {
+					continue
+				}
+				secretAnnotations := secret.GetAnnotations()
+				if secretAnnotations == nil {
+					secretAnnotations = map[string]string{}
+				}
+				// set expirationTimestamp on the secret
+				secretAnnotations["expirationTimestamp"] = iter.Value().Interface().(string)
+				secret.SetAnnotations(secretAnnotations)
+				break
+			}
 		}
 
 		updateSecret(ctx, c, secret,
