@@ -50,7 +50,7 @@ const (
 	addon_label      = "open-cluster-management.io/addon-name-work"
 
 	manifest_work_name = "addon-" + msa_addon + "-import"
-	validity           = "720h0m0s"
+	defaultTTL         = 720
 	manifestwork       = `{
 		"apiVersion": "rbac.authorization.k8s.io/v1",
 		"kind": "ClusterRoleBinding",
@@ -165,7 +165,7 @@ func prepareImportedClusters(ctx context.Context,
 			// in the managed cluster namespace
 			if len(getMSASecrets(ctx, c, managedCluster.Name)) == 0 {
 
-				tokenValidity := validity
+				tokenValidity := fmt.Sprintf("%vh0m0s", defaultTTL*3)
 				if backupSchedule.Spec.VeleroTTL.Duration != 0 {
 					tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.VeleroTTL.Duration*3)
 				}
