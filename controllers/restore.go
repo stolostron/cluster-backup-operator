@@ -40,7 +40,7 @@ import (
 )
 
 const (
-	activateAutoImportSecretLabel = "cluster.open-cluster-management.io/restore-auto-import"
+	activateAutoImportSecretLabel = "cluster.open-cluster-management.io/restore-auto-import-secret"
 	keepAutoImportSecretLabel     = "managedcluster-import-controller.open-cluster-management.io/keeping-auto-import-secret"
 	autoImportSecretName          = "auto-import-secret"
 )
@@ -423,6 +423,40 @@ func (r *RestoreReconciler) postRestoreActivation(
 			continue
 		}
 
+		// see if an auto-import-secret already exists
+		// delete and re-create it if it's from a previous post-restore activation
+		secret := &corev1.Secret{}
+		err := r.Get(
+			ctx,
+			types.NamespacedName{
+				Name:      autoImportSecretName,
+				Namespace: managedCluster.Name,
+			},
+			secret,
+		)
+		if err == nil {
+			labels := secret.GetLabels()
+			if labels != nil && labels[activateAutoImportSecretLabel] == "true" {
+				if err := r.Delete(ctx, secret); err != nil {
+					logger.Error(
+						err,
+						fmt.Sprintf(
+							"failed to delete the auto-import-secret from namespace %s",
+							managedCluster.Name,
+						),
+					)
+					continue
+				}
+				logger.Info(
+					"deleted auto-import-secret from namespace " + managedCluster.Name,
+				)
+			} else {
+				// auto-import-secret was presented and is not from a previous restore activation
+				// skip creation of an auto-import-secret for this managed cluster
+				continue
+			}
+		}
+
 		// find MSA secrets in the namespace of this managed cluster
 		secrets := getMSASecrets(ctx, r.Client, managedCluster.Name)
 		if len(secrets) == 0 {
@@ -505,7 +539,7 @@ func createAutoImportSecret(
 	autoImportSecret.SetAnnotations(annotations)
 	// set labels
 	labels := make(map[string]string)
-	labels[activateAutoImportSecretLabel] = ""
+	labels[activateAutoImportSecretLabel] = "true"
 	autoImportSecret.SetLabels(labels)
 	// set data
 	stringData := make(map[string]string)
