@@ -370,7 +370,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 	}
 
 	// add any missing labels and create any resources required by the backup and restore process
-	r.prepareForBackup(ctx)
+	r.prepareForBackup(ctx, backupSchedule)
 
 	// loop through schedule names to create a Velero schedule per type
 	for _, scheduleKey := range scheduleKeys {
