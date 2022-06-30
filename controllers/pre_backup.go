@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
@@ -77,6 +78,7 @@ const (
 // prepare resources before backing up
 func (r *BackupScheduleReconciler) prepareForBackup(
 	ctx context.Context,
+	backupSchedule *v1beta1.BackupSchedule,
 ) {
 	logger := log.FromContext(ctx)
 
@@ -92,7 +94,7 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		logger.Info("ManagedServiceAccounts is enabled, generate MSA accounts if needed")
 		dr = r.DynamicClient.Resource(msaMapping.Resource)
 		if dr != nil {
-			prepareImportedClusters(ctx, r.Client, dr, msaMapping)
+			prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule)
 		}
 	}
 
@@ -114,6 +116,7 @@ func prepareImportedClusters(ctx context.Context,
 	c client.Client,
 	dr dynamic.NamespaceableResourceInterface,
 	msaMapping *meta.RESTMapping,
+	backupSchedule *v1beta1.BackupSchedule,
 ) {
 	logger := log.FromContext(ctx)
 
@@ -162,6 +165,10 @@ func prepareImportedClusters(ctx context.Context,
 			// in the managed cluster namespace
 			if len(getMSASecrets(ctx, c, managedCluster.Name)) == 0 {
 
+				tokenValidity := validity
+				if backupSchedule.Spec.VeleroTTL.Duration != 0 {
+					tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.VeleroTTL.Duration*3)
+				}
 				secretsGeneratedNow = true
 				msaRC := &unstructured.Unstructured{}
 				msaRC.SetUnstructuredContent(map[string]interface{}{
@@ -177,7 +184,7 @@ func prepareImportedClusters(ctx context.Context,
 					},
 					"spec": map[string]interface{}{
 						"rotation": map[string]interface{}{
-							"validity": validity,
+							"validity": tokenValidity,
 							"enabled":  true,
 						},
 					},
@@ -295,8 +302,13 @@ func updateMSAResources(
 	for s := range secrets {
 		secret := secrets[s]
 
+		secretAnnotations := secret.GetAnnotations()
+		if secretAnnotations == nil {
+			secretAnnotations = map[string]string{}
+		}
+
 		secretTimestampUpdated := false
-		// add token expiration time from parent resource
+		// add token expiration time from parent MSA resource
 		if unstructuredObj, err := dr.Namespace(secret.Namespace).Get(ctx, secret.Name, v1.GetOptions{}); err == nil {
 			// look for the expiration timestamp under status
 			statusInfo := unstructuredObj.Object["status"]
@@ -308,10 +320,6 @@ func updateMSAResources(
 				key := iter.Key().Interface()
 				if key != "expirationTimestamp" {
 					continue
-				}
-				secretAnnotations := secret.GetAnnotations()
-				if secretAnnotations == nil {
-					secretAnnotations = map[string]string{}
 				}
 				// set expirationTimestamp on the secret
 				secretTimestampUpdated = secretAnnotations["expirationTimestamp"] != iter.Value().Interface().(string)
