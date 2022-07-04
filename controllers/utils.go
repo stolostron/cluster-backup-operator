@@ -24,6 +24,9 @@ import (
 
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/discovery"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -207,4 +210,28 @@ func getHubIdentification(
 		clusterId = string(clusterVersions.Items[0].Spec.ClusterID)
 	}
 	return clusterId, nil
+}
+
+// returns true if this clusterName namespace has any secrets labeled with the hive
+// hive.openshift.io/secret-type label
+// this identifies hive clusters
+func isHiveCreatedCluster(
+	ctx context.Context,
+	c client.Client,
+	clusterName string) bool {
+
+	nbOfSecrets := 0
+	hiveSecrets := &corev1.SecretList{}
+	if hiveLabel, err := labels.NewRequirement(backupCredsHiveLabel,
+		selection.Exists, []string{}); err == nil {
+		selector := labels.NewSelector()
+		selector = selector.Add(*hiveLabel)
+		if err := c.List(ctx, hiveSecrets, &client.ListOptions{
+			Namespace:     clusterName,
+			LabelSelector: selector}); err == nil {
+
+			nbOfSecrets = len(hiveSecrets.Items)
+		}
+	}
+	return nbOfSecrets > 0
 }

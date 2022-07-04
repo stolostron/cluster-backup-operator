@@ -127,7 +127,8 @@ func prepareImportedClusters(ctx context.Context,
 	if err := c.List(ctx, managedClusters, &client.ListOptions{}); err == nil {
 		for i := range managedClusters.Items {
 			managedCluster := managedClusters.Items[i]
-			if managedCluster.Name == "local-cluster" {
+			if managedCluster.Name == "local-cluster" ||
+				isHiveCreatedCluster(ctx, c, managedCluster.Name) {
 				continue
 			}
 			// create managedservice addon if not available
