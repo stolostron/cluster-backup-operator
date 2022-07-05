@@ -20,12 +20,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -411,9 +409,7 @@ func (r *RestoreReconciler) postRestoreActivation(
 			}
 		}
 		if isManagedClusterAvailable {
-			logger.Info(
-				"managed cluster already available " + managedCluster.Name,
-			)
+			logger.Info("managed cluster already available " + managedCluster.Name)
 			continue
 		}
 
@@ -450,9 +446,7 @@ func (r *RestoreReconciler) postRestoreActivation(
 					)
 					continue
 				}
-				logger.Info(
-					"deleted auto-import-secret from namespace " + managedCluster.Name,
-				)
+				logger.Info("deleted auto-import-secret from namespace " + managedCluster.Name)
 			} else {
 				// auto-import-secret was presented and is not from a previous restore activation
 				// skip creation of an auto-import-secret for this managed cluster
@@ -460,52 +454,8 @@ func (r *RestoreReconciler) postRestoreActivation(
 			}
 		}
 
-		// find MSA secrets in the namespace of this managed cluster
-		secrets := getMSASecrets(ctx, r.Client, managedCluster.Name)
-		if len(secrets) == 0 {
-			logger.Info(
-				"did not find any MSA secret in namespace " + managedCluster.Name,
-			)
-			continue
-		}
-
-		accessToken := ""
-		// go through MSA secrets and try to find one having a valid token
-		for s := range secrets {
-			secret := secrets[s]
-			annotations := secret.GetAnnotations()
-			if annotations == nil {
-				continue
-			}
-			tokenExpiry := annotations["expirationTimestamp"]
-			if tokenExpiry == "" {
-				continue
-			}
-			expiryTime, err := time.Parse(time.RFC3339, tokenExpiry)
-			if err != nil || expiryTime.IsZero() {
-				logger.Info(
-					"Failed to parse expirationTimestamp annotation for secret " + secret.Name,
-				)
-				continue
-			}
-			now := time.Now().In(time.UTC)
-			if expiryTime.After(now) {
-				err = yaml.Unmarshal(secret.Data["token"], &accessToken)
-				if err != nil {
-					logger.Error(
-						err,
-						fmt.Sprintf(
-							"Failed to unmarshal token from secret %s in namespace : %s",
-							secret.Name,
-							managedCluster.Name,
-						),
-					)
-					continue
-				}
-				break
-			}
-		}
-
+		// find MSA secret with a valid token in the namespace of this managed cluster
+		accessToken := findValidMSAToken(ctx, r.Client, managedCluster.Name)
 		if accessToken == "" {
 			logger.Info(
 				"did not find any MSA secret with valid token for managed cluster " + managedCluster.Name,
@@ -522,9 +472,7 @@ func (r *RestoreReconciler) postRestoreActivation(
 				"managed cluster", managedCluster.Name,
 			)
 		}
-		logger.Info(
-			"created auto-import-secret for managed cluster " + managedCluster.Name,
-		)
+		logger.Info("created auto-import-secret for managed cluster " + managedCluster.Name)
 	}
 }
 
