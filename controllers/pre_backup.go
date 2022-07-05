@@ -48,6 +48,7 @@ const (
 	backup_label     = "msa"
 	addon_work_label = "open-cluster-management.io/addon-name-work"
 	addon_label      = "open-cluster-management.io/addon-name-work"
+	role_name        = "klusterlet"
 
 	manifest_work_name = "addon-" + msa_addon + "-import"
 	defaultTTL         = 720
@@ -60,7 +61,7 @@ const (
 		"roleRef": {
 			"apiGroup": "rbac.authorization.k8s.io",
 			"kind": "ClusterRole",
-			"name": "cluster-admin"
+			"name": "%s"
 		},
 		"subjects": [
 			{
@@ -208,7 +209,7 @@ func prepareImportedClusters(ctx context.Context,
 
 }
 
-// create manifest work to push the cluster-admin role binding to the managed cluster
+// create manifest work to push the import user role binding to the managed cluster
 func createManifestWork(
 	ctx context.Context,
 	c client.Client,
@@ -235,7 +236,7 @@ func createManifestWork(
 				manifestWork.Labels = map[string]string{addon_work_label: msa_addon}
 
 				manifest := &workv1.Manifest{}
-				manifest.Raw = []byte(fmt.Sprintf(manifestwork, msa_service_name))
+				manifest.Raw = []byte(fmt.Sprintf(manifestwork, role_name, msa_service_name))
 
 				manifestWork.Spec.Workload.Manifests = []workv1.Manifest{
 					*manifest,
