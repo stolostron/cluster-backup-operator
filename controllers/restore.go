@@ -40,9 +40,9 @@ import (
 )
 
 const (
-	activateAutoImportSecretLabel = "cluster.open-cluster-management.io/restore-auto-import-secret"
-	keepAutoImportSecretLabel     = "managedcluster-import-controller.open-cluster-management.io/keeping-auto-import-secret"
-	autoImportSecretName          = "auto-import-secret"
+	activateAutoImportSecretLabel = "cluster.open-cluster-management.io/restore-auto-import-secret"                          // #nosec G101 -- This is a false positive
+	keepAutoImportSecretLabel     = "managedcluster-import-controller.open-cluster-management.io/keeping-auto-import-secret" // #nosec G101 -- This is a false positive
+	autoImportSecretName          = "auto-import-secret"                                                                     // #nosec G101 -- This is a false positive
 )
 
 func isVeleroRestoreFinished(restore *veleroapi.Restore) bool {
@@ -374,7 +374,7 @@ func (r *RestoreReconciler) prepareRestoreForBackup(
 func (r *RestoreReconciler) postRestoreActivation(
 	ctx context.Context,
 	acmRestore *v1beta1.Restore,
-) error {
+) {
 	logger := log.FromContext(ctx)
 
 	logger.Info("enter postRestoreActivation for ACM restore " + acmRestore.Name)
@@ -391,7 +391,7 @@ func (r *RestoreReconciler) postRestoreActivation(
 	err := r.List(ctx, managedClusters, &client.ListOptions{})
 	if err != nil {
 		logger.Error(err, "Failed to list managed clusters for post restore activation")
-		return err
+		return
 	}
 	// loop through all managed clusters and try to create auto-import-secret for each
 	for i := range managedClusters.Items {
@@ -411,6 +411,9 @@ func (r *RestoreReconciler) postRestoreActivation(
 			}
 		}
 		if isManagedClusterAvailable {
+			logger.Info(
+				"managed cluster already available " + managedCluster.Name,
+			)
 			continue
 		}
 
@@ -523,8 +526,6 @@ func (r *RestoreReconciler) postRestoreActivation(
 			"created auto-import-secret for managed cluster " + managedCluster.Name,
 		)
 	}
-
-	return nil
 }
 
 // check if there is any active resource on this cluster
