@@ -460,6 +460,9 @@ func (r *RestoreReconciler) postRestoreActivation(
 		// find MSA secrets in the namespace of this managed cluster
 		secrets := getMSASecrets(ctx, r.Client, managedCluster.Name)
 		if len(secrets) == 0 {
+			logger.Info(
+				"did not find any MSA secret in namespace " + managedCluster.Name,
+			)
 			continue
 		}
 
@@ -516,6 +519,9 @@ func (r *RestoreReconciler) postRestoreActivation(
 				"managed cluster", managedCluster.Name,
 			)
 		}
+		logger.Info(
+			"created auto-import-secret for managed cluster " + managedCluster.Name,
+		)
 	}
 
 	return nil
