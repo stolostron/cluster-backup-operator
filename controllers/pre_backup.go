@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
@@ -49,6 +50,8 @@ const (
 	addon_work_label = "open-cluster-management.io/addon-name-work"
 	addon_label      = "open-cluster-management.io/addon-name-work"
 	role_name        = "klusterlet"
+	msa_api          = "authentication.open-cluster-management.io/v1alpha1"
+	msa_kind         = "ManagedServiceAccount"
 
 	manifest_work_name = "addon-" + msa_addon + "-import"
 	defaultTTL         = 720
@@ -83,6 +86,9 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 ) {
 	logger := log.FromContext(ctx)
 
+	// check if user has checked the UseManagedServiceAccount option
+	prepareMSA := backupSchedule.Spec.UseManagedServiceAccount
+
 	// check if ManagedServiceAccount CRD exists,
 	// meaning the managedservice account option is enabled on MCH
 	msaKind := schema.GroupKind{
@@ -95,7 +101,11 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		logger.Info("ManagedServiceAccounts is enabled, generate MSA accounts if needed")
 		dr = r.DynamicClient.Resource(msaMapping.Resource)
 		if dr != nil {
-			prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule)
+			if !prepareMSA {
+				prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule)
+			} else {
+				cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping)
+			}
 		}
 	}
 
@@ -103,9 +113,78 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 	updateAISecrets(ctx, r.Client)
 	updateMetalSecrets(ctx, r.Client)
 
-	if err == nil && dr != nil {
-		// managedserviceaccount is enabled
+	if prepareMSA && err == nil && dr != nil {
+		// managedserviceaccount is enabled, add backup labels
 		updateMSAResources(ctx, r.Client, dr)
+	}
+}
+
+// if UseManagedServiceAccount is not set, clean up all MSA accounts
+// created by the backup controller
+func cleanupMSAForImportedClusters(
+	ctx context.Context,
+	c client.Client,
+	dr dynamic.NamespaceableResourceInterface,
+	msaMapping *meta.RESTMapping,
+) {
+	logger := log.FromContext(ctx)
+
+	deletePolicy := metav1.DeletePropagationForeground
+	delOptions := metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}
+	listOptions := v1.ListOptions{LabelSelector: fmt.Sprintf("%s in (%s)", msa_label, msa_service_name)}
+	if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
+		for i := range dynamiclist.Items {
+			deleteDynamicResource(
+				ctx,
+				msaMapping,
+				dr,
+				dynamiclist.Items[i],
+				delOptions,
+				[]string{},
+			)
+		}
+	}
+
+	// delete managedclusters addons
+	addons := &addonv1alpha1.ManagedClusterAddOnList{}
+	label := labels.SelectorFromSet(
+		map[string]string{msa_label: msa_service_name})
+	if err := c.List(ctx, addons, &client.ListOptions{LabelSelector: label}); err == nil {
+
+		for i := range addons.Items {
+			if err := c.Delete(ctx, &addons.Items[i]); err != nil {
+				logger.Error(
+					err,
+					fmt.Sprintf("failed to delete the addon %s", addons.Items[i].Name),
+				)
+			} else {
+				logger.Info(
+					fmt.Sprintf("deleted addon %s", addons.Items[i].Name),
+				)
+			}
+		}
+	}
+
+	// delete manifest work
+	manifestWorkList := &workv1.ManifestWorkList{}
+	label = labels.SelectorFromSet(
+		map[string]string{addon_work_label: msa_addon})
+	if err := c.List(ctx, manifestWorkList, &client.ListOptions{LabelSelector: label}); err == nil {
+
+		for i := range manifestWorkList.Items {
+			if err := c.Delete(ctx, &manifestWorkList.Items[i]); err != nil {
+				logger.Error(
+					err,
+					fmt.Sprintf("failed to delete manifestwork %s", manifestWorkList.Items[i].Name),
+				)
+			} else {
+				logger.Info(
+					fmt.Sprintf("deleted manifestwork %s", manifestWorkList.Items[i].Name),
+				)
+			}
+		}
 	}
 }
 
@@ -151,6 +230,9 @@ func prepareImportedClusters(ctx context.Context,
 				msaAddon.Name = msa_addon
 				msaAddon.Namespace = managedCluster.Name
 				msaAddon.Spec.InstallNamespace = installNamespace
+				labels := map[string]string{
+					msa_label: msa_service_name}
+				msaAddon.SetLabels(labels)
 
 				err := c.Create(ctx, msaAddon, &client.CreateOptions{})
 				if err != nil {
@@ -167,15 +249,20 @@ func prepareImportedClusters(ctx context.Context,
 			// in the managed cluster namespace
 			if len(getMSASecrets(ctx, c, managedCluster.Name)) == 0 {
 
-				tokenValidity := fmt.Sprintf("%vh0m0s", defaultTTL*3)
+				tokenValidity := fmt.Sprintf("%vh0m0s", defaultTTL*2)
+				if backupSchedule.Spec.ManagedServiceAccountTTL.Duration != 0 {
+					// set user defined token TTL
+					tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.ManagedServiceAccountTTL.Duration)
+				}
 				if backupSchedule.Spec.VeleroTTL.Duration != 0 {
-					tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.VeleroTTL.Duration*3)
+					// use backup schedule TTL
+					tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.VeleroTTL.Duration*2)
 				}
 				secretsGeneratedNow = true
 				msaRC := &unstructured.Unstructured{}
 				msaRC.SetUnstructuredContent(map[string]interface{}{
-					"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
-					"kind":       "ManagedServiceAccount",
+					"apiVersion": msa_api,
+					"kind":       msa_kind,
 					"metadata": map[string]interface{}{
 						"name":      msa_service_name,
 						"namespace": managedCluster.Name,
