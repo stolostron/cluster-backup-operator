@@ -153,6 +153,9 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 
+	// add any missing labels and create any resources required by the backup and restore process
+	r.prepareForBackup(ctx, backupSchedule)
+
 	// enforce backup collision only if this schedule was NOT created now ( current time - creation > 5)
 	// in this case ignore any collisions since the user had initiated this backup
 	if len(veleroScheduleList.Items) > 0 &&
@@ -368,9 +371,6 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		// swap resources and resourcesGeneric, so resources is the last backup to be created
 		swapF(4, 5)
 	}
-
-	// add any missing labels and create any resources required by the backup and restore process
-	r.prepareForBackup(ctx, backupSchedule)
 
 	// loop through schedule names to create a Velero schedule per type
 	for _, scheduleKey := range scheduleKeys {
