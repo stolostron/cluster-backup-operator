@@ -38,9 +38,8 @@ import (
 )
 
 const (
-	activateAutoImportSecretLabel = "cluster.open-cluster-management.io/restore-auto-import-secret"                          // #nosec G101 -- This is a false positive
-	keepAutoImportSecretLabel     = "managedcluster-import-controller.open-cluster-management.io/keeping-auto-import-secret" // #nosec G101 -- This is a false positive
-	autoImportSecretName          = "auto-import-secret"                                                                     // #nosec G101 -- This is a false positive
+	activateAutoImportSecretLabel = "cluster.open-cluster-management.io/restore-auto-import-secret" // #nosec G101 -- This is a false positive
+	autoImportSecretName          = "auto-import-secret"                                            // #nosec G101 -- This is a false positive
 )
 
 func isVeleroRestoreFinished(restore *veleroapi.Restore) bool {
@@ -488,10 +487,6 @@ func createAutoImportSecret(
 	autoImportSecret.Name = autoImportSecretName
 	autoImportSecret.Namespace = namespace
 	autoImportSecret.Type = corev1.SecretTypeOpaque
-	// set annotations
-	annotations := make(map[string]string)
-	annotations[keepAutoImportSecretLabel] = ""
-	autoImportSecret.SetAnnotations(annotations)
 	// set labels
 	labels := make(map[string]string)
 	labels[activateAutoImportSecretLabel] = "true"
