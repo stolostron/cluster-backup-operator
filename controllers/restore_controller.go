@@ -195,15 +195,11 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		client.InNamespace(req.Namespace),
 		client.MatchingFields{restoreOwnerKey: req.Name},
 	); err != nil {
-
 		msg := "unable to list velero restores for restore" +
 			"namespace:" + req.Namespace +
 			"name:" + req.Name
+		restoreLogger.Error(err, msg)
 
-		restoreLogger.Error(
-			err,
-			msg,
-		)
 		return ctrl.Result{}, err
 	}
 
@@ -218,10 +214,8 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				req.Name,
 				err,
 			)
-			restoreLogger.Error(
-				err,
-				msg,
-			)
+			restoreLogger.Error(err, msg)
+
 			// set error status for all errors from initVeleroRestores
 			restore.Status.Phase = v1beta1.RestorePhaseError
 			restore.Status.LastMessage = err.Error()
@@ -232,12 +226,18 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	} else {
 		setRestorePhase(&veleroRestoreList, restore)
+
+		if (restore.Status.Phase == v1beta1.RestorePhaseFinished ||
+			restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors) &&
+			*restore.Spec.VeleroManagedClustersBackupName != skipRestoreStr {
+			// this cluster was activated so try to auto import pending managed clusters
+			r.postRestoreActivation(ctx, restore)
+		}
 	}
 
 	if restore.Spec.SyncRestoreWithNewBackups && !isValidSync {
 		restore.Status.LastMessage = restore.Status.LastMessage +
-			" ; SyncRestoreWithNewBackups option is ignored because " +
-			msg
+			" ; SyncRestoreWithNewBackups option is ignored because " + msg
 	}
 
 	err = r.Client.Status().Update(ctx, restore)
