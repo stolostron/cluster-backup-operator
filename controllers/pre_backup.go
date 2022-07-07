@@ -257,8 +257,8 @@ func prepareImportedClusters(ctx context.Context,
 			}
 
 			//check if MSA exists
-			if msaUnstructuredObj, err := dr.Namespace(managedCluster.Name).Get(ctx, msa_service_name, v1.GetOptions{}); err == nil {
-				updated, err := updateMSAToken(ctx, dr, msaUnstructuredObj, managedCluster.Name, tokenValidity)
+			if obj, err := dr.Namespace(managedCluster.Name).Get(ctx, msa_service_name, v1.GetOptions{}); err == nil {
+				updated, err := updateMSAToken(ctx, dr, obj, managedCluster.Name, tokenValidity)
 				if err != nil {
 					logger.Info(err.Error(), "Failed to update MSA")
 				}
@@ -321,21 +321,22 @@ func updateMSAToken(
 	iter := reflect.ValueOf(specInfo).MapRange()
 	for iter.Next() {
 		key := iter.Key().Interface()
-		if key == "rotation" {
-			rotationValues := iter.Value().Interface().(map[string]interface{})
-			if rotationValues != nil {
-				iterRotation := reflect.ValueOf(rotationValues).MapRange()
-				for iterRotation.Next() {
-					if iterRotation.Key().String() == "validity" &&
-						iterRotation.Value().Interface().(string) != tokenValidity {
-						//update MSA validity with the latest token value
-						if _, err := dr.Namespace(namespaceName).Patch(ctx, msa_service_name,
-							types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
-							return false, err
-						}
-						return true, nil
-					}
-				}
+		if key != "rotation" {
+			continue
+		}
+		rotationValues := iter.Value().Interface().(map[string]interface{})
+		if rotationValues == nil {
+			return false, nil
+		}
+		iterRotation := reflect.ValueOf(rotationValues).MapRange()
+		for iterRotation.Next() {
+			if iterRotation.Key().String() == "validity" &&
+				iterRotation.Value().Interface().(string) != tokenValidity {
+				//update MSA validity with the latest token value
+				_, err := dr.Namespace(namespaceName).Patch(ctx, msa_service_name,
+					types.JSONPatchType, []byte(patch), v1.PatchOptions{})
+
+				return true, err
 			}
 		}
 	}
