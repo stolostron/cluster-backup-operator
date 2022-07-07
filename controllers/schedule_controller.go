@@ -185,6 +185,9 @@ func (r *BackupScheduleReconciler) Reconcile(
 			}
 
 			return ctrl.Result{}, errors.Wrap(err, msg)
+		} else {
+			// add any missing labels and create any resources required by the backup and restore process
+			r.prepareForBackup(ctx, backupSchedule)
 		}
 	}
 	// no velero schedules, so create them

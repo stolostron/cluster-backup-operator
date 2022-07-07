@@ -87,7 +87,7 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 	logger := log.FromContext(ctx)
 
 	// check if user has checked the UseManagedServiceAccount option
-	prepareMSA := backupSchedule.Spec.UseManagedServiceAccount
+	isMSAEnabled := backupSchedule.Spec.UseManagedServiceAccount
 
 	// check if ManagedServiceAccount CRD exists,
 	// meaning the managedservice account option is enabled on MCH
@@ -101,7 +101,7 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		logger.Info("ManagedServiceAccounts is enabled, generate MSA accounts if needed")
 		dr = r.DynamicClient.Resource(msaMapping.Resource)
 		if dr != nil {
-			if !prepareMSA {
+			if isMSAEnabled {
 				prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule)
 			} else {
 				cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping)
@@ -113,7 +113,7 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 	updateAISecrets(ctx, r.Client)
 	updateMetalSecrets(ctx, r.Client)
 
-	if prepareMSA && err == nil && dr != nil {
+	if isMSAEnabled && err == nil && dr != nil {
 		// managedserviceaccount is enabled, add backup labels
 		updateMSAResources(ctx, r.Client, dr)
 	}
