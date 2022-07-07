@@ -153,9 +153,6 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 
-	// add any missing labels
-	prepareForBackup(ctx, r.Client)
-
 	// enforce backup collision only if this schedule was NOT created now ( current time - creation > 5)
 	// in this case ignore any collisions since the user had initiated this backup
 	if len(veleroScheduleList.Items) > 0 &&
@@ -188,6 +185,9 @@ func (r *BackupScheduleReconciler) Reconcile(
 			}
 
 			return ctrl.Result{}, errors.Wrap(err, msg)
+		} else {
+			// add any missing labels
+			prepareForBackup(ctx, r.Client)
 		}
 	}
 	// no velero schedules, so create them
