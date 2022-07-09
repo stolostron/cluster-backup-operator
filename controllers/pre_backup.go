@@ -204,13 +204,13 @@ func prepareImportedClusters(ctx context.Context,
 	secretsGeneratedNow := false
 
 	tokenValidity := fmt.Sprintf("%vh0m0s", defaultTTL*2)
-	if backupSchedule.Spec.ManagedServiceAccountTTL.Duration != 0 {
-		// set user defined token TTL
-		tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.ManagedServiceAccountTTL.Duration)
-	}
 	if backupSchedule.Spec.VeleroTTL.Duration != 0 {
 		// use backup schedule TTL
 		tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.VeleroTTL.Duration*2)
+	}
+	if backupSchedule.Spec.ManagedServiceAccountTTL.Duration != 0 {
+		// set user defined token TTL
+		tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.ManagedServiceAccountTTL.Duration)
 	}
 
 	// get all managed clusters
@@ -438,33 +438,12 @@ func updateMSAResources(
 	for s := range secrets {
 		secret := secrets[s]
 
-		secretAnnotations := secret.GetAnnotations()
-		if secretAnnotations == nil {
-			secretAnnotations = map[string]string{}
-		}
-
 		secretTimestampUpdated := false
 		// add token expiration time from parent MSA resource
-		if unstructuredObj, err := dr.Namespace(secret.Namespace).Get(ctx, secret.Name, v1.GetOptions{}); err == nil {
-			// look for the expiration timestamp under status
-			statusInfo := unstructuredObj.Object["status"]
-			if statusInfo == nil {
-				continue
-			}
-			iter := reflect.ValueOf(statusInfo).MapRange()
-			for iter.Next() {
-				key := iter.Key().Interface()
-				if key != "expirationTimestamp" {
-					continue
-				}
-				// set expirationTimestamp on the secret
-				secretTimestampUpdated = secretAnnotations["expirationTimestamp"] != iter.Value().Interface().(string)
-				secretAnnotations["expirationTimestamp"] = iter.Value().Interface().(string)
-				secret.SetAnnotations(secretAnnotations)
-				break
-			}
+		if unstructuredObj, err := dr.Namespace(secret.Namespace).Get(ctx, secret.Name,
+			v1.GetOptions{}); err == nil {
+			secretTimestampUpdated = updateMSASecretTimestamp(ctx, dr, unstructuredObj, secret)
 		}
-
 		backupLabelSet := updateSecret(ctx, c, secret,
 			backupCredsClusterLabel,
 			backup_label, false)
@@ -475,6 +454,42 @@ func updateMSAResources(
 			}
 		}
 	}
+}
+
+// find the MSA account under the secret namespace and use the
+// MSA status expiration info to annotate the secret
+func updateMSASecretTimestamp(
+	ctx context.Context,
+	dr dynamic.NamespaceableResourceInterface,
+	unstructuredObj *unstructured.Unstructured,
+	secret corev1.Secret) bool {
+
+	secretTimestampUpdated := false
+	// look for the expiration timestamp under status
+	statusInfo := unstructuredObj.Object["status"]
+	if statusInfo == nil {
+		return secretTimestampUpdated
+	}
+
+	secretAnnotations := secret.GetAnnotations()
+	if secretAnnotations == nil {
+		secretAnnotations = map[string]string{}
+	}
+
+	iter := reflect.ValueOf(statusInfo).MapRange()
+	for iter.Next() {
+		key := iter.Key().Interface()
+		if key != "expirationTimestamp" {
+			continue
+		}
+		// set expirationTimestamp on the secret
+		secretTimestampUpdated = secretAnnotations["expirationTimestamp"] != iter.Value().Interface().(string)
+		secretAnnotations["expirationTimestamp"] = iter.Value().Interface().(string)
+		secret.SetAnnotations(secretAnnotations)
+	}
+
+	return secretTimestampUpdated
+
 }
 
 // prepare hive cluster claim and cluster pool

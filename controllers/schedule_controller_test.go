@@ -591,6 +591,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					VeleroSchedule:           backupSchedule,
 					VeleroTTL:                metav1.Duration{Duration: time.Hour * 72},
 					UseManagedServiceAccount: true,
+					ManagedServiceAccountTTL: metav1.Duration{Duration: time.Hour * 90},
 				},
 			}
 			Expect(k8sClient.Create(ctx, &rhacmBackupSchedule)).Should(Succeed())
