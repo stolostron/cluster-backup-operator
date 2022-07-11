@@ -3,6 +3,8 @@
 # 
 # veleroSchedule - cron job to start new acm backups
 # useManagedServiceAccount - if set to true creates MSA accounts for imported clusters
+# use managedServiceAccountTTL spec property if you want to overwrite the expiration time for the accont token
+# if managedServiceAccountTTL is not used, it defaults to 2*veleroTtl
 #
 apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: BackupSchedule
