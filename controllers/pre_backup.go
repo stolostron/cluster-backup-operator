@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -56,24 +57,24 @@ const (
 	manifest_work_name = "addon-" + msa_addon + "-import"
 	defaultTTL         = 720
 	manifestwork       = `{
-		"apiVersion": "rbac.authorization.k8s.io/v1",
-		"kind": "ClusterRoleBinding",
-		"metadata": {
-			"name": "managedserviceaccount-import"
-		},
-		"roleRef": {
-			"apiGroup": "rbac.authorization.k8s.io",
-			"kind": "ClusterRole",
-			"name": "%s"
-		},
-		"subjects": [
-			{
-				"kind": "ServiceAccount",
-				"name": "%s",
-				"namespace": "open-cluster-management-agent-addon"
-			}
-		]
-	}`
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "ClusterRoleBinding",
+        "metadata": {
+            "name": "managedserviceaccount-import"
+        },
+        "roleRef": {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "ClusterRole",
+            "name": "%s"
+        },
+        "subjects": [
+            {
+                "kind": "ServiceAccount",
+                "name": "%s",
+                "namespace": "open-cluster-management-agent-addon"
+            }
+        ]
+    }`
 )
 
 // the prepareForBackup task is executed before each run of a backup schedule
@@ -202,6 +203,16 @@ func prepareImportedClusters(ctx context.Context,
 
 	secretsGeneratedNow := false
 
+	tokenValidity := fmt.Sprintf("%vh0m0s", defaultTTL*2)
+	if backupSchedule.Spec.VeleroTTL.Duration != 0 {
+		// use backup schedule TTL
+		tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.VeleroTTL.Duration*2)
+	}
+	if backupSchedule.Spec.ManagedServiceAccountTTL.Duration != 0 {
+		// set user defined token TTL
+		tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.ManagedServiceAccountTTL.Duration)
+	}
+
 	// get all managed clusters
 	managedClusters := &clusterv1.ManagedClusterList{}
 	if err := c.List(ctx, managedClusters, &client.ListOptions{}); err == nil {
@@ -245,19 +256,17 @@ func prepareImportedClusters(ctx context.Context,
 				}
 			}
 
-			// create ManagedServiceAccount if msa secret is not available
-			// in the managed cluster namespace
-			if len(getMSASecrets(ctx, c, managedCluster.Name)) == 0 {
-
-				tokenValidity := fmt.Sprintf("%vh0m0s", defaultTTL*2)
-				if backupSchedule.Spec.ManagedServiceAccountTTL.Duration != 0 {
-					// set user defined token TTL
-					tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.ManagedServiceAccountTTL.Duration)
+			//check if MSA exists
+			if obj, err := dr.Namespace(managedCluster.Name).Get(ctx, msa_service_name, v1.GetOptions{}); err == nil {
+				updated, err := updateMSAToken(ctx, dr, obj, managedCluster.Name, tokenValidity)
+				if err != nil {
+					logger.Info(err.Error(), "Failed to update MSA")
 				}
-				if backupSchedule.Spec.VeleroTTL.Duration != 0 {
-					// use backup schedule TTL
-					tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.VeleroTTL.Duration*2)
+				if updated {
+					logger.Info(fmt.Sprintf("updated token validity for cluster %s", managedCluster.Name))
 				}
+			} else {
+				// create ManagedServiceAccount in the managed cluster namespace
 				secretsGeneratedNow = true
 				msaRC := &unstructured.Unstructured{}
 				msaRC.SetUnstructuredContent(map[string]interface{}{
@@ -294,6 +303,44 @@ func prepareImportedClusters(ctx context.Context,
 		time.Sleep(2 * time.Second)
 	}
 
+}
+
+func updateMSAToken(
+	ctx context.Context,
+	dr dynamic.NamespaceableResourceInterface,
+	msaUnstructuredObj *unstructured.Unstructured,
+	namespaceName string,
+	tokenValidity string,
+) (bool, error) {
+
+	specInfo := msaUnstructuredObj.Object["spec"]
+	if specInfo == nil {
+		return false, nil
+	}
+	patch := `[ { "op": "replace", "path": "/spec/rotation/validity", "value" : "` + tokenValidity + `" } ]`
+	iter := reflect.ValueOf(specInfo).MapRange()
+	for iter.Next() {
+		key := iter.Key().Interface()
+		if key != "rotation" {
+			continue
+		}
+		rotationValues := iter.Value().Interface().(map[string]interface{})
+		if rotationValues == nil {
+			return false, nil
+		}
+		iterRotation := reflect.ValueOf(rotationValues).MapRange()
+		for iterRotation.Next() {
+			if iterRotation.Key().String() == "validity" &&
+				iterRotation.Value().Interface().(string) != tokenValidity {
+				//update MSA validity with the latest token value
+				_, err := dr.Namespace(namespaceName).Patch(ctx, msa_service_name,
+					types.JSONPatchType, []byte(patch), v1.PatchOptions{})
+
+				return true, err
+			}
+		}
+	}
+	return false, nil
 }
 
 // create manifest work to push the import user role binding to the managed cluster
@@ -391,33 +438,12 @@ func updateMSAResources(
 	for s := range secrets {
 		secret := secrets[s]
 
-		secretAnnotations := secret.GetAnnotations()
-		if secretAnnotations == nil {
-			secretAnnotations = map[string]string{}
-		}
-
 		secretTimestampUpdated := false
 		// add token expiration time from parent MSA resource
-		if unstructuredObj, err := dr.Namespace(secret.Namespace).Get(ctx, secret.Name, v1.GetOptions{}); err == nil {
-			// look for the expiration timestamp under status
-			statusInfo := unstructuredObj.Object["status"]
-			if statusInfo == nil {
-				continue
-			}
-			iter := reflect.ValueOf(statusInfo).MapRange()
-			for iter.Next() {
-				key := iter.Key().Interface()
-				if key != "expirationTimestamp" {
-					continue
-				}
-				// set expirationTimestamp on the secret
-				secretTimestampUpdated = secretAnnotations["expirationTimestamp"] != iter.Value().Interface().(string)
-				secretAnnotations["expirationTimestamp"] = iter.Value().Interface().(string)
-				secret.SetAnnotations(secretAnnotations)
-				break
-			}
+		if unstructuredObj, err := dr.Namespace(secret.Namespace).Get(ctx, secret.Name,
+			v1.GetOptions{}); err == nil {
+			secretTimestampUpdated = updateMSASecretTimestamp(ctx, dr, unstructuredObj, secret)
 		}
-
 		backupLabelSet := updateSecret(ctx, c, secret,
 			backupCredsClusterLabel,
 			backup_label, false)
@@ -428,6 +454,42 @@ func updateMSAResources(
 			}
 		}
 	}
+}
+
+// find the MSA account under the secret namespace and use the
+// MSA status expiration info to annotate the secret
+func updateMSASecretTimestamp(
+	ctx context.Context,
+	dr dynamic.NamespaceableResourceInterface,
+	unstructuredObj *unstructured.Unstructured,
+	secret corev1.Secret) bool {
+
+	secretTimestampUpdated := false
+	// look for the expiration timestamp under status
+	statusInfo := unstructuredObj.Object["status"]
+	if statusInfo == nil {
+		return secretTimestampUpdated
+	}
+
+	secretAnnotations := secret.GetAnnotations()
+	if secretAnnotations == nil {
+		secretAnnotations = map[string]string{}
+	}
+
+	iter := reflect.ValueOf(statusInfo).MapRange()
+	for iter.Next() {
+		key := iter.Key().Interface()
+		if key != "expirationTimestamp" {
+			continue
+		}
+		// set expirationTimestamp on the secret
+		secretTimestampUpdated = secretAnnotations["expirationTimestamp"] != iter.Value().Interface().(string)
+		secretAnnotations["expirationTimestamp"] = iter.Value().Interface().(string)
+		secret.SetAnnotations(secretAnnotations)
+	}
+
+	return secretTimestampUpdated
+
 }
 
 // prepare hive cluster claim and cluster pool
