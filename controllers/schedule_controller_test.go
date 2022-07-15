@@ -616,17 +616,6 @@ var _ = Describe("BackupSchedule controller", func() {
 				return err == nil && baremetalSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "baremetal"
 			}, timeout, interval).Should(BeTrue())
 
-			// validate auto-import secret secret has backup annotation
-			// if the UseManagedServiceAccount is set to true
-			autoImportSecret := corev1.Secret{}
-			Eventually(func() bool {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      "auto-import",
-					Namespace: clusterPoolNSName,
-				}, &autoImportSecret)
-				return err == nil && autoImportSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "msa"
-			}, timeout, interval).Should(Equal(rhacmBackupSchedule.Spec.UseManagedServiceAccount))
-
 			// validate AI secret has backup annotation
 			secretAI := corev1.Secret{}
 			Eventually(func() bool {
