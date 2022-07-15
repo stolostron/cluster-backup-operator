@@ -36,11 +36,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-const (
-	activateAutoImportSecretLabel = "cluster.open-cluster-management.io/restore-auto-import-secret" // #nosec G101 -- This is a false positive
-	autoImportSecretName          = "auto-import-secret"                                            // #nosec G101 -- This is a false positive
-)
-
 func isVeleroRestoreFinished(restore *veleroapi.Restore) bool {
 	switch {
 	case restore == nil:
