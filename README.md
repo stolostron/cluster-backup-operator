@@ -148,7 +148,8 @@ Refer to [Velero Resource Requests and Limits Customization](https://github.com/
 
 
 ### Protecting data using Server-Side Encryption
-Server-side encryption is the encryption of data at its destination by the application or service that receives it. Our backup mechanism itself does not encrypt data while in-transit (as it travels to and from backup storage location) or at rest (while it is stored on disks at backup storage location), instead it relies on the native mechanisms in the object and snapshot systems.
+Server-side encryption is the encryption of data at its destination by the application or service that receives it. Our backup mechanism itself does not encrypt data while in-transit (as it travels to and from backup storage location) or at rest (while it is stored on disks at backup storage location), instead it relies on the native mechanisms in the object and snapshot systems. <br><br>
+It is strongly recommended to encrypt the data at its destination using the available backup storage server-side encryption. The backup contains resources such as credentials and configuration files that should be encrypted when stored outside of the hub cluster.
 
 For server-side encryption using AWS provider, you can use `serverSideEncryption` and `kmsKeyId` configurations as explained in [this sample AWS BackupStorageLocation](https://github.com/vmware-tanzu/velero-plugin-for-aws/blob/main/backupstoragelocation.md).
 The following sample specifies an AWS KMS key ID when setting up the DataProtectionApplication resource:
