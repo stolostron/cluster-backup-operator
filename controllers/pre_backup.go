@@ -44,15 +44,16 @@ import (
 )
 
 const (
-	msa_addon        = "managed-serviceaccount"
-	msa_service_name = "auto-import-account"
-	msa_label        = "authentication.open-cluster-management.io/is-managed-serviceaccount"
-	backup_label     = "msa"
-	addon_work_label = "open-cluster-management.io/addon-name-work"
-	addon_label      = "open-cluster-management.io/addon-name-work"
-	role_name        = "klusterlet"
-	msa_api          = "authentication.open-cluster-management.io/v1alpha1"
-	msa_kind         = "ManagedServiceAccount"
+	msa_addon             = "managed-serviceaccount"
+	msa_service_name      = "auto-import-account"
+	msa_service_name_pair = "auto-import-account-pair"
+	msa_label             = "authentication.open-cluster-management.io/is-managed-serviceaccount"
+	backup_label          = "msa"
+	addon_work_label      = "open-cluster-management.io/addon-name-work"
+	addon_label           = "open-cluster-management.io/addon-name-work"
+	role_name             = "klusterlet"
+	msa_api               = "authentication.open-cluster-management.io/v1alpha1"
+	msa_kind              = "ManagedServiceAccount"
 
 	manifest_work_name = "addon-" + msa_addon + "-import"
 	defaultTTL         = 720
@@ -256,45 +257,19 @@ func prepareImportedClusters(ctx context.Context,
 				}
 			}
 
-			//check if MSA exists
-			if obj, err := dr.Namespace(managedCluster.Name).Get(ctx, msa_service_name, v1.GetOptions{}); err == nil {
-				updated, err := updateMSAToken(ctx, dr, obj, managedCluster.Name, tokenValidity)
-				if err != nil {
-					logger.Info(err.Error(), "Failed to update MSA")
-				}
-				if updated {
-					logger.Info(fmt.Sprintf("updated token validity for cluster %s", managedCluster.Name))
-				}
-			} else {
-				// create ManagedServiceAccount in the managed cluster namespace
-				secretsGeneratedNow = true
-				msaRC := &unstructured.Unstructured{}
-				msaRC.SetUnstructuredContent(map[string]interface{}{
-					"apiVersion": msa_api,
-					"kind":       msa_kind,
-					"metadata": map[string]interface{}{
-						"name":      msa_service_name,
-						"namespace": managedCluster.Name,
-						"labels": map[string]interface{}{
-							backupCredsClusterLabel: backup_label,
-							msa_label:               msa_service_name,
-						},
-					},
-					"spec": map[string]interface{}{
-						"rotation": map[string]interface{}{
-							"validity": tokenValidity,
-							"enabled":  true,
-						},
-					},
-				})
-				// attempt to create managedservice account for auto-import
-				if _, err := dr.Namespace(managedCluster.Name).Create(ctx, msaRC, v1.CreateOptions{}); err != nil {
-					logger.Info(fmt.Sprintf("Failed to create ManagedServiceAccount for cluster =%s, error : %s",
-						managedCluster.Name, err.Error()))
-				}
-				// create ManifestWork to push the role binding
-				createManifestWork(ctx, c, managedCluster.Name)
-			}
+			secretCreatedNowForCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
+				msa_service_name, managedCluster)
+			// create ManagedServiceAccount pair if needed
+			// the pair MSA is used to generate a token at half
+			// the interval of the initial MSA so that any backup will contain
+			// a valid token, either from the initial MSA or pair
+			secretCreatedNowForPairCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
+				msa_service_name_pair, managedCluster)
+
+			secretsGeneratedNow = secretsGeneratedNow ||
+				secretCreatedNowForCluster ||
+				secretCreatedNowForPairCluster
+
 		}
 	}
 
@@ -305,10 +280,120 @@ func prepareImportedClusters(ctx context.Context,
 
 }
 
+// returns true if the pair token needs to be generated now
+// if passed the half duration for the token validity, generate the pair token
+func shouldGeneratePairToken(
+	secrets []corev1.Secret,
+	currentTime time.Time,
+) bool {
+
+	generateMSA := false
+	for s := range secrets {
+		secret := secrets[s]
+
+		if secret.GetAnnotations() == nil ||
+			secret.GetAnnotations()["expirationTimestamp"] == "" ||
+			secret.GetAnnotations()["lastRefreshTimestamp"] == "" {
+			continue
+		}
+
+		expiryTime, err := time.Parse(time.RFC3339, secret.GetAnnotations()["expirationTimestamp"])
+		if err != nil || expiryTime.IsZero() {
+			continue
+		}
+		creationTime, err := time.Parse(time.RFC3339, secret.GetAnnotations()["lastRefreshTimestamp"])
+		if err != nil || creationTime.IsZero() {
+			continue
+		}
+
+		if expiryTime.Sub(creationTime).Milliseconds()/2 <
+			currentTime.In(time.UTC).Sub(creationTime).Milliseconds() {
+			// if passed the half duration for the token validity, generate the pair token
+			generateMSA = true
+			break
+		}
+	}
+
+	return generateMSA
+}
+
+// create ManagedServiceAccount
+func createMSA(
+	ctx context.Context,
+	c client.Client,
+	dr dynamic.NamespaceableResourceInterface,
+	tokenValidity string,
+	name string,
+	managedCluster clusterv1.ManagedCluster,
+) (bool, bool, error) {
+
+	logger := log.FromContext(ctx)
+	secretsGeneratedNow := false
+
+	//check if MSA exists
+	if obj, err := dr.Namespace(managedCluster.Name).Get(ctx, name, v1.GetOptions{}); err == nil {
+		// MSA exists, check if token needs to be updated based on the tokenValidity value
+		secretsUpdated, err := updateMSAToken(ctx, dr, obj, name, managedCluster.Name, tokenValidity)
+		if err != nil {
+			logger.Error(err, "Failed to update MSA")
+		}
+		if secretsUpdated {
+			logger.Info(fmt.Sprintf("updated token validity for cluster %s", managedCluster.Name))
+		}
+		return secretsGeneratedNow, secretsUpdated, err
+	}
+
+	//MSA does not exist
+
+	// initial MSA must be always created
+	generateMSA := name == msa_service_name
+
+	if name == msa_service_name_pair {
+		// for the MSA pair, generate one only when the initial MSA token exists and
+		// current time is half between creation and expiration time for that token
+		generateMSA = shouldGeneratePairToken(getMSASecrets(ctx, c, managedCluster.Name), time.Now())
+	}
+
+	if generateMSA {
+		// create ManagedServiceAccount in the managed cluster namespace
+		secretsGeneratedNow = true
+		msaRC := &unstructured.Unstructured{}
+		msaRC.SetUnstructuredContent(map[string]interface{}{
+			"apiVersion": msa_api,
+			"kind":       msa_kind,
+			"metadata": map[string]interface{}{
+				"name":      name,
+				"namespace": managedCluster.Name,
+				"labels": map[string]interface{}{
+					backupCredsClusterLabel: backup_label,
+					msa_label:               name,
+				},
+			},
+			"spec": map[string]interface{}{
+				"rotation": map[string]interface{}{
+					"validity": tokenValidity,
+					"enabled":  true,
+				},
+			},
+		})
+		// attempt to create managedservice account for auto-import
+		if _, err := dr.Namespace(managedCluster.Name).Create(ctx, msaRC, v1.CreateOptions{}); err != nil {
+			logger.Info(fmt.Sprintf("Failed to create ManagedServiceAccount for cluster =%s, error : %s",
+				managedCluster.Name, err.Error()))
+		}
+		// create ManifestWork to push the role binding
+		createManifestWork(ctx, c, managedCluster.Name)
+	}
+
+	return secretsGeneratedNow, false, nil
+
+}
+
 func updateMSAToken(
 	ctx context.Context,
 	dr dynamic.NamespaceableResourceInterface,
 	msaUnstructuredObj *unstructured.Unstructured,
+	serviceName string,
 	namespaceName string,
 	tokenValidity string,
 ) (bool, error) {
@@ -333,7 +418,7 @@ func updateMSAToken(
 			if iterRotation.Key().String() == "validity" &&
 				iterRotation.Value().Interface().(string) != tokenValidity {
 				//update MSA validity with the latest token value
-				_, err := dr.Namespace(namespaceName).Patch(ctx, msa_service_name,
+				_, err := dr.Namespace(namespaceName).Patch(ctx, serviceName,
 					types.JSONPatchType, []byte(patch), v1.PatchOptions{})
 
 				return true, err
@@ -442,7 +527,7 @@ func updateMSAResources(
 		// add token expiration time from parent MSA resource
 		if unstructuredObj, err := dr.Namespace(secret.Namespace).Get(ctx, secret.Name,
 			v1.GetOptions{}); err == nil {
-			secretTimestampUpdated = updateMSASecretTimestamp(ctx, dr, unstructuredObj, secret)
+			secretTimestampUpdated = updateMSASecretTimestamp(ctx, dr, unstructuredObj, &secret)
 		}
 		backupLabelSet := updateSecret(ctx, c, secret,
 			backupCredsClusterLabel,
@@ -462,9 +547,10 @@ func updateMSASecretTimestamp(
 	ctx context.Context,
 	dr dynamic.NamespaceableResourceInterface,
 	unstructuredObj *unstructured.Unstructured,
-	secret corev1.Secret) bool {
+	secret *corev1.Secret) bool {
 
 	secretTimestampUpdated := false
+	lastRefreshTimestampUpdated := false
 	// look for the expiration timestamp under status
 	statusInfo := unstructuredObj.Object["status"]
 	if statusInfo == nil {
@@ -479,16 +565,29 @@ func updateMSASecretTimestamp(
 	iter := reflect.ValueOf(statusInfo).MapRange()
 	for iter.Next() {
 		key := iter.Key().Interface()
-		if key != "expirationTimestamp" {
-			continue
+		if key == "expirationTimestamp" {
+			// set expirationTimestamp on the secret
+			secretTimestampUpdated = secretAnnotations["expirationTimestamp"] != iter.Value().Interface().(string)
+			secretAnnotations["expirationTimestamp"] = iter.Value().Interface().(string)
+			secret.SetAnnotations(secretAnnotations)
 		}
-		// set expirationTimestamp on the secret
-		secretTimestampUpdated = secretAnnotations["expirationTimestamp"] != iter.Value().Interface().(string)
-		secretAnnotations["expirationTimestamp"] = iter.Value().Interface().(string)
-		secret.SetAnnotations(secretAnnotations)
+		if key == "tokenSecretRef" {
+			// set lastRefreshTimestamp on the secret
+			refMap := iter.Value().Interface().(map[string]interface{})
+			refiter := reflect.ValueOf(refMap).MapRange()
+			for refiter.Next() {
+				key := refiter.Key().Interface().(string)
+				if key == "lastRefreshTimestamp" {
+					lastRefreshTimestampUpdated = secretAnnotations["lastRefreshTimestamp"] != refiter.Value().Interface().(string)
+					secretAnnotations["lastRefreshTimestamp"] = refiter.Value().Interface().(string)
+					secret.SetAnnotations(secretAnnotations)
+					break
+				}
+			}
+		}
 	}
 
-	return secretTimestampUpdated
+	return secretTimestampUpdated || lastRefreshTimestampUpdated
 
 }
 
@@ -640,7 +739,7 @@ func updateSecret(ctx context.Context,
 		logger.Info(msg)
 		if !update {
 			// do not call update now
-			// secret needs refresh
+			// secret does not need refresh
 			return true
 		}
 		if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err != nil {
