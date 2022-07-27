@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -96,6 +97,7 @@ func Test_updateMSAToken(t *testing.T) {
 		dr            dynamic.NamespaceableResourceInterface
 		resource      unstructured.Unstructured
 		namespaceName string
+		name          string
 		validity      string
 	}
 	tests := []struct {
@@ -111,6 +113,7 @@ func Test_updateMSAToken(t *testing.T) {
 				dr:            resInterface,
 				resource:      *obj1,
 				namespaceName: "managed1",
+				name:          msa_service_name,
 				validity:      "20h",
 			},
 			want: true,
@@ -123,6 +126,7 @@ func Test_updateMSAToken(t *testing.T) {
 				dr:            resInterface,
 				resource:      *obj1,
 				namespaceName: "managed1",
+				name:          msa_service_name,
 				validity:      "50h",
 			},
 			want: false,
@@ -135,6 +139,7 @@ func Test_updateMSAToken(t *testing.T) {
 				dr:            resInterface,
 				resource:      *obj2,
 				namespaceName: "managed1",
+				name:          msa_service_name,
 				validity:      "50h",
 			},
 			want: false,
@@ -147,6 +152,7 @@ func Test_updateMSAToken(t *testing.T) {
 				dr:            resInterface,
 				resource:      *obj3,
 				namespaceName: "managed1",
+				name:          msa_service_name,
 				validity:      "50h",
 			},
 			want: false,
@@ -158,6 +164,7 @@ func Test_updateMSAToken(t *testing.T) {
 				tt.args.dr,
 				&tt.args.resource,
 				tt.args.namespaceName,
+				tt.args.name,
 				tt.args.validity); got != tt.want {
 				t.Errorf("deleteDynamicResource() returns = %v, want %v", got, tt.want)
 			}
@@ -168,8 +175,8 @@ func Test_updateMSAToken(t *testing.T) {
 
 func Test_updateMSASecretTimestamp(t *testing.T) {
 
-	obj1 := &unstructured.Unstructured{}
-	obj1.SetUnstructuredContent(map[string]interface{}{
+	objNoStatus := &unstructured.Unstructured{}
+	objNoStatus.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
@@ -185,8 +192,8 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 		},
 	})
 
-	obj2 := &unstructured.Unstructured{}
-	obj2.SetUnstructuredContent(map[string]interface{}{
+	objNoExp := &unstructured.Unstructured{}
+	objNoExp.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
@@ -202,6 +209,10 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 		},
 		"status": map[string]interface{}{
 			"somestatus": "aaa",
+			"tokenSecretRef": map[string]interface{}{
+				"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
+				"name":                 "auto-import-account",
+			},
 		},
 	})
 
@@ -222,11 +233,15 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 		},
 		"status": map[string]interface{}{
 			"somestatus":          "aaa",
-			"expirationTimestamp": "20d",
+			"expirationTimestamp": "2022-07-26T20:13:45Z",
+			"tokenSecretRef": map[string]interface{}{
+				"lastRefreshTimestamp": "2022-07-26T18:13:45Z",
+				"name":                 "bbb",
+			},
 		},
 	})
 
-	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), obj1)
+	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), objNoStatus)
 
 	var res = schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
 		Version:  "v1alpha1",
@@ -238,7 +253,7 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 		ctx    context.Context
 		dr     dynamic.NamespaceableResourceInterface
 		obj    unstructured.Unstructured
-		secret corev1.Secret
+		secret *corev1.Secret
 	}
 	tests := []struct {
 		name string
@@ -250,8 +265,8 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				dr:  resInterface,
-				obj: *obj1,
-				secret: corev1.Secret{
+				obj: *objNoStatus,
+				secret: &corev1.Secret{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "v1",
 						Kind:       "Secret",
@@ -268,8 +283,8 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				dr:  resInterface,
-				obj: *obj2,
-				secret: corev1.Secret{
+				obj: *objNoExp,
+				secret: &corev1.Secret{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "v1",
 						Kind:       "Secret",
@@ -277,6 +292,10 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "auto-import-account",
 						Namespace: "managed1",
+						Annotations: map[string]string{
+							"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
+							"expirationTimestamp":  "2022-08-05T15:25:38Z",
+						},
 					},
 				}},
 			want: false,
@@ -287,7 +306,7 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 				ctx: context.Background(),
 				dr:  resInterface,
 				obj: *obj3,
-				secret: corev1.Secret{
+				secret: &corev1.Secret{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "v1",
 						Kind:       "Secret",
@@ -306,6 +325,144 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 			if got := updateMSASecretTimestamp(tt.args.ctx,
 				tt.args.dr, &tt.args.obj, tt.args.secret); got != tt.want {
 				t.Errorf("updateMSASecretTimestamp() returns = %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+}
+
+func Test_shouldGeneratePairToken(t *testing.T) {
+
+	fourHoursAgo := "2022-07-26T11:25:34Z"
+	nextThreeHours := "2022-07-26T18:25:34Z"
+	nextTenHours := "2022-07-27T04:25:34Z"
+
+	current, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z") //time.Now()
+
+	type args struct {
+		secrets     []corev1.Secret
+		currentTime time.Time
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+
+		{
+			name: "MSA has no secrets",
+			args: args{
+				secrets: []corev1.Secret{},
+			},
+			want: false,
+		},
+		{
+			name: "MSA has secrets but no expirationTimestamp",
+			args: args{
+				secrets: []corev1.Secret{
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "managed1",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
+							},
+						},
+					}}},
+			want: false,
+		},
+		{
+			name: "MSA has secrets with invalid expirationTimestamp",
+			args: args{
+				secrets: []corev1.Secret{
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "managed2",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": "2022-08-05T15:25:38Z",
+								"expirationTimestamp":  "bbb",
+							},
+						},
+					}}},
+			want: false,
+		},
+		{
+			name: "MSA has secrets with invalid lastRefreshTimestamp",
+			args: args{
+				secrets: []corev1.Secret{
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "managed3",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": "2022-08-05T15:25:38Z",
+								"expirationTimestamp":  "aaa",
+							},
+						},
+					}}},
+			want: false,
+		},
+		{
+			name: "MSA has secrets, current time not yet half between last refresh and expiration",
+			args: args{
+				currentTime: current,
+				secrets: []corev1.Secret{
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "managed3",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": fourHoursAgo,
+								"expirationTimestamp":  nextTenHours,
+							},
+						},
+					}}},
+			want: false,
+		},
+		{
+			name: "MSA has secrets, current time pased half between last refresh and expiration",
+			args: args{
+				currentTime: current,
+				secrets: []corev1.Secret{
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "managed6",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": fourHoursAgo,
+								"expirationTimestamp":  nextThreeHours,
+							},
+						},
+					}}},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldGeneratePairToken(tt.args.secrets, tt.args.currentTime); got != tt.want {
+				t.Errorf("shouldGeneratePairToken() returns = %v, want %v", got, tt.want)
 			}
 		})
 	}

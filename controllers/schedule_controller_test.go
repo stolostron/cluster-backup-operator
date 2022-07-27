@@ -206,6 +206,10 @@ var _ = Describe("BackupSchedule controller", func() {
 					Labels: map[string]string{
 						"authentication.open-cluster-management.io/is-managed-serviceaccount": "true",
 					},
+					Annotations: map[string]string{
+						"expirationTimestamp":  "2024-08-05T15:25:34Z",
+						"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
+					},
 				},
 			},
 			{
