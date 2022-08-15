@@ -38,8 +38,8 @@ import (
 )
 
 const (
-	activateAutoImportSecretLabel = "cluster.open-cluster-management.io/restore-auto-import-secret" // #nosec G101 -- This is a false positive
-	autoImportSecretName          = "auto-import-secret"                                            // #nosec G101 -- This is a false positive
+	activateLabel        = "cluster.open-cluster-management.io/msa-secret" // #nosec G101 -- This is a false positive
+	autoImportSecretName = "auto-import-secret"                            // #nosec G101 -- This is a false positive
 )
 
 func isVeleroRestoreFinished(restore *veleroapi.Restore) bool {
@@ -434,7 +434,7 @@ func (r *RestoreReconciler) postRestoreActivation(
 		)
 		if err == nil {
 			labels := secret.GetLabels()
-			if labels != nil && labels[activateAutoImportSecretLabel] == "true" {
+			if labels != nil && labels[activateLabel] == "true" {
 				if err := r.Delete(ctx, secret); err != nil {
 					logger.Error(
 						err,
@@ -489,7 +489,7 @@ func createAutoImportSecret(
 	autoImportSecret.Type = corev1.SecretTypeOpaque
 	// set labels
 	labels := make(map[string]string)
-	labels[activateAutoImportSecretLabel] = "true"
+	labels[activateLabel] = "true"
 	autoImportSecret.SetLabels(labels)
 	// set data
 	stringData := make(map[string]string)
