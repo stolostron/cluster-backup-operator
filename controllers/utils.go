@@ -238,14 +238,12 @@ func isHiveCreatedCluster(
 }
 
 func findValidMSAToken(
-	ctx context.Context,
-	c client.Client,
-	namespace string) string {
+	secrets []corev1.Secret,
+	currentTime time.Time) string {
 
 	accessToken := ""
 
 	// find MSA secrets in this namespace
-	secrets := getMSASecrets(ctx, c, namespace)
 	if len(secrets) == 0 {
 		return accessToken
 	}
@@ -264,10 +262,12 @@ func findValidMSAToken(
 		if err != nil || expiryTime.IsZero() {
 			continue
 		}
-		now := time.Now().In(time.UTC)
-		if expiryTime.After(now) {
+		if expiryTime.After(currentTime) {
 			if err = yaml.Unmarshal(secret.Data["token"], &accessToken); err == nil {
-				break
+				if accessToken != "" {
+					// secret has token value
+					break
+				}
 			}
 		}
 	}

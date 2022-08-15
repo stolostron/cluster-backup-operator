@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
@@ -454,7 +455,8 @@ func (r *RestoreReconciler) postRestoreActivation(
 		}
 
 		// find MSA secret with a valid token in the namespace of this managed cluster
-		accessToken := findValidMSAToken(ctx, r.Client, managedCluster.Name)
+		accessToken := findValidMSAToken(getMSASecrets(ctx, r.Client, managedCluster.Name),
+			time.Now().In(time.UTC))
 		if accessToken == "" {
 			logger.Info(
 				"did not find any MSA secret with valid token for managed cluster " + managedCluster.Name,
