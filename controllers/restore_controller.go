@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -230,8 +231,13 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if (restore.Status.Phase == v1beta1.RestorePhaseFinished ||
 			restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors) &&
 			*restore.Spec.VeleroManagedClustersBackupName != skipRestoreStr {
-			// this cluster was activated so try to auto import pending managed clusters
-			r.postRestoreActivation(ctx, restore)
+
+			// get all managed clusters
+			managedClusters := &clusterv1.ManagedClusterList{}
+			if err := r.Client.List(ctx, managedClusters, &client.ListOptions{}); err == nil {
+				// this cluster was activated so try to auto import pending managed clusters
+				postRestoreActivation(ctx, r.Client, getMSASecrets(ctx, r.Client, ""), managedClusters.Items)
+			}
 		}
 	}
 
