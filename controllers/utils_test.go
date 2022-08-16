@@ -482,7 +482,7 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "managed cluster is not available AND has no url",
+			name: "managed cluster is not available AND has url",
 			args: args{
 				ctx:             context.Background(),
 				managedClusters: managedClustersNOTAvailableWithURL,
