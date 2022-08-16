@@ -14,6 +14,42 @@ import (
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 )
 
+func Test_getBackupTimestamp(t *testing.T) {
+	type args struct {
+		backupName string
+	}
+
+	goodTime, _ := time.Parse("20060102150405", "20220629100052")
+
+	tests := []struct {
+		name string
+		args args
+		want time.Time
+	}{
+		{
+			name: "invalid time",
+			args: args{
+				backupName: "aaaaa",
+			},
+			want: time.Time{},
+		},
+		{
+			name: "valid time",
+			args: args{
+				backupName: "acm-managed-clusters-schedule-20220629100052",
+			},
+			want: goodTime,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got, _ := getBackupTimestamp(tt.args.backupName); got != tt.want {
+				t.Errorf("getBackupTimestamp() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func Test_isValidStorageLocationDefined(t *testing.T) {
 	type args struct {
 		veleroStorageLocations *veleroapi.BackupStorageLocationList
