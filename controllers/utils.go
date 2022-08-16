@@ -24,6 +24,7 @@ import (
 
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -234,4 +235,42 @@ func isHiveCreatedCluster(
 		}
 	}
 	return nbOfSecrets > 0
+}
+
+func findValidMSAToken(
+	secrets []corev1.Secret,
+	currentTime time.Time) string {
+
+	accessToken := ""
+
+	// find MSA secrets in this namespace
+	if len(secrets) == 0 {
+		return accessToken
+	}
+	// go through MSA secrets and try to find one having a valid token
+	for s := range secrets {
+		secret := secrets[s]
+		annotations := secret.GetAnnotations()
+		if annotations == nil {
+			continue
+		}
+		tokenExpiry := annotations["expirationTimestamp"]
+		if tokenExpiry == "" {
+			continue
+		}
+		expiryTime, err := time.Parse(time.RFC3339, tokenExpiry)
+		if err != nil || expiryTime.IsZero() {
+			continue
+		}
+		if expiryTime.After(currentTime) {
+			if err = yaml.Unmarshal(secret.Data["token"], &accessToken); err == nil {
+				if accessToken != "" {
+					// secret has token value
+					break
+				}
+			}
+		}
+	}
+
+	return accessToken
 }
