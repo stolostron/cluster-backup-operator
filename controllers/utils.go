@@ -26,9 +26,11 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/discovery"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -273,4 +275,55 @@ func findValidMSAToken(
 	}
 
 	return accessToken
+}
+
+// returns true if the managed cluster
+// needs to be reimported
+func managedClusterShouldReimport(
+	ctx context.Context,
+	managedClusters []clusterv1.ManagedCluster,
+	clusterName string) (bool, string) {
+
+	logger := log.FromContext(ctx)
+
+	url := ""
+	if clusterName == "local-cluster" {
+		// skip local-cluster
+		return false, url
+	}
+
+	for i := range managedClusters {
+
+		managedCluster := managedClusters[i]
+
+		if clusterName != managedCluster.Name {
+			// find the cluster by name
+			continue
+		}
+
+		// skip available managed clusters
+		isManagedClusterAvailable := false
+		for _, condition := range managedCluster.Status.Conditions {
+			if condition.Type == "ManagedClusterConditionAvailable" &&
+				condition.Status == v1.ConditionTrue {
+				isManagedClusterAvailable = true
+				break
+			}
+		}
+		if isManagedClusterAvailable {
+			logger.Info("managed cluster already available " + managedCluster.Name)
+			return false, url
+		}
+
+		// if empty, the managed cluster has no accessible address for the hub to connect with it
+		if len(managedCluster.Spec.ManagedClusterClientConfigs) == 0 ||
+			managedCluster.Spec.ManagedClusterClientConfigs[0].URL == "" {
+			return false, url
+		}
+
+		url = managedCluster.Spec.ManagedClusterClientConfigs[0].URL
+		return true, url
+	}
+
+	return false, url
 }

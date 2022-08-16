@@ -3,6 +3,7 @@
 package controllers
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
 )
 
 func Test_isValidStorageLocationDefined(t *testing.T) {
@@ -309,6 +311,192 @@ func Test_findValidMSAToken(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := findValidMSAToken(tt.args.secrets, tt.args.currentTime); got != tt.want {
 				t.Errorf("findValidMSAToken() returns = %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+}
+
+func Test_managedClusterShouldReimport(t *testing.T) {
+
+	managedClusters1 := []clusterv1.ManagedCluster{
+		{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "cluster.open-cluster-management.io/v1",
+				Kind:       "ManagedCluster",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "local-cluster",
+			},
+			Spec: clusterv1.ManagedClusterSpec{
+				HubAcceptsClient: true,
+			},
+		},
+		{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "cluster.open-cluster-management.io/v1",
+				Kind:       "ManagedCluster",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test1",
+			},
+			Spec: clusterv1.ManagedClusterSpec{
+				HubAcceptsClient: true,
+			},
+		},
+	}
+
+	conditionType := v1.Condition{
+		Type: "ManagedClusterConditionAvailable",
+	}
+	conditionStatusTrue := v1.Condition{
+		Status: v1.ConditionTrue,
+	}
+	conditionStatusFalse := v1.Condition{
+		Status: v1.ConditionFalse,
+	}
+
+	managedClustersAvailable := []clusterv1.ManagedCluster{
+		{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "cluster.open-cluster-management.io/v1",
+				Kind:       "ManagedCluster",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test1",
+			},
+			Spec: clusterv1.ManagedClusterSpec{
+				HubAcceptsClient: true,
+			},
+			Status: clusterv1.ManagedClusterStatus{
+				Conditions: []metav1.Condition{
+					conditionType,
+					conditionStatusTrue,
+				},
+			},
+		},
+	}
+
+	managedClustersNOTAvailableNoURL := []clusterv1.ManagedCluster{
+		{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "cluster.open-cluster-management.io/v1",
+				Kind:       "ManagedCluster",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test1",
+			},
+			Spec: clusterv1.ManagedClusterSpec{
+				HubAcceptsClient:            true,
+				ManagedClusterClientConfigs: []clusterv1.ClientConfig{},
+			},
+			Status: clusterv1.ManagedClusterStatus{
+				Conditions: []metav1.Condition{
+					conditionType,
+					conditionStatusFalse,
+				},
+			},
+		},
+	}
+
+	managedClustersNOTAvailableWithURL := []clusterv1.ManagedCluster{
+		{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "cluster.open-cluster-management.io/v1",
+				Kind:       "ManagedCluster",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test1",
+			},
+			Spec: clusterv1.ManagedClusterSpec{
+				HubAcceptsClient: true,
+				ManagedClusterClientConfigs: []clusterv1.ClientConfig{
+					clusterv1.ClientConfig{
+						URL: "aaaaa",
+					},
+				},
+			},
+			Status: clusterv1.ManagedClusterStatus{
+				Conditions: []metav1.Condition{
+					conditionType,
+					conditionStatusFalse,
+				},
+			},
+		},
+	}
+
+	type args struct {
+		ctx             context.Context
+		clusterName     string
+		managedClusters []clusterv1.ManagedCluster
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+		url  string
+	}{
+		{
+			name: "managed cluster is local cluster, ignore",
+			args: args{
+				ctx:             context.Background(),
+				managedClusters: managedClusters1,
+				clusterName:     "local-cluster",
+			},
+			want: false,
+		},
+		{
+			name: "managed cluster name not in the list",
+			args: args{
+				ctx:             context.Background(),
+				managedClusters: managedClusters1,
+				clusterName:     "test3",
+			},
+			want: false,
+		},
+		{
+			name: "managed cluster has no url",
+			args: args{
+				ctx:             context.Background(),
+				managedClusters: managedClusters1,
+				clusterName:     "test1",
+			},
+			want: false,
+		},
+		{
+			name: "managed cluster is available",
+			args: args{
+				ctx:             context.Background(),
+				managedClusters: managedClustersAvailable,
+				clusterName:     "test1",
+			},
+			want: false,
+		},
+		{
+			name: "managed cluster is not available but has no url",
+			args: args{
+				ctx:             context.Background(),
+				managedClusters: managedClustersNOTAvailableNoURL,
+				clusterName:     "test1",
+			},
+			want: false,
+		},
+		{
+			name: "managed cluster is not available AND has no url",
+			args: args{
+				ctx:             context.Background(),
+				managedClusters: managedClustersNOTAvailableWithURL,
+				clusterName:     "test1",
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got, _ := managedClusterShouldReimport(tt.args.ctx,
+				tt.args.managedClusters, tt.args.clusterName); got != tt.want {
+				t.Errorf("postRestoreActivation() returns = %v, want %v", got, tt.want)
 			}
 		})
 	}

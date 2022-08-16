@@ -369,111 +369,80 @@ func (r *RestoreReconciler) prepareRestoreForBackup(
 }
 
 // activate managed clusters by creating auto-import-secret
-func (r *RestoreReconciler) postRestoreActivation(
+func postRestoreActivation(
 	ctx context.Context,
-	acmRestore *v1beta1.Restore,
+	c client.Client,
+	msa_secrets []corev1.Secret,
+	managedClusters []clusterv1.ManagedCluster,
 ) {
 	logger := log.FromContext(ctx)
 
-	logger.Info("enter postRestoreActivation for ACM restore " + acmRestore.Name)
+	logger.Info("enter postRestoreActivation")
 
-	r.Recorder.Event(
-		acmRestore,
-		corev1.EventTypeNormal,
-		"Post restore activation process:",
-		"Creating auto-import-secret to activate managed clusters",
-	)
+	processedClusters := []string{}
+	for s := range msa_secrets {
+		secret := msa_secrets[s]
 
-	// get all managed clusters
-	managedClusters := &clusterv1.ManagedClusterList{}
-	err := r.List(ctx, managedClusters, &client.ListOptions{})
-	if err != nil {
-		logger.Error(err, "Failed to list managed clusters for post restore activation")
-		return
-	}
-	// loop through all managed clusters and try to create auto-import-secret for each
-	for i := range managedClusters.Items {
-		managedCluster := managedClusters.Items[i]
-		// skip local-cluster
-		if managedCluster.Name == "local-cluster" {
+		clusterName := secret.Namespace
+		if accessToken := findValidMSAToken([]corev1.Secret{secret},
+			time.Now().In(time.UTC)); accessToken == "" ||
+			findValue(processedClusters, clusterName) ||
+			clusterName == "local-cluster" {
+			// this secret should not be processed
 			continue
 		}
 
-		// skip available managed clusters
-		isManagedClusterAvailable := false
-		for _, condition := range managedCluster.Status.Conditions {
-			if condition.Type == "ManagedClusterConditionAvailable" &&
-				condition.Status == v1.ConditionTrue {
-				isManagedClusterAvailable = true
-				break
-			}
-		}
-		if isManagedClusterAvailable {
-			logger.Info("managed cluster already available " + managedCluster.Name)
+		// found a valid access token for this cluster name, add it to the list
+		processedClusters = append(processedClusters, clusterName)
+
+		reimport, url := managedClusterShouldReimport(ctx, managedClusters, clusterName)
+		if !reimport {
+			// no need to reimport this managed cluster
+			// the cluster is already active or the url is not set
 			continue
 		}
 
-		// if empty, the managed cluster has no accessible address for the hub to connect with it
-		if len(managedCluster.Spec.ManagedClusterClientConfigs) == 0 {
-			continue
-		}
-		url := managedCluster.Spec.ManagedClusterClientConfigs[0].URL
-		if url == "" {
-			continue
-		}
-
+		createAutoImport := true
 		// see if an auto-import-secret already exists
-		// delete and re-create it if it's from a previous post-restore activation
-		secret := &corev1.Secret{}
-		err := r.Get(
-			ctx,
-			types.NamespacedName{
-				Name:      autoImportSecretName,
-				Namespace: managedCluster.Name,
-			},
-			secret,
-		)
-		if err == nil {
-			labels := secret.GetLabels()
-			if labels != nil && labels[activateLabel] == "true" {
-				if err := r.Delete(ctx, secret); err != nil {
-					logger.Error(
-						err,
-						fmt.Sprintf(
-							"failed to delete the auto-import-secret from namespace %s",
-							managedCluster.Name,
-						),
-					)
-					continue
-				}
-				logger.Info("deleted auto-import-secret from namespace " + managedCluster.Name)
+		// delete and re-create if is from a previous post-restore activation
+		secretIdentity := types.NamespacedName{
+			Name:      autoImportSecretName,
+			Namespace: clusterName,
+		}
+		secret_msa := &corev1.Secret{}
+		if err := c.Get(ctx, secretIdentity, secret_msa); err == nil &&
+			secret.GetLabels() != nil &&
+			secret.GetLabels()[activateLabel] == "true" {
+			// found secret
+			if err := c.Delete(ctx, secret_msa); err != nil {
+				logger.Error(
+					err,
+					fmt.Sprintf(
+						"failed to delete the auto-import-secret from namespace %s",
+						clusterName,
+					),
+				)
+				createAutoImport = false
 			} else {
-				// auto-import-secret was presented and is not from a previous restore activation
-				// skip creation of an auto-import-secret for this managed cluster
-				continue
+				logger.Info("deleted auto-import-secret from namespace " + clusterName)
 			}
 		}
 
-		// find MSA secret with a valid token in the namespace of this managed cluster
-		accessToken := findValidMSAToken(getMSASecrets(ctx, r.Client, managedCluster.Name),
-			time.Now().In(time.UTC))
-		if accessToken == "" {
-			logger.Info(
-				"did not find any MSA secret with valid token for managed cluster " + managedCluster.Name,
-			)
+		if !createAutoImport {
+			// should not create auto import secret for this managed cluster
 			continue
 		}
+		// find MSA secret with a valid token in the namespace of this managed cluster
+		if accessToken := findValidMSAToken(getMSASecrets(ctx, c, clusterName),
+			time.Now().In(time.UTC)); accessToken != "" {
 
-		// create an auto-import-secret for this managed cluster
-		err = createAutoImportSecret(ctx, r.Client, managedCluster.Name, accessToken, url)
-		if err != nil {
-			logger.Error(
-				err,
-				"Error in creating AutoImportSecret",
-				"managed cluster", managedCluster.Name,
-			)
+			// create an auto-import-secret for this managed cluster
+			if err := createAutoImportSecret(ctx, c, clusterName, accessToken, url); err != nil {
+				logger.Error(err, "Error in creating AutoImportSecret")
+			} else {
+				logger.Info("created auto-import-secret for managed cluster " + clusterName)
+			}
 		}
-		logger.Info("created auto-import-secret for managed cluster " + managedCluster.Name)
 	}
 }
 
