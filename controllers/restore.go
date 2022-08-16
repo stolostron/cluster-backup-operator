@@ -383,8 +383,9 @@ func postRestoreActivation(
 	for s := range msaSecrets {
 		secret := msaSecrets[s]
 
+		accessToken := ""
 		clusterName := secret.Namespace
-		if accessToken := findValidMSAToken([]corev1.Secret{secret},
+		if accessToken = findValidMSAToken([]corev1.Secret{secret},
 			time.Now().In(time.UTC)); accessToken == "" ||
 			findValue(processedClusters, clusterName) ||
 			clusterName == "local-cluster" {
@@ -432,16 +433,11 @@ func postRestoreActivation(
 			// should not create auto import secret for this managed cluster
 			continue
 		}
-		// find MSA secret with a valid token in the namespace of this managed cluster
-		if accessToken := findValidMSAToken(getMSASecrets(ctx, c, clusterName),
-			time.Now().In(time.UTC)); accessToken != "" {
-
-			// create an auto-import-secret for this managed cluster
-			if err := createAutoImportSecret(ctx, c, clusterName, accessToken, url); err != nil {
-				logger.Error(err, "Error in creating AutoImportSecret")
-			} else {
-				logger.Info("created auto-import-secret for managed cluster " + clusterName)
-			}
+		// create an auto-import-secret for this managed cluster
+		if err := createAutoImportSecret(ctx, c, clusterName, accessToken, url); err != nil {
+			logger.Error(err, "Error in creating AutoImportSecret")
+		} else {
+			logger.Info("created auto-import-secret for managed cluster " + clusterName)
 		}
 	}
 }
