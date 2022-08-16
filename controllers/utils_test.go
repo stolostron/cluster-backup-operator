@@ -346,14 +346,14 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 		},
 	}
 
-	conditionType := v1.Condition{
-		Type: "ManagedClusterConditionAvailable",
-	}
-	conditionStatusTrue := v1.Condition{
+	conditionTypeAvailableTrue := v1.Condition{
+		Type:   "ManagedClusterConditionAvailable",
 		Status: v1.ConditionTrue,
 	}
-	conditionStatusFalse := v1.Condition{
+
+	conditionTypeAvailableFalse := v1.Condition{
 		Status: v1.ConditionFalse,
+		Type:   "ManagedClusterConditionAvailable",
 	}
 
 	managedClustersAvailable := []clusterv1.ManagedCluster{
@@ -370,8 +370,7 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 			},
 			Status: clusterv1.ManagedClusterStatus{
 				Conditions: []metav1.Condition{
-					conditionType,
-					conditionStatusTrue,
+					conditionTypeAvailableTrue,
 				},
 			},
 		},
@@ -392,8 +391,7 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 			},
 			Status: clusterv1.ManagedClusterStatus{
 				Conditions: []metav1.Condition{
-					conditionType,
-					conditionStatusFalse,
+					conditionTypeAvailableFalse,
 				},
 			},
 		},
@@ -418,8 +416,7 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 			},
 			Status: clusterv1.ManagedClusterStatus{
 				Conditions: []metav1.Condition{
-					conditionType,
-					conditionStatusFalse,
+					conditionTypeAvailableFalse,
 				},
 			},
 		},
