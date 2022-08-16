@@ -372,7 +372,7 @@ func (r *RestoreReconciler) prepareRestoreForBackup(
 func postRestoreActivation(
 	ctx context.Context,
 	c client.Client,
-	msa_secrets []corev1.Secret,
+	msaSecrets []corev1.Secret,
 	managedClusters []clusterv1.ManagedCluster,
 ) {
 	logger := log.FromContext(ctx)
@@ -380,8 +380,8 @@ func postRestoreActivation(
 	logger.Info("enter postRestoreActivation")
 
 	processedClusters := []string{}
-	for s := range msa_secrets {
-		secret := msa_secrets[s]
+	for s := range msaSecrets {
+		secret := msaSecrets[s]
 
 		clusterName := secret.Namespace
 		if accessToken := findValidMSAToken([]corev1.Secret{secret},
@@ -409,12 +409,12 @@ func postRestoreActivation(
 			Name:      autoImportSecretName,
 			Namespace: clusterName,
 		}
-		secret_msa := &corev1.Secret{}
-		if err := c.Get(ctx, secretIdentity, secret_msa); err == nil &&
+		autoImportSecret := &corev1.Secret{}
+		if err := c.Get(ctx, secretIdentity, autoImportSecret); err == nil &&
 			secret.GetLabels() != nil &&
 			secret.GetLabels()[activateLabel] == "true" {
 			// found secret
-			if err := c.Delete(ctx, secret_msa); err != nil {
+			if err := c.Delete(ctx, autoImportSecret); err != nil {
 				logger.Error(
 					err,
 					fmt.Sprintf(
