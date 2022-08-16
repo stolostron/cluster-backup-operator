@@ -258,13 +258,13 @@ func prepareImportedClusters(ctx context.Context,
 			}
 
 			secretCreatedNowForCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
-				msa_service_name, managedCluster)
+				msa_service_name, managedCluster.Name)
 			// create ManagedServiceAccount pair if needed
 			// the pair MSA is used to generate a token at half
 			// the interval of the initial MSA so that any backup will contain
 			// a valid token, either from the initial MSA or pair
 			secretCreatedNowForPairCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
-				msa_service_name_pair, managedCluster)
+				msa_service_name_pair, managedCluster.Name)
 
 			secretsGeneratedNow = secretsGeneratedNow ||
 				secretCreatedNowForCluster ||
@@ -330,21 +330,21 @@ func createMSA(
 	dr dynamic.NamespaceableResourceInterface,
 	tokenValidity string,
 	name string,
-	managedCluster clusterv1.ManagedCluster,
+	managedClusterName string,
 ) (bool, bool, error) {
 
 	logger := log.FromContext(ctx)
 	secretsGeneratedNow := false
 
 	//check if MSA exists
-	if obj, err := dr.Namespace(managedCluster.Name).Get(ctx, name, v1.GetOptions{}); err == nil {
+	if obj, err := dr.Namespace(managedClusterName).Get(ctx, name, v1.GetOptions{}); err == nil {
 		// MSA exists, check if token needs to be updated based on the tokenValidity value
-		secretsUpdated, err := updateMSAToken(ctx, dr, obj, name, managedCluster.Name, tokenValidity)
+		secretsUpdated, err := updateMSAToken(ctx, dr, obj, name, managedClusterName, tokenValidity)
 		if err != nil {
 			logger.Error(err, "Failed to update MSA")
 		}
 		if secretsUpdated {
-			logger.Info(fmt.Sprintf("updated token validity for cluster %s", managedCluster.Name))
+			logger.Info(fmt.Sprintf("updated token validity for cluster %s", managedClusterName))
 		}
 		return secretsGeneratedNow, secretsUpdated, err
 	}
@@ -357,7 +357,7 @@ func createMSA(
 	if name == msa_service_name_pair {
 		// for the MSA pair, generate one only when the initial MSA token exists and
 		// current time is half between creation and expiration time for that token
-		generateMSA = shouldGeneratePairToken(getMSASecrets(ctx, c, managedCluster.Name), time.Now())
+		generateMSA = shouldGeneratePairToken(getMSASecrets(ctx, c, managedClusterName), time.Now())
 	}
 
 	if generateMSA {
@@ -369,7 +369,7 @@ func createMSA(
 			"kind":       msa_kind,
 			"metadata": map[string]interface{}{
 				"name":      name,
-				"namespace": managedCluster.Name,
+				"namespace": managedClusterName,
 				"labels": map[string]interface{}{
 					backupCredsClusterLabel: backup_label,
 					msa_label:               name,
@@ -383,12 +383,14 @@ func createMSA(
 			},
 		})
 		// attempt to create managedservice account for auto-import
-		if _, err := dr.Namespace(managedCluster.Name).Create(ctx, msaRC, v1.CreateOptions{}); err != nil {
+		if _, err := dr.Namespace(managedClusterName).Create(ctx, msaRC, v1.CreateOptions{}); err != nil {
 			logger.Info(fmt.Sprintf("Failed to create ManagedServiceAccount for cluster =%s, error : %s",
-				managedCluster.Name, err.Error()))
+				managedClusterName, err.Error()))
 		}
 		// create ManifestWork to push the role binding
-		createManifestWork(ctx, c, managedCluster.Name)
+		if c != nil {
+			createManifestWork(ctx, c, managedClusterName)
+		}
 	}
 
 	return secretsGeneratedNow, false, nil

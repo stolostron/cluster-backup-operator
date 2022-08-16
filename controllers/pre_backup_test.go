@@ -32,6 +32,90 @@ import (
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 )
 
+func Test_createMSA(t *testing.T) {
+
+	obj1 := &unstructured.Unstructured{}
+	obj1.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"kind":       "ManagedServiceAccount",
+		"metadata": map[string]interface{}{
+			"name":      msa_service_name,
+			"namespace": "managed1",
+		},
+		"spec": map[string]interface{}{
+			"somethingelse": "aaa",
+			"rotation": map[string]interface{}{
+				"validity": "50h",
+				"enabled":  true,
+			},
+		},
+	})
+
+	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), obj1)
+
+	var res = schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
+		Version:  "v1alpha1",
+		Resource: "ManagedServiceAccount"}
+
+	resInterface := dynClient.Resource(res)
+
+	type args struct {
+		ctx            context.Context
+		dr             dynamic.NamespaceableResourceInterface
+		validity       string
+		managedCluster string
+		name           string
+	}
+	tests := []struct {
+		name                string
+		args                args
+		secretsGeneratedNow bool
+		secretsUpdated      bool
+	}{
+		{
+			name: "secrets generated now",
+			args: args{
+				ctx:            context.Background(),
+				dr:             resInterface,
+				managedCluster: "managed1",
+				name:           msa_service_name,
+				validity:       "20h",
+			},
+			secretsGeneratedNow: true,
+			secretsUpdated:      false,
+		},
+		{
+			name: "secrets generated now  2",
+			args: args{
+				ctx:            context.Background(),
+				dr:             resInterface,
+				managedCluster: "managed1",
+				name:           msa_service_name,
+				validity:       "50h",
+			},
+			secretsGeneratedNow: false,
+			secretsUpdated:      true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			secretsGeneratedNow, secretsUpdated, _ := createMSA(tt.args.ctx, k8sClient,
+				tt.args.dr,
+				tt.args.validity,
+				tt.args.name,
+				tt.args.managedCluster,
+			)
+			if secretsGeneratedNow != tt.secretsGeneratedNow {
+				t.Errorf("createMSA() returns secretsGeneratedNow = %v, want %v", secretsGeneratedNow, tt.secretsGeneratedNow)
+			}
+			if secretsUpdated != tt.secretsUpdated {
+				t.Errorf("createMSA() returns secretsUpdated = %v, want %v", secretsUpdated, tt.secretsUpdated)
+			}
+		})
+	}
+
+}
+
 func Test_updateMSAToken(t *testing.T) {
 
 	obj1 := &unstructured.Unstructured{}
@@ -397,6 +481,26 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 							Annotations: map[string]string{
 								"lastRefreshTimestamp": "2022-08-05T15:25:38Z",
 								"expirationTimestamp":  "bbb",
+							},
+						},
+					}}},
+			want: false,
+		},
+		{
+			name: "MSA has secrets with invalid lastRefreshTimestamp",
+			args: args{
+				secrets: []corev1.Secret{
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "managed2",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": "aaaaa",
+								"expirationTimestamp":  "2022-08-05T15:25:38Z",
 							},
 						},
 					}}},
