@@ -386,7 +386,7 @@ func postRestoreActivation(
 		clusterName := secret.Namespace
 		if findValue(processedClusters, clusterName) ||
 			clusterName == "local-cluster" {
-			// this secret should not be processed
+			// this cluster should not be processed
 			continue
 		}
 		accessToken := ""
