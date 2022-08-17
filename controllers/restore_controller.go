@@ -127,50 +127,17 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		)
 	}
 
-	// don't create restores if backup storage location doesn't exist or is not avaialble
-	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
-	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
-		veleroStorageLocations == nil || len(veleroStorageLocations.Items) == 0 {
+	if msg, retry := validateStorageSettings(ctx, r.Client, req.Name, req.Namespace, restore); msg != "" {
 
-		msg := "velero.io.BackupStorageLocation resources not found. " +
-			"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."
-		updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseError, msg, restore)
-		// retry after failureInterval
-		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
-			r.Client.Status().Update(ctx, restore),
-			msg,
-		)
-	}
-
-	// look for available VeleroStorageLocation
-	// and keep track of the velero oadp namespace
-	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(
-		*veleroStorageLocations,
-	)
-
-	// if no valid storage location found wait for valid value
-	if !isValidStorageLocation {
-		msg := "Backup storage location not available in namespace " + req.Namespace +
-			". Check velero.io.BackupStorageLocation and validate storage credentials."
 		updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseError, msg, restore)
 
-		// retry after failureInterval
-		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
-			r.Client.Status().Update(ctx, restore),
-			msg,
-		)
-	}
-
-	// return error if the cluster restore file is not in the same namespace with velero
-	if veleroNamespace != req.Namespace {
-		msg := fmt.Sprintf(
-			"Restore resource [%s/%s] must be created in the velero namespace [%s]",
-			req.Namespace,
-			req.Name,
-			veleroNamespace,
-		)
-		updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseError, msg, restore)
-
+		if retry {
+			// retry after failureInterval
+			return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
+				r.Client.Status().Update(ctx, restore),
+				msg,
+			)
+		}
 		return ctrl.Result{}, errors.Wrap(
 			r.Client.Status().Update(ctx, restore),
 			msg,

@@ -682,3 +682,55 @@ func (r *RestoreReconciler) isNewBackupAvailable(
 
 	return false
 }
+
+// validate if restore settings are valid and retry on error
+func validateStorageSettings(
+	ctx context.Context,
+	c client.Client,
+	name string,
+	namespace string,
+	restore *v1beta1.Restore,
+) (string, bool) {
+
+	retry := true
+	msg := ""
+
+	// don't create restores if backup storage location doesn't exist or is not avaialble
+	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
+	if err := c.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
+		veleroStorageLocations == nil || len(veleroStorageLocations.Items) == 0 {
+
+		msg = "velero.io.BackupStorageLocation resources not found. " +
+			"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."
+
+		return msg, retry
+	}
+
+	// look for available VeleroStorageLocation
+	// and keep track of the velero oadp namespace
+	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(
+		*veleroStorageLocations,
+	)
+
+	if !isValidStorageLocation {
+		msg = "Backup storage location not available in namespace " + namespace +
+			". Check velero.io.BackupStorageLocation and validate storage credentials."
+
+		return msg, retry
+	}
+
+	// return error if the cluster restore file is not in the same namespace with velero
+	if veleroNamespace != namespace {
+		msg = fmt.Sprintf(
+			"Restore resource [%s/%s] must be created in the velero namespace [%s]",
+			namespace,
+			name,
+			veleroNamespace,
+		)
+		retry = false
+
+		return msg, retry
+	}
+
+	return msg, retry
+}
