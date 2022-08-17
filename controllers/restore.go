@@ -383,12 +383,14 @@ func postRestoreActivation(
 	for s := range msaSecrets {
 		secret := msaSecrets[s]
 
-		accessToken := ""
 		clusterName := secret.Namespace
-		if accessToken = findValidMSAToken([]corev1.Secret{secret},
-			time.Now().In(time.UTC)); accessToken == "" ||
-			findValue(processedClusters, clusterName) ||
+		if findValue(processedClusters, clusterName) ||
 			clusterName == "local-cluster" {
+			// this cluster should not be processed
+			continue
+		}
+		accessToken := ""
+		if accessToken = findValidMSAToken([]corev1.Secret{secret}, time.Now().In(time.UTC)); accessToken == "" {
 			// this secret should not be processed
 			continue
 		}
@@ -442,7 +444,7 @@ func postRestoreActivation(
 	}
 }
 
-// check if there is any active resource on this cluster
+// create an autoImportSecret using the url and accessToken
 func createAutoImportSecret(
 	ctx context.Context,
 	c client.Client,
