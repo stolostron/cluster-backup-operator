@@ -236,7 +236,8 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			managedClusters := &clusterv1.ManagedClusterList{}
 			if err := r.Client.List(ctx, managedClusters, &client.ListOptions{}); err == nil {
 				// this cluster was activated so try to auto import pending managed clusters
-				postRestoreActivation(ctx, r.Client, getMSASecrets(ctx, r.Client, ""), managedClusters.Items)
+				postRestoreActivation(ctx, r.Client, getMSASecrets(ctx, r.Client, ""),
+					managedClusters.Items, time.Now().In(time.UTC))
 			}
 		}
 	}
