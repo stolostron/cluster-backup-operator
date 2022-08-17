@@ -374,10 +374,12 @@ func postRestoreActivation(
 	c client.Client,
 	msaSecrets []corev1.Secret,
 	managedClusters []clusterv1.ManagedCluster,
-) {
+	currentTime time.Time,
+) []string {
 	logger := log.FromContext(ctx)
-
 	logger.Info("enter postRestoreActivation")
+	// return the list of auto import secrets created here
+	autoImportSecretsCreated := []string{}
 
 	processedClusters := []string{}
 	for s := range msaSecrets {
@@ -390,7 +392,7 @@ func postRestoreActivation(
 			continue
 		}
 		accessToken := ""
-		if accessToken = findValidMSAToken([]corev1.Secret{secret}, time.Now().In(time.UTC)); accessToken == "" {
+		if accessToken = findValidMSAToken([]corev1.Secret{secret}, currentTime); accessToken == "" {
 			// this secret should not be processed
 			continue
 		}
@@ -435,6 +437,8 @@ func postRestoreActivation(
 			// should not create auto import secret for this managed cluster
 			continue
 		}
+
+		autoImportSecretsCreated = append(autoImportSecretsCreated, clusterName)
 		// create an auto-import-secret for this managed cluster
 		if err := createAutoImportSecret(ctx, c, clusterName, accessToken, url); err != nil {
 			logger.Error(err, "Error in creating AutoImportSecret")
@@ -442,6 +446,8 @@ func postRestoreActivation(
 			logger.Info("created auto-import-secret for managed cluster " + clusterName)
 		}
 	}
+
+	return autoImportSecretsCreated
 }
 
 // create an autoImportSecret using the url and accessToken
@@ -675,4 +681,56 @@ func (r *RestoreReconciler) isNewBackupAvailable(
 	}
 
 	return false
+}
+
+// validate if restore settings are valid and retry on error
+func validateStorageSettings(
+	ctx context.Context,
+	c client.Client,
+	name string,
+	namespace string,
+	restore *v1beta1.Restore,
+) (string, bool) {
+
+	retry := true
+	msg := ""
+
+	// don't create restores if backup storage location doesn't exist or is not avaialble
+	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
+	if err := c.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
+		veleroStorageLocations == nil || len(veleroStorageLocations.Items) == 0 {
+
+		msg = "velero.io.BackupStorageLocation resources not found. " +
+			"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."
+
+		return msg, retry
+	}
+
+	// look for available VeleroStorageLocation
+	// and keep track of the velero oadp namespace
+	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(
+		*veleroStorageLocations,
+	)
+
+	if !isValidStorageLocation {
+		msg = "Backup storage location not available in namespace " + namespace +
+			". Check velero.io.BackupStorageLocation and validate storage credentials."
+
+		return msg, retry
+	}
+
+	// return error if the cluster restore file is not in the same namespace with velero
+	if veleroNamespace != namespace {
+		msg = fmt.Sprintf(
+			"Restore resource [%s/%s] must be created in the velero namespace [%s]",
+			namespace,
+			name,
+			veleroNamespace,
+		)
+		retry = false
+
+		return msg, retry
+	}
+
+	return msg, retry
 }

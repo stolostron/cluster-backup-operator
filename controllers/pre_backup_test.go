@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -28,11 +29,22 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 )
 
 func Test_createMSA(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
 
 	obj1 := &unstructured.Unstructured{}
 	obj1.SetUnstructuredContent(map[string]interface{}{
@@ -73,7 +85,7 @@ func Test_createMSA(t *testing.T) {
 		secretsUpdated      bool
 	}{
 		{
-			name: "secrets generated now",
+			name: "msa generated now",
 			args: args{
 				ctx:            context.Background(),
 				dr:             resInterface,
@@ -85,7 +97,7 @@ func Test_createMSA(t *testing.T) {
 			secretsUpdated:      false,
 		},
 		{
-			name: "secrets generated now  2",
+			name: "msa not generated now but validity updated",
 			args: args{
 				ctx:            context.Background(),
 				dr:             resInterface,
@@ -96,10 +108,22 @@ func Test_createMSA(t *testing.T) {
 			secretsGeneratedNow: false,
 			secretsUpdated:      true,
 		},
+		{
+			name: "msa pair secrets not generated now",
+			args: args{
+				ctx:            context.Background(),
+				dr:             resInterface,
+				managedCluster: "managed1",
+				name:           msa_service_name_pair,
+				validity:       "50h",
+			},
+			secretsGeneratedNow: false,
+			secretsUpdated:      false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			secretsGeneratedNow, secretsUpdated, _ := createMSA(tt.args.ctx, k8sClient,
+			secretsGeneratedNow, secretsUpdated, _ := createMSA(tt.args.ctx, k8sClient1,
 				tt.args.dr,
 				tt.args.validity,
 				tt.args.name,

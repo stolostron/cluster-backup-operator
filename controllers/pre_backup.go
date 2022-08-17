@@ -388,9 +388,7 @@ func createMSA(
 				managedClusterName, err.Error()))
 		}
 		// create ManifestWork to push the role binding
-		if c != nil {
-			createManifestWork(ctx, c, managedClusterName)
-		}
+		createManifestWork(ctx, c, managedClusterName)
 	}
 
 	return secretsGeneratedNow, false, nil
