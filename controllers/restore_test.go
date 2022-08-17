@@ -18,11 +18,13 @@ package controllers
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,6 +32,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes/scheme"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 )
@@ -729,4 +735,329 @@ func Test_setRestorePhase(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_postRestoreActivation(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+
+	fourHoursAgo := "2022-07-26T11:25:34Z"
+	nextTenHours := "2022-07-27T04:25:34Z"
+
+	current, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
+
+	type args struct {
+		ctx             context.Context
+		secrets         []corev1.Secret
+		managedClusters []clusterv1.ManagedCluster
+		currentTime     time.Time
+	}
+	tests := []struct {
+		name string
+		args args
+		want []string
+	}{
+		{
+			name: "create NO auto import secrets, managed1 is active",
+			args: args{
+				ctx:         context.Background(),
+				currentTime: current,
+				managedClusters: []clusterv1.ManagedCluster{
+					{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1",
+							Kind:       "ManagedCluster",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "local-cluster",
+						},
+						Spec: clusterv1.ManagedClusterSpec{
+							HubAcceptsClient: true,
+						},
+					},
+					{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1",
+							Kind:       "ManagedCluster",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test1",
+						},
+						Spec: clusterv1.ManagedClusterSpec{
+							HubAcceptsClient: true,
+						},
+					},
+					{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1",
+							Kind:       "ManagedCluster",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "managed1",
+						},
+						Spec: clusterv1.ManagedClusterSpec{
+							HubAcceptsClient: true,
+							ManagedClusterClientConfigs: []clusterv1.ClientConfig{
+								clusterv1.ClientConfig{
+									URL: "someurl",
+								},
+							},
+						},
+						Status: clusterv1.ManagedClusterStatus{
+							Conditions: []metav1.Condition{
+								v1.Condition{
+									Status: v1.ConditionTrue,
+									Type:   "ManagedClusterConditionAvailable",
+								},
+							},
+						},
+					},
+				},
+				secrets: []corev1.Secret{
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "local-cluster",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": fourHoursAgo,
+								"expirationTimestamp":  nextTenHours,
+							},
+						},
+					},
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "managed1",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": fourHoursAgo,
+								"expirationTimestamp":  nextTenHours,
+							},
+						},
+						Data: map[string][]byte{
+							"token": []byte("YWRtaW4="),
+						},
+					},
+				}},
+			want: []string{},
+		},
+		{
+			name: "create NO auto import secret for managed1, it has no URL",
+			args: args{
+				ctx:         context.Background(),
+				currentTime: current,
+				managedClusters: []clusterv1.ManagedCluster{
+					{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1",
+							Kind:       "ManagedCluster",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "local-cluster",
+						},
+						Spec: clusterv1.ManagedClusterSpec{
+							HubAcceptsClient: true,
+						},
+					},
+					{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1",
+							Kind:       "ManagedCluster",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test1",
+						},
+						Spec: clusterv1.ManagedClusterSpec{
+							HubAcceptsClient: true,
+						},
+					},
+					{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1",
+							Kind:       "ManagedCluster",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "managed1",
+						},
+						Spec: clusterv1.ManagedClusterSpec{
+							HubAcceptsClient: true,
+							ManagedClusterClientConfigs: []clusterv1.ClientConfig{
+								clusterv1.ClientConfig{},
+							},
+						},
+						Status: clusterv1.ManagedClusterStatus{
+							Conditions: []metav1.Condition{
+								v1.Condition{
+									Status: v1.ConditionFalse,
+								},
+							},
+						},
+					},
+				},
+				secrets: []corev1.Secret{
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "local-cluster",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": fourHoursAgo,
+								"expirationTimestamp":  nextTenHours,
+							},
+						},
+					},
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "managed1",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": fourHoursAgo,
+								"expirationTimestamp":  nextTenHours,
+							},
+						},
+						Data: map[string][]byte{
+							"token": []byte("YWRtaW4="),
+						},
+					},
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import-pair", // this should be skipped
+							Namespace: "managed1",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": fourHoursAgo,
+								"expirationTimestamp":  nextTenHours,
+							},
+						},
+						Data: map[string][]byte{
+							"token": []byte("YWRtaW4="),
+						},
+					},
+				}},
+			want: []string{},
+		},
+		{
+			name: "create auto import for managed1 cluster",
+			args: args{
+				ctx:         context.Background(),
+				currentTime: current,
+				managedClusters: []clusterv1.ManagedCluster{
+					{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1",
+							Kind:       "ManagedCluster",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "local-cluster",
+						},
+						Spec: clusterv1.ManagedClusterSpec{
+							HubAcceptsClient: true,
+						},
+					},
+					{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1",
+							Kind:       "ManagedCluster",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test1",
+						},
+						Spec: clusterv1.ManagedClusterSpec{
+							HubAcceptsClient: true,
+						},
+					},
+					{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1",
+							Kind:       "ManagedCluster",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "managed1",
+						},
+						Spec: clusterv1.ManagedClusterSpec{
+							HubAcceptsClient: true,
+							ManagedClusterClientConfigs: []clusterv1.ClientConfig{
+								clusterv1.ClientConfig{
+									URL: "someurl",
+								},
+							},
+						},
+						Status: clusterv1.ManagedClusterStatus{
+							Conditions: []metav1.Condition{
+								v1.Condition{
+									Status: v1.ConditionFalse,
+								},
+							},
+						},
+					},
+				},
+				secrets: []corev1.Secret{
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "local-cluster",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": fourHoursAgo,
+								"expirationTimestamp":  nextTenHours,
+							},
+						},
+					},
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "managed1",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": fourHoursAgo,
+								"expirationTimestamp":  nextTenHours,
+							},
+						},
+						Data: map[string][]byte{
+							"token": []byte("YWRtaW4="),
+						},
+					},
+				}},
+			want: []string{"managed1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := postRestoreActivation(tt.args.ctx, k8sClient1,
+				tt.args.secrets, tt.args.managedClusters, tt.args.currentTime); len(got) != len(tt.want) {
+				t.Errorf("postRestoreActivation() returns = %v, want %v", got, tt.want)
+			}
+		})
+	}
+
 }
