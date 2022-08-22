@@ -744,8 +744,20 @@ func Test_postRestoreActivation(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
+	autoImporSecret := corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Secret",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      autoImportSecretName,
+			Namespace: "managed1",
+			Labels:    map[string]string{activateLabel: "true"},
+		},
+	}
 	cfg, _ := testEnv.Start()
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	k8sClient1.Create(context.Background(), &autoImporSecret)
 
 	fourHoursAgo := "2022-07-26T11:25:34Z"
 	nextTenHours := "2022-07-27T04:25:34Z"
@@ -937,6 +949,23 @@ func Test_postRestoreActivation(t *testing.T) {
 						},
 						Data: map[string][]byte{
 							"token": []byte("YWRtaW4="),
+						},
+					},
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "managed2",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": fourHoursAgo,
+								"expirationTimestamp":  nextTenHours,
+							},
+						},
+						Data: map[string][]byte{
+							"token1": []byte("aaa"), // test invalid token for managed2 ns
 						},
 					},
 					corev1.Secret{
