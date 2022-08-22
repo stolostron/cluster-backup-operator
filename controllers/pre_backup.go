@@ -610,10 +610,10 @@ func updateHiveResources(ctx context.Context,
 			if clusterDeployment.Spec.ClusterPoolRef != nil {
 				secrets := &corev1.SecretList{}
 				if err := c.List(ctx, secrets, &client.ListOptions{
-					Namespace: clusterDeployments.Items[i].Namespace,
+					Namespace: clusterDeployment.Namespace,
 				}); err == nil {
 					// add backup labels if not set yet
-					updateSecretsLabels(ctx, c, *secrets, clusterDeployments.Items[i].Name,
+					updateSecretsLabels(ctx, c, *secrets, clusterDeployment.Name,
 						backupCredsClusterLabel,
 						"clusterpool")
 				}
