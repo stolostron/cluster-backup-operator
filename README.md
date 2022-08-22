@@ -217,6 +217,8 @@ metadata:
   labels:
     cluster.open-cluster-management.io/backup: ""
 ```
+- <b>Note</b> that secrets used by the `hive.openshift.io.ClusterDeployment` resource need to be backed up and they are automatically annotated with the `cluster.open-cluster-management.io/backup` label only when the cluster is created using the console UI. If the hive cluster is deployed using gitops instead, the `cluster.open-cluster-management.io/backup` label must be manually added to the secrets used by this `ClusterDeployment`.
+
 8. Resources picked up by the above rules that should not be backed up, can be explicitly excluded when setting this label: `velero.io/exclude-from-backup: "true"`
 Example :
 ```yaml
