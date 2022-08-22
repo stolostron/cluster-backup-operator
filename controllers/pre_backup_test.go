@@ -121,7 +121,7 @@ func Test_createMSA(t *testing.T) {
 			secretsUpdated:      false,
 		},
 	}
-	for _, tt := range tests {
+	for index, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			secretsGeneratedNow, secretsUpdated, _ := createMSA(tt.args.ctx, k8sClient1,
 				tt.args.dr,
@@ -136,6 +136,11 @@ func Test_createMSA(t *testing.T) {
 				t.Errorf("createMSA() returns secretsUpdated = %v, want %v", secretsUpdated, tt.secretsUpdated)
 			}
 		})
+
+		if index == len(tests)-1 {
+			// clean up
+			testEnv.Stop()
+		}
 	}
 
 }
