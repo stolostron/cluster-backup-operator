@@ -367,96 +367,6 @@ func (backups mostRecent) Less(i, j int) bool {
 	return backups[j].Status.StartTimestamp.Before(backups[i].Status.StartTimestamp)
 }
 
-// getVeleroBackupName returns the name of velero backup will be restored
-func (r *RestoreReconciler) getVeleroBackupName(
-	ctx context.Context,
-	restore *v1beta1.Restore,
-	resourceType ResourceType,
-	backupName string,
-) (string, *veleroapi.Backup, error) {
-
-	veleroBackups := &veleroapi.BackupList{}
-	if err := r.Client.List(ctx, veleroBackups, client.InNamespace(restore.Namespace)); err != nil {
-		return "", nil, fmt.Errorf("unable to list velero backups: %v", err)
-	}
-	if len(veleroBackups.Items) == 0 {
-		return "", nil, fmt.Errorf("no velero backups found")
-	}
-
-	if backupName == latestBackupStr {
-		// backup name not available, find a proper backup
-		// filter available backups to get only the ones related to this resource type
-		relatedBackups := filterBackups(veleroBackups.Items, func(bkp veleroapi.Backup) bool {
-			return strings.HasPrefix(bkp.Name, veleroScheduleNames[resourceType]) &&
-				(bkp.Status.Phase == veleroapi.BackupPhaseCompleted ||
-					bkp.Status.Phase == veleroapi.BackupPhasePartiallyFailed)
-		})
-		if len(relatedBackups) == 0 {
-			return "", nil, fmt.Errorf("no backups found")
-		}
-		sort.Sort(mostRecent(relatedBackups))
-		return relatedBackups[0].Name, &relatedBackups[0], nil
-	}
-
-	// get the backup name for this type of resource, based on the requested resource timestamp
-	switch resourceType {
-	case CredentialsHive, CredentialsCluster, ResourcesGeneric:
-		// first try to find a backup for this resourceType with the exact timestamp
-		var computedName string
-		backupTimestamp := strings.LastIndex(backupName, "-")
-		if backupTimestamp != -1 {
-			computedName = veleroScheduleNames[resourceType] + backupName[backupTimestamp:]
-		}
-		exactTimeBackup := filterBackups(veleroBackups.Items, func(bkp veleroapi.Backup) bool {
-			return computedName == bkp.Name
-		})
-		if len(exactTimeBackup) != 0 {
-			return exactTimeBackup[0].Name, &exactTimeBackup[0], nil
-		}
-		// next try to find a backup with StartTimestamp in 30s range of the target timestamp
-		targetTimestamp, err := getBackupTimestamp(backupName)
-		if err != nil || targetTimestamp.IsZero() {
-			return "", nil, fmt.Errorf(
-				"cannot find %s Velero Backup for resourceType %s",
-				backupName,
-				string(resourceType),
-			)
-		}
-		timeRangeBackups := filterBackups(veleroBackups.Items[:], func(bkp veleroapi.Backup) bool {
-			if !strings.Contains(bkp.Name, veleroScheduleNames[resourceType]) ||
-				bkp.Status.StartTimestamp == nil {
-				return false
-			}
-			if targetTimestamp.Sub(bkp.Status.StartTimestamp.Time).Seconds() > 30 ||
-				bkp.Status.StartTimestamp.Time.Sub(targetTimestamp).Seconds() > 30 {
-				return false // not related, more then 30s appart
-			}
-			return true
-		})
-		if len(timeRangeBackups) != 0 {
-			return timeRangeBackups[0].Name, &timeRangeBackups[0], nil
-		}
-		// if no backups within the range, return error
-		return "", nil, fmt.Errorf(
-			"cannot find %s Velero Backup for resourceType %s",
-			backupName,
-			string(resourceType),
-		)
-	}
-
-	// for Credentials, Resources, ManagedClusters use the exact backupName set by the user
-	veleroBackup := veleroapi.Backup{}
-	err := r.Get(
-		ctx,
-		types.NamespacedName{Name: backupName, Namespace: restore.Namespace},
-		&veleroBackup,
-	)
-	if err == nil {
-		return backupName, &veleroBackup, nil
-	}
-	return "", nil, fmt.Errorf("cannot find %s Velero Backup: %v", backupName, err)
-}
-
 // create velero.io.Restore resource for each resource type
 func (r *RestoreReconciler) initVeleroRestores(
 	ctx context.Context,
@@ -678,9 +588,10 @@ func (r *RestoreReconciler) retrieveRestoreDetails(
 		}
 
 		veleroRestore := &veleroapi.Restore{}
-		veleroBackupName, veleroBackup, err := r.getVeleroBackupName(
+		veleroBackupName, veleroBackup, err := getVeleroBackupName(
 			ctx,
-			acmRestore,
+			r.Client,
+			acmRestore.Namespace,
 			key,
 			backupName,
 		)

@@ -27,6 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	ocinfrav1 "github.com/openshift/api/config/v1"
+	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	certsv1 "k8s.io/api/certificates/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/client-go/discovery/cached/memory"
@@ -50,8 +51,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	discoveryclient "k8s.io/client-go/discovery"
 	restclient "k8s.io/client-go/rest"
-
-	valeroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -403,7 +402,7 @@ var _ = BeforeSuite(func() {
 	err = rbacv1.AddToScheme(scheme.Scheme) // for clusterroles and clusterrolebindings
 	Expect(err).NotTo(HaveOccurred())
 
-	err = valeroapi.AddToScheme(scheme.Scheme) // for velero types
+	err = veleroapi.AddToScheme(scheme.Scheme) // for velero types
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme
