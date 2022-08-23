@@ -587,8 +587,9 @@ func (r *RestoreReconciler) isOtherRestoresRunning(
 	return "", nil
 }
 
-func (r *RestoreReconciler) isNewBackupAvailable(
+func isNewBackupAvailable(
 	ctx context.Context,
+	c client.Client,
 	restore *v1beta1.Restore,
 	resourceType ResourceType) bool {
 	logger := log.FromContext(ctx)
@@ -598,7 +599,7 @@ func (r *RestoreReconciler) isNewBackupAvailable(
 	// was used in the latest Velero restore for this resourceType
 	newVeleroBackupName, newVeleroBackup, err := getVeleroBackupName(
 		ctx,
-		r.Client,
+		c,
 		restore.Namespace,
 		resourceType,
 		latestBackupStr,
@@ -636,7 +637,7 @@ func (r *RestoreReconciler) isNewBackupAvailable(
 	}
 
 	latestVeleroRestore := veleroapi.Restore{}
-	err = r.Get(
+	err = c.Get(
 		ctx,
 		types.NamespacedName{
 			Name:      latestVeleroRestoreName,
@@ -659,7 +660,7 @@ func (r *RestoreReconciler) isNewBackupAvailable(
 	// with the backup used in the latestVeleroRestore
 	if latestVeleroRestore.Spec.BackupName != newVeleroBackupName {
 		latestVeleroBackup := veleroapi.Backup{}
-		err := r.Get(
+		err := c.Get(
 			ctx,
 			types.NamespacedName{
 				Name:      latestVeleroRestore.Spec.BackupName,

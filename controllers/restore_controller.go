@@ -377,8 +377,8 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 	restoreOnlyManagedClusters := false
 	if sync {
-		if r.isNewBackupAvailable(ctx, restore, Resources) ||
-			r.isNewBackupAvailable(ctx, restore, Credentials) {
+		if isNewBackupAvailable(ctx, r.Client, restore, Resources) ||
+			isNewBackupAvailable(ctx, r.Client, restore, Credentials) {
 			restoreLogger.Info(
 				"new backups available to sync with for this restore",
 				"name", restore.Name,
