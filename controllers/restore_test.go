@@ -744,6 +744,15 @@ func Test_postRestoreActivation(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
+	ns := corev1.Namespace{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Namespace",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "managed1",
+		},
+	}
 	autoImporSecret := corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -757,6 +766,7 @@ func Test_postRestoreActivation(t *testing.T) {
 	}
 	cfg, _ := testEnv.Start()
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	k8sClient1.Create(context.Background(), &ns)
 	k8sClient1.Create(context.Background(), &autoImporSecret)
 
 	fourHoursAgo := "2022-07-26T11:25:34Z"
@@ -1080,13 +1090,141 @@ func Test_postRestoreActivation(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
+	for index, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := postRestoreActivation(tt.args.ctx, k8sClient1,
 				tt.args.secrets, tt.args.managedClusters, tt.args.currentTime); len(got) != len(tt.want) {
 				t.Errorf("postRestoreActivation() returns = %v, want %v", got, tt.want)
 			}
 		})
+
+		if index == len(tests)-1 {
+			testEnv.Stop()
+		}
+	}
+
+}
+
+func Test_getVeleroBackupName(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	veleroNamespaceName := "backup-ns"
+	veleroNamespace := corev1.Namespace{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Namespace",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: veleroNamespaceName,
+		},
+	}
+
+	backup := veleroapi.Backup{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "velero/v1",
+			Kind:       "Backup",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "acm-credentials-cluster-schedule-20220922170041",
+			Namespace: veleroNamespaceName,
+			Labels: map[string]string{
+				"velero.io/schedule-name":  "aa",
+				BackupScheduleClusterLabel: "abcd",
+			},
+		},
+		Spec: veleroapi.BackupSpec{
+			IncludedNamespaces: []string{"please-keep-this-one"},
+		},
+		Status: veleroapi.BackupStatus{
+			Phase:  veleroapi.BackupPhaseCompleted,
+			Errors: 0,
+		},
+	}
+
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+
+	type args struct {
+		ctx              context.Context
+		c                client.Client
+		restoreNamespace string
+		resourceType     ResourceType
+		backupName       string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "no kind is registered for the type v1.BackupList",
+			args: args{
+				ctx:              context.Background(),
+				c:                k8sClient1,
+				resourceType:     CredentialsCluster,
+				backupName:       latestBackupStr,
+				restoreNamespace: veleroNamespaceName,
+			},
+			want: "",
+		},
+		{
+			name: "no backup items",
+			args: args{
+				ctx:              context.Background(),
+				c:                k8sClient1,
+				resourceType:     CredentialsCluster,
+				backupName:       latestBackupStr,
+				restoreNamespace: veleroNamespaceName,
+			},
+			want: "",
+		},
+		{
+			name: "found backup item but time is not matching",
+			args: args{
+				ctx:              context.Background(),
+				c:                k8sClient1,
+				resourceType:     CredentialsCluster,
+				backupName:       "acm-credentials-schedule-20220822170041",
+				restoreNamespace: veleroNamespaceName,
+			},
+			want: "",
+		},
+		{
+			name: "found backup item ",
+			args: args{
+				ctx:              context.Background(),
+				c:                k8sClient1,
+				resourceType:     CredentialsCluster,
+				backupName:       latestBackupStr,
+				restoreNamespace: veleroNamespaceName,
+			},
+			want: backup.Name,
+		},
+	}
+
+	for index, tt := range tests {
+
+		if index == 1 {
+			veleroapi.AddToScheme(scheme.Scheme)
+		}
+		if index == 2 {
+			k8sClient1.Create(context.Background(), &veleroNamespace)
+			k8sClient1.Create(context.Background(), &backup)
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			if name, _, _ := getVeleroBackupName(tt.args.ctx, tt.args.c,
+				tt.args.restoreNamespace, tt.args.resourceType, tt.args.backupName); name != tt.want {
+				t.Errorf("getVeleroBackupName() returns = %v, want %v", name, tt.want)
+			}
+		})
+		if index == len(tests)-1 {
+			// clean up
+			testEnv.Stop()
+		}
 	}
 
 }
