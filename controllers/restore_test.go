@@ -1228,3 +1228,236 @@ func Test_getVeleroBackupName(t *testing.T) {
 	}
 
 }
+
+func Test_isNewBackupAvailable(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+
+	skipRestore := "skip"
+	latestBackup := "latest"
+
+	veleroNamespaceName := "backup-ns"
+	veleroNamespace := corev1.Namespace{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Namespace",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: veleroNamespaceName,
+		},
+	}
+
+	passiveStr := "passive"
+	backupName := "acm-credentials-schedule-20220922170041"
+	restoreName := passiveStr + "-" + backupName
+
+	backup := veleroapi.Backup{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "velero/v1",
+			Kind:       "Backup",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      backupName,
+			Namespace: veleroNamespaceName,
+			Labels: map[string]string{
+				"velero.io/schedule-name":  "aa",
+				BackupScheduleClusterLabel: "abcd",
+			},
+		},
+		Spec: veleroapi.BackupSpec{
+			IncludedNamespaces: []string{"please-keep-this-one"},
+		},
+		Status: veleroapi.BackupStatus{
+			Phase:  veleroapi.BackupPhaseCompleted,
+			Errors: 0,
+		},
+	}
+
+	veleroRestore := veleroapi.Restore{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "velero/v1",
+			Kind:       "Restore",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      restoreName,
+			Namespace: veleroNamespaceName,
+		},
+		Spec: veleroapi.RestoreSpec{
+			BackupName: backupName,
+		},
+		Status: veleroapi.RestoreStatus{
+			Phase: "Completed",
+		},
+	}
+
+	restoreCreds := v1beta1.Restore{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "Restore",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      passiveStr,
+			Namespace: veleroNamespaceName,
+		},
+		Spec: v1beta1.RestoreSpec{
+			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+			SyncRestoreWithNewBackups:       true,
+			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
+			VeleroManagedClustersBackupName: &skipRestore,
+			VeleroCredentialsBackupName:     &latestBackup,
+			VeleroResourcesBackupName:       &latestBackup,
+		},
+	}
+
+	restoreCredSameBackup := v1beta1.Restore{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "Restore",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      passiveStr,
+			Namespace: veleroNamespaceName,
+		},
+		Spec: v1beta1.RestoreSpec{
+			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+			SyncRestoreWithNewBackups:       true,
+			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
+			VeleroManagedClustersBackupName: &skipRestore,
+			VeleroCredentialsBackupName:     &latestBackup,
+			VeleroResourcesBackupName:       &latestBackup,
+		},
+		Status: v1beta1.RestoreStatus{
+			VeleroCredentialsRestoreName: veleroRestore.Name,
+		},
+	}
+
+	restoreCredNewBackup := v1beta1.Restore{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "Restore",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      passiveStr,
+			Namespace: veleroNamespaceName,
+		},
+		Spec: v1beta1.RestoreSpec{
+			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+			SyncRestoreWithNewBackups:       true,
+			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
+			VeleroManagedClustersBackupName: &skipRestore,
+			VeleroCredentialsBackupName:     &latestBackup,
+			VeleroResourcesBackupName:       &latestBackup,
+		},
+		Status: v1beta1.RestoreStatus{
+			VeleroCredentialsRestoreName: veleroRestore.Name + "11",
+		},
+	}
+
+	type args struct {
+		ctx          context.Context
+		c            client.Client
+		restore      *v1beta1.Restore
+		resourceType ResourceType
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+
+		{
+			name: "no kind is registered for the type v1.BackupList",
+			args: args{
+				ctx:          context.Background(),
+				c:            k8sClient1,
+				restore:      &restoreCreds,
+				resourceType: CredentialsCluster,
+			},
+			want: false,
+		},
+		{
+			name: "no backup items",
+			args: args{
+				ctx:          context.Background(),
+				c:            k8sClient1,
+				resourceType: CredentialsCluster,
+				restore:      &restoreCreds,
+			},
+			want: false,
+		},
+
+		{
+			name: "NOT found restore item ",
+			args: args{
+				ctx:          context.Background(),
+				c:            k8sClient1,
+				resourceType: CredentialsCluster,
+				restore:      &restoreCreds,
+			},
+			want: false,
+		},
+		{
+			name: "found restore item but not the latest backup",
+			args: args{
+				ctx:          context.Background(),
+				c:            k8sClient1,
+				resourceType: Credentials,
+				restore:      &restoreCredSameBackup,
+			},
+			want: false,
+		},
+		{
+			name: "found restore item AND new backup",
+			args: args{
+				ctx:          context.Background(),
+				c:            k8sClient1,
+				resourceType: Credentials,
+				restore:      &restoreCredNewBackup,
+			},
+			want: true,
+		},
+		{
+			name: "found restore item AND new backup, with restore found",
+			args: args{
+				ctx:          context.Background(),
+				c:            k8sClient1,
+				resourceType: Credentials,
+				restore:      &restoreCredNewBackup,
+			},
+			want: false,
+		},
+	}
+
+	for index, tt := range tests {
+
+		if index == 1 {
+			v1beta1.AddToScheme(scheme.Scheme)
+			veleroapi.AddToScheme(scheme.Scheme)
+		}
+		if index == 2 {
+			k8sClient1.Create(tt.args.ctx, &veleroNamespace)
+			k8sClient1.Create(tt.args.ctx, &backup)
+			k8sClient1.Create(context.Background(), &veleroRestore)
+		}
+		if index == len(tests)-1 {
+			// create restore
+			k8sClient1.Create(context.Background(), &restoreCredNewBackup)
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isNewBackupAvailable(tt.args.ctx, tt.args.c,
+				tt.args.restore, tt.args.resourceType); got != tt.want {
+				t.Errorf("isNewBackupAvailable() returns = %v, want %v, %v", got, tt.want, tt.args.resourceType)
+			}
+		})
+		if index == len(tests)-1 {
+			// clean up
+			testEnv.Stop()
+		}
+	}
+
+}
