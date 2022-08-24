@@ -152,6 +152,8 @@ func updateRestoreStatus(
 }
 
 // delete resource
+// returns bool - resource was processed
+// exception during execution
 func deleteDynamicResource(
 	ctx context.Context,
 	mapping *meta.RESTMapping,
@@ -159,10 +161,9 @@ func deleteDynamicResource(
 	resource unstructured.Unstructured,
 	deleteOptions v1.DeleteOptions,
 	excludedNamespaces []string,
-) (bool, bool) {
+) (bool, string) {
 	logger := log.FromContext(ctx)
 	localCluster := "local-cluster"
-	processed := true
 
 	nsSkipMsg := fmt.Sprintf(
 		"Skipping resource %s [%s.%s]",
@@ -176,7 +177,7 @@ func deleteDynamicResource(
 				findValue(excludedNamespaces, resource.GetNamespace()))) {
 		// do not clean up local-cluster resources or resources from excluded NS
 		logger.Info(nsSkipMsg)
-		return false, false
+		return false, ""
 	}
 
 	if resource.GetLabels() != nil &&
@@ -185,69 +186,68 @@ func deleteDynamicResource(
 		// do not cleanup resources with a velero.io/exclude-from-backup=true label, they are not backed up
 		// do not backup subscriptions created by the mch in a separate NS
 		logger.Info(nsSkipMsg)
-		return false, false
+		return false, ""
 	}
 
 	nsScopedMsg := fmt.Sprintf(
-		"Deleted resource %s [%s.%s]",
+		"Deleting resource %s [%s.%s]",
 		resource.GetKind(),
 		resource.GetName(),
 		resource.GetNamespace())
 
 	nsScopedPatchMsg := fmt.Sprintf(
-		"Removed finalizers for %s [%s.%s]",
+		"Removing finalizers for %s [%s.%s]",
 		resource.GetKind(),
 		resource.GetName(),
 		resource.GetNamespace())
 
 	globalResourceMsg := fmt.Sprintf(
-		"Deleted resource %s [%s]",
+		"Deleting resource %s [%s]",
 		resource.GetKind(),
 		resource.GetName())
 
 	globalResourcePatchMsg := fmt.Sprintf(
-		"Removed finalizers for %s [%s]",
+		"Removing finalizers for %s [%s]",
 		resource.GetKind(),
 		resource.GetName())
 
+	errMsg := ""
 	patch := `[ { "op": "remove", "path": "/metadata/finalizers" } ]`
 	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
 		// namespaced resources should specify the namespace
+		logger.Info(nsScopedMsg)
 		if err := dr.Namespace(resource.GetNamespace()).Delete(ctx, resource.GetName(), deleteOptions); err != nil {
-			logger.Info(err.Error())
-			return false, processed
+			errMsg = err.Error()
 		} else {
-			logger.Info(nsScopedMsg)
 			if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
 				logger.Info(nsScopedPatchMsg)
 				// delete finalizers and delete resource in this way
 				if _, err := dr.Namespace(resource.GetNamespace()).Patch(ctx, resource.GetName(),
 					types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
-					logger.Info(err.Error())
-					return false, processed
+					errMsg = err.Error()
 				}
 			}
 		}
 	} else {
 		// for cluster-wide resources
+		logger.Info(globalResourceMsg)
 		if err := dr.Delete(ctx, resource.GetName(), deleteOptions); err != nil {
-			logger.Info(err.Error())
-			return false, processed
+			errMsg = err.Error()
 		} else {
-			logger.Info(globalResourceMsg)
 			if resource.GetFinalizers() != nil && len(resource.GetFinalizers()) > 0 {
 				// delete finalizers and delete resource in this way
 				logger.Info(globalResourcePatchMsg)
 				if _, err := dr.Patch(ctx, resource.GetName(),
 					types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
-					logger.Info(err.Error())
-					return false, processed
+					errMsg = err.Error()
 				}
 			}
 		}
 	}
-
-	return true, processed
+	if errMsg != "" {
+		logger.Info(errMsg)
+	}
+	return true, errMsg
 }
 
 // clean up resources for the restored backup resources
@@ -478,15 +478,21 @@ func createAutoImportSecret(
 }
 
 // check if there is any active resource on this cluster
-func (r *RestoreReconciler) isOtherResourcesRunning(
+func isOtherResourcesRunning(
 	ctx context.Context,
+	c client.Client,
 	restore *v1beta1.Restore,
 ) (string, error) {
 	// don't create restore if an active schedule exists
-	backupScheduleName, err := r.isBackupScheduleRunning(ctx, restore)
-	if err != nil {
+	backupScheduleList := v1beta1.BackupScheduleList{}
+	if err := c.List(
+		ctx,
+		&backupScheduleList,
+		client.InNamespace(restore.Namespace),
+	); err != nil {
 		return "", err
 	}
+	backupScheduleName := isBackupScheduleRunning(backupScheduleList.Items)
 	if backupScheduleName != "" {
 		msg := "This resource is ignored because BackupSchedule resource " + backupScheduleName + " is currently active, " +
 			"before creating another resource verify that any active resources are removed."
@@ -494,10 +500,15 @@ func (r *RestoreReconciler) isOtherResourcesRunning(
 	}
 
 	// don't create restore if an active restore exists
-	otherRestoreName, err := r.isOtherRestoresRunning(ctx, restore)
-	if err != nil {
+	restoreList := v1beta1.RestoreList{}
+	if err := c.List(
+		ctx,
+		&restoreList,
+		client.InNamespace(restore.Namespace),
+	); err != nil {
 		return "", err
 	}
+	otherRestoreName := isOtherRestoresRunning(restoreList.Items, restore.Name)
 	if otherRestoreName != "" {
 		msg := "This resource is ignored because Restore resource " + otherRestoreName + " is currently active, " +
 			"before creating another resource verify that any active resources are removed."
@@ -508,83 +519,46 @@ func (r *RestoreReconciler) isOtherResourcesRunning(
 }
 
 // check if there is a backup schedule running on this cluster
-func (r *RestoreReconciler) isBackupScheduleRunning(
-	ctx context.Context,
-	restore *v1beta1.Restore,
-) (string, error) {
-	restoreLogger := log.FromContext(ctx)
+func isBackupScheduleRunning(
+	schedules []v1beta1.BackupSchedule,
+) string {
 
-	backupScheduleList := v1beta1.BackupScheduleList{}
-	if err := r.List(
-		ctx,
-		&backupScheduleList,
-		client.InNamespace(restore.Namespace),
-	); err != nil {
-
-		msg := "unable to list backup schedule resources " +
-			"namespace:" + restore.Namespace
-
-		restoreLogger.Error(
-			err,
-			msg,
-		)
-		return "", err
+	if len(schedules) == 0 {
+		return ""
 	}
 
-	if len(backupScheduleList.Items) == 0 {
-		return "", nil
-	}
-
-	for i := range backupScheduleList.Items {
-		backupScheduleItem := backupScheduleList.Items[i]
+	for i := range schedules {
+		backupScheduleItem := schedules[i]
 		if backupScheduleItem.Status.Phase != v1beta1.SchedulePhaseBackupCollision {
-			return backupScheduleItem.Name, nil
+			return backupScheduleItem.Name
 		}
 	}
 
-	return "", nil
+	return ""
 }
 
 // check if there are other restores that are not complete yet
-func (r *RestoreReconciler) isOtherRestoresRunning(
-	ctx context.Context,
-	restore *v1beta1.Restore,
-) (string, error) {
-	restoreLogger := log.FromContext(ctx)
+func isOtherRestoresRunning(
+	restores []v1beta1.Restore,
+	restoreName string,
+) string {
 
-	restoreList := v1beta1.RestoreList{}
-	if err := r.List(
-		ctx,
-		&restoreList,
-		client.InNamespace(restore.Namespace),
-	); err != nil {
-
-		msg := "unable to list restore resources" +
-			"namespace:" + restore.Namespace
-
-		restoreLogger.Error(
-			err,
-			msg,
-		)
-		return "", err
+	if len(restores) == 0 {
+		return ""
 	}
 
-	if len(restoreList.Items) == 0 {
-		return "", nil
-	}
-
-	for i := range restoreList.Items {
-		restoreItem := restoreList.Items[i]
-		if restoreItem.Name == restore.Name {
+	for i := range restores {
+		restoreItem := restores[i]
+		if restoreItem.Name == restoreName {
 			continue
 		}
 		if restoreItem.Status.Phase != v1beta1.RestorePhaseFinished &&
 			restoreItem.Status.Phase != v1beta1.RestorePhaseFinishedWithErrors {
-			return restoreItem.Name, nil
+			return restoreItem.Name
 		}
 	}
 
-	return "", nil
+	return ""
 }
 
 func isNewBackupAvailable(

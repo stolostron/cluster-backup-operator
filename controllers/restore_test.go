@@ -570,7 +570,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, got := deleteDynamicResource(tt.args.ctx,
+			if got, _ := deleteDynamicResource(tt.args.ctx,
 				tt.args.mapping,
 				tt.args.dr,
 				tt.args.resource,
@@ -1460,4 +1460,163 @@ func Test_isNewBackupAvailable(t *testing.T) {
 		}
 	}
 
+}
+
+func Test_isBackupScheduleRunning(t *testing.T) {
+	type args struct {
+		backupSchedules []v1beta1.BackupSchedule
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "backup list is empty",
+			args: args{
+				backupSchedules: []v1beta1.BackupSchedule{},
+			},
+			want: "",
+		},
+		{
+			name: "backup without backupcollision running",
+			args: args{
+				backupSchedules: []v1beta1.BackupSchedule{
+					v1beta1.BackupSchedule{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1beta1",
+							Kind:       "BackupSchedule",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "backup-name",
+							Namespace: "ns",
+						},
+						Status: v1beta1.BackupScheduleStatus{
+							Phase: v1beta1.SchedulePhaseEnabled,
+						},
+					},
+				},
+			},
+			want: "backup-name",
+		},
+		{
+			name: "backup WITH backupcollision",
+			args: args{
+				backupSchedules: []v1beta1.BackupSchedule{
+					v1beta1.BackupSchedule{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1beta1",
+							Kind:       "BackupSchedule",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "backup-name",
+							Namespace: "ns",
+						},
+						Status: v1beta1.BackupScheduleStatus{
+							Phase: v1beta1.SchedulePhaseBackupCollision,
+						},
+					},
+				},
+			},
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isBackupScheduleRunning(tt.args.backupSchedules); got != tt.want {
+				t.Errorf("isBackupScheduleRunning() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_isOtherRestoresRunning(t *testing.T) {
+	type args struct {
+		restores    []v1beta1.Restore
+		restoreName string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "restore list is empty",
+			args: args{
+				restores: []v1beta1.Restore{},
+			},
+			want: "",
+		},
+		{
+			name: "restore list has one running item ",
+			args: args{
+				restoreName: "some-name",
+				restores: []v1beta1.Restore{
+					v1beta1.Restore{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1beta1",
+							Kind:       "Restore",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "some-name",
+							Namespace: "ns",
+						},
+					},
+					v1beta1.Restore{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1beta1",
+							Kind:       "Restore",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "some-other-name",
+							Namespace: "ns",
+						},
+						Status: v1beta1.RestoreStatus{
+							Phase: v1beta1.RestorePhaseEnabled,
+						},
+					},
+				},
+			},
+			want: "some-other-name",
+		},
+		{
+			name: "restore list has one completed item ",
+			args: args{
+				restoreName: "some-name",
+				restores: []v1beta1.Restore{
+					v1beta1.Restore{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1beta1",
+							Kind:       "Restore",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "some-name",
+							Namespace: "ns",
+						},
+					},
+					v1beta1.Restore{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1beta1",
+							Kind:       "Restore",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "some-other-name",
+							Namespace: "ns",
+						},
+						Status: v1beta1.RestoreStatus{
+							Phase: v1beta1.RestorePhaseFinishedWithErrors,
+						},
+					},
+				},
+			},
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isOtherRestoresRunning(tt.args.restores, tt.args.restoreName); got != tt.want {
+				t.Errorf("isOtherRestoresRunning() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
