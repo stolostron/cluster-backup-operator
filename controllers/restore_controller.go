@@ -110,7 +110,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// don't create restores if there is any other active resource in this namespace
-	activeResourceMsg, err := r.isOtherResourcesRunning(ctx, restore)
+	activeResourceMsg, err := isOtherResourcesRunning(ctx, r.Client, restore)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
