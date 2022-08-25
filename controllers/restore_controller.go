@@ -520,12 +520,12 @@ func (r *RestoreReconciler) retrieveRestoreDetails(
 
 	restoreLength := len(veleroScheduleNames) - 1 // ignore validation backup
 	if restoreOnlyManagedClusters {
-		restoreLength = 1 // will get only managed clusters
+		restoreLength = 2 // will get only managed clusters and generic resources
 	}
 	restoreKeys := make([]ResourceType, 0, restoreLength)
 	for key := range veleroScheduleNames {
 		if key == ValidationSchedule ||
-			(restoreOnlyManagedClusters && key != ManagedClusters) {
+			(restoreOnlyManagedClusters && !(key == ManagedClusters || key == ResourcesGeneric)) {
 			// ignore validation backup; this is used for the policy
 			// to validate that there are backups schedules enabled
 			// also ignore all but managed clusters when only this is restored
