@@ -1212,6 +1212,25 @@ var _ = Describe("Basic Restore controller", func() {
 						StartTimestamp: &twoHoursAgo,
 					},
 				},
+				veleroapi.Backup{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "velero/v1",
+						Kind:       "Backup",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-resources-generic-schedule-good-recent-backup",
+						Namespace: veleroNamespace.Name,
+					},
+					Spec: veleroapi.BackupSpec{
+						IncludedNamespaces: []string{"please-keep-this-one"},
+						IncludedResources:  backupManagedClusterResources,
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseCompleted,
+						Errors:         0,
+						StartTimestamp: &twoHoursAgo,
+					},
+				},
 			}
 
 			// create new backups to sync with
@@ -1265,6 +1284,46 @@ var _ = Describe("Basic Restore controller", func() {
 					&veleroRestore,
 				),
 			).ShouldNot(HaveOccurred())
+
+			// create a restore resource to test the collision path when trying to create the same restore
+			restoreResourceCollision := veleroapi.Restore{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero/v1",
+					Kind:       "Restore",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "rhacm-restore-1-acm-resources-generic-schedule-good-old-backup",
+					Namespace: veleroNamespace.Name,
+				},
+				Spec: veleroapi.RestoreSpec{
+					BackupName: "acm-resources-schedule-good-old-backup",
+				},
+				Status: veleroapi.RestoreStatus{
+					Phase: "Completed",
+				},
+			}
+			Expect(k8sClient.Create(ctx, &restoreResourceCollision)).Should(Succeed())
+
+			Expect(createdRestore.Spec.VeleroManagedClustersBackupName).Should(Equal(&skipRestore))
+
+			Eventually(func() string {
+				if err := k8sClient.Get(ctx, restoreLookupKey, &createdRestore); err == nil {
+					// update createdRestore status to Enabled
+					createdRestore.Status.Phase = v1beta1.RestorePhaseEnabled
+					Expect(k8sClient.Status().Update(ctx, &createdRestore)).Should(Succeed())
+					return string(createdRestore.Status.Phase)
+				}
+				return "notset"
+			}, timeout, interval).Should(BeIdenticalTo(v1beta1.RestorePhaseEnabled))
+
+			// now trigger a resource update by setting VeleroManagedClustersBackupName to latest
+			// it should only restore the managed clusters and generic resources since
+			// there is no new backup for resources and credentials
+			if err := k8sClient.Get(ctx, restoreLookupKey, &createdRestore); err == nil {
+				createdRestore.Spec.VeleroManagedClustersBackupName = &latestBackup
+				Expect(k8sClient.Update(ctx, &createdRestore)).Should(Succeed())
+			}
+
 		})
 	})
 
