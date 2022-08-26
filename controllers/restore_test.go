@@ -1624,7 +1624,7 @@ func Test_isOtherRestoresRunning(t *testing.T) {
 func Test_shouldRunCleanup(t *testing.T) {
 	type args struct {
 		ctx     context.Context
-		restore v1beta1.Restore
+		restore *v1beta1.Restore
 	}
 	tests := []struct {
 		name string
@@ -1635,7 +1635,7 @@ func Test_shouldRunCleanup(t *testing.T) {
 			name: "restore has no cleanup option",
 			args: args{
 				ctx: context.Background(),
-				restore: v1beta1.Restore{
+				restore: &v1beta1.Restore{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "cluster.open-cluster-management.io/v1beta1",
 						Kind:       "Restore",
@@ -1655,7 +1655,7 @@ func Test_shouldRunCleanup(t *testing.T) {
 			name: "restore has invalid cleanup option",
 			args: args{
 				ctx: context.Background(),
-				restore: v1beta1.Restore{
+				restore: &v1beta1.Restore{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "cluster.open-cluster-management.io/v1beta1",
 						Kind:       "Restore",
@@ -1675,7 +1675,7 @@ func Test_shouldRunCleanup(t *testing.T) {
 			name: "restore has cleanup option, should cleanup ",
 			args: args{
 				ctx: context.Background(),
-				restore: v1beta1.Restore{
+				restore: &v1beta1.Restore{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "cluster.open-cluster-management.io/v1beta1",
 						Kind:       "Restore",

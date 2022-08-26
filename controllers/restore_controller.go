@@ -637,7 +637,7 @@ func (r *RestoreReconciler) prepareForRestore(
 	backupsForVeleroRestores map[ResourceType]*veleroapi.Backup,
 ) {
 
-	if shouldRun := shouldRunCleanup(ctx, acmRestore); shouldRun {
+	if shouldRun := shouldRunCleanup(ctx, &acmRestore); shouldRun {
 
 		deletePolicy := metav1.DeletePropagationForeground
 		delOptions := metav1.DeleteOptions{

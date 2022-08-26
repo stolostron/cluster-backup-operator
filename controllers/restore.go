@@ -808,7 +808,7 @@ func getVeleroBackupName(
 // returns true if the restore should run the cleanup first
 func shouldRunCleanup(
 	ctx context.Context,
-	acmRestore v1beta1.Restore,
+	acmRestore *v1beta1.Restore,
 ) bool {
 
 	if ok := findValue([]string{v1beta1.CleanupTypeAll,
