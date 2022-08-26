@@ -1620,3 +1620,60 @@ func Test_isOtherRestoresRunning(t *testing.T) {
 		})
 	}
 }
+
+func Test_isValidCleanupOption(t *testing.T) {
+	type args struct {
+		restore *v1beta1.Restore
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "restore has invalid cleanup option",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "some-name",
+						Namespace: "ns",
+					},
+					Spec: v1beta1.RestoreSpec{
+						CleanupBeforeRestore: "someWrongValue",
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "restore has cleanup option, should cleanup ",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "some-name",
+						Namespace: "ns",
+					},
+					Spec: v1beta1.RestoreSpec{
+						CleanupBeforeRestore: v1beta1.CleanupTypeAll,
+					},
+				},
+			},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isValidCleanupOption(tt.args.restore); len(got) == 0 != tt.want {
+				t.Errorf("isValidCleanupOption() = %v, want len of string is empty %v", len(got) == 0, tt.want)
+			}
+		})
+	}
+}

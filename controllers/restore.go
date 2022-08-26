@@ -804,3 +804,21 @@ func getVeleroBackupName(
 	}
 	return "", nil, fmt.Errorf("cannot find %s Velero Backup: %v", backupName, err)
 }
+
+func isValidCleanupOption(
+	acmRestore *v1beta1.Restore,
+) string {
+
+	if ok := findValue([]string{v1beta1.CleanupTypeAll,
+		v1beta1.CleanupTypeNone,
+		v1beta1.CleanupTypeRestored},
+		string(acmRestore.Spec.CleanupBeforeRestore)); !ok {
+
+		msg := "invalid CleanupBeforeRestore value : " +
+			string(acmRestore.Spec.CleanupBeforeRestore)
+		return msg
+
+	}
+
+	return ""
+}
