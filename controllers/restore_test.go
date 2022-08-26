@@ -1620,3 +1620,83 @@ func Test_isOtherRestoresRunning(t *testing.T) {
 		})
 	}
 }
+
+func Test_shouldRunCleanup(t *testing.T) {
+	type args struct {
+		ctx     context.Context
+		restore v1beta1.Restore
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "restore has no cleanup option",
+			args: args{
+				ctx: context.Background(),
+				restore: v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "some-name",
+						Namespace: "ns",
+					},
+					Spec: v1beta1.RestoreSpec{
+						CleanupBeforeRestore: v1beta1.CleanupTypeNone,
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "restore has invalid cleanup option",
+			args: args{
+				ctx: context.Background(),
+				restore: v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "some-name",
+						Namespace: "ns",
+					},
+					Spec: v1beta1.RestoreSpec{
+						CleanupBeforeRestore: "someWrongValue",
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "restore has cleanup option, should cleanup ",
+			args: args{
+				ctx: context.Background(),
+				restore: v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "some-name",
+						Namespace: "ns",
+					},
+					Spec: v1beta1.RestoreSpec{
+						CleanupBeforeRestore: v1beta1.CleanupTypeAll,
+					},
+				},
+			},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldRunCleanup(tt.args.ctx, tt.args.restore); got != tt.want {
+				t.Errorf("isOtherRestoresRunning() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
