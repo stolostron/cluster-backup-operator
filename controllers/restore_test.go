@@ -1621,9 +1621,8 @@ func Test_isOtherRestoresRunning(t *testing.T) {
 	}
 }
 
-func Test_shouldRunCleanup(t *testing.T) {
+func Test_isValidCleanupOption(t *testing.T) {
 	type args struct {
-		ctx     context.Context
 		restore *v1beta1.Restore
 	}
 	tests := []struct {
@@ -1632,29 +1631,8 @@ func Test_shouldRunCleanup(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "restore has no cleanup option",
-			args: args{
-				ctx: context.Background(),
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "some-name",
-						Namespace: "ns",
-					},
-					Spec: v1beta1.RestoreSpec{
-						CleanupBeforeRestore: v1beta1.CleanupTypeNone,
-					},
-				},
-			},
-			want: false,
-		},
-		{
 			name: "restore has invalid cleanup option",
 			args: args{
-				ctx: context.Background(),
 				restore: &v1beta1.Restore{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "cluster.open-cluster-management.io/v1beta1",
@@ -1674,7 +1652,6 @@ func Test_shouldRunCleanup(t *testing.T) {
 		{
 			name: "restore has cleanup option, should cleanup ",
 			args: args{
-				ctx: context.Background(),
 				restore: &v1beta1.Restore{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "cluster.open-cluster-management.io/v1beta1",
@@ -1694,8 +1671,8 @@ func Test_shouldRunCleanup(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := shouldRunCleanup(tt.args.ctx, tt.args.restore); got != tt.want {
-				t.Errorf("isOtherRestoresRunning() = %v, want %v", got, tt.want)
+			if got := isValidCleanupOption(tt.args.restore); len(got) == 0 != tt.want {
+				t.Errorf("isValidCleanupOption() = %v, want len of string is empty %v", len(got) == 0, tt.want)
 			}
 		})
 	}

@@ -805,31 +805,20 @@ func getVeleroBackupName(
 	return "", nil, fmt.Errorf("cannot find %s Velero Backup: %v", backupName, err)
 }
 
-// returns true if the restore should run the cleanup first
-func shouldRunCleanup(
-	ctx context.Context,
+func isValidCleanupOption(
 	acmRestore *v1beta1.Restore,
-) bool {
+) string {
 
 	if ok := findValue([]string{v1beta1.CleanupTypeAll,
 		v1beta1.CleanupTypeNone,
 		v1beta1.CleanupTypeRestored},
 		string(acmRestore.Spec.CleanupBeforeRestore)); !ok {
 
-		restoreLogger := log.FromContext(ctx)
-
 		msg := "invalid CleanupBeforeRestore value : " +
 			string(acmRestore.Spec.CleanupBeforeRestore)
-		acmRestore.Status.LastMessage = msg
-		restoreLogger.Error(fmt.Errorf(msg), "error")
-		return false
+		return msg
 
 	}
 
-	// clean up resources only if requested
-	if acmRestore.Spec.CleanupBeforeRestore == v1beta1.CleanupTypeNone {
-		return false
-	}
-
-	return true
+	return ""
 }

@@ -1429,7 +1429,37 @@ var _ = Describe("Basic Restore controller", func() {
 				return createdRestore.Status.Phase
 			}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseFinished))
 
-			// createdRestore above is has RestorePhaseFinished status
+			// createdRestore above has RestorePhaseFinished status
+			// the following restore should not be ignored
+			rhacmRestoreNotIgnoredButError := v1beta1.Restore{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "cluster.open-cluster-management.io/v1beta1",
+					Kind:       "Restore",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      restoreName + "not-ignored-but-invalid",
+					Namespace: veleroNamespace.Name,
+				},
+				Spec: v1beta1.RestoreSpec{
+					CleanupBeforeRestore:            "someInvalidValue",
+					VeleroManagedClustersBackupName: &skipRestore,
+					VeleroCredentialsBackupName:     &skipRestore,
+					VeleroResourcesBackupName:       &latestBackup,
+				},
+			}
+			Expect(k8sClient.Create(ctx, &rhacmRestoreNotIgnoredButError)).Should(Succeed())
+			notIgnoredRestoreErr := v1beta1.Restore{}
+			Eventually(func() v1beta1.RestorePhase {
+				restoreLookupKey := types.NamespacedName{
+					Name:      restoreName + "not-ignored-but-invalid",
+					Namespace: veleroNamespace.Name,
+				}
+				err := k8sClient.Get(ctx, restoreLookupKey, &notIgnoredRestoreErr)
+				Expect(err).NotTo(HaveOccurred())
+				return notIgnoredRestoreErr.Status.Phase
+			}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseFinishedWithErrors))
+
+			// createdRestore above has RestorePhaseFinished status
 			// the following restore should not be ignored
 			rhacmRestoreNotIgnored := v1beta1.Restore{
 				TypeMeta: metav1.TypeMeta{

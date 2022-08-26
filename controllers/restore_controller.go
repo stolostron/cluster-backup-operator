@@ -127,6 +127,21 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		)
 	}
 
+	// don't create restores if the cleanup option is not valid
+	activeResourceMsg = isValidCleanupOption(restore)
+	if activeResourceMsg != "" {
+		updateRestoreStatus(
+			restoreLogger,
+			v1beta1.RestorePhaseFinishedWithErrors,
+			activeResourceMsg,
+			restore,
+		)
+		return ctrl.Result{}, errors.Wrap(
+			r.Client.Status().Update(ctx, restore),
+			activeResourceMsg,
+		)
+	}
+
 	if msg, retry := validateStorageSettings(ctx, r.Client, req.Name, req.Namespace, restore); msg != "" {
 
 		updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseError, msg, restore)
@@ -637,7 +652,7 @@ func (r *RestoreReconciler) prepareForRestore(
 	backupsForVeleroRestores map[ResourceType]*veleroapi.Backup,
 ) {
 
-	if shouldRun := shouldRunCleanup(ctx, &acmRestore); shouldRun {
+	if acmRestore.Spec.CleanupBeforeRestore != v1beta1.CleanupTypeNone {
 
 		deletePolicy := metav1.DeletePropagationForeground
 		delOptions := metav1.DeleteOptions{
