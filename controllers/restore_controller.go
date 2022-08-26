@@ -425,8 +425,6 @@ func (r *RestoreReconciler) initVeleroRestores(
 	}
 
 	// clean up resources only if requested
-	// continue with the restore even if the prepare for restore returned some errors
-	// we don't know how much was cleaned up prior to the error so don't abort the action now
 	r.prepareForRestore(ctx, *restore, veleroRestoresToCreate, backupsForVeleroRestores)
 	newVeleroRestoreCreated := false
 
