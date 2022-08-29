@@ -297,7 +297,7 @@ func isRestoreRunning(
 		ctx,
 		&restoreList,
 		client.InNamespace(backupSchedule.Namespace),
-	); err == nil {
+	); err != nil {
 		return restoreName, err
 	}
 

@@ -335,23 +335,6 @@ func Test_isRestoreRunning(t *testing.T) {
 			Name: veleroNamespaceName,
 		},
 	}
-	latestRestore := "latest"
-	rhacmRestore := v1beta1.Restore{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cluster.open-cluster-management.io/v1beta1",
-			Kind:       "Restore",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "restore-name",
-			Namespace: veleroNamespaceName,
-		},
-		Spec: v1beta1.RestoreSpec{
-			CleanupBeforeRestore:            "abcd",
-			VeleroManagedClustersBackupName: &latestRestore,
-			VeleroCredentialsBackupName:     &latestRestore,
-			VeleroResourcesBackupName:       &latestRestore,
-		},
-	}
 
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
@@ -369,6 +352,24 @@ func Test_isRestoreRunning(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "backup-sch-to-error-restore",
 			Namespace: veleroNamespaceName,
+		},
+	}
+
+	latestRestore := "latest"
+	rhacmRestore := v1beta1.Restore{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "Restore",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "restore-name",
+			Namespace: veleroNamespaceName,
+		},
+		Spec: v1beta1.RestoreSpec{
+			CleanupBeforeRestore:            v1beta1.CleanupTypeRestored,
+			VeleroManagedClustersBackupName: &latestRestore,
+			VeleroCredentialsBackupName:     &latestRestore,
+			VeleroResourcesBackupName:       &latestRestore,
 		},
 	}
 
@@ -404,13 +405,13 @@ func Test_isRestoreRunning(t *testing.T) {
 	for index, tt := range tests {
 
 		if index == len(tests)-1 {
-			k8sClient1.Create(context.Background(), &rhacmRestore)
+			k8sClient1.Create(tt.args.ctx, &rhacmRestore)
 		}
 
 		t.Run(tt.name, func(t *testing.T) {
 			if got, _ := isRestoreRunning(tt.args.ctx, tt.args.c,
 				tt.args.backupSchedule); got != tt.want {
-				t.Errorf("deleteVeleroSchedules() = %v, want len of string is empty %v", got, tt.want)
+				t.Errorf("isRestoreRunning() = %v, want %v", got, tt.want)
 			}
 		})
 		if index == len(tests)-1 {
