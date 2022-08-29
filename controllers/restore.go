@@ -408,7 +408,6 @@ func postRestoreActivation(
 			continue
 		}
 
-		createAutoImport := true
 		// see if an auto-import-secret already exists
 		// delete and re-create if is from a previous post-restore activation
 		secretIdentity := types.NamespacedName{
@@ -417,8 +416,8 @@ func postRestoreActivation(
 		}
 		autoImportSecret := &corev1.Secret{}
 		if err := c.Get(ctx, secretIdentity, autoImportSecret); err == nil &&
-			secret.GetLabels() != nil &&
-			secret.GetLabels()[activateLabel] == "true" {
+			autoImportSecret.GetLabels() != nil &&
+			autoImportSecret.GetLabels()[activateLabel] == "true" {
 			// found secret
 			if err := c.Delete(ctx, autoImportSecret); err != nil {
 				logger.Error(
@@ -428,22 +427,16 @@ func postRestoreActivation(
 						clusterName,
 					),
 				)
-				createAutoImport = false
 			} else {
 				logger.Info("deleted auto-import-secret from namespace " + clusterName)
 			}
 		}
 
-		if !createAutoImport {
-			// should not create auto import secret for this managed cluster
-			continue
-		}
-
-		autoImportSecretsCreated = append(autoImportSecretsCreated, clusterName)
 		// create an auto-import-secret for this managed cluster
 		if err := createAutoImportSecret(ctx, c, clusterName, accessToken, url); err != nil {
 			logger.Error(err, "Error in creating AutoImportSecret")
 		} else {
+			autoImportSecretsCreated = append(autoImportSecretsCreated, clusterName)
 			logger.Info("created auto-import-secret for managed cluster " + clusterName)
 		}
 	}

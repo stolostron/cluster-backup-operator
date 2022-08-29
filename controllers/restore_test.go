@@ -744,7 +744,7 @@ func Test_postRestoreActivation(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	ns := corev1.Namespace{
+	ns1 := corev1.Namespace{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
 			Kind:       "Namespace",
@@ -753,7 +753,16 @@ func Test_postRestoreActivation(t *testing.T) {
 			Name: "managed1",
 		},
 	}
-	autoImporSecret := corev1.Secret{
+	ns2 := corev1.Namespace{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Namespace",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "managed2",
+		},
+	}
+	autoImporSecretWithLabel := corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
 			Kind:       "Secret",
@@ -764,10 +773,22 @@ func Test_postRestoreActivation(t *testing.T) {
 			Labels:    map[string]string{activateLabel: "true"},
 		},
 	}
+	autoImporSecretWithoutLabel := corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Secret",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      autoImportSecretName,
+			Namespace: "managed2",
+		},
+	}
 	cfg, _ := testEnv.Start()
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
-	k8sClient1.Create(context.Background(), &ns)
-	k8sClient1.Create(context.Background(), &autoImporSecret)
+	k8sClient1.Create(context.Background(), &ns1)
+	k8sClient1.Create(context.Background(), &ns2)
+	k8sClient1.Create(context.Background(), &autoImporSecretWithLabel)
+	k8sClient1.Create(context.Background(), &autoImporSecretWithoutLabel)
 
 	fourHoursAgo := "2022-07-26T11:25:34Z"
 	nextTenHours := "2022-07-27T04:25:34Z"
@@ -1052,6 +1073,30 @@ func Test_postRestoreActivation(t *testing.T) {
 							},
 						},
 					},
+					{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1",
+							Kind:       "ManagedCluster",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "managed2",
+						},
+						Spec: clusterv1.ManagedClusterSpec{
+							HubAcceptsClient: true,
+							ManagedClusterClientConfigs: []clusterv1.ClientConfig{
+								clusterv1.ClientConfig{
+									URL: "someurl",
+								},
+							},
+						},
+						Status: clusterv1.ManagedClusterStatus{
+							Conditions: []metav1.Condition{
+								v1.Condition{
+									Status: v1.ConditionFalse,
+								},
+							},
+						},
+					},
 				},
 				secrets: []corev1.Secret{
 					corev1.Secret{
@@ -1076,6 +1121,23 @@ func Test_postRestoreActivation(t *testing.T) {
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "auto-import",
 							Namespace: "managed1",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": fourHoursAgo,
+								"expirationTimestamp":  nextTenHours,
+							},
+						},
+						Data: map[string][]byte{
+							"token": []byte("YWRtaW4="),
+						},
+					},
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "managed2",
 							Annotations: map[string]string{
 								"lastRefreshTimestamp": fourHoursAgo,
 								"expirationTimestamp":  nextTenHours,
