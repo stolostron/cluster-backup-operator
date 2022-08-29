@@ -240,3 +240,78 @@ func (r *BackupScheduleReconciler) scheduleOwnsLatestStorageBackups(
 
 	return true, nil
 }
+
+// delete all velero schedules owned by this BackupSchedule
+func deleteVeleroSchedules(
+	ctx context.Context,
+	c client.Client,
+	backupSchedule *v1beta1.BackupSchedule,
+	schedules *veleroapi.ScheduleList,
+) error {
+	scheduleLogger := log.FromContext(ctx)
+
+	if schedules == nil || len(schedules.Items) <= 0 {
+		return nil
+	}
+
+	for i := range schedules.Items {
+		veleroSchedule := &schedules.Items[i]
+		err := c.Delete(ctx, veleroSchedule)
+		if err != nil {
+			scheduleLogger.Error(
+				err,
+				"Error in deleting Velero schedule",
+				"name", veleroSchedule.Name,
+				"namespace", veleroSchedule.Namespace,
+			)
+			return err
+		}
+		scheduleLogger.Info(
+			"Deleted Velero schedule",
+			"name", veleroSchedule.Name,
+			"namespace", veleroSchedule.Namespace,
+		)
+	}
+
+	backupSchedule.Status.Phase = v1beta1.SchedulePhaseNew
+	backupSchedule.Status.LastMessage = NewPhaseMsg
+	backupSchedule.Status.VeleroScheduleCredentials = nil
+	backupSchedule.Status.VeleroScheduleManagedClusters = nil
+	backupSchedule.Status.VeleroScheduleResources = nil
+
+	return nil
+}
+
+// check if there is a restore running on this cluster
+// returns restoreName - the name of the running restore if one found
+func isRestoreRunning(
+	ctx context.Context,
+	c client.Client,
+	backupSchedule *v1beta1.BackupSchedule,
+) (string, error) {
+
+	restoreName := ""
+
+	restoreList := v1beta1.RestoreList{}
+	if err := c.List(
+		ctx,
+		&restoreList,
+		client.InNamespace(backupSchedule.Namespace),
+	); err != nil {
+		return restoreName, err
+	}
+
+	if len(restoreList.Items) == 0 {
+		return restoreName, nil
+	}
+
+	for i := range restoreList.Items {
+		restoreItem := restoreList.Items[i]
+		if restoreItem.Status.Phase != v1beta1.RestorePhaseFinished &&
+			restoreItem.Status.Phase != v1beta1.RestorePhaseFinishedWithErrors {
+			restoreName = restoreItem.Name // found one running
+			break
+		}
+	}
+	return restoreName, nil
+}

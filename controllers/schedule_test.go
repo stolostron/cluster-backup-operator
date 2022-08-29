@@ -18,16 +18,22 @@ package controllers
 
 import (
 	"context"
+	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/version"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/kubernetes/scheme"
 )
 
 func initBackupSchedule(cronString string) *v1beta1.BackupSchedule {
@@ -208,5 +214,209 @@ func Test_isScheduleSpecUpdated(t *testing.T) {
 				t.Errorf("isScheduleSpecUpdated() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func Test_deleteVeleroSchedules(t *testing.T) {
+
+	veleroNamespaceName := "backup-ns"
+	veleroNamespace := corev1.Namespace{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Namespace",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: veleroNamespaceName,
+		},
+	}
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	k8sClient1.Create(context.Background(), &veleroNamespace)
+
+	rhacmBackupSchedule := v1beta1.BackupSchedule{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "BackupSchedule",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "backup-sch-to-error-restore",
+			Namespace: veleroNamespaceName,
+		},
+		Spec: v1beta1.BackupScheduleSpec{
+			VeleroSchedule: "backup-schedule",
+			VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
+		},
+	}
+
+	type args struct {
+		ctx            context.Context
+		c              client.Client
+		backupSchedule *v1beta1.BackupSchedule
+		schedules      *veleroapi.ScheduleList
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "velero schedules is nil",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				backupSchedule: &rhacmBackupSchedule,
+				schedules:      nil,
+			},
+			want: false,
+		},
+		{
+			name: "no velero schedules Items",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				backupSchedule: &rhacmBackupSchedule,
+				schedules:      &veleroapi.ScheduleList{},
+			},
+			want: false,
+		},
+		{
+			name: "failed to delete the schedule, returns error",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				backupSchedule: &rhacmBackupSchedule,
+				schedules: &veleroapi.ScheduleList{
+					Items: []veleroapi.Schedule{
+						veleroapi.Schedule{
+							TypeMeta: metav1.TypeMeta{
+								APIVersion: "velero/v1",
+								Kind:       "Schedule",
+							},
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "schedule-invalid-not-found",
+								Namespace: veleroNamespaceName,
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+	}
+	for index, tt := range tests {
+
+		t.Run(tt.name, func(t *testing.T) {
+			if got := deleteVeleroSchedules(tt.args.ctx, tt.args.c,
+				tt.args.backupSchedule, tt.args.schedules); (got != nil) != tt.want {
+				t.Errorf("deleteVeleroSchedules() = %v, want len of string is empty %v", got, tt.want)
+			}
+		})
+		if index == len(tests)-1 {
+			// clean up
+			testEnv.Stop()
+		}
+	}
+}
+
+func Test_isRestoreRunning(t *testing.T) {
+
+	veleroNamespaceName := "backup-ns"
+	veleroNamespace := corev1.Namespace{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Namespace",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: veleroNamespaceName,
+		},
+	}
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	k8sClient1.Create(context.Background(), &veleroNamespace)
+
+	rhacmBackupSchedule := v1beta1.BackupSchedule{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "BackupSchedule",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "backup-sch-to-error-restore",
+			Namespace: veleroNamespaceName,
+		},
+	}
+
+	latestRestore := "latest"
+	rhacmRestore := v1beta1.Restore{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "Restore",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "restore-name",
+			Namespace: veleroNamespaceName,
+		},
+		Spec: v1beta1.RestoreSpec{
+			CleanupBeforeRestore:            v1beta1.CleanupTypeRestored,
+			VeleroManagedClustersBackupName: &latestRestore,
+			VeleroCredentialsBackupName:     &latestRestore,
+			VeleroResourcesBackupName:       &latestRestore,
+		},
+	}
+
+	type args struct {
+		ctx            context.Context
+		c              client.Client
+		backupSchedule *v1beta1.BackupSchedule
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "velero has no restores",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				backupSchedule: &rhacmBackupSchedule,
+			},
+			want: "",
+		},
+		{
+			name: "velero restore has one restore and not completed",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				backupSchedule: &rhacmBackupSchedule,
+			},
+			want: rhacmRestore.Name,
+		},
+	}
+	for index, tt := range tests {
+
+		if index == len(tests)-1 {
+			k8sClient1.Create(tt.args.ctx, &rhacmRestore)
+		}
+
+		t.Run(tt.name, func(t *testing.T) {
+			if got, _ := isRestoreRunning(tt.args.ctx, tt.args.c,
+				tt.args.backupSchedule); got != tt.want {
+				t.Errorf("isRestoreRunning() = %v, want %v", got, tt.want)
+			}
+		})
+		if index == len(tests)-1 {
+			// clean up
+			testEnv.Stop()
+		}
 	}
 }
