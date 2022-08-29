@@ -214,7 +214,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	// New velero schedules will be created in the next reconcile triggerd by the deletion
 	if isScheduleSpecUpdated(&veleroScheduleList, backupSchedule) ||
 		len(veleroScheduleList.Items) < len(veleroScheduleNames) {
-		if err := r.deleteVeleroSchedules(ctx, backupSchedule, &veleroScheduleList); err != nil {
+		if err := deleteVeleroSchedules(ctx, r.Client, backupSchedule, &veleroScheduleList); err != nil {
 			return ctrl.Result{}, err
 		}
 
@@ -261,7 +261,7 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	}
 
 	// don't create schedule if an active restore exists
-	restoreName, err := r.isRestoreRunning(ctx, backupSchedule)
+	restoreName, err := isRestoreRunning(ctx, r.Client, backupSchedule)
 	if err != nil {
 		return ctrl.Result{}, validConfiguration, err
 	}
@@ -454,85 +454,6 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		// set veleroSchedule in backupSchedule status
 		setVeleroScheduleInStatus(scheduleKey, veleroSchedule, backupSchedule)
 	}
-	return nil
-}
-
-// check if there is a restore running on this cluster
-func (r *BackupScheduleReconciler) isRestoreRunning(
-	ctx context.Context,
-	backupSchedule *v1beta1.BackupSchedule,
-) (string, error) {
-	scheduleLogger := log.FromContext(ctx)
-
-	restoreList := v1beta1.RestoreList{}
-	if err := r.List(
-		ctx,
-		&restoreList,
-		client.InNamespace(backupSchedule.Namespace),
-	); err != nil {
-
-		msg := "unable to list restore resources " +
-			"namespace:" + backupSchedule.Namespace
-
-		scheduleLogger.Error(
-			err,
-			msg,
-		)
-		return "", err
-	}
-
-	if len(restoreList.Items) == 0 {
-		return "", nil
-	}
-
-	for i := range restoreList.Items {
-		restoreItem := restoreList.Items[i]
-		if restoreItem.Status.Phase != v1beta1.RestorePhaseFinished &&
-			restoreItem.Status.Phase != v1beta1.RestorePhaseFinishedWithErrors {
-			return restoreItem.Name, nil
-		}
-	}
-
-	return "", nil
-}
-
-// delete all velero schedules owned by this BackupSchedule
-func (r *BackupScheduleReconciler) deleteVeleroSchedules(
-	ctx context.Context,
-	backupSchedule *v1beta1.BackupSchedule,
-	schedules *veleroapi.ScheduleList,
-) error {
-	scheduleLogger := log.FromContext(ctx)
-
-	if schedules == nil || len(schedules.Items) <= 0 {
-		return nil
-	}
-
-	for i := range schedules.Items {
-		veleroSchedule := &schedules.Items[i]
-		err := r.Delete(ctx, veleroSchedule)
-		if err != nil {
-			scheduleLogger.Error(
-				err,
-				"Error in deleting Velero schedule",
-				"name", veleroSchedule.Name,
-				"namespace", veleroSchedule.Namespace,
-			)
-			return err
-		}
-		scheduleLogger.Info(
-			"Deleted Velero schedule",
-			"name", veleroSchedule.Name,
-			"namespace", veleroSchedule.Namespace,
-		)
-	}
-
-	backupSchedule.Status.Phase = v1beta1.SchedulePhaseNew
-	backupSchedule.Status.LastMessage = NewPhaseMsg
-	backupSchedule.Status.VeleroScheduleCredentials = nil
-	backupSchedule.Status.VeleroScheduleManagedClusters = nil
-	backupSchedule.Status.VeleroScheduleResources = nil
-
 	return nil
 }
 
