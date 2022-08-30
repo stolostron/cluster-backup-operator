@@ -34,6 +34,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
@@ -436,7 +437,21 @@ func Test_deleteDynamicResource(t *testing.T) {
 		"apiVersion": "apps.open-cluster-management.io/v1",
 		"kind":       "Channel",
 		"metadata": map[string]interface{}{
-			"name":      "channel-new",
+			"name":      "channel-new-default",
+			"namespace": "default",
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
+	res_default_notfound := &unstructured.Unstructured{}
+	res_default_notfound.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":      "channel-new-default-not-found",
 			"namespace": "default",
 		},
 		"spec": map[string]interface{}{
@@ -450,7 +465,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 		"apiVersion": "apps.open-cluster-management.io/v1",
 		"kind":       "Channel",
 		"metadata": map[string]interface{}{
-			"name":      "channel-new",
+			"name":      "channel-new-default-excluded",
 			"namespace": "default",
 			"labels": map[string]interface{}{
 				"velero.io/exclude-from-backup": "true",
@@ -467,7 +482,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 		"apiVersion": "apps.open-cluster-management.io/v1",
 		"kind":       "Channel",
 		"metadata": map[string]interface{}{
-			"name": "channel-new",
+			"name": "channel-new-global",
 		},
 		"spec": map[string]interface{}{
 			"type":     "Git",
@@ -475,19 +490,39 @@ func Test_deleteDynamicResource(t *testing.T) {
 		},
 	})
 
-	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), res_local_ns)
+	res_global_notfound := &unstructured.Unstructured{}
+	res_global_notfound.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name": "channel-new-global-not-found",
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
+	unstructuredScheme := runtime.NewScheme()
+	chnv1.AddToScheme(unstructuredScheme)
+
+	dynClient := dynamicfake.NewSimpleDynamicClient(unstructuredScheme,
+		res_default,
+		res_exclude_from_backup,
+	)
 
 	targetGVK := schema.GroupVersionKind{Group: "apps.open-cluster-management.io", Version: "v1", Kind: "Channel"}
-	targetGVR := targetGVK.GroupVersion().WithResource("somecrs")
+	targetGVR := targetGVK.GroupVersion().WithResource("channel")
 	targetMapping := meta.RESTMapping{Resource: targetGVR, GroupVersionKind: targetGVK,
 		Scope: meta.RESTScopeNamespace}
 
 	targetMappingGlobal := meta.RESTMapping{Resource: targetGVR, GroupVersionKind: targetGVK,
 		Scope: meta.RESTScopeRoot}
 
-	var monboDBResource = schema.GroupVersionResource{Group: "apps.open-cluster-management.io", Version: "v1", Resource: "channel"}
+	resInterface := dynClient.Resource(targetGVR)
 
-	resInterface := dynClient.Resource(monboDBResource)
+	resInterface.Namespace("default").Create(context.Background(), res_default, v1.CreateOptions{})
+	resInterface.Create(context.Background(), res_global, v1.CreateOptions{})
 
 	deletePolicy := metav1.DeletePropagationForeground
 	delOptions := metav1.DeleteOptions{
@@ -503,9 +538,10 @@ func Test_deleteDynamicResource(t *testing.T) {
 		excludedNamespaces []string
 	}
 	tests := []struct {
-		name string
-		args args
-		want bool
+		name        string
+		args        args
+		want        bool
+		errMsgEmpty bool
 	}{
 		{
 			name: "Delete local cluster resource",
@@ -517,7 +553,8 @@ func Test_deleteDynamicResource(t *testing.T) {
 				deleteOptions:      delOptions,
 				excludedNamespaces: []string{"abc"},
 			},
-			want: false,
+			want:        false,
+			errMsgEmpty: true,
 		},
 		{
 			name: "Delete default resource",
@@ -529,7 +566,21 @@ func Test_deleteDynamicResource(t *testing.T) {
 				deleteOptions:      delOptions,
 				excludedNamespaces: []string{"abc"},
 			},
-			want: true,
+			want:        true,
+			errMsgEmpty: true,
+		},
+		{
+			name: "Delete default resource NOT FOUND",
+			args: args{
+				ctx:                context.Background(),
+				mapping:            &targetMapping,
+				dr:                 resInterface,
+				resource:           *res_default_notfound,
+				deleteOptions:      delOptions,
+				excludedNamespaces: []string{"abc"},
+			},
+			want:        true,
+			errMsgEmpty: false,
 		},
 		{
 			name: "Delete default resource with ns excluded",
@@ -541,7 +592,8 @@ func Test_deleteDynamicResource(t *testing.T) {
 				deleteOptions:      delOptions,
 				excludedNamespaces: []string{"default"},
 			},
-			want: false,
+			want:        false,
+			errMsgEmpty: true,
 		},
 		{
 			name: "Delete default resource, excluded from backup",
@@ -553,7 +605,8 @@ func Test_deleteDynamicResource(t *testing.T) {
 				deleteOptions:      delOptions,
 				excludedNamespaces: []string{"abc"},
 			},
-			want: false,
+			want:        false,
+			errMsgEmpty: true,
 		},
 		{
 			name: "Delete global resource",
@@ -565,18 +618,35 @@ func Test_deleteDynamicResource(t *testing.T) {
 				deleteOptions:      delOptions,
 				excludedNamespaces: []string{},
 			},
-			want: true,
+			want:        true,
+			errMsgEmpty: true,
+		},
+		{
+			name: "Delete global resource NOT FOUND",
+			args: args{
+				ctx:                context.Background(),
+				mapping:            &targetMappingGlobal,
+				dr:                 resInterface,
+				resource:           *res_global_notfound,
+				deleteOptions:      delOptions,
+				excludedNamespaces: []string{},
+			},
+			want:        true,
+			errMsgEmpty: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got, _ := deleteDynamicResource(tt.args.ctx,
+			if got, msg := deleteDynamicResource(tt.args.ctx,
 				tt.args.mapping,
 				tt.args.dr,
 				tt.args.resource,
 				tt.args.deleteOptions,
-				tt.args.excludedNamespaces); got != tt.want {
-				t.Errorf("deleteDynamicResource() = %v, want %v", got, tt.want)
+				tt.args.excludedNamespaces); got != tt.want ||
+				(tt.errMsgEmpty && len(msg) != 0) ||
+				(!tt.errMsgEmpty && len(msg) == 0) {
+				t.Errorf("deleteDynamicResource() = %v, want %v, emptyMsg=%v, msg=%v", got,
+					tt.want, tt.errMsgEmpty, msg)
 			}
 		})
 	}
