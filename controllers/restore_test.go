@@ -446,6 +446,21 @@ func Test_deleteDynamicResource(t *testing.T) {
 		},
 	})
 
+	res_default_with_finalizer := &unstructured.Unstructured{}
+	res_default_with_finalizer.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":       "channel-new-default-with-finalizer",
+			"namespace":  "default",
+			"finalizers": []interface{}{"aaa", "bbb"},
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
 	res_default_notfound := &unstructured.Unstructured{}
 	res_default_notfound.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "apps.open-cluster-management.io/v1",
@@ -490,6 +505,20 @@ func Test_deleteDynamicResource(t *testing.T) {
 		},
 	})
 
+	res_global_with_finalizer := &unstructured.Unstructured{}
+	res_global_with_finalizer.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":       "channel-new-global-with-finalizer",
+			"finalizers": []interface{}{"aaa", "bbb"},
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
 	res_global_notfound := &unstructured.Unstructured{}
 	res_global_notfound.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "apps.open-cluster-management.io/v1",
@@ -508,6 +537,9 @@ func Test_deleteDynamicResource(t *testing.T) {
 
 	dynClient := dynamicfake.NewSimpleDynamicClient(unstructuredScheme,
 		res_default,
+		res_default_with_finalizer,
+		res_global,
+		res_global_with_finalizer,
 		res_exclude_from_backup,
 	)
 
@@ -521,8 +553,11 @@ func Test_deleteDynamicResource(t *testing.T) {
 
 	resInterface := dynClient.Resource(targetGVR)
 
+	// create resources which should be found
 	resInterface.Namespace("default").Create(context.Background(), res_default, v1.CreateOptions{})
+	resInterface.Namespace("default").Create(context.Background(), res_default_with_finalizer, v1.CreateOptions{})
 	resInterface.Create(context.Background(), res_global, v1.CreateOptions{})
+	resInterface.Create(context.Background(), res_global_with_finalizer, v1.CreateOptions{})
 
 	deletePolicy := metav1.DeletePropagationForeground
 	delOptions := metav1.DeleteOptions{
@@ -570,6 +605,19 @@ func Test_deleteDynamicResource(t *testing.T) {
 			errMsgEmpty: true,
 		},
 		{
+			name: "Delete default resource with finalizer, should throw error since resource was deleted before finalizers patch",
+			args: args{
+				ctx:                context.Background(),
+				mapping:            &targetMapping,
+				dr:                 resInterface,
+				resource:           *res_default_with_finalizer,
+				deleteOptions:      delOptions,
+				excludedNamespaces: []string{"abc"},
+			},
+			want:        true,
+			errMsgEmpty: false,
+		},
+		{
 			name: "Delete default resource NOT FOUND",
 			args: args{
 				ctx:                context.Background(),
@@ -588,7 +636,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				ctx:                context.Background(),
 				mapping:            &targetMapping,
 				dr:                 resInterface,
-				resource:           *res_default,
+				resource:           *res_default_notfound,
 				deleteOptions:      delOptions,
 				excludedNamespaces: []string{"default"},
 			},
@@ -620,6 +668,19 @@ func Test_deleteDynamicResource(t *testing.T) {
 			},
 			want:        true,
 			errMsgEmpty: true,
+		},
+		{
+			name: "Delete global resource with finalizer, throws error since res is deleted before finalizers patch",
+			args: args{
+				ctx:                context.Background(),
+				mapping:            &targetMappingGlobal,
+				dr:                 resInterface,
+				resource:           *res_global_with_finalizer,
+				deleteOptions:      delOptions,
+				excludedNamespaces: []string{},
+			},
+			want:        true,
+			errMsgEmpty: false,
 		},
 		{
 			name: "Delete global resource NOT FOUND",
