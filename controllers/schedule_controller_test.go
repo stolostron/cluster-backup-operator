@@ -45,6 +45,7 @@ var _ = Describe("BackupSchedule controller", func() {
 		acmNamespace            *corev1.Namespace
 		chartsv1NS              *corev1.Namespace
 		clusterPoolNS           *corev1.Namespace
+		aINS                    *corev1.Namespace
 		managedClusterNS        *corev1.Namespace
 		clusterPoolSecrets      []corev1.Secret
 		clusterDeplSecrets      []corev1.Secret
@@ -157,6 +158,15 @@ var _ = Describe("BackupSchedule controller", func() {
 				Name: clusterPoolNSName,
 			},
 		}
+		aINS = &corev1.Namespace{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Namespace",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "openshift-machine-api",
+			},
+		}
 		clusterDeploymentNS = &corev1.Namespace{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: "v1",
@@ -235,6 +245,19 @@ var _ = Describe("BackupSchedule controller", func() {
 					Namespace: clusterPoolNSName,
 					Labels: map[string]string{
 						"agent-install.openshift.io/watch": "true",
+					},
+				},
+			},
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Secret",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "baremetal-api-secret",
+					Namespace: "openshift-machine-api",
+					Labels: map[string]string{
+						"environment.metal3.io": "baremetal",
 					},
 				},
 			},
@@ -426,6 +449,11 @@ var _ = Describe("BackupSchedule controller", func() {
 			).Should(Succeed())
 		}
 
+		if aINS != nil {
+			Expect(k8sClient.Delete(ctx, aINS,
+				&client.DeleteOptions{GracePeriodSeconds: &zero})).Should(Succeed())
+		}
+
 		if clusterPoolNS != nil {
 
 			for i := range clusterPoolSecrets {
@@ -497,6 +525,10 @@ var _ = Describe("BackupSchedule controller", func() {
 			}
 		}
 
+		if aINS != nil {
+			Expect(k8sClient.Create(ctx, aINS)).Should(Succeed())
+
+		}
 		if clusterPoolNS != nil {
 			Expect(k8sClient.Create(ctx, clusterPoolNS)).Should(Succeed())
 
@@ -619,6 +651,16 @@ var _ = Describe("BackupSchedule controller", func() {
 				}, &baremetalSecret)
 				return err == nil && baremetalSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "baremetal"
 			}, timeout, interval).Should(BeTrue())
+
+			// and the ones under openshift-machine-api dont
+			baremetalSecretAPI := corev1.Secret{}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "baremetal-api-secret",
+					Namespace: "openshift-machine-api",
+				}, &baremetalSecretAPI)
+				return err == nil && baremetalSecretAPI.GetLabels()["cluster.open-cluster-management.io/backup"] == "baremetal"
+			}, timeout, interval).Should(BeFalse())
 
 			// validate auto-import secret secret has backup annotation
 			// if the UseManagedServiceAccount is set to true
@@ -1052,6 +1094,7 @@ var _ = Describe("BackupSchedule controller", func() {
 
 		BeforeEach(func() {
 			clusterPoolNS = nil
+			aINS = nil
 			clusterDeploymentNS = nil
 			managedClusterNS = nil
 			chartsv1NS = &corev1.Namespace{
