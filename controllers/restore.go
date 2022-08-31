@@ -289,11 +289,12 @@ func (r *RestoreReconciler) prepareRestoreForBackup(
 	case CredentialsCluster:
 		labelSelector = labelSelector + backupCredsClusterLabel
 	}
-	labelSelector = strings.TrimSuffix(labelSelector, ",")
 
 	if additionalLabels != "" {
 		labelSelector = labelSelector + ", " + additionalLabels
 	}
+	labelSelector = strings.TrimPrefix(labelSelector, ",")
+	labelSelector = strings.TrimSuffix(labelSelector, ",")
 
 	var resources []string
 	if restoreType != ResourcesGeneric {
