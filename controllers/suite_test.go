@@ -17,6 +17,7 @@ limitations under the License.
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -31,7 +32,7 @@ import (
 	certsv1 "k8s.io/api/certificates/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/client-go/discovery/cached/memory"
-	"k8s.io/client-go/dynamic"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -49,6 +50,10 @@ import (
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	discoveryclient "k8s.io/client-go/discovery"
 	restclient "k8s.io/client-go/rest"
 	//+kubebuilder:scaffold:imports
@@ -354,9 +359,6 @@ var _ = BeforeSuite(func() {
 	_, err2 := fakeDiscovery.ServerGroups()
 	Expect(err2).To(BeNil())
 
-	dyn, err := dynamic.NewForConfig(&restclient.Config{Host: server.URL})
-	Expect(err).To(BeNil())
-
 	testEnvManagedCluster = &envtest.Environment{} // no CRDs for managedcluster
 	managedClusterCfg, err := testEnvManagedCluster.Start()
 	Expect(err).NotTo(HaveOccurred())
@@ -428,12 +430,197 @@ var _ = BeforeSuite(func() {
 		memory.NewMemCacheClient(fakeDiscovery),
 	)
 
+	res_channel_default := &unstructured.Unstructured{}
+	res_channel_default.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1beta1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":      "channel-new-default",
+			"namespace": "default",
+			"labels": map[string]interface{}{
+				"velero.io/backup-name": "backup-name-aa",
+			},
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
+	msaObj := &unstructured.Unstructured{}
+	msaObj.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"kind":       "ManagedServiceAccount",
+		"metadata": map[string]interface{}{
+			"name":      "auto-import",
+			"namespace": "managed1",
+			"labels": map[string]interface{}{
+				msa_label: msa_service_name,
+			},
+		},
+		"spec": map[string]interface{}{
+			"somethingelse": "aaa",
+			"rotation": map[string]interface{}{
+				"validity": "50h",
+				"enabled":  true,
+			},
+		},
+	})
+
+	msaGVK := schema.GroupVersionKind{Group: "authentication.open-cluster-management.io",
+		Version: "v1alpha1", Kind: "ManagedServiceAccount"}
+	msaGVRList := schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
+		Version: "v1alpha1", Resource: "managedserviceaccounts"}
+
+	gvrToListKind := map[schema.GroupVersionResource]string{
+		msaGVRList: "ManagedServiceAccountList",
+	}
+
+	unstructuredScheme := runtime.NewScheme()
+	unstructuredScheme.AddKnownTypes(msaGVK.GroupVersion(), msaObj)
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredScheme,
+		gvrToListKind,
+		msaObj)
+
+	//cluster version
+	clsVGVK := schema.GroupVersionKind{Group: "config.openshift.io",
+		Version: "v1", Kind: "ClusterVersion"}
+	clsVGVKList := schema.GroupVersionResource{Group: "config.openshift.io",
+		Version: "v1", Resource: "clusterversions"}
+
+	clsvObj := &unstructured.Unstructured{}
+	clsvObj.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "config.openshift.io/v1",
+		"kind":       "ClusterVersion",
+		"metadata": map[string]interface{}{
+			"name": "version",
+		},
+		"spec": map[string]interface{}{
+			"clusterID": "1234",
+		},
+	})
+
+	// cluster deployments
+	clsDGVK := schema.GroupVersionKind{Group: "hive.openshift.io",
+		Version: "v1", Kind: "ClusterDeployment"}
+	clsDGVKList := schema.GroupVersionResource{Group: "hive.openshift.io",
+		Version: "v1", Resource: "clusterdeployments"}
+
+	// placements
+	plsGVK := schema.GroupVersionKind{Group: "cluster.open-cluster-management.io",
+		Version: "v1beta1", Kind: "Placement"}
+	plsGVKGVKList := schema.GroupVersionResource{Group: "cluster.open-cluster-management.io",
+		Version: "v1beta1", Resource: "placements"}
+	//curators
+	crGVK := schema.GroupVersionKind{Group: "cluster.open-cluster-management.io",
+		Version: "v1beta1", Kind: "ClusterCurator"}
+	crGVKGVKList := schema.GroupVersionResource{Group: "cluster.open-cluster-management.io",
+		Version: "v1beta1", Resource: "clustercurators"}
+	//channels
+	chGVK := schema.GroupVersionKind{Group: "apps.open-cluster-management.io",
+		Version: "v1beta1", Kind: "Channel"}
+	chGVKList := schema.GroupVersionResource{Group: "apps.open-cluster-management.io",
+		Version: "v1beta1", Resource: "channels"}
+	//subs
+	subsGVK := schema.GroupVersionKind{Group: "apps.open-cluster-management.io",
+		Version: "v1beta1", Kind: "Subscription"}
+	subsGVKList := schema.GroupVersionResource{Group: "apps.open-cluster-management.io",
+		Version: "v1beta1", Resource: "subscriptions"}
+
+	//managed clusters
+	clsGVK := schema.GroupVersionKind{Group: "cluster.open-cluster-management.io",
+		Version: "v1beta1", Kind: "ManagedCluster"}
+	clsGVKList := schema.GroupVersionResource{Group: "cluster.open-cluster-management.io",
+		Version: "v1beta1", Resource: "managedclusters"}
+	//managed clusters sets
+	clsSGVK := schema.GroupVersionKind{Group: "cluster.open-cluster-management.io",
+		Version: "v1beta1", Kind: "ManagedClusterSet"}
+	clsSGVKList := schema.GroupVersionResource{Group: "cluster.open-cluster-management.io",
+		Version: "v1beta1", Resource: "managedclustersets"}
+	//backups
+	bsSGVK := schema.GroupVersionKind{Group: "cluster.open-cluster-management.io",
+		Version: "v1beta1", Kind: "BackupSchedule"}
+	bsSGVKList := schema.GroupVersionResource{Group: "cluster.open-cluster-management.io",
+		Version: "v1beta1", Resource: "backupschedules"}
+	//mutators
+	mGVK := schema.GroupVersionKind{Group: "admission.cluster.open-cluster-management.io",
+		Version: "v1beta1", Kind: "AdmissionReview"}
+	mVKList := schema.GroupVersionResource{Group: "admission.cluster.open-cluster-management.io",
+		Version: "v1beta1", Resource: "managedclustermutators"}
+	//pools
+	cpGVK := schema.GroupVersionKind{Group: "hive.openshift.io",
+		Version: "v1", Kind: "ClusterPool"}
+	cpVKList := schema.GroupVersionResource{Group: "hive.openshift.io",
+		Version: "v1", Resource: "clusterpools"}
+	//dns
+	dnsGVK := schema.GroupVersionKind{Group: "hive.openshift.io",
+		Version: "v1", Kind: "DNSZone"}
+	dnsVKList := schema.GroupVersionResource{Group: "hive.openshift.io",
+		Version: "v1", Resource: "dnszones"}
+	//image set
+	imgGVK := schema.GroupVersionKind{Group: "hive.openshift.io",
+		Version: "v1", Kind: "ClusterImageSet"}
+	imgVKList := schema.GroupVersionResource{Group: "hive.openshift.io",
+		Version: "v1", Resource: "clusterimageset"}
+	//hive config
+	hGVK := schema.GroupVersionKind{Group: "hive.openshift.io",
+		Version: "v1", Kind: "HiveConfig"}
+	hVKList := schema.GroupVersionResource{Group: "hive.openshift.io",
+		Version: "v1", Resource: "hiveconfig"}
+
+	///
+	gvrToListKindR := map[schema.GroupVersionResource]string{
+		msaGVRList:    "ManagedServiceAccountList",
+		clsVGVKList:   "ClusterVersionList",
+		clsDGVKList:   "ClusterDeploymentList",
+		plsGVKGVKList: "PlacementList",
+		crGVKGVKList:  "ClusterCuratorList",
+		chGVKList:     "ChannelList",
+		clsGVKList:    "ManagedClusterList",
+		clsSGVKList:   "ManagedClusterSetList",
+		bsSGVKList:    "BackupScheduleList",
+		mVKList:       "AdmissionReviewList",
+		cpVKList:      "ClusterPoolList",
+		dnsVKList:     "DNSZoneList",
+		imgVKList:     "ClusterImageSetList",
+		hVKList:       "HiveConfigList",
+		subsGVKList:   "SubscriptionList",
+	}
+
+	unstructuredSchemeR := runtime.NewScheme()
+	unstructuredSchemeR.AddKnownTypes(msaGVK.GroupVersion(), msaObj)
+	unstructuredSchemeR.AddKnownTypes(clsVGVK.GroupVersion(), clsvObj)
+	unstructuredSchemeR.AddKnownTypes(clsDGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(plsGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(crGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(chGVK.GroupVersion(), res_channel_default)
+	unstructuredSchemeR.AddKnownTypes(clsGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(clsSGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(bsSGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(mGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(cpGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(dnsGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(imgGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(hGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(subsGVK.GroupVersion())
+
+	dynR := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredSchemeR,
+		gvrToListKindR,
+		msaObj, clsvObj, res_channel_default)
+
+	//create some resources
+	dynR.Resource(chGVKList).Namespace("default").Create(context.Background(),
+		res_channel_default, v1.CreateOptions{})
+	//
+	dynR.Resource(msaGVRList).Namespace("managed1").Create(context.Background(),
+		msaObj, v1.CreateOptions{})
+
 	err = (&RestoreReconciler{
 		KubeClient:      nil,
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		DiscoveryClient: fakeDiscovery,
-		DynamicClient:   dyn,
+		DynamicClient:   dynR,
 		RESTMapper:      mapper,
 		Recorder:        mgr.GetEventRecorderFor("restore reconciler"),
 	}).SetupWithManager(mgr)
