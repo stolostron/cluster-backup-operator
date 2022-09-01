@@ -31,10 +31,12 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -346,21 +348,18 @@ func (r *RestoreReconciler) prepareRestoreForBackup(
 			}
 
 			dynamiclist, err := dr.List(ctx, listOptions)
-			if err != nil {
-				// ignore error
-				continue
-			}
-			// get all items and delete them
-			for i := range dynamiclist.Items {
-				deleteDynamicResource(
-					ctx,
-					mapping,
-					dr,
-					dynamiclist.Items[i],
-					restoreOptions.deleteOptions,
-					veleroBackup.Spec.ExcludedNamespaces,
-				)
-
+			if err == nil {
+				// get all items and delete them
+				for i := range dynamiclist.Items {
+					deleteDynamicResource(
+						ctx,
+						mapping,
+						dr,
+						dynamiclist.Items[i],
+						restoreOptions.deleteOptions,
+						veleroBackup.Spec.ExcludedNamespaces,
+					)
+				}
 			}
 		}
 	}
@@ -812,4 +811,133 @@ func isValidCleanupOption(
 	}
 
 	return ""
+}
+
+// retrieve the backup details for this restore object
+// based on the restore spec options
+func retrieveRestoreDetails(
+	ctx context.Context,
+	c client.Client,
+	s *runtime.Scheme,
+	acmRestore *v1beta1.Restore,
+	restoreOnlyManagedClusters bool,
+) (map[ResourceType]*veleroapi.Restore,
+	map[ResourceType]*veleroapi.Backup,
+	error) {
+
+	restoreLogger := log.FromContext(ctx)
+
+	restoreLength := len(veleroScheduleNames) - 1 // ignore validation backup
+	if restoreOnlyManagedClusters {
+		restoreLength = 2 // will get only managed clusters and generic resources
+	}
+	restoreKeys := make([]ResourceType, 0, restoreLength)
+	for key := range veleroScheduleNames {
+		if key == ValidationSchedule ||
+			(restoreOnlyManagedClusters && !(key == ManagedClusters || key == ResourcesGeneric)) {
+			// ignore validation backup; this is used for the policy
+			// to validate that there are backups schedules enabled
+			// also ignore all but managed clusters when only this is restored
+			continue
+		}
+		restoreKeys = append(restoreKeys, key)
+	}
+	// sort restores to restore last credentials, first resources
+	// credentials could have owners in the resources path
+	sort.Slice(restoreKeys, func(i, j int) bool {
+		return restoreKeys[i] > restoreKeys[j]
+	})
+	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, len(restoreKeys))
+	backupsForVeleroRestores := make(map[ResourceType]*veleroapi.Backup, len(restoreKeys))
+
+	for i := range restoreKeys {
+		backupName := latestBackupStr
+
+		key := restoreKeys[i]
+		switch key {
+		case ManagedClusters:
+			if acmRestore.Spec.VeleroManagedClustersBackupName != nil {
+				backupName = *acmRestore.Spec.VeleroManagedClustersBackupName
+			}
+		case Credentials, CredentialsHive, CredentialsCluster:
+			if acmRestore.Spec.VeleroCredentialsBackupName != nil {
+				backupName = *acmRestore.Spec.VeleroCredentialsBackupName
+			}
+		case Resources:
+			if acmRestore.Spec.VeleroResourcesBackupName != nil {
+				backupName = *acmRestore.Spec.VeleroResourcesBackupName
+			}
+		case ResourcesGeneric:
+			if acmRestore.Spec.VeleroResourcesBackupName != nil {
+				backupName = *acmRestore.Spec.VeleroResourcesBackupName
+			}
+			if backupName == skipRestoreStr &&
+				acmRestore.Spec.VeleroManagedClustersBackupName != nil {
+				// if resources is set to skip but managed clusters are restored
+				// we still need the generic resources
+				// for the resources with the label value 'cluster-activation'
+				backupName = *acmRestore.Spec.VeleroManagedClustersBackupName
+			}
+		}
+
+		backupName = strings.ToLower(strings.TrimSpace(backupName))
+
+		if backupName == "" {
+			acmRestore.Status.LastMessage = fmt.Sprintf(
+				"Backup name not found for resource type: %s",
+				key,
+			)
+			return veleroRestoresToCreate, backupsForVeleroRestores, fmt.Errorf(
+				"backup name not found",
+			)
+		}
+
+		if backupName == skipRestoreStr {
+			continue
+		}
+
+		veleroRestore := &veleroapi.Restore{}
+		veleroBackupName, veleroBackup, err := getVeleroBackupName(
+			ctx,
+			c,
+			acmRestore.Namespace,
+			key,
+			backupName,
+		)
+		if err != nil {
+			restoreLogger.Info(
+				"backup name not found, skipping restore for",
+				"name", acmRestore.Name,
+				"namespace", acmRestore.Namespace,
+				"type", key,
+			)
+			acmRestore.Status.LastMessage = fmt.Sprintf(
+				"Backup %s Not found for resource type: %s",
+				backupName,
+				key,
+			)
+
+			if key != CredentialsHive && key != CredentialsCluster && key != ResourcesGeneric {
+				// ignore missing hive or cluster key backup files
+				// for the case when the backups were created with an older controller version
+				return veleroRestoresToCreate, backupsForVeleroRestores, err
+			}
+		} else {
+			veleroRestore.Name = getValidKsRestoreName(acmRestore.Name, veleroBackupName)
+
+			veleroRestore.Namespace = acmRestore.Namespace
+			veleroRestore.Spec.BackupName = veleroBackupName
+
+			if err := ctrl.SetControllerReference(acmRestore, veleroRestore, s); err != nil {
+				acmRestore.Status.LastMessage = fmt.Sprintf(
+					"Could not set controller reference for resource type: %s",
+					key,
+				)
+				return veleroRestoresToCreate, backupsForVeleroRestores, err
+			}
+			veleroRestoresToCreate[key] = veleroRestore
+			backupsForVeleroRestores[key] = veleroBackup
+		}
+	}
+	return veleroRestoresToCreate, backupsForVeleroRestores, nil
 }

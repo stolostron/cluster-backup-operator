@@ -86,15 +86,15 @@ func setVeleroScheduleInStatus(
 func setSchedulePhase(
 	schedules *veleroapi.ScheduleList,
 	backupSchedule *v1beta1.BackupSchedule,
-) {
+) v1beta1.SchedulePhase {
 	if backupSchedule.Status.Phase == v1beta1.SchedulePhaseBackupCollision {
-		return
+		return backupSchedule.Status.Phase
 	}
 
 	if schedules == nil || len(schedules.Items) <= 0 {
 		backupSchedule.Status.Phase = v1beta1.SchedulePhaseNew
 		backupSchedule.Status.LastMessage = NewPhaseMsg
-		return
+		return backupSchedule.Status.Phase
 	}
 
 	// get all schedules and check status for each
@@ -103,23 +103,24 @@ func setSchedulePhase(
 		if veleroSchedule.Status.Phase == "" {
 			backupSchedule.Status.Phase = v1beta1.SchedulePhaseUnknown
 			backupSchedule.Status.LastMessage = UnknownPhaseMsg
-			return
+			return backupSchedule.Status.Phase
 		}
 		if veleroSchedule.Status.Phase == veleroapi.SchedulePhaseNew {
 			backupSchedule.Status.Phase = v1beta1.SchedulePhaseNew
 			backupSchedule.Status.LastMessage = NewPhaseMsg
-			return
+			return backupSchedule.Status.Phase
 		}
 		if veleroSchedule.Status.Phase == veleroapi.SchedulePhaseFailedValidation {
 			backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
 			backupSchedule.Status.LastMessage = FailedPhaseMsg
-			return
+			return backupSchedule.Status.Phase
 		}
 	}
 
 	// if no velero schedule with FailedValidation, New or empty status, they are all enabled
 	backupSchedule.Status.Phase = v1beta1.SchedulePhaseEnabled
 	backupSchedule.Status.LastMessage = EnabledPhaseMsg
+	return backupSchedule.Status.Phase
 }
 
 func isScheduleSpecUpdated(
