@@ -17,6 +17,7 @@ limitations under the License.
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -49,6 +50,7 @@ import (
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -428,13 +430,30 @@ var _ = BeforeSuite(func() {
 		memory.NewMemCacheClient(fakeDiscovery),
 	)
 
+	res_channel_default := &unstructured.Unstructured{}
+	res_channel_default.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1beta1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":      "channel-new-default",
+			"namespace": "default",
+			"labels": map[string]interface{}{
+				"velero.io/backup-name": "backup-name-aa",
+			},
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
 	msaObj := &unstructured.Unstructured{}
 	msaObj.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
 			"name":      "auto-import",
-			"namespace": "app",
+			"namespace": "managed1",
 			"labels": map[string]interface{}{
 				msa_label: msa_service_name,
 			},
@@ -456,6 +475,7 @@ var _ = BeforeSuite(func() {
 	gvrToListKind := map[schema.GroupVersionResource]string{
 		msaGVRList: "ManagedServiceAccountList",
 	}
+
 	unstructuredScheme := runtime.NewScheme()
 	unstructuredScheme.AddKnownTypes(msaGVK.GroupVersion(), msaObj)
 	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredScheme,
@@ -573,20 +593,27 @@ var _ = BeforeSuite(func() {
 	unstructuredSchemeR.AddKnownTypes(clsDGVK.GroupVersion())
 	unstructuredSchemeR.AddKnownTypes(plsGVK.GroupVersion())
 	unstructuredSchemeR.AddKnownTypes(crGVK.GroupVersion())
-	unstructuredSchemeR.AddKnownTypes(chGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(chGVK.GroupVersion(), res_channel_default)
 	unstructuredSchemeR.AddKnownTypes(clsGVK.GroupVersion())
-	unstructuredScheme.AddKnownTypes(clsSGVK.GroupVersion())
-	unstructuredScheme.AddKnownTypes(bsSGVK.GroupVersion())
-	unstructuredScheme.AddKnownTypes(mGVK.GroupVersion())
-	unstructuredScheme.AddKnownTypes(cpGVK.GroupVersion())
-	unstructuredScheme.AddKnownTypes(dnsGVK.GroupVersion())
-	unstructuredScheme.AddKnownTypes(imgGVK.GroupVersion())
-	unstructuredScheme.AddKnownTypes(hGVK.GroupVersion())
-	unstructuredScheme.AddKnownTypes(subsGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(clsSGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(bsSGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(mGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(cpGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(dnsGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(imgGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(hGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(subsGVK.GroupVersion())
 
 	dynR := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredSchemeR,
 		gvrToListKindR,
-		msaObj, clsvObj)
+		msaObj, clsvObj, res_channel_default)
+
+	//create some resources
+	dynR.Resource(chGVKList).Namespace("default").Create(context.Background(),
+		res_channel_default, v1.CreateOptions{})
+	//
+	dynR.Resource(msaGVRList).Namespace("managed1").Create(context.Background(),
+		msaObj, v1.CreateOptions{})
 
 	err = (&RestoreReconciler{
 		KubeClient:      nil,

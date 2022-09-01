@@ -339,33 +339,30 @@ func (r *RestoreReconciler) prepareRestoreForBackup(
 			continue
 		}
 		var dr = restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource)
-		if dr == nil {
-			continue
-		}
+		if dr != nil {
+			var listOptions = v1.ListOptions{}
+			if labelSelector != "" {
+				listOptions = v1.ListOptions{LabelSelector: labelSelector}
+			}
 
-		var listOptions = v1.ListOptions{}
-		if labelSelector != "" {
-			listOptions = v1.ListOptions{LabelSelector: labelSelector}
-		}
+			dynamiclist, err := dr.List(ctx, listOptions)
+			if err != nil {
+				// ignore error
+				continue
+			}
+			// get all items and delete them
+			for i := range dynamiclist.Items {
+				deleteDynamicResource(
+					ctx,
+					mapping,
+					dr,
+					dynamiclist.Items[i],
+					restoreOptions.deleteOptions,
+					veleroBackup.Spec.ExcludedNamespaces,
+				)
 
-		dynamiclist, err := dr.List(ctx, listOptions)
-		if err != nil {
-			// ignore error
-			continue
+			}
 		}
-		// get all items and delete them
-		for i := range dynamiclist.Items {
-			deleteDynamicResource(
-				ctx,
-				mapping,
-				dr,
-				dynamiclist.Items[i],
-				restoreOptions.deleteOptions,
-				veleroBackup.Spec.ExcludedNamespaces,
-			)
-
-		}
-
 	}
 	logger.Info("exit prepareForRestoreResources for " + string(restoreType))
 }
