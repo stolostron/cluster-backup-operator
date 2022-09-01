@@ -45,6 +45,14 @@ func initBackupSchedule(cronString string) *v1beta1.BackupSchedule {
 	}
 }
 
+func initBackupScheduleWithStatus(phase v1beta1.SchedulePhase) *v1beta1.BackupSchedule {
+	return &v1beta1.BackupSchedule{
+		Status: v1beta1.BackupScheduleStatus{
+			Phase: phase,
+		},
+	}
+}
+
 func initVeleroScheduleList(
 	phase veleroapi.SchedulePhase,
 	cronSpec string,
@@ -141,6 +149,7 @@ func Test_setSchedulePhase(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
+		want v1beta1.SchedulePhase
 	}{
 		{
 			name: "nil schedule",
@@ -148,6 +157,15 @@ func Test_setSchedulePhase(t *testing.T) {
 				schedules:      nil,
 				backupSchedule: initBackupSchedule("no matter"),
 			},
+			want: v1beta1.SchedulePhaseNew,
+		},
+		{
+			name: "schedule in collision",
+			args: args{
+				schedules:      nil,
+				backupSchedule: initBackupScheduleWithStatus(v1beta1.SchedulePhaseBackupCollision),
+			},
+			want: v1beta1.SchedulePhaseBackupCollision,
 		},
 		{
 			name: "new",
@@ -155,6 +173,7 @@ func Test_setSchedulePhase(t *testing.T) {
 				schedules:      initVeleroScheduleList(veleroapi.SchedulePhaseNew, "0 8 * * *"),
 				backupSchedule: initBackupSchedule("0 8 * * *"),
 			},
+			want: v1beta1.SchedulePhaseNew,
 		},
 		{
 			name: "failed validation",
@@ -165,6 +184,7 @@ func Test_setSchedulePhase(t *testing.T) {
 				),
 				backupSchedule: initBackupSchedule("0 8 * * *"),
 			},
+			want: v1beta1.SchedulePhaseFailedValidation,
 		},
 		{
 			name: "enabled",
@@ -172,11 +192,14 @@ func Test_setSchedulePhase(t *testing.T) {
 				schedules:      initVeleroScheduleList(veleroapi.SchedulePhaseEnabled, "0 8 * * *"),
 				backupSchedule: initBackupSchedule("0 8 * * *"),
 			},
+			want: v1beta1.SchedulePhaseEnabled,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			setSchedulePhase(tt.args.schedules, tt.args.backupSchedule)
+			if got := setSchedulePhase(tt.args.schedules, tt.args.backupSchedule); got != tt.want {
+				t.Errorf("setSchedulePhase() = %v, want %v", got, tt.want)
+			}
 		})
 	}
 }
@@ -355,6 +378,17 @@ func Test_isRestoreRunning(t *testing.T) {
 		},
 	}
 
+	rhacmBackupScheduleInvalidNS := v1beta1.BackupSchedule{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "BackupSchedule",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "backup-sch-to-error-restore",
+			Namespace: "invalid-ns",
+		},
+	}
+
 	latestRestore := "latest"
 	rhacmRestore := v1beta1.Restore{
 		TypeMeta: metav1.TypeMeta{
@@ -401,10 +435,19 @@ func Test_isRestoreRunning(t *testing.T) {
 			},
 			want: rhacmRestore.Name,
 		},
+		{
+			name: "velero restore has one restore and not completed invalid",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				backupSchedule: &rhacmBackupScheduleInvalidNS,
+			},
+			want: "",
+		},
 	}
 	for index, tt := range tests {
 
-		if index == len(tests)-1 {
+		if index == 1 {
 			k8sClient1.Create(tt.args.ctx, &rhacmRestore)
 		}
 

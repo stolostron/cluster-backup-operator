@@ -1870,3 +1870,130 @@ func Test_isValidCleanupOption(t *testing.T) {
 		})
 	}
 }
+
+func Test_retrieveRestoreDetails(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	skipRestore := "skip"
+	veleroNamespaceName := "default"
+	invalidBackupName := ""
+	backupName := "backup-name"
+
+	backup := veleroapi.Backup{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "velero/v1",
+			Kind:       "Backup",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      backupName,
+			Namespace: veleroNamespaceName,
+		},
+		Spec: veleroapi.BackupSpec{
+			IncludedNamespaces: []string{"please-keep-this-one"},
+		},
+		Status: veleroapi.BackupStatus{
+			Phase:  veleroapi.BackupPhaseCompleted,
+			Errors: 0,
+		},
+	}
+
+	restoreCredsNoError := v1beta1.Restore{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "Restore",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "restore1",
+			Namespace: veleroNamespaceName,
+		},
+		Spec: v1beta1.RestoreSpec{
+			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+			SyncRestoreWithNewBackups:       true,
+			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
+			VeleroManagedClustersBackupName: &skipRestore,
+			VeleroCredentialsBackupName:     &skipRestore,
+			VeleroResourcesBackupName:       &backupName,
+		},
+	}
+
+	restoreCredsInvalidBackupName := v1beta1.Restore{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "Restore",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "restore1",
+			Namespace: veleroNamespaceName,
+		},
+		Spec: v1beta1.RestoreSpec{
+			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+			SyncRestoreWithNewBackups:       true,
+			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
+			VeleroManagedClustersBackupName: &skipRestore,
+			VeleroCredentialsBackupName:     &skipRestore,
+			VeleroResourcesBackupName:       &invalidBackupName,
+		},
+	}
+
+	cfg, _ := testEnv.Start()
+	scheme1 := runtime.NewScheme()
+	veleroapi.AddToScheme(scheme1)
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1.Create(context.Background(), &backup, &client.CreateOptions{})
+
+	type args struct {
+		ctx                        context.Context
+		c                          client.Client
+		s                          *runtime.Scheme
+		restore                    *v1beta1.Restore
+		restoreOnlyManagedClusters bool
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+
+		{
+			name: "retrieveRestoreDetails has error, no backups found",
+			args: args{
+				ctx:                        context.Background(),
+				c:                          k8sClient1,
+				s:                          scheme1,
+				restore:                    &restoreCredsNoError,
+				restoreOnlyManagedClusters: false,
+			},
+			want: false, // has error, restore not found
+		},
+
+		{
+			name: "retrieveRestoreDetails has error, no backup name",
+			args: args{
+				ctx:                        context.Background(),
+				c:                          k8sClient1,
+				s:                          scheme1,
+				restore:                    &restoreCredsInvalidBackupName,
+				restoreOnlyManagedClusters: false,
+			},
+			want: false, // has error, backup name is invalid
+		},
+	}
+
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, _, got := retrieveRestoreDetails(tt.args.ctx, tt.args.c,
+				tt.args.s, tt.args.restore, tt.args.restoreOnlyManagedClusters); (got == nil) != tt.want {
+				t.Errorf("retrieveRestoreDetails() returns = %v, want %v", got == nil, tt.want)
+			}
+		})
+		if index == len(tests)-1 {
+			// clean up
+			testEnv.Stop()
+		}
+	}
+
+}
