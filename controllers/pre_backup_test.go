@@ -671,3 +671,90 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 	}
 
 }
+
+func Test_cleanupMSAForImportedClusters(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	unstructuredScheme := runtime.NewScheme()
+
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: unstructuredScheme})
+
+	obj1 := &unstructured.Unstructured{}
+	obj1.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"kind":       "ManagedServiceAccount",
+		"metadata": map[string]interface{}{
+			"name":      msa_service_name,
+			"namespace": "managed1",
+			"labels": map[string]interface{}{
+				msa_label: msa_service_name,
+			},
+		},
+		"spec": map[string]interface{}{
+			"somethingelse": "aaa",
+			"rotation": map[string]interface{}{
+				"validity": "50h",
+				"enabled":  true,
+			},
+		},
+	})
+
+	targetGVK := schema.GroupVersionKind{Group: "authentication.open-cluster-management.io",
+		Version: "v1alpha1", Kind: "ManagedServiceAccount"}
+	targetGVR := targetGVK.GroupVersion().WithResource("managedserviceaccount")
+	targetMapping := meta.RESTMapping{Resource: targetGVR, GroupVersionKind: targetGVK,
+		Scope: meta.RESTScopeNamespace}
+	targetGVRList := schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
+		Version: "v1alpha1", Resource: "managedserviceaccounts"}
+
+	gvrToListKind := map[schema.GroupVersionResource]string{
+		targetGVRList: "ManagedServiceAccountList",
+	}
+
+	unstructuredScheme.AddKnownTypes(targetGVK.GroupVersion(), obj1)
+	dynClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredScheme,
+		gvrToListKind,
+		obj1)
+
+	resInterface := dynClient.Resource(targetGVRList)
+
+	type args struct {
+		ctx     context.Context
+		c       client.Client
+		dr      dynamic.NamespaceableResourceInterface
+		mapping *meta.RESTMapping
+	}
+	tests := []struct {
+		name string
+		args args
+	}{
+		{
+			name: "clean up msa",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				dr:      resInterface,
+				mapping: &targetMapping,
+			},
+		},
+	}
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanupMSAForImportedClusters(tt.args.ctx, k8sClient1,
+				tt.args.dr,
+				tt.args.mapping,
+			)
+		})
+
+		if index == len(tests)-1 {
+			// clean up
+			testEnv.Stop()
+		}
+	}
+
+}

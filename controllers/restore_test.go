@@ -34,6 +34,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
@@ -436,7 +437,36 @@ func Test_deleteDynamicResource(t *testing.T) {
 		"apiVersion": "apps.open-cluster-management.io/v1",
 		"kind":       "Channel",
 		"metadata": map[string]interface{}{
-			"name":      "channel-new",
+			"name":      "channel-new-default",
+			"namespace": "default",
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
+	res_default_with_finalizer := &unstructured.Unstructured{}
+	res_default_with_finalizer.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":       "channel-new-default-with-finalizer",
+			"namespace":  "default",
+			"finalizers": []interface{}{"aaa", "bbb"},
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
+	res_default_notfound := &unstructured.Unstructured{}
+	res_default_notfound.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":      "channel-new-default-not-found",
 			"namespace": "default",
 		},
 		"spec": map[string]interface{}{
@@ -450,7 +480,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 		"apiVersion": "apps.open-cluster-management.io/v1",
 		"kind":       "Channel",
 		"metadata": map[string]interface{}{
-			"name":      "channel-new",
+			"name":      "channel-new-default-excluded",
 			"namespace": "default",
 			"labels": map[string]interface{}{
 				"velero.io/exclude-from-backup": "true",
@@ -467,7 +497,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 		"apiVersion": "apps.open-cluster-management.io/v1",
 		"kind":       "Channel",
 		"metadata": map[string]interface{}{
-			"name": "channel-new",
+			"name": "channel-new-global",
 		},
 		"spec": map[string]interface{}{
 			"type":     "Git",
@@ -475,19 +505,59 @@ func Test_deleteDynamicResource(t *testing.T) {
 		},
 	})
 
-	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), res_local_ns)
+	res_global_with_finalizer := &unstructured.Unstructured{}
+	res_global_with_finalizer.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":       "channel-new-global-with-finalizer",
+			"finalizers": []interface{}{"aaa", "bbb"},
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
+	res_global_notfound := &unstructured.Unstructured{}
+	res_global_notfound.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name": "channel-new-global-not-found",
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
+	unstructuredScheme := runtime.NewScheme()
+	chnv1.AddToScheme(unstructuredScheme)
+
+	dynClient := dynamicfake.NewSimpleDynamicClient(unstructuredScheme,
+		res_default,
+		res_default_with_finalizer,
+		res_global,
+		res_global_with_finalizer,
+		res_exclude_from_backup,
+	)
 
 	targetGVK := schema.GroupVersionKind{Group: "apps.open-cluster-management.io", Version: "v1", Kind: "Channel"}
-	targetGVR := targetGVK.GroupVersion().WithResource("somecrs")
+	targetGVR := targetGVK.GroupVersion().WithResource("channel")
 	targetMapping := meta.RESTMapping{Resource: targetGVR, GroupVersionKind: targetGVK,
 		Scope: meta.RESTScopeNamespace}
 
 	targetMappingGlobal := meta.RESTMapping{Resource: targetGVR, GroupVersionKind: targetGVK,
 		Scope: meta.RESTScopeRoot}
 
-	var monboDBResource = schema.GroupVersionResource{Group: "apps.open-cluster-management.io", Version: "v1", Resource: "channel"}
+	resInterface := dynClient.Resource(targetGVR)
 
-	resInterface := dynClient.Resource(monboDBResource)
+	// create resources which should be found
+	resInterface.Namespace("default").Create(context.Background(), res_default, v1.CreateOptions{})
+	resInterface.Namespace("default").Create(context.Background(), res_default_with_finalizer, v1.CreateOptions{})
+	resInterface.Create(context.Background(), res_global, v1.CreateOptions{})
+	resInterface.Create(context.Background(), res_global_with_finalizer, v1.CreateOptions{})
 
 	deletePolicy := metav1.DeletePropagationForeground
 	delOptions := metav1.DeleteOptions{
@@ -503,9 +573,10 @@ func Test_deleteDynamicResource(t *testing.T) {
 		excludedNamespaces []string
 	}
 	tests := []struct {
-		name string
-		args args
-		want bool
+		name        string
+		args        args
+		want        bool
+		errMsgEmpty bool
 	}{
 		{
 			name: "Delete local cluster resource",
@@ -517,7 +588,8 @@ func Test_deleteDynamicResource(t *testing.T) {
 				deleteOptions:      delOptions,
 				excludedNamespaces: []string{"abc"},
 			},
-			want: false,
+			want:        false,
+			errMsgEmpty: true,
 		},
 		{
 			name: "Delete default resource",
@@ -529,7 +601,34 @@ func Test_deleteDynamicResource(t *testing.T) {
 				deleteOptions:      delOptions,
 				excludedNamespaces: []string{"abc"},
 			},
-			want: true,
+			want:        true,
+			errMsgEmpty: true,
+		},
+		{
+			name: "Delete default resource with finalizer, should throw error since resource was deleted before finalizers patch",
+			args: args{
+				ctx:                context.Background(),
+				mapping:            &targetMapping,
+				dr:                 resInterface,
+				resource:           *res_default_with_finalizer,
+				deleteOptions:      delOptions,
+				excludedNamespaces: []string{"abc"},
+			},
+			want:        true,
+			errMsgEmpty: false,
+		},
+		{
+			name: "Delete default resource NOT FOUND",
+			args: args{
+				ctx:                context.Background(),
+				mapping:            &targetMapping,
+				dr:                 resInterface,
+				resource:           *res_default_notfound,
+				deleteOptions:      delOptions,
+				excludedNamespaces: []string{"abc"},
+			},
+			want:        true,
+			errMsgEmpty: false,
 		},
 		{
 			name: "Delete default resource with ns excluded",
@@ -537,11 +636,12 @@ func Test_deleteDynamicResource(t *testing.T) {
 				ctx:                context.Background(),
 				mapping:            &targetMapping,
 				dr:                 resInterface,
-				resource:           *res_default,
+				resource:           *res_default_notfound,
 				deleteOptions:      delOptions,
 				excludedNamespaces: []string{"default"},
 			},
-			want: false,
+			want:        false,
+			errMsgEmpty: true,
 		},
 		{
 			name: "Delete default resource, excluded from backup",
@@ -553,7 +653,8 @@ func Test_deleteDynamicResource(t *testing.T) {
 				deleteOptions:      delOptions,
 				excludedNamespaces: []string{"abc"},
 			},
-			want: false,
+			want:        false,
+			errMsgEmpty: true,
 		},
 		{
 			name: "Delete global resource",
@@ -565,18 +666,48 @@ func Test_deleteDynamicResource(t *testing.T) {
 				deleteOptions:      delOptions,
 				excludedNamespaces: []string{},
 			},
-			want: true,
+			want:        true,
+			errMsgEmpty: true,
+		},
+		{
+			name: "Delete global resource with finalizer, throws error since res is deleted before finalizers patch",
+			args: args{
+				ctx:                context.Background(),
+				mapping:            &targetMappingGlobal,
+				dr:                 resInterface,
+				resource:           *res_global_with_finalizer,
+				deleteOptions:      delOptions,
+				excludedNamespaces: []string{},
+			},
+			want:        true,
+			errMsgEmpty: false,
+		},
+		{
+			name: "Delete global resource NOT FOUND",
+			args: args{
+				ctx:                context.Background(),
+				mapping:            &targetMappingGlobal,
+				dr:                 resInterface,
+				resource:           *res_global_notfound,
+				deleteOptions:      delOptions,
+				excludedNamespaces: []string{},
+			},
+			want:        true,
+			errMsgEmpty: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, got := deleteDynamicResource(tt.args.ctx,
+			if got, msg := deleteDynamicResource(tt.args.ctx,
 				tt.args.mapping,
 				tt.args.dr,
 				tt.args.resource,
 				tt.args.deleteOptions,
-				tt.args.excludedNamespaces); got != tt.want {
-				t.Errorf("deleteDynamicResource() = %v, want %v", got, tt.want)
+				tt.args.excludedNamespaces); got != tt.want ||
+				(tt.errMsgEmpty && len(msg) != 0) ||
+				(!tt.errMsgEmpty && len(msg) == 0) {
+				t.Errorf("deleteDynamicResource() = %v, want %v, emptyMsg=%v, msg=%v", got,
+					tt.want, tt.errMsgEmpty, msg)
 			}
 		})
 	}
@@ -744,7 +875,7 @@ func Test_postRestoreActivation(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	ns := corev1.Namespace{
+	ns1 := corev1.Namespace{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
 			Kind:       "Namespace",
@@ -753,7 +884,16 @@ func Test_postRestoreActivation(t *testing.T) {
 			Name: "managed1",
 		},
 	}
-	autoImporSecret := corev1.Secret{
+	ns2 := corev1.Namespace{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Namespace",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "managed2",
+		},
+	}
+	autoImporSecretWithLabel := corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
 			Kind:       "Secret",
@@ -764,10 +904,22 @@ func Test_postRestoreActivation(t *testing.T) {
 			Labels:    map[string]string{activateLabel: "true"},
 		},
 	}
+	autoImporSecretWithoutLabel := corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Secret",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      autoImportSecretName,
+			Namespace: "managed2",
+		},
+	}
 	cfg, _ := testEnv.Start()
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
-	k8sClient1.Create(context.Background(), &ns)
-	k8sClient1.Create(context.Background(), &autoImporSecret)
+	k8sClient1.Create(context.Background(), &ns1)
+	k8sClient1.Create(context.Background(), &ns2)
+	k8sClient1.Create(context.Background(), &autoImporSecretWithLabel)
+	k8sClient1.Create(context.Background(), &autoImporSecretWithoutLabel)
 
 	fourHoursAgo := "2022-07-26T11:25:34Z"
 	nextTenHours := "2022-07-27T04:25:34Z"
@@ -1052,6 +1204,30 @@ func Test_postRestoreActivation(t *testing.T) {
 							},
 						},
 					},
+					{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1",
+							Kind:       "ManagedCluster",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "managed2",
+						},
+						Spec: clusterv1.ManagedClusterSpec{
+							HubAcceptsClient: true,
+							ManagedClusterClientConfigs: []clusterv1.ClientConfig{
+								clusterv1.ClientConfig{
+									URL: "someurl",
+								},
+							},
+						},
+						Status: clusterv1.ManagedClusterStatus{
+							Conditions: []metav1.Condition{
+								v1.Condition{
+									Status: v1.ConditionFalse,
+								},
+							},
+						},
+					},
 				},
 				secrets: []corev1.Secret{
 					corev1.Secret{
@@ -1076,6 +1252,23 @@ func Test_postRestoreActivation(t *testing.T) {
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "auto-import",
 							Namespace: "managed1",
+							Annotations: map[string]string{
+								"lastRefreshTimestamp": fourHoursAgo,
+								"expirationTimestamp":  nextTenHours,
+							},
+						},
+						Data: map[string][]byte{
+							"token": []byte("YWRtaW4="),
+						},
+					},
+					corev1.Secret{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "auto-import",
+							Namespace: "managed2",
 							Annotations: map[string]string{
 								"lastRefreshTimestamp": fourHoursAgo,
 								"expirationTimestamp":  nextTenHours,
@@ -1219,6 +1412,582 @@ func Test_getVeleroBackupName(t *testing.T) {
 			if name, _, _ := getVeleroBackupName(tt.args.ctx, tt.args.c,
 				tt.args.restoreNamespace, tt.args.resourceType, tt.args.backupName); name != tt.want {
 				t.Errorf("getVeleroBackupName() returns = %v, want %v", name, tt.want)
+			}
+		})
+		if index == len(tests)-1 {
+			// clean up
+			testEnv.Stop()
+		}
+	}
+
+}
+
+func Test_isNewBackupAvailable(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+
+	skipRestore := "skip"
+	latestBackup := "latest"
+
+	veleroNamespaceName := "backup-ns"
+	veleroNamespace := corev1.Namespace{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Namespace",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: veleroNamespaceName,
+		},
+	}
+
+	passiveStr := "passive"
+	backupName := "acm-credentials-schedule-20220922170041"
+	restoreName := passiveStr + "-" + backupName
+
+	backup := veleroapi.Backup{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "velero/v1",
+			Kind:       "Backup",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      backupName,
+			Namespace: veleroNamespaceName,
+			Labels: map[string]string{
+				"velero.io/schedule-name":  "aa",
+				BackupScheduleClusterLabel: "abcd",
+			},
+		},
+		Spec: veleroapi.BackupSpec{
+			IncludedNamespaces: []string{"please-keep-this-one"},
+		},
+		Status: veleroapi.BackupStatus{
+			Phase:  veleroapi.BackupPhaseCompleted,
+			Errors: 0,
+		},
+	}
+
+	veleroRestore := veleroapi.Restore{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "velero/v1",
+			Kind:       "Restore",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      restoreName,
+			Namespace: veleroNamespaceName,
+		},
+		Spec: veleroapi.RestoreSpec{
+			BackupName: backupName,
+		},
+		Status: veleroapi.RestoreStatus{
+			Phase: "Completed",
+		},
+	}
+
+	restoreCreds := v1beta1.Restore{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "Restore",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      passiveStr,
+			Namespace: veleroNamespaceName,
+		},
+		Spec: v1beta1.RestoreSpec{
+			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+			SyncRestoreWithNewBackups:       true,
+			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
+			VeleroManagedClustersBackupName: &skipRestore,
+			VeleroCredentialsBackupName:     &latestBackup,
+			VeleroResourcesBackupName:       &latestBackup,
+		},
+	}
+
+	restoreCredSameBackup := v1beta1.Restore{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "Restore",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      passiveStr,
+			Namespace: veleroNamespaceName,
+		},
+		Spec: v1beta1.RestoreSpec{
+			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+			SyncRestoreWithNewBackups:       true,
+			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
+			VeleroManagedClustersBackupName: &skipRestore,
+			VeleroCredentialsBackupName:     &latestBackup,
+			VeleroResourcesBackupName:       &latestBackup,
+		},
+		Status: v1beta1.RestoreStatus{
+			VeleroCredentialsRestoreName: veleroRestore.Name,
+		},
+	}
+
+	restoreCredNewBackup := v1beta1.Restore{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "Restore",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      passiveStr,
+			Namespace: veleroNamespaceName,
+		},
+		Spec: v1beta1.RestoreSpec{
+			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+			SyncRestoreWithNewBackups:       true,
+			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
+			VeleroManagedClustersBackupName: &skipRestore,
+			VeleroCredentialsBackupName:     &latestBackup,
+			VeleroResourcesBackupName:       &latestBackup,
+		},
+		Status: v1beta1.RestoreStatus{
+			VeleroCredentialsRestoreName: veleroRestore.Name + "11",
+		},
+	}
+
+	type args struct {
+		ctx          context.Context
+		c            client.Client
+		restore      *v1beta1.Restore
+		resourceType ResourceType
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+
+		{
+			name: "no kind is registered for the type v1.BackupList",
+			args: args{
+				ctx:          context.Background(),
+				c:            k8sClient1,
+				restore:      &restoreCreds,
+				resourceType: CredentialsCluster,
+			},
+			want: false,
+		},
+		{
+			name: "no backup items",
+			args: args{
+				ctx:          context.Background(),
+				c:            k8sClient1,
+				resourceType: CredentialsCluster,
+				restore:      &restoreCreds,
+			},
+			want: false,
+		},
+
+		{
+			name: "NOT found restore item ",
+			args: args{
+				ctx:          context.Background(),
+				c:            k8sClient1,
+				resourceType: CredentialsCluster,
+				restore:      &restoreCreds,
+			},
+			want: false,
+		},
+		{
+			name: "found restore item but not the latest backup",
+			args: args{
+				ctx:          context.Background(),
+				c:            k8sClient1,
+				resourceType: Credentials,
+				restore:      &restoreCredSameBackup,
+			},
+			want: false,
+		},
+		{
+			name: "found restore item AND new backup",
+			args: args{
+				ctx:          context.Background(),
+				c:            k8sClient1,
+				resourceType: Credentials,
+				restore:      &restoreCredNewBackup,
+			},
+			want: true,
+		},
+		{
+			name: "found restore item AND new backup, with restore found",
+			args: args{
+				ctx:          context.Background(),
+				c:            k8sClient1,
+				resourceType: Credentials,
+				restore:      &restoreCredNewBackup,
+			},
+			want: false,
+		},
+	}
+
+	for index, tt := range tests {
+
+		if index == 1 {
+			v1beta1.AddToScheme(scheme.Scheme)
+			veleroapi.AddToScheme(scheme.Scheme)
+		}
+		if index == 2 {
+			k8sClient1.Create(tt.args.ctx, &veleroNamespace)
+			k8sClient1.Create(tt.args.ctx, &backup)
+			k8sClient1.Create(context.Background(), &veleroRestore)
+		}
+		if index == len(tests)-1 {
+			// create restore
+			k8sClient1.Create(context.Background(), &restoreCredNewBackup)
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isNewBackupAvailable(tt.args.ctx, tt.args.c,
+				tt.args.restore, tt.args.resourceType); got != tt.want {
+				t.Errorf("isNewBackupAvailable() returns = %v, want %v, %v", got, tt.want, tt.args.resourceType)
+			}
+		})
+		if index == len(tests)-1 {
+			// clean up
+			testEnv.Stop()
+		}
+	}
+
+}
+
+func Test_isBackupScheduleRunning(t *testing.T) {
+	type args struct {
+		backupSchedules []v1beta1.BackupSchedule
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "backup list is empty",
+			args: args{
+				backupSchedules: []v1beta1.BackupSchedule{},
+			},
+			want: "",
+		},
+		{
+			name: "backup without backupcollision running",
+			args: args{
+				backupSchedules: []v1beta1.BackupSchedule{
+					v1beta1.BackupSchedule{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1beta1",
+							Kind:       "BackupSchedule",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "backup-name",
+							Namespace: "ns",
+						},
+						Status: v1beta1.BackupScheduleStatus{
+							Phase: v1beta1.SchedulePhaseEnabled,
+						},
+					},
+				},
+			},
+			want: "backup-name",
+		},
+		{
+			name: "backup WITH backupcollision",
+			args: args{
+				backupSchedules: []v1beta1.BackupSchedule{
+					v1beta1.BackupSchedule{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1beta1",
+							Kind:       "BackupSchedule",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "backup-name",
+							Namespace: "ns",
+						},
+						Status: v1beta1.BackupScheduleStatus{
+							Phase: v1beta1.SchedulePhaseBackupCollision,
+						},
+					},
+				},
+			},
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isBackupScheduleRunning(tt.args.backupSchedules); got != tt.want {
+				t.Errorf("isBackupScheduleRunning() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_isOtherRestoresRunning(t *testing.T) {
+	type args struct {
+		restores    []v1beta1.Restore
+		restoreName string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "restore list is empty",
+			args: args{
+				restores: []v1beta1.Restore{},
+			},
+			want: "",
+		},
+		{
+			name: "restore list has one running item ",
+			args: args{
+				restoreName: "some-name",
+				restores: []v1beta1.Restore{
+					v1beta1.Restore{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1beta1",
+							Kind:       "Restore",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "some-name",
+							Namespace: "ns",
+						},
+					},
+					v1beta1.Restore{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1beta1",
+							Kind:       "Restore",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "some-other-name",
+							Namespace: "ns",
+						},
+						Status: v1beta1.RestoreStatus{
+							Phase: v1beta1.RestorePhaseEnabled,
+						},
+					},
+				},
+			},
+			want: "some-other-name",
+		},
+		{
+			name: "restore list has one completed item ",
+			args: args{
+				restoreName: "some-name",
+				restores: []v1beta1.Restore{
+					v1beta1.Restore{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1beta1",
+							Kind:       "Restore",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "some-name",
+							Namespace: "ns",
+						},
+					},
+					v1beta1.Restore{
+						TypeMeta: metav1.TypeMeta{
+							APIVersion: "cluster.open-cluster-management.io/v1beta1",
+							Kind:       "Restore",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "some-other-name",
+							Namespace: "ns",
+						},
+						Status: v1beta1.RestoreStatus{
+							Phase: v1beta1.RestorePhaseFinishedWithErrors,
+						},
+					},
+				},
+			},
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isOtherRestoresRunning(tt.args.restores, tt.args.restoreName); got != tt.want {
+				t.Errorf("isOtherRestoresRunning() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_isValidCleanupOption(t *testing.T) {
+	type args struct {
+		restore *v1beta1.Restore
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "restore has invalid cleanup option",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "some-name",
+						Namespace: "ns",
+					},
+					Spec: v1beta1.RestoreSpec{
+						CleanupBeforeRestore: "someWrongValue",
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "restore has cleanup option, should cleanup ",
+			args: args{
+				restore: &v1beta1.Restore{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "Restore",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "some-name",
+						Namespace: "ns",
+					},
+					Spec: v1beta1.RestoreSpec{
+						CleanupBeforeRestore: v1beta1.CleanupTypeAll,
+					},
+				},
+			},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isValidCleanupOption(tt.args.restore); len(got) == 0 != tt.want {
+				t.Errorf("isValidCleanupOption() = %v, want len of string is empty %v", len(got) == 0, tt.want)
+			}
+		})
+	}
+}
+
+func Test_retrieveRestoreDetails(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	skipRestore := "skip"
+	veleroNamespaceName := "default"
+	invalidBackupName := ""
+	backupName := "backup-name"
+
+	backup := veleroapi.Backup{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "velero/v1",
+			Kind:       "Backup",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      backupName,
+			Namespace: veleroNamespaceName,
+		},
+		Spec: veleroapi.BackupSpec{
+			IncludedNamespaces: []string{"please-keep-this-one"},
+		},
+		Status: veleroapi.BackupStatus{
+			Phase:  veleroapi.BackupPhaseCompleted,
+			Errors: 0,
+		},
+	}
+
+	restoreCredsNoError := v1beta1.Restore{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "Restore",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "restore1",
+			Namespace: veleroNamespaceName,
+		},
+		Spec: v1beta1.RestoreSpec{
+			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+			SyncRestoreWithNewBackups:       true,
+			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
+			VeleroManagedClustersBackupName: &skipRestore,
+			VeleroCredentialsBackupName:     &skipRestore,
+			VeleroResourcesBackupName:       &backupName,
+		},
+	}
+
+	restoreCredsInvalidBackupName := v1beta1.Restore{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1beta1",
+			Kind:       "Restore",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "restore1",
+			Namespace: veleroNamespaceName,
+		},
+		Spec: v1beta1.RestoreSpec{
+			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
+			SyncRestoreWithNewBackups:       true,
+			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
+			VeleroManagedClustersBackupName: &skipRestore,
+			VeleroCredentialsBackupName:     &skipRestore,
+			VeleroResourcesBackupName:       &invalidBackupName,
+		},
+	}
+
+	cfg, _ := testEnv.Start()
+	scheme1 := runtime.NewScheme()
+	veleroapi.AddToScheme(scheme1)
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1.Create(context.Background(), &backup, &client.CreateOptions{})
+
+	type args struct {
+		ctx                        context.Context
+		c                          client.Client
+		s                          *runtime.Scheme
+		restore                    *v1beta1.Restore
+		restoreOnlyManagedClusters bool
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+
+		{
+			name: "retrieveRestoreDetails has error, no backups found",
+			args: args{
+				ctx:                        context.Background(),
+				c:                          k8sClient1,
+				s:                          scheme1,
+				restore:                    &restoreCredsNoError,
+				restoreOnlyManagedClusters: false,
+			},
+			want: false, // has error, restore not found
+		},
+
+		{
+			name: "retrieveRestoreDetails has error, no backup name",
+			args: args{
+				ctx:                        context.Background(),
+				c:                          k8sClient1,
+				s:                          scheme1,
+				restore:                    &restoreCredsInvalidBackupName,
+				restoreOnlyManagedClusters: false,
+			},
+			want: false, // has error, backup name is invalid
+		},
+	}
+
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, _, got := retrieveRestoreDetails(tt.args.ctx, tt.args.c,
+				tt.args.s, tt.args.restore, tt.args.restoreOnlyManagedClusters); (got == nil) != tt.want {
+				t.Errorf("retrieveRestoreDetails() returns = %v, want %v", got == nil, tt.want)
 			}
 		})
 		if index == len(tests)-1 {
