@@ -599,22 +599,11 @@ var _ = Describe("BackupSchedule controller", func() {
 				return false
 			}, timeout, interval).Should(BeTrue())
 
-			rhacmBackupSchedule := v1beta1.BackupSchedule{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "BackupSchedule",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      backupScheduleName,
-					Namespace: veleroNamespaceName,
-				},
-				Spec: v1beta1.BackupScheduleSpec{
-					VeleroSchedule:           backupSchedule,
-					VeleroTTL:                metav1.Duration{Duration: time.Hour * 72},
-					UseManagedServiceAccount: true,
-					ManagedServiceAccountTTL: metav1.Duration{Duration: time.Hour * 90},
-				},
-			}
+			rhacmBackupSchedule := *createBackupSchedule(backupScheduleName, veleroNamespaceName).
+				schedule(backupSchedule).veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
+				useManagedServiceAccount(true).
+				managedServiceAccountTTL(metav1.Duration{Duration: time.Hour * 90}).
+				object
 			Expect(k8sClient.Create(ctx, &rhacmBackupSchedule)).Should(Succeed())
 
 			backupLookupKey := types.NamespacedName{
@@ -746,19 +735,9 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			// new backup with no TTL
 			backupScheduleNameNoTTL := backupScheduleName + "-nottl"
-			rhacmBackupScheduleNoTTL := v1beta1.BackupSchedule{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "BackupSchedule",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      backupScheduleNameNoTTL,
-					Namespace: veleroNamespaceName,
-				},
-				Spec: v1beta1.BackupScheduleSpec{
-					VeleroSchedule: backupSchedule,
-				},
-			}
+			rhacmBackupScheduleNoTTL := *createBackupSchedule(backupScheduleNameNoTTL, veleroNamespaceName).
+				schedule(backupSchedule).
+				object
 			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleNoTTL)).Should(Succeed())
 
 			// execute a backup collission validation
@@ -804,19 +783,9 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			// new schedule backup
 			backupScheduleName3 := backupScheduleName + "-3"
-			backupSchedule3 := v1beta1.BackupSchedule{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "BackupSchedule",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      backupScheduleName3,
-					Namespace: veleroNamespaceName,
-				},
-				Spec: v1beta1.BackupScheduleSpec{
-					VeleroSchedule: backupSchedule,
-				},
-			}
+			backupSchedule3 := *createBackupSchedule(backupScheduleName3, veleroNamespaceName).
+				schedule(backupSchedule).
+				object
 			Expect(k8sClient.Create(ctx, &backupSchedule3)).Should(Succeed())
 
 			backupLookupKeyNoTTL := types.NamespacedName{
@@ -861,20 +830,9 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			// backup not created in velero namespace, should fail validation
 			acmBackupName := backupScheduleName
-			rhacmBackupScheduleACM := v1beta1.BackupSchedule{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "BackupSchedule",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      acmBackupName,
-					Namespace: acmNamespaceName,
-				},
-				Spec: v1beta1.BackupScheduleSpec{
-					VeleroSchedule: backupSchedule,
-					VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
-				},
-			}
+			rhacmBackupScheduleACM := *createBackupSchedule(acmBackupName, acmNamespaceName).
+				schedule(backupSchedule).veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
+				object
 			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleACM)).Should(Succeed())
 
 			backupLookupKeyACM := types.NamespacedName{
@@ -903,20 +861,9 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			// backup with invalid cron job schedule, should fail validation
 			invalidCronExpBackupName := backupScheduleName + "-invalid-cron-exp"
-			invalidCronExpBackupScheduleACM := v1beta1.BackupSchedule{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "BackupSchedule",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      invalidCronExpBackupName,
-					Namespace: veleroNamespaceName,
-				},
-				Spec: v1beta1.BackupScheduleSpec{
-					VeleroSchedule: "invalid-cron-exp",
-					VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
-				},
-			}
+			invalidCronExpBackupScheduleACM := *createBackupSchedule(invalidCronExpBackupName, veleroNamespaceName).
+				schedule("invalid-cron-exp").veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
+				object
 			Expect(k8sClient.Create(ctx, &invalidCronExpBackupScheduleACM)).Should(Succeed())
 
 			backupLookupKeyInvalidCronExp := types.NamespacedName{
@@ -1153,20 +1100,9 @@ var _ = Describe("BackupSchedule controller", func() {
 		It(
 			"Should not create any velero schedule resources, BackupStorageLocation doesnt exist or is invalid",
 			func() {
-				rhacmBackupSchedule := v1beta1.BackupSchedule{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "BackupSchedule",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      backupScheduleName + "-new",
-						Namespace: newVeleroNamespace,
-					},
-					Spec: v1beta1.BackupScheduleSpec{
-						VeleroSchedule: backupSchedule,
-						VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
-					},
-				}
+				rhacmBackupSchedule := *createBackupSchedule(backupScheduleName+"-new", newVeleroNamespace).
+					schedule(backupSchedule).veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
+					object
 
 				Expect(k8sClient.Create(ctx, &rhacmBackupSchedule)).Should(Succeed())
 				// there is no storage location object created
@@ -1208,21 +1144,9 @@ var _ = Describe("BackupSchedule controller", func() {
 					}, timeout, interval).Should(BeTrue())
 				}
 
-				rhacmBackupScheduleNew := v1beta1.BackupSchedule{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "BackupSchedule",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      backupScheduleName + "-new-1",
-						Namespace: newVeleroNamespace,
-					},
-					Spec: v1beta1.BackupScheduleSpec{
-						VeleroSchedule: backupSchedule,
-						VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
-					},
-				}
-
+				rhacmBackupScheduleNew := *createBackupSchedule(backupScheduleName+"-new-1", newVeleroNamespace).
+					schedule(backupSchedule).veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
+					object
 				Expect(k8sClient.Create(ctx, &rhacmBackupScheduleNew)).Should(Succeed())
 				createdScheduleNew := v1beta1.BackupSchedule{}
 				Eventually(func() v1beta1.SchedulePhase {
