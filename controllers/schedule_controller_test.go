@@ -366,11 +366,7 @@ var _ = Describe("BackupSchedule controller", func() {
 			}
 			if err := k8sClient.Get(ctx, storageLookupKey, backupStorageLocation); err == nil {
 				backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-				Eventually(func() bool {
-					err := k8sClient.
-						Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
-					return err == nil
-				}, timeout, interval).Should(BeTrue())
+				k8sClient.Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
 			}
 
 			managedClusterList := clusterv1.ManagedClusterList{}
@@ -850,7 +846,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					object,
 			}
 			backupStorageLocation = createStorageLocation("default-new", veleroNamespace.Name).
-				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
+				phase(veleroapi.BackupStorageLocationPhaseUnavailable).object
 		})
 		It(
 			"Should not create any velero schedule resources, BackupStorageLocation doesnt exist or is invalid",
@@ -892,11 +888,8 @@ var _ = Describe("BackupSchedule controller", func() {
 				}
 				if err := k8sClient.Get(ctx, storageLookupKey, backupStorageLocation); err == nil {
 					backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-					Eventually(func() bool {
-						err := k8sClient.
-							Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
-						return err == nil
-					}, timeout, interval).Should(BeTrue())
+					k8sClient.Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
+
 				}
 
 				rhacmBackupScheduleNew := *createBackupSchedule(backupScheduleName+"-new-1", newVeleroNamespace).

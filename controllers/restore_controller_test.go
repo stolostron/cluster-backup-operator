@@ -84,11 +84,7 @@ var _ = Describe("Basic Restore controller", func() {
 			}
 			if err := k8sClient.Get(ctx, storageLookupKey, backupStorageLocation); err == nil {
 				backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-				Eventually(func() bool {
-					err := k8sClient.
-						Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
-					return err == nil
-				}, timeout, interval).Should(BeTrue())
+				k8sClient.Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
 			}
 			Expect(backupStorageLocation.Status.Phase).Should(BeIdenticalTo(veleroapi.BackupStorageLocationPhaseAvailable))
 		}
@@ -856,7 +852,7 @@ var _ = Describe("Basic Restore controller", func() {
 		BeforeEach(func() {
 			veleroNamespace = createNamespace("velero-restore-ns-6")
 			backupStorageLocation = createStorageLocation("default-6", veleroNamespace.Name).
-				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
+				phase(veleroapi.BackupStorageLocationPhaseUnavailable).object
 
 			veleroBackups = []veleroapi.Backup{}
 			rhacmRestore = *createACMRestore(restoreName+"-new", veleroNamespace.Name).
@@ -1137,7 +1133,7 @@ var _ = Describe("Basic Restore controller", func() {
 		})
 
 		It(
-			"Should create velero restore resource with only managec clusters",
+			"Should create velero restore resource with only managed clusters",
 			func() {
 				createdRestore := v1beta1.Restore{}
 				By("created restore should not contain velero restores in status")
