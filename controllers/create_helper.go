@@ -188,11 +188,6 @@ func (b *BackupScheduleHelper) managedServiceAccountTTL(ttl metav1.Duration) *Ba
 	return b
 }
 
-func (b *BackupScheduleHelper) phase(phase v1beta1.SchedulePhase) *BackupScheduleHelper {
-	b.object.Status.Phase = phase
-	return b
-}
-
 // storage location
 type StorageLocationHelper struct {
 	object *veleroapi.BackupStorageLocation
