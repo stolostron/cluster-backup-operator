@@ -281,30 +281,8 @@ func Test_findValidMSAToken(t *testing.T) {
 func Test_managedClusterShouldReimport(t *testing.T) {
 
 	managedClusters1 := []clusterv1.ManagedCluster{
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "local-cluster",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient: true,
-			},
-		},
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient: true,
-			},
-		},
+		*createManagedCluster("local-cluster").object,
+		*createManagedCluster("test1").object,
 	}
 
 	conditionTypeAvailableTrue := v1.Condition{
@@ -318,69 +296,26 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 	}
 
 	managedClustersAvailable := []clusterv1.ManagedCluster{
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient: true,
-			},
-			Status: clusterv1.ManagedClusterStatus{
-				Conditions: []metav1.Condition{
-					conditionTypeAvailableTrue,
-				},
-			},
-		},
+		*createManagedCluster("test1").
+			conditions([]metav1.Condition{
+				conditionTypeAvailableTrue,
+			}).
+			object,
 	}
 
 	managedClustersNOTAvailableNoURL := []clusterv1.ManagedCluster{
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient:            true,
-				ManagedClusterClientConfigs: []clusterv1.ClientConfig{},
-			},
-			Status: clusterv1.ManagedClusterStatus{
-				Conditions: []metav1.Condition{
-					conditionTypeAvailableFalse,
-				},
-			},
-		},
+		*createManagedCluster("test1").emptyClusterUrl().
+			conditions([]metav1.Condition{
+				conditionTypeAvailableFalse,
+			}).object,
 	}
 
 	managedClustersNOTAvailableWithURL := []clusterv1.ManagedCluster{
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient: true,
-				ManagedClusterClientConfigs: []clusterv1.ClientConfig{
-					clusterv1.ClientConfig{
-						URL: "aaaaa",
-					},
-				},
-			},
-			Status: clusterv1.ManagedClusterStatus{
-				Conditions: []metav1.Condition{
-					conditionTypeAvailableFalse,
-				},
-			},
-		},
+		*createManagedCluster("test1").
+			clusterUrl("aaaaa").
+			conditions([]metav1.Condition{
+				conditionTypeAvailableFalse,
+			}).object,
 	}
 
 	type args struct {

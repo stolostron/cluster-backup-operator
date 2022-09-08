@@ -741,56 +741,17 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "local-cluster",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-						},
-					},
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test1",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-						},
-					},
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "managed1",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-							ManagedClusterClientConfigs: []clusterv1.ClientConfig{
-								clusterv1.ClientConfig{
-									URL: "someurl",
-								},
+					*createManagedCluster("local-cluster").object,
+					*createManagedCluster("test1").object,
+					*createManagedCluster("managed1").clusterUrl("someurl").
+						conditions([]metav1.Condition{
+							v1.Condition{
+								Status: v1.ConditionTrue,
+								Type:   "ManagedClusterConditionAvailable",
 							},
-						},
-						Status: clusterv1.ManagedClusterStatus{
-							Conditions: []metav1.Condition{
-								v1.Condition{
-									Status: v1.ConditionTrue,
-									Type:   "ManagedClusterConditionAvailable",
-								},
-							},
-						},
-					},
+						}).object,
 				},
+
 				secrets: []corev1.Secret{
 					*createSecret("auto-import", "local-cluster",
 						nil, map[string]string{
@@ -813,52 +774,14 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "local-cluster",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-						},
-					},
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test1",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-						},
-					},
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "managed1",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-							ManagedClusterClientConfigs: []clusterv1.ClientConfig{
-								clusterv1.ClientConfig{},
+					*createManagedCluster("local-cluster").object,
+					*createManagedCluster("test1").object,
+					*createManagedCluster("managed1").emptyClusterUrl().
+						conditions([]metav1.Condition{
+							v1.Condition{
+								Status: v1.ConditionFalse,
 							},
-						},
-						Status: clusterv1.ManagedClusterStatus{
-							Conditions: []metav1.Condition{
-								v1.Condition{
-									Status: v1.ConditionFalse,
-								},
-							},
-						},
-					},
+						}).object,
 				},
 				secrets: []corev1.Secret{
 					*createSecret("auto-import", "local-cluster",
@@ -896,78 +819,23 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "local-cluster",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-						},
-					},
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test1",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-						},
-					},
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "managed1",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-							ManagedClusterClientConfigs: []clusterv1.ClientConfig{
-								clusterv1.ClientConfig{
-									URL: "someurl",
-								},
+					*createManagedCluster("local-cluster").object,
+					*createManagedCluster("test1").object,
+					*createManagedCluster("managed1").
+						clusterUrl("someurl").
+						conditions([]metav1.Condition{
+							v1.Condition{
+								Status: v1.ConditionFalse,
 							},
-						},
-						Status: clusterv1.ManagedClusterStatus{
-							Conditions: []metav1.Condition{
-								v1.Condition{
-									Status: v1.ConditionFalse,
-								},
+						}).
+						object,
+					*createManagedCluster("managed2").clusterUrl("someurl").
+						conditions([]metav1.Condition{
+							v1.Condition{
+								Status: v1.ConditionFalse,
 							},
-						},
-					},
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "managed2",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-							ManagedClusterClientConfigs: []clusterv1.ClientConfig{
-								clusterv1.ClientConfig{
-									URL: "someurl",
-								},
-							},
-						},
-						Status: clusterv1.ManagedClusterStatus{
-							Conditions: []metav1.Condition{
-								v1.Condition{
-									Status: v1.ConditionFalse,
-								},
-							},
-						},
-					},
+						}).
+						object,
 				},
 				secrets: []corev1.Secret{
 					*createSecret("auto-import", "local-cluster",

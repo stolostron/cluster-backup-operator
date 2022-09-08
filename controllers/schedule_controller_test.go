@@ -95,30 +95,8 @@ var _ = Describe("BackupSchedule controller", func() {
 		}
 
 		managedClusters = []clusterv1.ManagedCluster{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1",
-					Kind:       "ManagedCluster",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "local-cluster",
-				},
-				Spec: clusterv1.ManagedClusterSpec{
-					HubAcceptsClient: true,
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1",
-					Kind:       "ManagedCluster",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: managedClusterNSName,
-				},
-				Spec: clusterv1.ManagedClusterSpec{
-					HubAcceptsClient: true,
-				},
-			},
+			*createManagedCluster("local-cluster").object,
+			*createManagedCluster(managedClusterNSName).object,
 		}
 		managedClusterNS = createNamespace(managedClusterNSName)
 		chartsv1NS = createNamespace(chartsv1NSName)

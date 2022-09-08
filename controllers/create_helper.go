@@ -7,6 +7,7 @@ import (
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 )
 
@@ -298,6 +299,49 @@ func (b *StorageLocationHelper) setOwner() *StorageLocationHelper {
 			UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
 		},
 	}
+	return b
+}
+
+// managed cluster helper
+type ManagedHelper struct {
+	object *clusterv1.ManagedCluster
+}
+
+func createManagedCluster(name string) *ManagedHelper {
+	return &ManagedHelper{
+		&clusterv1.ManagedCluster{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "cluster.open-cluster-management.io/v1",
+				Kind:       "ManagedCluster",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: name,
+			},
+			Spec: clusterv1.ManagedClusterSpec{
+				HubAcceptsClient: true,
+			},
+		},
+	}
+}
+
+func (b *ManagedHelper) clusterUrl(curl string) *ManagedHelper {
+	b.object.Spec.ManagedClusterClientConfigs = []clusterv1.ClientConfig{
+		clusterv1.ClientConfig{
+			URL: curl,
+		},
+	}
+	return b
+}
+
+func (b *ManagedHelper) emptyClusterUrl() *ManagedHelper {
+	b.object.Spec.ManagedClusterClientConfigs = []clusterv1.ClientConfig{
+		clusterv1.ClientConfig{},
+	}
+	return b
+}
+
+func (b *ManagedHelper) conditions(conditions []metav1.Condition) *ManagedHelper {
+	b.object.Status.Conditions = conditions
 	return b
 }
 
