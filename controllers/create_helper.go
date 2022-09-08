@@ -11,6 +11,8 @@ import (
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 )
 
+const acmApiVersion = "cluster.open-cluster-management.io/v1beta1"
+
 func createNamespace(name string) *corev1.Namespace {
 	return &corev1.Namespace{
 		TypeMeta: metav1.TypeMeta{
@@ -164,7 +166,7 @@ func createACMRestore(name string, ns string) *ACMRestoreHelper {
 	return &ACMRestoreHelper{
 		object: &v1beta1.Restore{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1beta1",
+				APIVersion: acmApiVersion,
 				Kind:       "Restore",
 			},
 			ObjectMeta: metav1.ObjectMeta{
@@ -224,7 +226,7 @@ func createBackupSchedule(name string, ns string) *BackupScheduleHelper {
 	return &BackupScheduleHelper{
 		object: &v1beta1.BackupSchedule{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1beta1",
+				APIVersion: acmApiVersion,
 				Kind:       "BackupSchedule",
 			},
 			ObjectMeta: metav1.ObjectMeta{
@@ -354,7 +356,7 @@ func createChannel(name string, ns string, ctype chnv1.ChannelType, path string)
 	return &ChannelHelper{
 		object: &chnv1.Channel{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1beta1",
+				APIVersion: acmApiVersion,
 				Kind:       "Channel",
 			},
 			ObjectMeta: metav1.ObjectMeta{

@@ -887,27 +887,13 @@ func Test_getVeleroBackupName(t *testing.T) {
 	veleroNamespaceName := "backup-ns"
 	veleroNamespace := *createNamespace(veleroNamespaceName)
 
-	backup := veleroapi.Backup{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "velero/v1",
-			Kind:       "Backup",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "acm-credentials-cluster-schedule-20220922170041",
-			Namespace: veleroNamespaceName,
-			Labels: map[string]string{
-				"velero.io/schedule-name":  "aa",
-				BackupScheduleClusterLabel: "abcd",
-			},
-		},
-		Spec: veleroapi.BackupSpec{
-			IncludedNamespaces: []string{"please-keep-this-one"},
-		},
-		Status: veleroapi.BackupStatus{
-			Phase:  veleroapi.BackupPhaseCompleted,
-			Errors: 0,
-		},
-	}
+	backup := *createBackup("acm-credentials-cluster-schedule-20220922170041", veleroNamespaceName).
+		labels(map[string]string{
+			"velero.io/schedule-name":  "aa",
+			BackupScheduleClusterLabel: "abcd",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).
+		errors(0).object
 
 	cfg, _ := testEnv.Start()
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
@@ -1012,27 +998,13 @@ func Test_isNewBackupAvailable(t *testing.T) {
 	backupName := "acm-credentials-schedule-20220922170041"
 	restoreName := passiveStr + "-" + backupName
 
-	backup := veleroapi.Backup{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "velero/v1",
-			Kind:       "Backup",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      backupName,
-			Namespace: veleroNamespaceName,
-			Labels: map[string]string{
-				"velero.io/schedule-name":  "aa",
-				BackupScheduleClusterLabel: "abcd",
-			},
-		},
-		Spec: veleroapi.BackupSpec{
-			IncludedNamespaces: []string{"please-keep-this-one"},
-		},
-		Status: veleroapi.BackupStatus{
-			Phase:  veleroapi.BackupPhaseCompleted,
-			Errors: 0,
-		},
-	}
+	backup := *createBackup(backupName, veleroNamespaceName).
+		labels(map[string]string{
+			"velero.io/schedule-name":  "aa",
+			BackupScheduleClusterLabel: "abcd",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).
+		errors(0).object
 
 	veleroRestore := veleroapi.Restore{
 		TypeMeta: metav1.TypeMeta{
@@ -1347,23 +1319,9 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 	invalidBackupName := ""
 	backupName := "backup-name"
 
-	backup := veleroapi.Backup{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "velero/v1",
-			Kind:       "Backup",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      backupName,
-			Namespace: veleroNamespaceName,
-		},
-		Spec: veleroapi.BackupSpec{
-			IncludedNamespaces: []string{"please-keep-this-one"},
-		},
-		Status: veleroapi.BackupStatus{
-			Phase:  veleroapi.BackupPhaseCompleted,
-			Errors: 0,
-		},
-	}
+	backup := *createBackup(backupName, veleroNamespaceName).
+		phase(veleroapi.BackupPhaseCompleted).
+		errors(0).object
 
 	restoreCredsNoError := *createACMRestore("restore1", veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
