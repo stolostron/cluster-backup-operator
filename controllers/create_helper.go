@@ -20,6 +20,34 @@ func createNamespace(name string) *corev1.Namespace {
 	}
 }
 
+func createSecret(name string, ns string,
+	labels map[string]string,
+	annotations map[string]string,
+	data map[string][]byte) *corev1.Secret {
+	secret := &corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Secret",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+	}
+	if labels != nil {
+		secret.Labels = labels
+	}
+	if annotations != nil {
+		secret.Annotations = annotations
+	}
+	if data != nil {
+		secret.Data = data
+	}
+
+	return secret
+
+}
+
 //backup helper
 type BackupHelper struct {
 	object *veleroapi.Backup
@@ -65,6 +93,11 @@ func (b *BackupHelper) errors(error int) *BackupHelper {
 
 func (b *BackupHelper) includedResources(resources []string) *BackupHelper {
 	b.object.Spec.IncludedResources = resources
+	return b
+}
+
+func (b *BackupHelper) labels(list map[string]string) *BackupHelper {
+	b.object.Labels = list
 	return b
 }
 

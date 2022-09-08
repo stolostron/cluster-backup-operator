@@ -877,27 +877,11 @@ func Test_postRestoreActivation(t *testing.T) {
 
 	ns1 := *createNamespace("managed1")
 	ns2 := *createNamespace("managed2")
-	autoImporSecretWithLabel := corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Secret",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      autoImportSecretName,
-			Namespace: "managed1",
-			Labels:    map[string]string{activateLabel: "true"},
-		},
-	}
-	autoImporSecretWithoutLabel := corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Secret",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      autoImportSecretName,
-			Namespace: "managed2",
-		},
-	}
+	autoImporSecretWithLabel := *createSecret(autoImportSecretName, "managed1",
+		map[string]string{activateLabel: "true"}, nil, nil)
+	autoImporSecretWithoutLabel := *createSecret(autoImportSecretName, "managed2",
+		nil, nil, nil)
+
 	cfg, _ := testEnv.Start()
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	k8sClient1.Create(context.Background(), &ns1)
@@ -978,37 +962,18 @@ func Test_postRestoreActivation(t *testing.T) {
 					},
 				},
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "local-cluster",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "local-cluster",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, nil),
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
+						}),
 				}},
 			want: []string{},
 		},
@@ -1066,71 +1031,32 @@ func Test_postRestoreActivation(t *testing.T) {
 					},
 				},
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "local-cluster",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "local-cluster",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, nil),
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed2",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-						Data: map[string][]byte{
-							"token1": []byte("aaa"), // test invalid token for managed2 ns
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import-pair", // this should be skipped
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-						Data: map[string][]byte{
+						}),
+					*createSecret("auto-import", "managed2",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
+							"token": []byte("aaa"),
+						}),
+					*createSecret("auto-import-pair", "managed1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
+						}),
 				}},
 			want: []string{},
 		},
@@ -1214,54 +1140,25 @@ func Test_postRestoreActivation(t *testing.T) {
 					},
 				},
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "local-cluster",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "local-cluster",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, nil),
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed2",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-						Data: map[string][]byte{
+						}),
+					*createSecret("auto-import", "managed2",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
+						}),
 				}},
 			want: []string{"managed1"},
 		},

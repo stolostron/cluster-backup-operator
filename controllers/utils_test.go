@@ -193,42 +193,16 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import-no-annotations",
-							Namespace: "managed1",
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import-no-expiration",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
-							},
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import-invalid-expiration",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": "aaa",
-							},
-						},
-					},
+					*createSecret("auto-import-no-annotations", "managed1",
+						nil, nil, nil),
+					*createSecret("auto-import-no-expiration", "managed1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
+						}, nil),
+					*createSecret("auto-import-invalid-expiration", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": "aaa",
+						}, nil),
 				}},
 			want: "",
 		},
@@ -237,19 +211,10 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": fourHoursAgo,
-							},
-						},
-					},
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": fourHoursAgo,
+						}, nil),
 				}},
 			want: "",
 		},
@@ -258,22 +223,12 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": nextHour,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": nextHour,
+						}, map[string][]byte{
 							"token1": []byte("aaa"),
-						},
-					},
+						}),
 				}},
 			want: "",
 		},
@@ -282,38 +237,18 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": nextHour,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": nextHour,
+						}, map[string][]byte{
 							"token1": []byte("aaa"),
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": nextHour,
-							},
-						},
-						Data: map[string][]byte{
+						}),
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": nextHour,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
+						}),
 				}},
 			want: "YWRtaW4=",
 		},
@@ -322,22 +257,12 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": nextHour,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": nextHour,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
+						}),
 				}},
 			want: "YWRtaW4=",
 		},

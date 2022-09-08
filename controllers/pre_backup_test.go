@@ -24,7 +24,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -376,19 +375,11 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 		{
 			name: "MSA has no status",
 			args: args{
-				ctx: context.Background(),
-				dr:  resInterface,
-				obj: *objNoStatus,
-				secret: &corev1.Secret{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "v1",
-						Kind:       "Secret",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "auto-import-account",
-						Namespace: "managed1",
-					},
-				}},
+				ctx:    context.Background(),
+				dr:     resInterface,
+				obj:    *objNoStatus,
+				secret: createSecret("auto-import-account", "managed1", nil, nil, nil),
+			},
 			want: false,
 		},
 		{
@@ -397,38 +388,22 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 				ctx: context.Background(),
 				dr:  resInterface,
 				obj: *objNoExp,
-				secret: &corev1.Secret{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "v1",
-						Kind:       "Secret",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "auto-import-account",
-						Namespace: "managed1",
-						Annotations: map[string]string{
-							"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
-							"expirationTimestamp":  "2022-08-05T15:25:38Z",
-						},
-					},
-				}},
+				secret: createSecret("auto-import-account", "managed1", nil,
+					map[string]string{
+						"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
+						"expirationTimestamp":  "2022-08-05T15:25:38Z",
+					}, nil),
+			},
 			want: false,
 		},
 		{
 			name: "MSA has status and expiration",
 			args: args{
-				ctx: context.Background(),
-				dr:  resInterface,
-				obj: *obj3,
-				secret: &corev1.Secret{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "v1",
-						Kind:       "Secret",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "auto-import-account",
-						Namespace: "managed1",
-					},
-				}},
+				ctx:    context.Background(),
+				dr:     resInterface,
+				obj:    *obj3,
+				secret: createSecret("auto-import-account", "managed1", nil, nil, nil),
+			},
 			want: true,
 		},
 	}
@@ -480,79 +455,47 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			name: "MSA has secrets but no expirationTimestamp",
 			args: args{
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
-							},
-						},
-					}}},
+					*createSecret("auto-import", "managed1", nil,
+						map[string]string{
+							"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
+						}, nil),
+				}},
 			want: false,
 		},
 		{
 			name: "MSA has secrets with invalid expirationTimestamp",
 			args: args{
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed2",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": "2022-08-05T15:25:38Z",
-								"expirationTimestamp":  "bbb",
-							},
-						},
-					}}},
+					*createSecret("auto-import", "managed2", nil,
+						map[string]string{
+							"lastRefreshTimestamp": "2022-08-05T15:25:38Z",
+							"expirationTimestamp":  "bbb",
+						}, nil),
+				}},
 			want: false,
 		},
 		{
 			name: "MSA has secrets with invalid lastRefreshTimestamp",
 			args: args{
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed2",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": "aaaaa",
-								"expirationTimestamp":  "2022-08-05T15:25:38Z",
-							},
-						},
-					}}},
+					*createSecret("auto-import", "managed2", nil,
+						map[string]string{
+							"lastRefreshTimestamp": "aaaaa",
+							"expirationTimestamp":  "2022-08-05T15:25:38Z",
+						}, nil),
+				}},
 			want: false,
 		},
 		{
 			name: "MSA has secrets with invalid lastRefreshTimestamp",
 			args: args{
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed3",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": "2022-08-05T15:25:38Z",
-								"expirationTimestamp":  "aaa",
-							},
-						},
-					}}},
+					*createSecret("auto-import", "managed3", nil,
+						map[string]string{
+							"lastRefreshTimestamp": "2022-08-05T15:25:38Z",
+							"expirationTimestamp":  "aaa",
+						}, nil),
+				}},
 			want: false,
 		},
 		{
@@ -560,20 +503,12 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed3",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-					}}},
+					*createSecret("auto-import", "managed3", nil,
+						map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, nil),
+				}},
 			want: false,
 		},
 		{
@@ -581,20 +516,12 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed6",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextThreeHours,
-							},
-						},
-					}}},
+					*createSecret("auto-import", "managed6", nil,
+						map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextThreeHours,
+						}, nil),
+				}},
 			want: false,
 		},
 		{
@@ -602,20 +529,12 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed3",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextHour,
-							},
-						},
-					}}},
+					*createSecret("auto-import", "managed3", nil,
+						map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextHour,
+						}, nil),
+				}},
 			want: false,
 		},
 		{
@@ -623,20 +542,12 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed3",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": initialTime,
-								"expirationTimestamp":  expiryTime,
-							},
-						},
-					}}},
+					*createSecret("auto-import", "managed3", nil,
+						map[string]string{
+							"lastRefreshTimestamp": initialTime,
+							"expirationTimestamp":  expiryTime,
+						}, nil),
+				}},
 			want: true,
 		},
 		{
@@ -644,20 +555,12 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed3",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": initialTimeNoPair,
-								"expirationTimestamp":  expiryTimeNoPair,
-							},
-						},
-					}}},
+					*createSecret("auto-import", "managed3", nil,
+						map[string]string{
+							"lastRefreshTimestamp": initialTimeNoPair,
+							"expirationTimestamp":  expiryTimeNoPair,
+						}, nil),
+				}},
 			want: false,
 		},
 	}
