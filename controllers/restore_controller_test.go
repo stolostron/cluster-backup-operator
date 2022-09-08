@@ -18,27 +18,6 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 )
 
-func initNamespace(name string) corev1.Namespace {
-	return corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "",
-		},
-	}
-}
-
-// a managed cluster namespace has label: cluster.open-cluster-management.io/managedCluster=<cluster name>
-func initManagedClusterNamespace(name string) corev1.Namespace {
-	ns := initNamespace(name)
-	ns.Labels = map[string]string{"cluster.open-cluster-management.io/managedCluster": name}
-	return ns
-
-}
-
 var _ = Describe("Basic Restore controller", func() {
 	var (
 		ctx                                context.Context
@@ -99,8 +78,7 @@ var _ = Describe("Basic Restore controller", func() {
 
 		if backupStorageLocation != nil {
 			Expect(k8sClient.Create(ctx, backupStorageLocation)).Should(Succeed())
-			backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-			Expect(k8sClient.Status().Update(ctx, backupStorageLocation)).Should(Succeed())
+			Expect(backupStorageLocation.Status.Phase).Should(BeIdenticalTo(veleroapi.BackupStorageLocationPhaseAvailable))
 		}
 
 		Expect(k8sClient.Create(ctx, &rhacmRestore)).Should(Succeed())
@@ -211,175 +189,43 @@ var _ = Describe("Basic Restore controller", func() {
 			},
 		}
 
-		veleroNamespace = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "velero-restore-ns-1",
-			},
-		}
-
-		backupStorageLocation = &veleroapi.BackupStorageLocation{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "velero/v1",
-				Kind:       "BackupStorageLocation",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "default",
-				Namespace: veleroNamespace.Name,
-				OwnerReferences: []metav1.OwnerReference{
-					{
-						APIVersion: "oadp.openshift.io/v1alpha1",
-						Kind:       "Velero",
-						Name:       "velero-instnace",
-						UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
-					},
-				},
-			},
-			Spec: veleroapi.BackupStorageLocationSpec{
-				AccessMode: "ReadWrite",
-				StorageType: veleroapi.StorageType{
-					ObjectStorage: &veleroapi.ObjectStorageLocation{
-						Bucket: "velero-backup-acm-dr",
-						Prefix: "velero",
-					},
-				},
-				Provider: "aws",
-			},
-		}
+		veleroNamespace = createNamespace("velero-restore-ns-1")
+		backupStorageLocation = createStorageLocation("default", veleroNamespace.Name).
+			setOwner().
+			phase(veleroapi.BackupStorageLocationPhaseAvailable).object
 
 		veleroBackups = []veleroapi.Backup{
-			veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      veleroManagedClustersBackupName,
-					Namespace: veleroNamespace.Name,
-				},
-				Spec: veleroapi.BackupSpec{
-					IncludedNamespaces: []string{"please-keep-this-one"},
-					IncludedResources:  backupManagedClusterResources,
-				},
-				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
-				},
-			},
-			veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      veleroResourcesBackupName,
-					Namespace: veleroNamespace.Name,
-				},
-				Spec: veleroapi.BackupSpec{
-					IncludedNamespaces: []string{"please-keep-this-one"},
-					IncludedResources:  includedResources,
-				},
-				Status: veleroapi.BackupStatus{
-					Phase:          veleroapi.BackupPhaseCompleted,
-					Errors:         0,
-					StartTimestamp: &resourcesStartTime,
-				},
-			},
-			veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      veleroResourcesGenericBackupName,
-					Namespace: veleroNamespace.Name,
-				},
-				Spec: veleroapi.BackupSpec{
-					IncludedNamespaces: []string{"please-keep-this-one"},
-					IncludedResources:  includedResources,
-				},
-				Status: veleroapi.BackupStatus{
-					Phase:          veleroapi.BackupPhaseCompleted,
-					Errors:         0,
-					StartTimestamp: &resourcesGenericStartTime,
-				},
-			},
-			veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "acm-resources-generic-schedule-20210910181420",
-					Namespace: veleroNamespace.Name,
-				},
-				Spec: veleroapi.BackupSpec{
-					IncludedNamespaces: []string{"please-keep-this-one"},
-					IncludedResources:  includedResources,
-				},
-				Status: veleroapi.BackupStatus{
-					Phase:          veleroapi.BackupPhaseCompleted,
-					Errors:         0,
-					StartTimestamp: &unrelatedResourcesGenericStartTime,
-				},
-			},
-			veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      veleroCredentialsBackupName,
-					Namespace: veleroNamespace.Name,
-				},
-				Spec: veleroapi.BackupSpec{
-					IncludedNamespaces: []string{"please-keep-this-one"},
-					IncludedResources:  backupCredsResources,
-				},
-				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
-				},
-			},
-			veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      veleroCredentialsHiveBackupName,
-					Namespace: veleroNamespace.Name,
-				},
-				Spec: veleroapi.BackupSpec{
-					IncludedNamespaces: []string{"please-keep-this-one"},
-					IncludedResources:  backupCredsResources,
-				},
-				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
-				},
-			},
-			veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      veleroCredentialsClusterBackupName,
-					Namespace: veleroNamespace.Name,
-				},
-				Spec: veleroapi.BackupSpec{
-					IncludedNamespaces: []string{"please-keep-this-one"},
-					IncludedResources:  backupCredsResources,
-				},
-				Status: veleroapi.BackupStatus{
-					Phase:  veleroapi.BackupPhaseCompleted,
-					Errors: 0,
-				},
-			},
+			*createBackup(veleroManagedClustersBackupName, veleroNamespace.Name).
+				phase(veleroapi.BackupPhaseCompleted).
+				errors(0).includedResources(backupManagedClusterResources).
+				object,
+			*createBackup(veleroResourcesBackupName, veleroNamespace.Name).
+				startTimestamp(resourcesStartTime).
+				phase(veleroapi.BackupPhaseCompleted).
+				errors(0).includedResources(includedResources).
+				object,
+			*createBackup(veleroResourcesGenericBackupName, veleroNamespace.Name).
+				startTimestamp(resourcesGenericStartTime).
+				phase(veleroapi.BackupPhaseCompleted).
+				errors(0).includedResources(includedResources).
+				object,
+			*createBackup("acm-resources-generic-schedule-20210910181420", veleroNamespace.Name).
+				startTimestamp(unrelatedResourcesGenericStartTime).
+				phase(veleroapi.BackupPhaseCompleted).
+				errors(0).includedResources(includedResources).
+				object,
+			*createBackup(veleroCredentialsBackupName, veleroNamespace.Name).
+				phase(veleroapi.BackupPhaseCompleted).
+				errors(0).includedResources(backupCredsResources).
+				object,
+			*createBackup(veleroCredentialsHiveBackupName, veleroNamespace.Name).
+				phase(veleroapi.BackupPhaseCompleted).
+				errors(0).includedResources(backupCredsResources).
+				object,
+			*createBackup(veleroCredentialsClusterBackupName, veleroNamespace.Name).
+				phase(veleroapi.BackupPhaseCompleted).
+				errors(0).includedResources(backupCredsResources).
+				object,
 		}
 
 		managedClusterNamespaces = []corev1.Namespace{}
@@ -457,44 +303,10 @@ var _ = Describe("Basic Restore controller", func() {
 
 	Context("When creating a Restore with backup names set to latest", func() {
 		BeforeEach(func() {
-			veleroNamespace = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "velero-restore-ns-2",
-				},
-			}
-			backupStorageLocation = &veleroapi.BackupStorageLocation{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "BackupStorageLocation",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "default",
-					Namespace: veleroNamespace.Name,
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "oadp.openshift.io/v1alpha1",
-							Kind:       "Velero",
-							Name:       "velero-instnace",
-							UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
-						},
-					},
-				},
-				Spec: veleroapi.BackupStorageLocationSpec{
-					AccessMode: "ReadWrite",
-					StorageType: veleroapi.StorageType{
-						ObjectStorage: &veleroapi.ObjectStorageLocation{
-							Bucket: "velero-backup-acm-dr",
-							Prefix: "velero",
-						},
-					},
-					Provider: "aws",
-				},
-			}
-			backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
+			veleroNamespace = createNamespace("velero-restore-ns-2")
+			backupStorageLocation = createStorageLocation("default", veleroNamespace.Name).
+				setOwner().
+				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
 
 			rhacmRestore = v1beta1.Restore{
 				TypeMeta: metav1.TypeMeta{
@@ -877,44 +689,10 @@ var _ = Describe("Basic Restore controller", func() {
 
 	Context("When creating a Restore with sync option enabled and new backups available", func() {
 		BeforeEach(func() {
-			veleroNamespace = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "velero-restore-ns-9",
-				},
-			}
-			backupStorageLocation = &veleroapi.BackupStorageLocation{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "BackupStorageLocation",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "default",
-					Namespace: veleroNamespace.Name,
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "oadp.openshift.io/v1alpha1",
-							Kind:       "Velero",
-							Name:       "velero-instnace",
-							UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
-						},
-					},
-				},
-				Spec: veleroapi.BackupStorageLocationSpec{
-					AccessMode: "ReadWrite",
-					StorageType: veleroapi.StorageType{
-						ObjectStorage: &veleroapi.ObjectStorageLocation{
-							Bucket: "velero-backup-acm-dr",
-							Prefix: "velero",
-						},
-					},
-					Provider: "aws",
-				},
-			}
-			backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
+			veleroNamespace = createNamespace("velero-restore-ns-9")
+			backupStorageLocation = createStorageLocation("default", veleroNamespace.Name).
+				setOwner().
+				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
 
 			rhacmRestore = v1beta1.Restore{
 				TypeMeta: metav1.TypeMeta{
@@ -1329,43 +1107,11 @@ var _ = Describe("Basic Restore controller", func() {
 
 	Context("When creating a Restore with backup names set to skip", func() {
 		BeforeEach(func() {
-			veleroNamespace = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "velero-restore-ns-3",
-				},
-			}
-			backupStorageLocation = &veleroapi.BackupStorageLocation{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "BackupStorageLocation",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "default",
-					Namespace: veleroNamespace.Name,
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "oadp.openshift.io/v1alpha1",
-							Kind:       "Velero",
-							Name:       "velero-instnace",
-							UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
-						},
-					},
-				},
-				Spec: veleroapi.BackupStorageLocationSpec{
-					AccessMode: "ReadWrite",
-					StorageType: veleroapi.StorageType{
-						ObjectStorage: &veleroapi.ObjectStorageLocation{
-							Bucket: "velero-backup-acm-dr",
-							Prefix: "velero",
-						},
-					},
-					Provider: "aws",
-				},
-			}
+			veleroNamespace = createNamespace("velero-restore-ns-3")
+			backupStorageLocation = createStorageLocation("default", veleroNamespace.Name).
+				setOwner().
+				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
+
 			veleroBackups = []veleroapi.Backup{}
 			rhacmRestore = v1beta1.Restore{
 				TypeMeta: metav1.TypeMeta{
@@ -1493,15 +1239,8 @@ var _ = Describe("Basic Restore controller", func() {
 
 	Context("When creating a Restore with even one invalid backup name", func() {
 		BeforeEach(func() {
-			veleroNamespace = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "velero-restore-ns-4",
-				},
-			}
+			veleroNamespace = createNamespace("velero-restore-ns-4")
+
 			veleroBackups = []veleroapi.Backup{}
 			rhacmRestore = v1beta1.Restore{
 				TypeMeta: metav1.TypeMeta{
@@ -1519,34 +1258,11 @@ var _ = Describe("Basic Restore controller", func() {
 					VeleroResourcesBackupName:       &latestBackup,
 				},
 			}
-			backupStorageLocation = &veleroapi.BackupStorageLocation{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "BackupStorageLocation",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "default",
-					Namespace: veleroNamespace.Name,
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "oadp.openshift.io/v1alpha1",
-							Kind:       "Velero",
-							Name:       "velero-instnace",
-							UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
-						},
-					},
-				},
-				Spec: veleroapi.BackupStorageLocationSpec{
-					AccessMode: "ReadWrite",
-					StorageType: veleroapi.StorageType{
-						ObjectStorage: &veleroapi.ObjectStorageLocation{
-							Bucket: "velero-backup-acm-dr",
-							Prefix: "velero",
-						},
-					},
-					Provider: "aws",
-				},
-			}
+
+			backupStorageLocation = createStorageLocation("default", veleroNamespace.Name).
+				setOwner().
+				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
+
 			oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
 			veleroBackups = []veleroapi.Backup{
 				// acm-managed-clusters-schedule backups
@@ -1644,53 +1360,13 @@ var _ = Describe("Basic Restore controller", func() {
 
 	Context("When creating a Restore in a ns different then velero ns", func() {
 		BeforeEach(func() {
-			veleroNamespace = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "velero-restore-ns-5",
-				},
-			}
-			backupStorageLocation = &veleroapi.BackupStorageLocation{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "BackupStorageLocation",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "default-5",
-					Namespace: veleroNamespace.Name,
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "oadp.openshift.io/v1alpha1",
-							Kind:       "Velero",
-							Name:       "velero-instnace",
-							UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
-						},
-					},
-				},
-				Spec: veleroapi.BackupStorageLocationSpec{
-					AccessMode: "ReadWrite",
-					StorageType: veleroapi.StorageType{
-						ObjectStorage: &veleroapi.ObjectStorageLocation{
-							Bucket: "velero-backup-acm-dr",
-							Prefix: "velero",
-						},
-					},
-					Provider: "aws",
-				},
-			}
+			veleroNamespace = createNamespace("velero-restore-ns-5")
+			backupStorageLocation = createStorageLocation("default-5", veleroNamespace.Name).
+				setOwner().
+				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
+
 			acmNamespaceName = "acm-ns-1"
-			acmNamespace := &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: acmNamespaceName,
-				},
-			}
+			acmNamespace := createNamespace(acmNamespaceName)
 			Expect(k8sClient.Create(ctx, acmNamespace)).Should(Succeed())
 
 			veleroBackups = []veleroapi.Backup{}
@@ -1763,35 +1439,9 @@ var _ = Describe("Basic Restore controller", func() {
 
 	Context("When BackupStorageLocation without OwnerReference is invalid", func() {
 		BeforeEach(func() {
-			veleroNamespace = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "velero-restore-ns-6",
-				},
-			}
-			backupStorageLocation = &veleroapi.BackupStorageLocation{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "BackupStorageLocation",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "default-6",
-					Namespace: veleroNamespace.Name,
-				},
-				Spec: veleroapi.BackupStorageLocationSpec{
-					AccessMode: "ReadWrite",
-					StorageType: veleroapi.StorageType{
-						ObjectStorage: &veleroapi.ObjectStorageLocation{
-							Bucket: "velero-backup-acm-dr",
-							Prefix: "velero",
-						},
-					},
-					Provider: "aws",
-				},
-			}
+			veleroNamespace = createNamespace("velero-restore-ns-6")
+			backupStorageLocation = createStorageLocation("default-6", veleroNamespace.Name).
+				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
 
 			veleroBackups = []veleroapi.Backup{}
 			rhacmRestore = v1beta1.Restore{
@@ -1863,43 +1513,11 @@ var _ = Describe("Basic Restore controller", func() {
 	Context("When creating a valid Restore, track the ACM restore status phases", func() {
 		BeforeEach(func() {
 			restoreName = "my-restore"
-			veleroNamespace = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "velero-restore-ns-7",
-				},
-			}
-			backupStorageLocation = &veleroapi.BackupStorageLocation{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "BackupStorageLocation",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "default-5",
-					Namespace: veleroNamespace.Name,
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "oadp.openshift.io/v1alpha1",
-							Kind:       "Velero",
-							Name:       "velero-instance",
-							UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
-						},
-					},
-				},
-				Spec: veleroapi.BackupStorageLocationSpec{
-					AccessMode: "ReadWrite",
-					StorageType: veleroapi.StorageType{
-						ObjectStorage: &veleroapi.ObjectStorageLocation{
-							Bucket: "velero-backup-acm-dr",
-							Prefix: "velero",
-						},
-					},
-					Provider: "aws",
-				},
-			}
+			veleroNamespace = createNamespace("velero-restore-ns-7")
+			backupStorageLocation = createStorageLocation("default-5", veleroNamespace.Name).
+				phase(veleroapi.BackupStorageLocationPhaseAvailable).
+				setOwner().object
+
 			rhacmRestore = v1beta1.Restore{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "cluster.open-cluster-management.io/v1beta1",
@@ -2124,15 +1742,7 @@ var _ = Describe("Basic Restore controller", func() {
 	Context("When creating a Restore and skip resources", func() {
 		BeforeEach(func() {
 			restoreName = "my-restore"
-			veleroNamespace = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "velero-restore-ns-8",
-				},
-			}
+			veleroNamespace = createNamespace("velero-restore-ns-8")
 			backupStorageLocation = nil
 
 			rhacmRestore = v1beta1.Restore{
@@ -2220,43 +1830,10 @@ var _ = Describe("Basic Restore controller", func() {
 	Context("When creating a Restore and no storage location is available", func() {
 		BeforeEach(func() {
 			restoreName = "my-restore"
-			veleroNamespace = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "velero-restore-ns-99",
-				},
-			}
-			backupStorageLocation = &veleroapi.BackupStorageLocation{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "BackupStorageLocation",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "default",
-					Namespace: veleroNamespace.Name,
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "oadp.openshift.io/v1alpha1",
-							Kind:       "Velero",
-							Name:       "velero-instnace",
-							UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
-						},
-					},
-				},
-				Spec: veleroapi.BackupStorageLocationSpec{
-					AccessMode: "ReadWrite",
-					StorageType: veleroapi.StorageType{
-						ObjectStorage: &veleroapi.ObjectStorageLocation{
-							Bucket: "velero-backup-acm-dr",
-							Prefix: "velero",
-						},
-					},
-					Provider: "aws",
-				},
-			}
+			veleroNamespace = createNamespace("velero-restore-ns-99")
+			backupStorageLocation = createStorageLocation("default", veleroNamespace.Name).
+				setOwner().
+				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
 
 			backupName := "acm-managed-clusters-schedule-good-very-recent-backup"
 			rhacmRestore = v1beta1.Restore{
