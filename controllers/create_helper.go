@@ -1,8 +1,6 @@
 package controllers
 
 import (
-	"time"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -166,10 +164,6 @@ func createBackupSchedule(name string, ns string) *BackupScheduleHelper {
 				Name:      name,
 				Namespace: ns,
 			},
-			Spec: v1beta1.BackupScheduleSpec{
-				VeleroSchedule: "backup-schedule",
-				VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
-			},
 		},
 	}
 }
@@ -181,6 +175,21 @@ func (b *BackupScheduleHelper) veleroTTL(ttl metav1.Duration) *BackupScheduleHel
 
 func (b *BackupScheduleHelper) schedule(sch string) *BackupScheduleHelper {
 	b.object.Spec.VeleroSchedule = sch
+	return b
+}
+
+func (b *BackupScheduleHelper) useManagedServiceAccount(usemsa bool) *BackupScheduleHelper {
+	b.object.Spec.UseManagedServiceAccount = usemsa
+	return b
+}
+
+func (b *BackupScheduleHelper) managedServiceAccountTTL(ttl metav1.Duration) *BackupScheduleHelper {
+	b.object.Spec.ManagedServiceAccountTTL = ttl
+	return b
+}
+
+func (b *BackupScheduleHelper) phase(phase v1beta1.SchedulePhase) *BackupScheduleHelper {
+	b.object.Status.Phase = phase
 	return b
 }
 

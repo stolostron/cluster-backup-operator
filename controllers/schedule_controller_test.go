@@ -551,37 +551,22 @@ var _ = Describe("BackupSchedule controller", func() {
 	})
 	Context("When creating a BackupSchedule", func() {
 		It("Should be creating a Velero Schedule updating the Status", func() {
-			backupStorageLocation = &veleroapi.BackupStorageLocation{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "BackupStorageLocation",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "default",
-					Namespace: veleroNamespaceName,
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "oadp.openshift.io/v1alpha1",
-							Kind:       "Velero",
-							Name:       "velero-instnace",
-							UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
-						},
-					},
-				},
-				Spec: veleroapi.BackupStorageLocationSpec{
-					AccessMode: "ReadWrite",
-					StorageType: veleroapi.StorageType{
-						ObjectStorage: &veleroapi.ObjectStorageLocation{
-							Bucket: "velero-backup-acm-dr",
-							Prefix: "velero",
-						},
-					},
-					Provider: "aws",
-				},
-			}
+			backupStorageLocation = createStorageLocation("default", veleroNamespaceName).
+				setOwner().
+				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
 			Expect(k8sClient.Create(ctx, backupStorageLocation)).Should(Succeed())
-			backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-			Expect(k8sClient.Status().Update(ctx, backupStorageLocation)).Should(Succeed())
+			storageLookupKey := types.NamespacedName{
+				Name:      backupStorageLocation.Name,
+				Namespace: backupStorageLocation.Namespace,
+			}
+			if err := k8sClient.Get(ctx, storageLookupKey, backupStorageLocation); err == nil {
+				backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
+				Eventually(func() bool {
+					err := k8sClient.
+						Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
+					return err == nil
+				}, timeout, interval).Should(BeTrue())
+			}
 
 			managedClusterList := clusterv1.ManagedClusterList{}
 			Eventually(func() bool {
@@ -778,16 +763,18 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			// execute a backup collission validation
 			// first make sure the schedule is in enabled state
-			createdBackupSchedule.Status.Phase = v1beta1.SchedulePhaseEnabled
-			Eventually(func() bool {
-				err := k8sClient.
-					Status().Update(context.Background(), &createdBackupSchedule, &client.UpdateOptions{})
-				return err == nil
-			}, timeout, interval).Should(BeTrue())
+			if err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule); err == nil {
+				createdBackupSchedule.Status.Phase = v1beta1.SchedulePhaseEnabled
+				Eventually(func() bool {
+					err := k8sClient.
+						Status().Update(context.Background(), &createdBackupSchedule, &client.UpdateOptions{})
+					return err == nil
+				}, timeout, interval).Should(BeTrue())
+			}
 			Eventually(func() string {
 				err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
 				if err != nil {
-					return "unknown"
+					return err.Error()
 				}
 				return string(createdBackupSchedule.Status.Phase)
 			}, timeout, interval).Should(BeIdenticalTo(string(v1beta1.SchedulePhaseEnabled)))
@@ -1160,26 +1147,8 @@ var _ = Describe("BackupSchedule controller", func() {
 					},
 				},
 			}
-			backupStorageLocation = &veleroapi.BackupStorageLocation{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "BackupStorageLocation",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "default-new",
-					Namespace: veleroNamespace.Name,
-				},
-				Spec: veleroapi.BackupStorageLocationSpec{
-					AccessMode: "ReadWrite",
-					StorageType: veleroapi.StorageType{
-						ObjectStorage: &veleroapi.ObjectStorageLocation{
-							Bucket: "velero-backup-acm-dr",
-							Prefix: "velero",
-						},
-					},
-					Provider: "aws",
-				},
-			}
+			backupStorageLocation = createStorageLocation("default-new", veleroNamespace.Name).
+				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
 		})
 		It(
 			"Should not create any velero schedule resources, BackupStorageLocation doesnt exist or is invalid",
@@ -1225,8 +1194,19 @@ var _ = Describe("BackupSchedule controller", func() {
 
 				// create the storage location now but in the wrong ns
 				Expect(k8sClient.Create(ctx, backupStorageLocation)).Should(Succeed())
-				backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-				Expect(k8sClient.Status().Update(ctx, backupStorageLocation)).Should(Succeed())
+
+				storageLookupKey := types.NamespacedName{
+					Name:      backupStorageLocation.Name,
+					Namespace: backupStorageLocation.Namespace,
+				}
+				if err := k8sClient.Get(ctx, storageLookupKey, backupStorageLocation); err == nil {
+					backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
+					Eventually(func() bool {
+						err := k8sClient.
+							Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
+						return err == nil
+					}, timeout, interval).Should(BeTrue())
+				}
 
 				rhacmBackupScheduleNew := v1beta1.BackupSchedule{
 					TypeMeta: metav1.TypeMeta{
