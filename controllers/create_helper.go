@@ -1,9 +1,12 @@
 package controllers
 
 import (
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 )
 
@@ -64,6 +67,91 @@ func (b *BackupHelper) errors(error int) *BackupHelper {
 
 func (b *BackupHelper) includedResources(resources []string) *BackupHelper {
 	b.object.Spec.IncludedResources = resources
+	return b
+}
+
+// restore
+// backup schedule
+type ACMRestoreHelper struct {
+	object *v1beta1.Restore
+}
+
+func createACMRestore(name string, ns string) *ACMRestoreHelper {
+	return &ACMRestoreHelper{
+		object: &v1beta1.Restore{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "cluster.open-cluster-management.io/v1beta1",
+				Kind:       "Restore",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: ns,
+			},
+		},
+	}
+}
+
+func (b *ACMRestoreHelper) cleanupBeforeRestore(cleanup v1beta1.CleanupType) *ACMRestoreHelper {
+	b.object.Spec.CleanupBeforeRestore = cleanup
+	return b
+}
+
+func (b *ACMRestoreHelper) syncRestoreWithNewBackups(syncb bool) *ACMRestoreHelper {
+	b.object.Spec.SyncRestoreWithNewBackups = syncb
+	return b
+}
+
+func (b *ACMRestoreHelper) restoreSyncInterval(dur metav1.Duration) *ACMRestoreHelper {
+	b.object.Spec.RestoreSyncInterval = dur
+	return b
+}
+
+func (b *ACMRestoreHelper) veleroManagedClustersBackupName(name string) *ACMRestoreHelper {
+	b.object.Spec.VeleroManagedClustersBackupName = &name
+	return b
+}
+
+func (b *ACMRestoreHelper) veleroCredentialsBackupName(name string) *ACMRestoreHelper {
+	b.object.Spec.VeleroCredentialsBackupName = &name
+	return b
+}
+
+func (b *ACMRestoreHelper) veleroResourcesBackupName(name string) *ACMRestoreHelper {
+	b.object.Spec.VeleroResourcesBackupName = &name
+	return b
+}
+
+// backup schedule
+type BackupScheduleHelper struct {
+	object *v1beta1.BackupSchedule
+}
+
+func createBackupSchedule(name string, ns string) *BackupScheduleHelper {
+	return &BackupScheduleHelper{
+		object: &v1beta1.BackupSchedule{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "cluster.open-cluster-management.io/v1beta1",
+				Kind:       "BackupSchedule",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: ns,
+			},
+			Spec: v1beta1.BackupScheduleSpec{
+				VeleroSchedule: "backup-schedule",
+				VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
+			},
+		},
+	}
+}
+
+func (b *BackupScheduleHelper) veleroTTL(ttl metav1.Duration) *BackupScheduleHelper {
+	b.object.Spec.VeleroTTL = ttl
+	return b
+}
+
+func (b *BackupScheduleHelper) schedule(sch string) *BackupScheduleHelper {
+	b.object.Spec.VeleroSchedule = sch
 	return b
 }
 
