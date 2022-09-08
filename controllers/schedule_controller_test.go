@@ -131,69 +131,14 @@ var _ = Describe("BackupSchedule controller", func() {
 				},
 			},
 		}
-		managedClusterNS = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: managedClusterNSName,
-			},
-		}
-		chartsv1NS = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: chartsv1NSName,
-			},
-		}
-		clusterPoolNS = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: clusterPoolNSName,
-			},
-		}
-		aINS = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "openshift-machine-api",
-			},
-		}
-		clusterDeploymentNS = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: clusterDeploymentNSName,
-			},
-		}
-		veleroNamespace = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: veleroNamespaceName,
-			},
-		}
-		acmNamespace = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: acmNamespaceName,
-			},
-		}
+		managedClusterNS = createNamespace(managedClusterNSName)
+		chartsv1NS = createNamespace(chartsv1NSName)
+		clusterPoolNS = createNamespace(clusterPoolNSName)
+		aINS = createNamespace("openshift-machine-api")
+		clusterDeploymentNS = createNamespace(clusterDeploymentNSName)
+		veleroNamespace = createNamespace(veleroNamespaceName)
+		acmNamespace = createNamespace(acmNamespaceName)
+
 		clusterPoolSecrets = []corev1.Secret{
 			{
 				TypeMeta: metav1.TypeMeta{
@@ -1031,33 +976,10 @@ var _ = Describe("BackupSchedule controller", func() {
 			aINS = nil
 			clusterDeploymentNS = nil
 			managedClusterNS = nil
-			chartsv1NS = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: newChartsv1NSName,
-				},
-			}
-			acmNamespace = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: newAcmNamespace,
-				},
-			}
-			veleroNamespace = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: newVeleroNamespace,
-				},
-			}
+			chartsv1NS = createNamespace(newChartsv1NSName)
+			acmNamespace = createNamespace(newAcmNamespace)
+			veleroNamespace = createNamespace(newVeleroNamespace)
+
 			channels = []chnv1.Channel{
 				{
 					TypeMeta: metav1.TypeMeta{
