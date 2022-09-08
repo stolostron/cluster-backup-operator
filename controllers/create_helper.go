@@ -4,8 +4,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	ocinfrav1 "github.com/openshift/api/config/v1"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 )
 
 func createNamespace(name string) *corev1.Namespace {
@@ -46,6 +48,27 @@ func createSecret(name string, ns string,
 
 	return secret
 
+}
+
+func createClusterVersion(name string, cid ocinfrav1.ClusterID,
+	labels map[string]string) *ocinfrav1.ClusterVersion {
+	clusterVersion := &ocinfrav1.ClusterVersion{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "config.openshift.io/v1",
+			Kind:       "ClusterVersion",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: ocinfrav1.ClusterVersionSpec{
+			ClusterID: cid,
+		},
+	}
+	if labels != nil {
+		clusterVersion.Labels = labels
+	}
+
+	return clusterVersion
 }
 
 //backup helper
@@ -181,6 +204,16 @@ func (b *ACMRestoreHelper) veleroResourcesBackupName(name string) *ACMRestoreHel
 	return b
 }
 
+func (b *ACMRestoreHelper) phase(phase v1beta1.RestorePhase) *ACMRestoreHelper {
+	b.object.Status.Phase = phase
+	return b
+}
+
+func (b *ACMRestoreHelper) veleroCredentialsRestoreName(name string) *ACMRestoreHelper {
+	b.object.Status.VeleroCredentialsRestoreName = name
+	return b
+}
+
 // backup schedule
 type BackupScheduleHelper struct {
 	object *v1beta1.BackupSchedule
@@ -265,5 +298,38 @@ func (b *StorageLocationHelper) setOwner() *StorageLocationHelper {
 			UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
 		},
 	}
+	return b
+}
+
+// channel helper
+type ChannelHelper struct {
+	object *chnv1.Channel
+}
+
+func createChannel(name string, ns string, ctype chnv1.ChannelType, path string) *ChannelHelper {
+	return &ChannelHelper{
+		object: &chnv1.Channel{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "cluster.open-cluster-management.io/v1beta1",
+				Kind:       "Channel",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: ns,
+			},
+			Spec: chnv1.ChannelSpec{
+				Type:     ctype,
+				Pathname: path,
+			},
+		},
+	}
+}
+
+func (b *ChannelHelper) channelLabels(labels map[string]string) *ChannelHelper {
+	b.object.Labels = labels
+	return b
+}
+func (b *ChannelHelper) channelFinalizers(finalizers []string) *ChannelHelper {
+	b.object.Finalizers = finalizers
 	return b
 }

@@ -132,73 +132,25 @@ var _ = Describe("Basic Restore controller", func() {
 		unrelatedResourcesGenericStartTime := metav1.NewTime(unrelatedResourcesGenericTimestamp)
 
 		clusterVersions = []ocinfrav1.ClusterVersion{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "config.openshift.io/v1",
-					Kind:       "ClusterVersion",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "version-new-one",
-					Labels: map[string]string{
-						"velero.io/backup-name": "backup-123",
-					},
-				},
-				Spec: ocinfrav1.ClusterVersionSpec{
-					ClusterID: "aaa",
-				},
-			},
+			*createClusterVersion("version-new-one", "aaa", map[string]string{
+				"velero.io/backup-name": "backup-123",
+			}),
 		}
 
 		channels = []chnv1.Channel{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "Channel",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "channel-from-backup",
-					Namespace: "default",
-					Labels: map[string]string{
-						"velero.io/backup-name": "backup-123",
-					},
-				},
-				Spec: chnv1.ChannelSpec{
-					Type:     chnv1.ChannelTypeHelmRepo,
-					Pathname: "http://test.svc.cluster.local:3000/charts",
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "Channel",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "channel-from-backup-with-finalizers",
-					Namespace: "default",
-					Labels: map[string]string{
-						"velero.io/backup-name": "backup-123",
-					},
-					Finalizers: []string{"finalizer1"},
-				},
-				Spec: chnv1.ChannelSpec{
-					Type:     chnv1.ChannelTypeHelmRepo,
-					Pathname: "http://test.svc.cluster.local:3000/charts",
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "Channel",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "channel-not-from-backup",
-					Namespace: "default",
-				},
-				Spec: chnv1.ChannelSpec{
-					Type:     chnv1.ChannelTypeGit,
-					Pathname: "https://github.com/test/app-samples",
-				},
-			},
+			*createChannel("channel-from-backup", "default",
+				chnv1.ChannelTypeHelmRepo, "http://test.svc.cluster.local:3000/charts").
+				channelLabels(map[string]string{
+					"velero.io/backup-name": "backup-123",
+				}).object,
+			*createChannel("channel-from-backup-with-finalizers", "default",
+				chnv1.ChannelTypeHelmRepo, "http://test.svc.cluster.local:3000/charts").
+				channelLabels(map[string]string{
+					"velero.io/backup-name": "backup-123",
+				}).
+				channelFinalizers([]string{"finalizer1"}).object,
+			*createChannel("channel-not-from-backup", "default",
+				chnv1.ChannelTypeGit, "https://github.com/test/app-samples").object,
 		}
 
 		veleroNamespace = createNamespace("velero-restore-ns-1")

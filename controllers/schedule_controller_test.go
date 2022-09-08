@@ -76,18 +76,7 @@ var _ = Describe("BackupSchedule controller", func() {
 		clusterDeploymentNSName = "vb-pool-fhbjs"
 
 		clusterVersions = []ocinfrav1.ClusterVersion{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "config.openshift.io/v1",
-					Kind:       "ClusterVersion",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "version",
-				},
-				Spec: ocinfrav1.ClusterVersionSpec{
-					ClusterID: "aaa",
-				},
-			},
+			*createClusterVersion("version", "aaa", nil),
 		}
 		managedClustersAddons = []addonv1alpha1.ManagedClusterAddOn{
 			{
@@ -207,34 +196,10 @@ var _ = Describe("BackupSchedule controller", func() {
 			},
 		}
 		channels = []chnv1.Channel{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "apps.open-cluster-management.io/v1",
-					Kind:       "Channel",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "charts-v1",
-					Namespace: chartsv1NSName,
-				},
-				Spec: chnv1.ChannelSpec{
-					Type:     chnv1.ChannelTypeHelmRepo,
-					Pathname: "http://test.svc.cluster.local:3000/charts",
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "apps.open-cluster-management.io/v1",
-					Kind:       "Channel",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "user-channel",
-					Namespace: "default",
-				},
-				Spec: chnv1.ChannelSpec{
-					Type:     chnv1.ChannelTypeGit,
-					Pathname: "https://github.com/test/app-samples",
-				},
-			},
+			*createChannel("charts-v1", chartsv1NSName,
+				chnv1.ChannelTypeHelmRepo, "http://test.svc.cluster.local:3000/charts").object,
+			*createChannel("user-channel", "default",
+				chnv1.ChannelTypeGit, "https://github.com/test/app-samples").object,
 		}
 
 		veleroBackups = []veleroapi.Backup{}
@@ -898,20 +863,8 @@ var _ = Describe("BackupSchedule controller", func() {
 			veleroNamespace = createNamespace(newVeleroNamespace)
 
 			channels = []chnv1.Channel{
-				{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "apps.open-cluster-management.io/v1",
-						Kind:       "Channel",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "charts-v1",
-						Namespace: newChartsv1NSName,
-					},
-					Spec: chnv1.ChannelSpec{
-						Type:     chnv1.ChannelTypeHelmRepo,
-						Pathname: "http://test.svc.cluster.local:3000/charts",
-					},
-				},
+				*createChannel("charts-v1", newChartsv1NSName,
+					chnv1.ChannelTypeHelmRepo, "http://test.svc.cluster.local:3000/charts").object,
 			}
 			veleroBackups = []veleroapi.Backup{
 				*createBackup(veleroScheduleNames[Resources], newVeleroNamespace).
