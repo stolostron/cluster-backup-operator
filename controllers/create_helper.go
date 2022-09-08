@@ -70,8 +70,37 @@ func (b *BackupHelper) includedResources(resources []string) *BackupHelper {
 	return b
 }
 
-// restore
-// backup schedule
+// velero restore
+type RestoreHelper struct {
+	object *veleroapi.Restore
+}
+
+func createRestore(name string, ns string) *RestoreHelper {
+	return &RestoreHelper{
+		object: &veleroapi.Restore{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "velero/v1",
+				Kind:       "Restore",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: ns,
+			},
+		},
+	}
+}
+
+func (b *RestoreHelper) backupName(name string) *RestoreHelper {
+	b.object.Spec.BackupName = name
+	return b
+}
+
+func (b *RestoreHelper) phase(phase veleroapi.RestorePhase) *RestoreHelper {
+	b.object.Status.Phase = phase
+	return b
+}
+
+// acm restore
 type ACMRestoreHelper struct {
 	object *v1beta1.Restore
 }

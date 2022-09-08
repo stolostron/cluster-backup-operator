@@ -630,22 +630,11 @@ var _ = Describe("Basic Restore controller", func() {
 			).ShouldNot(HaveOccurred())
 
 			// create a restore resource to test the collision path when trying to create the same restore
-			restoreResourceCollision := veleroapi.Restore{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "Restore",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "rhacm-restore-1-acm-resources-generic-schedule-good-old-backup",
-					Namespace: veleroNamespace.Name,
-				},
-				Spec: veleroapi.RestoreSpec{
-					BackupName: "acm-resources-schedule-good-old-backup",
-				},
-				Status: veleroapi.RestoreStatus{
-					Phase: "Completed",
-				},
-			}
+			restoreResourceCollision := *createRestore("rhacm-restore-1-acm-resources-generic-schedule-good-old-backup", veleroNamespace.Name).
+				backupName("acm-resources-schedule-good-old-backup").
+				phase("Completed").
+				object
+
 			Expect(k8sClient.Create(ctx, &restoreResourceCollision)).Should(Succeed())
 
 			Expect(createdRestore.Spec.VeleroManagedClustersBackupName).Should(Equal(&skipRestore))
@@ -995,38 +984,14 @@ var _ = Describe("Basic Restore controller", func() {
 					Kind:       "RestoreList",
 				},
 				Items: []veleroapi.Restore{
-					veleroapi.Restore{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "velero/v1",
-							Kind:       "Restore",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "acm-credentials-restore",
-							Namespace: veleroNamespace.Name,
-						},
-						Spec: veleroapi.RestoreSpec{
-							BackupName: "acm-credentials-backup",
-						},
-						Status: veleroapi.RestoreStatus{
-							Phase: "",
-						},
-					},
-					veleroapi.Restore{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "velero/v1",
-							Kind:       "Restore",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "acm-resources-restore",
-							Namespace: veleroNamespace.Name,
-						},
-						Spec: veleroapi.RestoreSpec{
-							BackupName: "acm-resources-backup",
-						},
-						Status: veleroapi.RestoreStatus{
-							Phase: veleroapi.RestorePhaseCompleted,
-						},
-					},
+					*createRestore("acm-credentials-restore", veleroNamespace.Name).
+						backupName("acm-credentials-backup").
+						phase("").
+						object,
+					*createRestore("acm-resources-restore", veleroNamespace.Name).
+						backupName("acm-resources-backup").
+						phase(veleroapi.RestorePhaseCompleted).
+						object,
 				},
 			}
 
