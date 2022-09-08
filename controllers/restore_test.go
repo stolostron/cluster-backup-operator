@@ -875,24 +875,8 @@ func Test_postRestoreActivation(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	ns1 := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "managed1",
-		},
-	}
-	ns2 := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "managed2",
-		},
-	}
+	ns1 := *createNamespace("managed1")
+	ns2 := *createNamespace("managed2")
 	autoImporSecretWithLabel := corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -1306,15 +1290,7 @@ func Test_getVeleroBackupName(t *testing.T) {
 	}
 
 	veleroNamespaceName := "backup-ns"
-	veleroNamespace := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: veleroNamespaceName,
-		},
-	}
+	veleroNamespace := *createNamespace(veleroNamespaceName)
 
 	backup := veleroapi.Backup{
 		TypeMeta: metav1.TypeMeta{
@@ -1435,15 +1411,7 @@ func Test_isNewBackupAvailable(t *testing.T) {
 	latestBackup := "latest"
 
 	veleroNamespaceName := "backup-ns"
-	veleroNamespace := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: veleroNamespaceName,
-		},
-	}
+	veleroNamespace := *createNamespace(veleroNamespaceName)
 
 	passiveStr := "passive"
 	backupName := "acm-credentials-schedule-20220922170041"

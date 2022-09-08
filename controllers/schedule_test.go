@@ -25,7 +25,6 @@ import (
 
 	"github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/version"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -243,15 +242,7 @@ func Test_isScheduleSpecUpdated(t *testing.T) {
 func Test_deleteVeleroSchedules(t *testing.T) {
 
 	veleroNamespaceName := "backup-ns"
-	veleroNamespace := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: veleroNamespaceName,
-		},
-	}
+	veleroNamespace := *createNamespace(veleroNamespaceName)
 
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
@@ -349,15 +340,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 func Test_isRestoreRunning(t *testing.T) {
 
 	veleroNamespaceName := "backup-ns"
-	veleroNamespace := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: veleroNamespaceName,
-		},
-	}
+	veleroNamespace := *createNamespace(veleroNamespaceName)
 
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
