@@ -12,6 +12,7 @@ import (
 )
 
 const acmApiVersion = "cluster.open-cluster-management.io/v1beta1"
+const veleroApiVersion = "velero.io/v1"
 
 func createNamespace(name string) *corev1.Namespace {
 	return &corev1.Namespace{
@@ -63,9 +64,9 @@ func createClusterVersion(name string, cid ocinfrav1.ClusterID,
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: ocinfrav1.ClusterVersionSpec{
-			ClusterID: cid,
-		},
+	}
+	if string(cid) != "" {
+		clusterVersion.Spec.ClusterID = cid
 	}
 	if labels != nil {
 		clusterVersion.Labels = labels
@@ -83,7 +84,7 @@ func createBackup(name string, ns string) *BackupHelper {
 	return &BackupHelper{
 		object: &veleroapi.Backup{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "velero.io/v1",
+				APIVersion: veleroApiVersion,
 				Kind:       "Backup",
 			},
 			ObjectMeta: metav1.ObjectMeta{
@@ -266,7 +267,7 @@ func createStorageLocation(name string, ns string) *StorageLocationHelper {
 	return &StorageLocationHelper{
 		object: &veleroapi.BackupStorageLocation{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "velero.io/v1",
+				APIVersion: veleroApiVersion,
 				Kind:       "BackupStorageLocation",
 			},
 			ObjectMeta: metav1.ObjectMeta{

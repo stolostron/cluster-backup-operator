@@ -357,7 +357,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 ) error {
 	scheduleLogger := log.FromContext(ctx)
 
-	resourcesToBackup, _ := getResourcesToBackup(ctx, r.DiscoveryClient)
+	resourcesToBackup := getResourcesToBackup(ctx, r.DiscoveryClient)
 
 	// sort schedule names to create first the credentials schedules, then clusters, last resources
 	scheduleKeys := make([]ResourceType, 0, len(veleroScheduleNames))
