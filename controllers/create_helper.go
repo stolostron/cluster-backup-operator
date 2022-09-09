@@ -158,31 +158,6 @@ func (b *RestoreHelper) phase(phase veleroapi.RestorePhase) *RestoreHelper {
 	return b
 }
 
-//deletebackup helper
-type DeleteBackupRequestHelper struct {
-	object *veleroapi.DeleteBackupRequest
-}
-
-func createDeleteBackupRequest(name string, ns string) *DeleteBackupRequestHelper {
-	return &DeleteBackupRequestHelper{
-		object: &veleroapi.DeleteBackupRequest{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: veleroApiVersion,
-				Kind:       "DeleteBackupRequest",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: ns,
-			},
-		},
-	}
-}
-
-func (b *DeleteBackupRequestHelper) deleteBackupName(name string) *DeleteBackupRequestHelper {
-	b.object.Spec.BackupName = name
-	return b
-}
-
 // acm restore
 type ACMRestoreHelper struct {
 	object *v1beta1.Restore
