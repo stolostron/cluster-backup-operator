@@ -63,9 +63,9 @@ func createClusterVersion(name string, cid ocinfrav1.ClusterID,
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: ocinfrav1.ClusterVersionSpec{
-			ClusterID: cid,
-		},
+	}
+	if string(cid) != "" {
+		clusterVersion.Spec.ClusterID = cid
 	}
 	if labels != nil {
 		clusterVersion.Labels = labels

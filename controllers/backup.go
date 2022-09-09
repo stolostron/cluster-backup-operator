@@ -150,8 +150,6 @@ func setResourcesBackupInfo(
 	backupNS string,
 	c client.Client,
 ) {
-
-	backupLogger := log.FromContext(ctx)
 	var clusterResource bool = true
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
@@ -174,9 +172,7 @@ func setResourcesBackupInfo(
 
 	// exclude acm channel namespaces
 	channels := chnv1.ChannelList{}
-	if err := c.List(ctx, &channels, &client.ListOptions{}); err != nil {
-		backupLogger.Error(err, "failed to get chnv1.ChannelList")
-	} else {
+	if err := c.List(ctx, &channels, &client.ListOptions{}); err == nil {
 		for i := range channels.Items {
 			if channels.Items[i].Name == "charts-v1" {
 				veleroBackupTemplate.ExcludedNamespaces = appendUnique(
@@ -416,46 +412,39 @@ func getResourcesToBackup(
 	// build the list of excluded resources
 	ignoreCRDs := excludedCRDs
 
-	groupList, err := dc.ServerGroups()
-	if err != nil {
-		return backupResourceNames, fmt.Errorf("failed to get server groups: %v", err)
-	}
-	if groupList == nil {
-		return backupResourceNames, nil
-	}
-	for _, group := range groupList.Groups {
+	if groupList, err := dc.ServerGroups(); err == nil && groupList != nil {
 
-		if !shouldBackupAPIGroup(group.Name) {
-			// ignore excluded api groups
-			continue
-		}
+		for _, group := range groupList.Groups {
 
-		for _, version := range group.Versions {
-			//get all resources for each group version
-			resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
-			if err != nil {
-				backupLogger.Info(
-					fmt.Sprintf("Failed to get server resources for group=%s, version=%s, error:%s",
-						group.Name, version.GroupVersion,
-						err.Error()),
-				)
+			if !shouldBackupAPIGroup(group.Name) {
+				// ignore excluded api groups
 				continue
 			}
-			if resourceList == nil {
-				continue
-			}
-			for _, resource := range resourceList.APIResources {
-				resourceKind := strings.ToLower(resource.Kind)
-				resourceName := resourceKind + "." + group.Name
-				// if resource kind is not ignored
-				// and kind.group is not used to identify resource to ignore
-				// the resource is not in cluster activation backup group
-				// add it to the generic backup resources
-				if !findValue(ignoreCRDs, resourceKind) &&
-					!findValue(ignoreCRDs, resourceName) &&
-					!findValue(backupManagedClusterResources, resourceKind) &&
-					!findValue(backupManagedClusterResources, resourceName) {
-					backupResourceNames = appendUnique(backupResourceNames, resourceName)
+
+			for _, version := range group.Versions {
+				//get all resources for each group version
+				resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
+				if err != nil {
+					backupLogger.Info(
+						fmt.Sprintf("Failed to get server resources for group=%s, version=%s, error:%s",
+							group.Name, version.GroupVersion,
+							err.Error()),
+					)
+					continue
+				}
+				for _, resource := range resourceList.APIResources {
+					resourceKind := strings.ToLower(resource.Kind)
+					resourceName := resourceKind + "." + group.Name
+					// if resource kind is not ignored
+					// and kind.group is not used to identify resource to ignore
+					// the resource is not in cluster activation backup group
+					// add it to the generic backup resources
+					if !findValue(ignoreCRDs, resourceKind) &&
+						!findValue(ignoreCRDs, resourceName) &&
+						!findValue(backupManagedClusterResources, resourceKind) &&
+						!findValue(backupManagedClusterResources, resourceName) {
+						backupResourceNames = appendUnique(backupResourceNames, resourceName)
+					}
 				}
 			}
 		}

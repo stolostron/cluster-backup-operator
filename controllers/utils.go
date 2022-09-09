@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -160,33 +159,29 @@ func getGenericCRDFromAPIGroups(
 
 	resources := []string{}
 
-	groupList, err := dc.ServerGroups()
-	if err != nil {
-		return resources, fmt.Errorf("failed to get server groups: %v", err)
-	}
-	if groupList == nil {
-		return resources, nil
-	}
-	for _, group := range groupList.Groups {
-		for _, version := range group.Versions {
-			//get all resources for each group version
-			resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
-			if err != nil {
-				logger.Error(err, "failed to get server resources")
-				continue
-			}
-			if resourceList == nil || group.Name == "" {
-				// don't want any resource with no apigroup
-				continue
-			}
-			for _, resource := range resourceList.APIResources {
+	if groupList, err := dc.ServerGroups(); err == nil && groupList != nil {
 
-				resourceKind := strings.ToLower(resource.Kind)
-				resourceName := resourceKind + "." + group.Name
+		for _, group := range groupList.Groups {
+			for _, version := range group.Versions {
+				//get all resources for each group version
+				resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
+				if err != nil {
+					logger.Error(err, "failed to get server resources")
+					continue
+				}
+				if resourceList == nil || group.Name == "" {
+					// don't want any resource with no apigroup
+					continue
+				}
+				for _, resource := range resourceList.APIResources {
 
-				if !findValue(veleroBackup.Spec.ExcludedResources, resourceName) &&
-					!findValue(veleroBackup.Spec.ExcludedResources, resourceKind) {
-					resources = appendUnique(resources, resourceName)
+					resourceKind := strings.ToLower(resource.Kind)
+					resourceName := resourceKind + "." + group.Name
+
+					if !findValue(veleroBackup.Spec.ExcludedResources, resourceName) &&
+						!findValue(veleroBackup.Spec.ExcludedResources, resourceKind) {
+						resources = appendUnique(resources, resourceName)
+					}
 				}
 			}
 		}

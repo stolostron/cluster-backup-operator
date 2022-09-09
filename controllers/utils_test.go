@@ -4,14 +4,19 @@ package controllers
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
+	ocinfrav1 "github.com/openshift/api/config/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
 func Test_getBackupTimestamp(t *testing.T) {
@@ -392,6 +397,96 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 				t.Errorf("postRestoreActivation() returns = %v, want %v", got, tt.want)
 			}
 		})
+	}
+
+}
+
+func Test_getHubIdentification(t *testing.T) {
+
+	crNoVersion := createClusterVersion("version", "", nil)
+	crWithVersion := createClusterVersion("version", "aaa", nil)
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, _ := testEnv.Start()
+	scheme1 := runtime.NewScheme()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	type args struct {
+		ctx context.Context
+		c   client.Client
+	}
+	tests := []struct {
+		name     string
+		args     args
+		err_nil  bool
+		want_msg string
+		url      string
+	}{
+		{
+			name: "no clusterversion scheme defined",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+			},
+			err_nil:  false,
+			want_msg: "unknown",
+		},
+		{
+			name: "clusterversion scheme is defined but no resource",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+			},
+			err_nil:  true,
+			want_msg: "unknown",
+		},
+		{
+			name: "clusterversion resource with no id",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+			},
+			err_nil:  true,
+			want_msg: "",
+		},
+		{
+			name: "clusterversion resource with id",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+			},
+			err_nil:  true,
+			want_msg: "aaa",
+		},
+	}
+
+	for index, tt := range tests {
+		if index == 1 {
+			//add clusterversion scheme
+			ocinfrav1.AddToScheme(scheme1)
+		}
+		if index == len(tests)-2 {
+			// add a cr with no id
+			k8sClient1.Create(tt.args.ctx, crNoVersion, &client.CreateOptions{})
+		}
+		if index == len(tests)-1 {
+			// add a cr with id
+			k8sClient1.Delete(tt.args.ctx, crNoVersion) // so that this is not picked up here
+			k8sClient1.Create(tt.args.ctx, crWithVersion, &client.CreateOptions{})
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			if version, err := getHubIdentification(tt.args.ctx, tt.args.c); (err == nil) != tt.err_nil ||
+				version != tt.want_msg {
+				t.Errorf("getHubIdentification() returns no error = %v, want %v and version=%v want=%v", err == nil, tt.err_nil, version, tt.want_msg)
+			}
+		})
+		if index == len(tests)-1 {
+			// clean up
+			testEnv.Stop()
+		}
 	}
 
 }
