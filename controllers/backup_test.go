@@ -1,14 +1,21 @@
 package controllers
 
 import (
+	"context"
 	"math/rand"
+	"path/filepath"
 	"strings"
+	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -179,3 +186,99 @@ var _ = Describe("Backup", func() {
 
 	})
 })
+
+func Test_deleteBackup(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, _ := testEnv.Start()
+	scheme1 := runtime.NewScheme()
+	veleroapi.AddToScheme(scheme1)
+	corev1.AddToScheme(scheme1)
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	backup := *createBackup("backup1", "ns1").object
+	deleteBackupRequest := *createDeleteBackupRequest("backup1-request", "ns1").
+		deleteBackupName("backup1").object
+
+	type args struct {
+		ctx    context.Context
+		c      client.Client
+		backup veleroapi.Backup
+	}
+	tests := []struct {
+		name    string
+		args    args
+		err_nil bool
+	}{
+		{
+			name: "velero ns not found, return error when asking for deleterequests",
+			args: args{
+				ctx:    context.Background(),
+				c:      k8sClient1,
+				backup: backup,
+			},
+			err_nil: false,
+		},
+		{
+			name: "delete backup not found, not created successfully because no ns ns1",
+			args: args{
+				ctx:    context.Background(),
+				c:      k8sClient1,
+				backup: backup,
+			},
+			err_nil: false,
+		},
+		{
+			name: "delete backup not found, created successfully now",
+			args: args{
+				ctx:    context.Background(),
+				c:      k8sClient1,
+				backup: backup,
+			},
+			err_nil: true,
+		},
+		{
+			name: "delete backup exists, has no errors",
+			args: args{
+				ctx:    context.Background(),
+				c:      k8sClient1,
+				backup: backup,
+			},
+			err_nil: true,
+		},
+		{
+			name: "delete backup exists, has errors because the backup to delete is no longer found",
+			args: args{
+				ctx:    context.Background(),
+				c:      k8sClient1,
+				backup: backup,
+			},
+			err_nil: true,
+		},
+	}
+
+	for index, tt := range tests {
+		if index == len(tests)-3 {
+			// create ns so create calls pass through
+			k8sClient1.Create(tt.args.ctx, createNamespace("ns1"), &client.CreateOptions{})
+			k8sClient1.Create(tt.args.ctx, createBackup("backup1", "ns1").object, &client.CreateOptions{})
+		}
+		if index == len(tests)-2 {
+			// create the delete request to find one already
+			k8sClient1.Create(tt.args.ctx, &deleteBackupRequest, &client.CreateOptions{})
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			if err := deleteBackup(tt.args.ctx, &tt.args.backup, tt.args.c); (err == nil) != tt.err_nil {
+				t.Errorf("getHubIdentification() returns no error = %v, want %v", err == nil, tt.err_nil)
+			}
+		})
+		if index == len(tests)-1 {
+			// clean up
+			testEnv.Stop()
+		}
+	}
+
+}

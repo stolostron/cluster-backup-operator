@@ -504,7 +504,10 @@ func cleanupExpiredValidationBackups(
 				v1.Now().Time.After(backup.Status.Expiration.Time) {
 				backupLogger.Info(fmt.Sprintf("validation backup %s expired, delete it",
 					backup.Name))
-				deleteBackup(ctx, &backup, c)
+				if err := deleteBackup(ctx, &backup, c); err != nil {
+					panic("aaaaa")
+					//backupLogger.Error(err, "delete failed")
+				}
 			}
 		}
 	}
@@ -515,7 +518,7 @@ func deleteBackup(
 	ctx context.Context,
 	backup *veleroapi.Backup,
 	c client.Client,
-) {
+) error {
 	// delete backup now
 	backupLogger := log.FromContext(ctx)
 	backupName := backup.ObjectMeta.Name
@@ -538,26 +541,30 @@ func deleteBackup(
 			veleroDeleteBackup.Name = backupDeleteIdentity.Name
 			veleroDeleteBackup.Namespace = backupDeleteIdentity.Namespace
 
-			err = c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{})
-			if err != nil {
+			if err := c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{}); err != nil {
 				backupLogger.Error(
 					err,
 					fmt.Sprintf("create  DeleteBackupRequest request error for %s", backupName),
 				)
+				return err
 			}
 		} else {
 			backupLogger.Error(err, fmt.Sprintf("Failed to create DeleteBackupRequest for resource %s", backupName))
+			return err
 		}
-	} else {
-		backupLogger.Info(fmt.Sprintf("DeleteBackupRequest already exists, skip request creation %s", backupName))
-		if veleroDeleteBackup.Status.Errors != nil {
-			// delete the backup now
-			if err := c.Delete(ctx, backup); err != nil {
-				backupLogger.Error(
-					err,
-					fmt.Sprintf("failed to delete the backup %s", backupName),
-				)
-			}
+		return nil
+	}
+	backupLogger.Info(fmt.Sprintf("DeleteBackupRequest already exists, skip request creation %s", backupName))
+	if veleroDeleteBackup.Status.Errors != nil {
+		// delete the backup now
+		if err := c.Delete(ctx, backup); err != nil {
+			backupLogger.Error(
+				err,
+				fmt.Sprintf("failed to delete the backup %s", backupName),
+			)
+			return err
 		}
 	}
+
+	return nil
 }
