@@ -195,13 +195,9 @@ func Test_deleteBackup(t *testing.T) {
 	}
 	cfg, _ := testEnv.Start()
 	scheme1 := runtime.NewScheme()
-	veleroapi.AddToScheme(scheme1)
-	corev1.AddToScheme(scheme1)
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
 
 	backup := *createBackup("backup1", "ns1").object
-	deleteBackupRequest := *createDeleteBackupRequest("backup1-request", "ns1").
-		deleteBackupName("backup1").object
 
 	type args struct {
 		ctx    context.Context
@@ -214,7 +210,7 @@ func Test_deleteBackup(t *testing.T) {
 		err_nil bool
 	}{
 		{
-			name: "velero ns not found, return error when asking for deleterequests",
+			name: "no kind is registered for the type v1.DeleteBackupRequest, return error when asking for deleterequests",
 			args: args{
 				ctx:    context.Background(),
 				c:      k8sClient1,
@@ -223,7 +219,7 @@ func Test_deleteBackup(t *testing.T) {
 			err_nil: false,
 		},
 		{
-			name: "delete backup not found, not created successfully because no ns ns1",
+			name: "create DeleteBackupRequest request error, because ns ns1 not found",
 			args: args{
 				ctx:    context.Background(),
 				c:      k8sClient1,
@@ -232,11 +228,11 @@ func Test_deleteBackup(t *testing.T) {
 			err_nil: false,
 		},
 		{
-			name: "delete backup not found, created successfully now",
+			name: "create DeleteBackupRequest request success, ns ns1 was found",
 			args: args{
 				ctx:    context.Background(),
 				c:      k8sClient1,
-				backup: backup,
+				backup: *createBackup("backup2", "ns1").object,
 			},
 			err_nil: true,
 		},
@@ -245,34 +241,39 @@ func Test_deleteBackup(t *testing.T) {
 			args: args{
 				ctx:    context.Background(),
 				c:      k8sClient1,
-				backup: backup,
+				backup: *createBackup("backup2", "ns1").object,
 			},
 			err_nil: true,
 		},
 		{
-			name: "delete backup exists, has errors because the backup to delete is no longer found",
+			name: "delete backup exists, backup also exists - has no errors",
 			args: args{
 				ctx:    context.Background(),
 				c:      k8sClient1,
-				backup: backup,
+				backup: *createBackup("backup2", "ns1").object,
 			},
 			err_nil: true,
 		},
 	}
 
 	for index, tt := range tests {
-		if index == len(tests)-3 {
+		if index == 1 {
 			// create ns so create calls pass through
+			veleroapi.AddToScheme(scheme1)
+		}
+		if index == 2 {
+			// create ns so create calls pass through
+			corev1.AddToScheme(scheme1)
 			k8sClient1.Create(tt.args.ctx, createNamespace("ns1"), &client.CreateOptions{})
 			k8sClient1.Create(tt.args.ctx, createBackup("backup1", "ns1").object, &client.CreateOptions{})
 		}
-		if index == len(tests)-2 {
+		if index == len(tests)-1 {
 			// create the delete request to find one already
-			k8sClient1.Create(tt.args.ctx, &deleteBackupRequest, &client.CreateOptions{})
+			k8sClient1.Create(tt.args.ctx, createBackup("backup2", "ns1").object, &client.CreateOptions{})
 		}
 		t.Run(tt.name, func(t *testing.T) {
 			if err := deleteBackup(tt.args.ctx, &tt.args.backup, tt.args.c); (err == nil) != tt.err_nil {
-				t.Errorf("getHubIdentification() returns no error = %v, want %v", err == nil, tt.err_nil)
+				t.Errorf("deleteBackup() returns no error = %v, want %v", err == nil, tt.err_nil)
 			}
 		})
 		if index == len(tests)-1 {

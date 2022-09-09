@@ -504,10 +504,7 @@ func cleanupExpiredValidationBackups(
 				v1.Now().Time.After(backup.Status.Expiration.Time) {
 				backupLogger.Info(fmt.Sprintf("validation backup %s expired, delete it",
 					backup.Name))
-				if err := deleteBackup(ctx, &backup, c); err != nil {
-					panic("aaaaa")
-					//backupLogger.Error(err, "delete failed")
-				}
+				deleteBackup(ctx, &backup, c)
 			}
 		}
 	}
