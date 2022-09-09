@@ -76,18 +76,7 @@ var _ = Describe("BackupSchedule controller", func() {
 		clusterDeploymentNSName = "vb-pool-fhbjs"
 
 		clusterVersions = []ocinfrav1.ClusterVersion{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "config.openshift.io/v1",
-					Kind:       "ClusterVersion",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "version",
-				},
-				Spec: ocinfrav1.ClusterVersionSpec{
-					ClusterID: "aaa",
-				},
-			},
+			*createClusterVersion("version", "aaa", nil),
 		}
 		managedClustersAddons = []addonv1alpha1.ManagedClusterAddOn{
 			{
@@ -106,30 +95,8 @@ var _ = Describe("BackupSchedule controller", func() {
 		}
 
 		managedClusters = []clusterv1.ManagedCluster{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1",
-					Kind:       "ManagedCluster",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "local-cluster",
-				},
-				Spec: clusterv1.ManagedClusterSpec{
-					HubAcceptsClient: true,
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1",
-					Kind:       "ManagedCluster",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: managedClusterNSName,
-				},
-				Spec: clusterv1.ManagedClusterSpec{
-					HubAcceptsClient: true,
-				},
-			},
+			*createManagedCluster("local-cluster").object,
+			*createManagedCluster(managedClusterNSName).object,
 		}
 		managedClusterNS = createNamespace(managedClusterNSName)
 		chartsv1NS = createNamespace(chartsv1NSName)
@@ -140,84 +107,31 @@ var _ = Describe("BackupSchedule controller", func() {
 		acmNamespace = createNamespace(acmNamespaceName)
 
 		clusterPoolSecrets = []corev1.Secret{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Secret",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "app-prow-47-aws-creds",
-					Namespace: clusterPoolNSName,
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Secret",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "auto-import",
-					Namespace: clusterPoolNSName,
-					Labels: map[string]string{
-						"authentication.open-cluster-management.io/is-managed-serviceaccount": "true",
-					},
-					Annotations: map[string]string{
-						"expirationTimestamp":  "2024-08-05T15:25:34Z",
-						"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
-					},
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Secret",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "baremetal",
-					Namespace: clusterPoolNSName,
-					Labels: map[string]string{
-						"environment.metal3.io": "baremetal",
-					},
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Secret",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "ai-secret",
-					Namespace: clusterPoolNSName,
-					Labels: map[string]string{
-						"agent-install.openshift.io/watch": "true",
-					},
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Secret",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "baremetal-api-secret",
-					Namespace: "openshift-machine-api",
-					Labels: map[string]string{
-						"environment.metal3.io": "baremetal",
-					},
-				},
-			},
+			*createSecret("app-prow-47-aws-creds", clusterPoolNSName,
+				nil, nil, nil),
+			*createSecret("auto-import", clusterPoolNSName,
+				map[string]string{
+					"authentication.open-cluster-management.io/is-managed-serviceaccount": "true",
+				}, map[string]string{
+					"expirationTimestamp":  "2024-08-05T15:25:34Z",
+					"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
+				}, nil),
+			*createSecret("baremetal", clusterPoolNSName,
+				map[string]string{
+					"environment.metal3.io": "baremetal",
+				}, nil, nil),
+			*createSecret("ai-secret", clusterPoolNSName,
+				map[string]string{
+					"agent-install.openshift.io/watch": "true",
+				}, nil, nil),
+			*createSecret("baremetal-api-secret", "openshift-machine-api",
+				map[string]string{
+					"environment.metal3.io": "baremetal",
+				}, nil, nil),
 		}
 		clusterDeplSecrets = []corev1.Secret{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Secret",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      clusterDeploymentNSName + "-abcd",
-					Namespace: clusterDeploymentNSName,
-				},
-			},
+			*createSecret(clusterDeploymentNSName+"-abcd", clusterDeploymentNSName,
+				nil, nil, nil),
 		}
 		clusterPools = []hivev1.ClusterPool{
 			{
@@ -260,34 +174,10 @@ var _ = Describe("BackupSchedule controller", func() {
 			},
 		}
 		channels = []chnv1.Channel{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "apps.open-cluster-management.io/v1",
-					Kind:       "Channel",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "charts-v1",
-					Namespace: chartsv1NSName,
-				},
-				Spec: chnv1.ChannelSpec{
-					Type:     chnv1.ChannelTypeHelmRepo,
-					Pathname: "http://test.svc.cluster.local:3000/charts",
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "apps.open-cluster-management.io/v1",
-					Kind:       "Channel",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "user-channel",
-					Namespace: "default",
-				},
-				Spec: chnv1.ChannelSpec{
-					Type:     chnv1.ChannelTypeGit,
-					Pathname: "https://github.com/test/app-samples",
-				},
-			},
+			*createChannel("charts-v1", chartsv1NSName,
+				chnv1.ChannelTypeHelmRepo, "http://test.svc.cluster.local:3000/charts").object,
+			*createChannel("user-channel", "default",
+				chnv1.ChannelTypeGit, "https://github.com/test/app-samples").object,
 		}
 
 		veleroBackups = []veleroapi.Backup{}
@@ -299,28 +189,13 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			for key, value := range veleroScheduleNames {
 
-				backup := veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      value + "-" + timestampStr,
-						Namespace: veleroNamespaceName,
-						Labels: map[string]string{
-							"velero.io/schedule-name":  value,
-							BackupScheduleClusterLabel: "abcd",
-						},
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						StartTimestamp: &aFewSecondsAgo,
-						Errors:         0,
-					},
-				}
+				backup := *createBackup(value+"-"+timestampStr, veleroNamespaceName).
+					labels(map[string]string{
+						"velero.io/schedule-name":  value,
+						BackupScheduleClusterLabel: "abcd",
+					}).
+					phase(veleroapi.BackupPhaseCompleted).startTimestamp(aFewSecondsAgo).errors(0).
+					object
 
 				if key == ValidationSchedule {
 
@@ -335,24 +210,9 @@ var _ = Describe("BackupSchedule controller", func() {
 		}
 
 		// create some dummy backups
-		veleroBackups = append(veleroBackups, veleroapi.Backup{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "velero/v1",
-				Kind:       "Backup",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      veleroScheduleNames[Resources] + "-new",
-				Namespace: veleroNamespaceName,
-			},
-			Spec: veleroapi.BackupSpec{
-				IncludedNamespaces: []string{"please-keep-this-one"},
-			},
-			Status: veleroapi.BackupStatus{
-				Phase:          veleroapi.BackupPhaseCompleted,
-				StartTimestamp: &oneHourAgo,
-				Errors:         0,
-			},
-		})
+		veleroBackups = append(veleroBackups, *createBackup(veleroScheduleNames[Resources]+"-new", veleroNamespaceName).
+			phase(veleroapi.BackupPhaseCompleted).startTimestamp(oneHourAgo).errors(0).
+			object)
 	})
 
 	AfterEach(func() {
@@ -506,11 +366,7 @@ var _ = Describe("BackupSchedule controller", func() {
 			}
 			if err := k8sClient.Get(ctx, storageLookupKey, backupStorageLocation); err == nil {
 				backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-				Eventually(func() bool {
-					err := k8sClient.
-						Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
-					return err == nil
-				}, timeout, interval).Should(BeTrue())
+				k8sClient.Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
 			}
 
 			managedClusterList := clusterv1.ManagedClusterList{}
@@ -981,43 +837,16 @@ var _ = Describe("BackupSchedule controller", func() {
 			veleroNamespace = createNamespace(newVeleroNamespace)
 
 			channels = []chnv1.Channel{
-				{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "apps.open-cluster-management.io/v1",
-						Kind:       "Channel",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "charts-v1",
-						Namespace: newChartsv1NSName,
-					},
-					Spec: chnv1.ChannelSpec{
-						Type:     chnv1.ChannelTypeHelmRepo,
-						Pathname: "http://test.svc.cluster.local:3000/charts",
-					},
-				},
+				*createChannel("charts-v1", newChartsv1NSName,
+					chnv1.ChannelTypeHelmRepo, "http://test.svc.cluster.local:3000/charts").object,
 			}
 			veleroBackups = []veleroapi.Backup{
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      veleroScheduleNames[Resources],
-						Namespace: newVeleroNamespace,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						StartTimestamp: &oneHourAgo,
-						Errors:         0,
-					},
-				},
+				*createBackup(veleroScheduleNames[Resources], newVeleroNamespace).
+					phase(veleroapi.BackupPhaseCompleted).startTimestamp(oneHourAgo).errors(0).
+					object,
 			}
 			backupStorageLocation = createStorageLocation("default-new", veleroNamespace.Name).
-				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
+				phase(veleroapi.BackupStorageLocationPhaseUnavailable).object
 		})
 		It(
 			"Should not create any velero schedule resources, BackupStorageLocation doesnt exist or is invalid",
@@ -1059,11 +888,8 @@ var _ = Describe("BackupSchedule controller", func() {
 				}
 				if err := k8sClient.Get(ctx, storageLookupKey, backupStorageLocation); err == nil {
 					backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-					Eventually(func() bool {
-						err := k8sClient.
-							Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
-						return err == nil
-					}, timeout, interval).Should(BeTrue())
+					k8sClient.Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
+
 				}
 
 				rhacmBackupScheduleNew := *createBackupSchedule(backupScheduleName+"-new-1", newVeleroNamespace).

@@ -4,9 +4,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	ocinfrav1 "github.com/openshift/api/config/v1"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 )
+
+const acmApiVersion = "cluster.open-cluster-management.io/v1beta1"
 
 func createNamespace(name string) *corev1.Namespace {
 	return &corev1.Namespace{
@@ -18,6 +23,55 @@ func createNamespace(name string) *corev1.Namespace {
 			Name: name,
 		},
 	}
+}
+
+func createSecret(name string, ns string,
+	labels map[string]string,
+	annotations map[string]string,
+	data map[string][]byte) *corev1.Secret {
+	secret := &corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Secret",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+	}
+	if labels != nil {
+		secret.Labels = labels
+	}
+	if annotations != nil {
+		secret.Annotations = annotations
+	}
+	if data != nil {
+		secret.Data = data
+	}
+
+	return secret
+
+}
+
+func createClusterVersion(name string, cid ocinfrav1.ClusterID,
+	labels map[string]string) *ocinfrav1.ClusterVersion {
+	clusterVersion := &ocinfrav1.ClusterVersion{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "config.openshift.io/v1",
+			Kind:       "ClusterVersion",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: ocinfrav1.ClusterVersionSpec{
+			ClusterID: cid,
+		},
+	}
+	if labels != nil {
+		clusterVersion.Labels = labels
+	}
+
+	return clusterVersion
 }
 
 //backup helper
@@ -68,6 +122,11 @@ func (b *BackupHelper) includedResources(resources []string) *BackupHelper {
 	return b
 }
 
+func (b *BackupHelper) labels(list map[string]string) *BackupHelper {
+	b.object.Labels = list
+	return b
+}
+
 // velero restore
 type RestoreHelper struct {
 	object *veleroapi.Restore
@@ -107,7 +166,7 @@ func createACMRestore(name string, ns string) *ACMRestoreHelper {
 	return &ACMRestoreHelper{
 		object: &v1beta1.Restore{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1beta1",
+				APIVersion: acmApiVersion,
 				Kind:       "Restore",
 			},
 			ObjectMeta: metav1.ObjectMeta{
@@ -148,6 +207,16 @@ func (b *ACMRestoreHelper) veleroResourcesBackupName(name string) *ACMRestoreHel
 	return b
 }
 
+func (b *ACMRestoreHelper) phase(phase v1beta1.RestorePhase) *ACMRestoreHelper {
+	b.object.Status.Phase = phase
+	return b
+}
+
+func (b *ACMRestoreHelper) veleroCredentialsRestoreName(name string) *ACMRestoreHelper {
+	b.object.Status.VeleroCredentialsRestoreName = name
+	return b
+}
+
 // backup schedule
 type BackupScheduleHelper struct {
 	object *v1beta1.BackupSchedule
@@ -157,7 +226,7 @@ func createBackupSchedule(name string, ns string) *BackupScheduleHelper {
 	return &BackupScheduleHelper{
 		object: &v1beta1.BackupSchedule{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1beta1",
+				APIVersion: acmApiVersion,
 				Kind:       "BackupSchedule",
 			},
 			ObjectMeta: metav1.ObjectMeta{
@@ -232,5 +301,81 @@ func (b *StorageLocationHelper) setOwner() *StorageLocationHelper {
 			UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
 		},
 	}
+	return b
+}
+
+// managed cluster helper
+type ManagedHelper struct {
+	object *clusterv1.ManagedCluster
+}
+
+func createManagedCluster(name string) *ManagedHelper {
+	return &ManagedHelper{
+		&clusterv1.ManagedCluster{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "cluster.open-cluster-management.io/v1",
+				Kind:       "ManagedCluster",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: name,
+			},
+			Spec: clusterv1.ManagedClusterSpec{
+				HubAcceptsClient: true,
+			},
+		},
+	}
+}
+
+func (b *ManagedHelper) clusterUrl(curl string) *ManagedHelper {
+	b.object.Spec.ManagedClusterClientConfigs = []clusterv1.ClientConfig{
+		clusterv1.ClientConfig{
+			URL: curl,
+		},
+	}
+	return b
+}
+
+func (b *ManagedHelper) emptyClusterUrl() *ManagedHelper {
+	b.object.Spec.ManagedClusterClientConfigs = []clusterv1.ClientConfig{
+		clusterv1.ClientConfig{},
+	}
+	return b
+}
+
+func (b *ManagedHelper) conditions(conditions []metav1.Condition) *ManagedHelper {
+	b.object.Status.Conditions = conditions
+	return b
+}
+
+// channel helper
+type ChannelHelper struct {
+	object *chnv1.Channel
+}
+
+func createChannel(name string, ns string, ctype chnv1.ChannelType, path string) *ChannelHelper {
+	return &ChannelHelper{
+		object: &chnv1.Channel{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: acmApiVersion,
+				Kind:       "Channel",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: ns,
+			},
+			Spec: chnv1.ChannelSpec{
+				Type:     ctype,
+				Pathname: path,
+			},
+		},
+	}
+}
+
+func (b *ChannelHelper) channelLabels(labels map[string]string) *ChannelHelper {
+	b.object.Labels = labels
+	return b
+}
+func (b *ChannelHelper) channelFinalizers(finalizers []string) *ChannelHelper {
+	b.object.Finalizers = finalizers
 	return b
 }

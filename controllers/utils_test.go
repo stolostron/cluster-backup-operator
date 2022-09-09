@@ -193,42 +193,16 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import-no-annotations",
-							Namespace: "managed1",
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import-no-expiration",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
-							},
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import-invalid-expiration",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": "aaa",
-							},
-						},
-					},
+					*createSecret("auto-import-no-annotations", "managed1",
+						nil, nil, nil),
+					*createSecret("auto-import-no-expiration", "managed1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
+						}, nil),
+					*createSecret("auto-import-invalid-expiration", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": "aaa",
+						}, nil),
 				}},
 			want: "",
 		},
@@ -237,19 +211,10 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": fourHoursAgo,
-							},
-						},
-					},
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": fourHoursAgo,
+						}, nil),
 				}},
 			want: "",
 		},
@@ -258,22 +223,12 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": nextHour,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": nextHour,
+						}, map[string][]byte{
 							"token1": []byte("aaa"),
-						},
-					},
+						}),
 				}},
 			want: "",
 		},
@@ -282,38 +237,18 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": nextHour,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": nextHour,
+						}, map[string][]byte{
 							"token1": []byte("aaa"),
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": nextHour,
-							},
-						},
-						Data: map[string][]byte{
+						}),
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": nextHour,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
+						}),
 				}},
 			want: "YWRtaW4=",
 		},
@@ -322,22 +257,12 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": nextHour,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": nextHour,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
+						}),
 				}},
 			want: "YWRtaW4=",
 		},
@@ -356,30 +281,8 @@ func Test_findValidMSAToken(t *testing.T) {
 func Test_managedClusterShouldReimport(t *testing.T) {
 
 	managedClusters1 := []clusterv1.ManagedCluster{
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "local-cluster",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient: true,
-			},
-		},
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient: true,
-			},
-		},
+		*createManagedCluster("local-cluster").object,
+		*createManagedCluster("test1").object,
 	}
 
 	conditionTypeAvailableTrue := v1.Condition{
@@ -393,69 +296,26 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 	}
 
 	managedClustersAvailable := []clusterv1.ManagedCluster{
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient: true,
-			},
-			Status: clusterv1.ManagedClusterStatus{
-				Conditions: []metav1.Condition{
-					conditionTypeAvailableTrue,
-				},
-			},
-		},
+		*createManagedCluster("test1").
+			conditions([]metav1.Condition{
+				conditionTypeAvailableTrue,
+			}).
+			object,
 	}
 
 	managedClustersNOTAvailableNoURL := []clusterv1.ManagedCluster{
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient:            true,
-				ManagedClusterClientConfigs: []clusterv1.ClientConfig{},
-			},
-			Status: clusterv1.ManagedClusterStatus{
-				Conditions: []metav1.Condition{
-					conditionTypeAvailableFalse,
-				},
-			},
-		},
+		*createManagedCluster("test1").emptyClusterUrl().
+			conditions([]metav1.Condition{
+				conditionTypeAvailableFalse,
+			}).object,
 	}
 
 	managedClustersNOTAvailableWithURL := []clusterv1.ManagedCluster{
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient: true,
-				ManagedClusterClientConfigs: []clusterv1.ClientConfig{
-					clusterv1.ClientConfig{
-						URL: "aaaaa",
-					},
-				},
-			},
-			Status: clusterv1.ManagedClusterStatus{
-				Conditions: []metav1.Condition{
-					conditionTypeAvailableFalse,
-				},
-			},
-		},
+		*createManagedCluster("test1").
+			clusterUrl("aaaaa").
+			conditions([]metav1.Condition{
+				conditionTypeAvailableFalse,
+			}).object,
 	}
 
 	type args struct {

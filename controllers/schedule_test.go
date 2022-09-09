@@ -373,22 +373,11 @@ func Test_isRestoreRunning(t *testing.T) {
 	}
 
 	latestRestore := "latest"
-	rhacmRestore := v1beta1.Restore{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cluster.open-cluster-management.io/v1beta1",
-			Kind:       "Restore",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "restore-name",
-			Namespace: veleroNamespaceName,
-		},
-		Spec: v1beta1.RestoreSpec{
-			CleanupBeforeRestore:            v1beta1.CleanupTypeRestored,
-			VeleroManagedClustersBackupName: &latestRestore,
-			VeleroCredentialsBackupName:     &latestRestore,
-			VeleroResourcesBackupName:       &latestRestore,
-		},
-	}
+	rhacmRestore := *createACMRestore("restore-name", veleroNamespaceName).
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+		veleroManagedClustersBackupName(latestRestore).
+		veleroCredentialsBackupName(latestRestore).
+		veleroResourcesBackupName(latestRestore).object
 
 	type args struct {
 		ctx            context.Context

@@ -111,135 +111,37 @@ var _ = Describe("Backup", func() {
 			twoHourAgo := metav1.NewTime(time.Now().Add(-2 * time.Hour))
 
 			sliceBackups := []veleroapi.Backup{
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      veleroManagedClustersBackupName,
-						Namespace: veleroNamespaceName,
-						Labels:    labelsCls123,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						StartTimestamp: &oneHourAgo,
-						Errors:         0,
-					},
-				},
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      veleroResourcesBackupName,
-						Namespace: veleroNamespaceName,
-						Labels:    labelsCls123,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						StartTimestamp: &sameScheduleTime,
-						Errors:         0,
-					},
-				},
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      veleroCredentialsBackupName,
-						Namespace: veleroNamespaceName,
-						Labels:    labelsCls123,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						StartTimestamp: &twoHourAgo,
-						Errors:         0,
-					},
-				},
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      veleroManagedClustersBackupName + "-new",
-						Namespace: veleroNamespaceName,
-						Labels:    labelsCls123,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:  veleroapi.BackupPhaseCompleted,
-						Errors: 0,
-					},
-				},
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      veleroResourcesBackupName + "-new",
-						Namespace: veleroNamespaceName,
-						Labels:    labelsCls123,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:  veleroapi.BackupPhaseCompleted,
-						Errors: 0,
-					},
-				},
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      veleroCredentialsBackupName + "-new",
-						Namespace: veleroNamespaceName,
-						Labels:    labelsCls123,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:  veleroapi.BackupPhaseCompleted,
-						Errors: 0,
-					},
-				},
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "some-other-new",
-						Namespace: veleroNamespaceName,
-						Labels:    labelsCls123,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:  veleroapi.BackupPhaseCompleted,
-						Errors: 0,
-					},
-				},
+				*createBackup(veleroManagedClustersBackupName, veleroNamespaceName).
+					labels(labelsCls123).
+					phase(veleroapi.BackupPhaseCompleted).
+					startTimestamp(oneHourAgo).
+					errors(0).object,
+				*createBackup(veleroResourcesBackupName, veleroNamespaceName).
+					labels(labelsCls123).
+					phase(veleroapi.BackupPhaseCompleted).
+					startTimestamp(sameScheduleTime).
+					errors(0).object,
+				*createBackup(veleroCredentialsBackupName, veleroNamespaceName).
+					labels(labelsCls123).
+					phase(veleroapi.BackupPhaseCompleted).
+					startTimestamp(twoHourAgo).
+					errors(0).object,
+				*createBackup(veleroManagedClustersBackupName+"-new", veleroNamespaceName).
+					labels(labelsCls123).
+					phase(veleroapi.BackupPhaseCompleted).
+					errors(0).object,
+				*createBackup(veleroResourcesBackupName+"-new", veleroNamespaceName).
+					labels(labelsCls123).
+					phase(veleroapi.BackupPhaseCompleted).
+					errors(0).object,
+				*createBackup(veleroCredentialsBackupName+"-new", veleroNamespaceName).
+					labels(labelsCls123).
+					phase(veleroapi.BackupPhaseCompleted).
+					errors(0).object,
+				*createBackup("some-other-new", veleroNamespaceName).
+					labels(labelsCls123).
+					phase(veleroapi.BackupPhaseCompleted).
+					errors(0).object,
 			}
 
 			backupsInError := filterBackups(sliceBackups, func(bkp veleroapi.Backup) bool {
