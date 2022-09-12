@@ -207,7 +207,7 @@ func (r *BackupScheduleReconciler) scheduleOwnsLatestStorageBackups(
 
 	backups := veleroapi.BackupList{}
 	if err := r.List(ctx, &backups,
-		client.MatchingLabels{"velero.io/schedule-name": veleroScheduleNames[Resources]}); err != nil {
+		client.MatchingLabels{BackupVeleroLabel: veleroScheduleNames[Resources]}); err != nil {
 		logger.Info(err.Error())
 		return true, nil
 	}
@@ -315,4 +315,48 @@ func isRestoreRunning(
 		}
 	}
 	return restoreName, nil
+}
+
+func createInitialBackupForSchedule(
+	ctx context.Context,
+	c client.Client,
+	schedule *veleroapi.Schedule,
+	backupSchedue *v1beta1.BackupSchedule,
+	timeStr string,
+) (*veleroapi.Backup, error) {
+
+	scheduleLogger := log.FromContext(ctx)
+	veleroBackup := &veleroapi.Backup{}
+
+	if backupSchedue.Spec.NoBackupOnStart {
+		// do not generate backups, exit now
+		scheduleLogger.Info("skip backup creation, backupSchedue.Spec.NoBackupOnStart set to true")
+		return veleroBackup, nil
+	}
+
+	// create backup now
+	veleroBackup.Name = schedule.Name + "-" + timeStr
+	veleroBackup.Namespace = schedule.Namespace
+	//set labels from schedule labels
+	labels := make(map[string]string)
+	if scheduleLabels := schedule.GetLabels(); scheduleLabels != nil {
+		for k, v := range scheduleLabels {
+			labels[k] = v
+		}
+	}
+	labels[BackupVeleroLabel] = schedule.Name
+	veleroBackup.SetLabels(labels)
+	// set spec from schedule spec
+	veleroBackup.Spec = schedule.Spec.Template
+
+	// now create the backup
+	err := c.Create(ctx, veleroBackup, &client.CreateOptions{})
+	if err == nil {
+		scheduleLogger.Info(
+			"Velero backup created",
+			"name", veleroBackup.Name,
+			"namespace", veleroBackup.Namespace,
+		)
+	}
+	return veleroBackup, err
 }

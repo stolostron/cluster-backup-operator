@@ -128,6 +128,31 @@ func (b *BackupHelper) labels(list map[string]string) *BackupHelper {
 	return b
 }
 
+//velero schedule helper
+type ScheduleHelper struct {
+	object *veleroapi.Schedule
+}
+
+func createSchedule(name string, ns string) *ScheduleHelper {
+	return &ScheduleHelper{
+		object: &veleroapi.Schedule{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: veleroApiVersion,
+				Kind:       "Schedule",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: ns,
+			},
+		},
+	}
+}
+
+func (b *ScheduleHelper) scheduleLabels(labels map[string]string) *ScheduleHelper {
+	b.object.Labels = labels
+	return b
+}
+
 // velero restore
 type RestoreHelper struct {
 	object *veleroapi.Restore
@@ -255,6 +280,16 @@ func (b *BackupScheduleHelper) useManagedServiceAccount(usemsa bool) *BackupSche
 
 func (b *BackupScheduleHelper) managedServiceAccountTTL(ttl metav1.Duration) *BackupScheduleHelper {
 	b.object.Spec.ManagedServiceAccountTTL = ttl
+	return b
+}
+
+func (b *BackupScheduleHelper) phase(ph v1beta1.SchedulePhase) *BackupScheduleHelper {
+	b.object.Status.Phase = ph
+	return b
+}
+
+func (b *BackupScheduleHelper) noBackupOnStart(stopBackupOnStart bool) *BackupScheduleHelper {
+	b.object.Spec.NoBackupOnStart = stopBackupOnStart
 	return b
 }
 
