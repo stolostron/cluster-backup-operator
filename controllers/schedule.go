@@ -329,7 +329,7 @@ func createInitialBackupForSchedule(
 	veleroBackup := &veleroapi.Backup{}
 
 	if !backupSchedue.Spec.NoBackupOnStart {
-		//TODO-replace !backupSchedue.Spec.NoBackupOnStart AFTER moving to OADP 1.1
+		//replace !backupSchedue.Spec.NoBackupOnStart AFTER moving to OADP 1.1
 		// do not generate backups, exit now
 		scheduleLogger.Info("skip backup creation, backupSchedue.Spec.NoBackupOnStart set to true")
 		return veleroBackup, nil
