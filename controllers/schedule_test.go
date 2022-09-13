@@ -412,13 +412,13 @@ func Test_isRestoreRunning(t *testing.T) {
 
 func Test_createInitialBackupForSchedule(t *testing.T) {
 
+	timeStr := "20220912191647"
 	veleroNamespaceName := "backup-ns"
 	rhacmBackupSchedule := *createBackupSchedule("backup-sch", veleroNamespaceName).
-		noBackupOnStart(true).
 		object
 
 	rhacmBackupScheduleNoRun := *createBackupSchedule("backup-sch", veleroNamespaceName).
-		noBackupOnStart(false).
+		noBackupOnStart(true).
 		object
 
 	schNoLabels := *createSchedule("acm-credentials-cluster-schedule", veleroNamespaceName).
@@ -441,9 +441,10 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 		veleroSchedule *veleroapi.Schedule
 	}
 	tests := []struct {
-		name string
-		args args
-		want bool
+		name              string
+		args              args
+		want              bool
+		want_veleroBackup string
 	}{
 		{
 			name: "backup schedule should not call backup on init schedule",
@@ -453,7 +454,8 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 				backupSchedule: &rhacmBackupScheduleNoRun,
 				veleroSchedule: &schNoLabels,
 			},
-			want: true,
+			want:              true,
+			want_veleroBackup: "", // no backup
 		},
 		{
 			name: "backup schedule should call backup on init schedule - error, no ns",
@@ -463,7 +465,8 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 				backupSchedule: &rhacmBackupSchedule,
 				veleroSchedule: &schNoLabels,
 			},
-			want: false,
+			want:              false,
+			want_veleroBackup: schNoLabels.Name + "-" + timeStr,
 		},
 		{
 			name: "backup schedule should call backup on init schedule",
@@ -473,7 +476,8 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 				backupSchedule: &rhacmBackupSchedule,
 				veleroSchedule: &schNoLabels,
 			},
-			want: true,
+			want:              true,
+			want_veleroBackup: schNoLabels.Name + "-" + timeStr,
 		},
 	}
 	for index, tt := range tests {
@@ -482,10 +486,12 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 			k8sClient1.Create(context.Background(), &veleroNamespace)
 		}
 		t.Run(tt.name, func(t *testing.T) {
-			if _, got := createInitialBackupForSchedule(tt.args.ctx, tt.args.c, tt.args.veleroSchedule,
-				tt.args.backupSchedule, "20220912191647"); (got == nil) != tt.want {
+			if got_backup, got := createInitialBackupForSchedule(tt.args.ctx, tt.args.c, tt.args.veleroSchedule,
+				tt.args.backupSchedule, timeStr); (got == nil) != tt.want ||
+				got_backup.Name != tt.want_veleroBackup {
 
-				t.Errorf("createInitialBackupForSchedule() = %v, want %v", got, tt.want)
+				t.Errorf("createInitialBackupForSchedule() err is %v, want %v, backupName is %v, want %v",
+					got, tt.want, got_backup.Name, tt.want_veleroBackup)
 				if got != nil {
 					t.Errorf("error %v", got.Error())
 				}
