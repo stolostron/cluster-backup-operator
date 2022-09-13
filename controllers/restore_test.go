@@ -150,134 +150,64 @@ func Test_isValidSyncOptions(t *testing.T) {
 		{
 			name: "Skip all",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-					Spec: v1beta1.RestoreSpec{
-						SyncRestoreWithNewBackups:       true,
-						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
-						VeleroManagedClustersBackupName: &skipRestore,
-						VeleroCredentialsBackupName:     &skipRestore,
-						VeleroResourcesBackupName:       &skipRestore,
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(skipRestore).
+					veleroResourcesBackupName(skipRestore).object,
 			},
 			want: false,
 		},
 		{
 			name: "No backup name",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-					Spec: v1beta1.RestoreSpec{
-						SyncRestoreWithNewBackups: true,
-						CleanupBeforeRestore:      v1beta1.CleanupTypeNone,
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).object,
 			},
 			want: false,
 		},
 		{
 			name: "Credentials should be set to skip or latest",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-					Spec: v1beta1.RestoreSpec{
-						SyncRestoreWithNewBackups:       true,
-						CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
-						VeleroManagedClustersBackupName: &skipRestore,
-						VeleroCredentialsBackupName:     &backupName,
-						VeleroResourcesBackupName:       &latestBackup,
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					cleanupBeforeRestore(v1beta1.CleanupTypeAll).syncRestoreWithNewBackups(true).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(backupName).
+					veleroResourcesBackupName(latestBackup).object,
 			},
 			want: false,
 		},
 		{
 			name: "Resources should be set to latest",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-					Spec: v1beta1.RestoreSpec{
-						SyncRestoreWithNewBackups:       true,
-						CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
-						VeleroManagedClustersBackupName: &skipRestore,
-						VeleroCredentialsBackupName:     &latestBackup,
-						VeleroResourcesBackupName:       &skipRestore,
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					cleanupBeforeRestore(v1beta1.CleanupTypeAll).syncRestoreWithNewBackups(true).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(skipRestore).object,
 			},
 			want: false,
 		},
 		{
 			name: "InValid config, no sync",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-					Spec: v1beta1.RestoreSpec{
-						CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
-						VeleroManagedClustersBackupName: &skipRestore,
-						VeleroCredentialsBackupName:     &latestBackup,
-						VeleroResourcesBackupName:       &latestBackup,
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(latestBackup).object,
 			},
 			want: false,
 		},
 		{
 			name: "Valid config",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-					Spec: v1beta1.RestoreSpec{
-						SyncRestoreWithNewBackups:       true,
-						CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
-						VeleroManagedClustersBackupName: &skipRestore,
-						VeleroCredentialsBackupName:     &latestBackup,
-						VeleroResourcesBackupName:       &latestBackup,
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					syncRestoreWithNewBackups(true).
+					cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(latestBackup).object,
 			},
 			want: true,
 		},
@@ -305,104 +235,52 @@ func Test_isSkipAllRestores(t *testing.T) {
 		{
 			name: "Skip all",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-					Spec: v1beta1.RestoreSpec{
-						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
-						VeleroManagedClustersBackupName: &skipRestore,
-						VeleroCredentialsBackupName:     &skipRestore,
-						VeleroResourcesBackupName:       &skipRestore,
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(skipRestore).
+					veleroResourcesBackupName(skipRestore).object,
 			},
 			want: true,
 		},
 		{
 			name: "No backup name",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					object,
 			},
 			want: true,
 		},
 		{
 			name: "Do not skip all",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-					Spec: v1beta1.RestoreSpec{
-						CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
-						VeleroManagedClustersBackupName: &skipRestore,
-						VeleroCredentialsBackupName:     &latestBackup,
-						VeleroResourcesBackupName:       &latestBackup,
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(latestBackup).object,
 			},
 			want: false,
 		},
 		{
 			name: "Managed clusters name is not skip",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-					Spec: v1beta1.RestoreSpec{
-						CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
-						VeleroManagedClustersBackupName: &latestBackup,
-						VeleroCredentialsBackupName:     &latestBackup,
-						VeleroResourcesBackupName:       &latestBackup,
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+					veleroManagedClustersBackupName(latestBackup).
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(latestBackup).object,
 			},
 			want: false,
 		},
 		{
 			name: "Resources is not skip",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-					Spec: v1beta1.RestoreSpec{
-						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
-						VeleroManagedClustersBackupName: &skipRestore,
-						VeleroCredentialsBackupName:     &skipRestore,
-						VeleroResourcesBackupName:       &latestBackup,
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(skipRestore).
+					veleroResourcesBackupName(latestBackup).object,
 			},
 			want: false,
 		},
@@ -728,27 +606,15 @@ func Test_sendResults(t *testing.T) {
 		{
 			name: "Try restore again",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-					Spec: v1beta1.RestoreSpec{
-						SyncRestoreWithNewBackups:       true,
-						RestoreSyncInterval:             v1.Duration{Duration: time.Minute * 15},
-						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
-						VeleroManagedClustersBackupName: &skipRestore,
-						VeleroCredentialsBackupName:     &skipRestore,
-						VeleroResourcesBackupName:       &skipRestore,
-					},
-					Status: v1beta1.RestoreStatus{
-						Phase: v1beta1.RestorePhaseEnabled,
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 15}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(skipRestore).
+					veleroResourcesBackupName(skipRestore).
+					phase(v1beta1.RestorePhaseEnabled).object,
+
 				err: nil,
 			},
 			want: nil,
@@ -756,26 +622,14 @@ func Test_sendResults(t *testing.T) {
 		{
 			name: "Skip restore again",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-					Spec: v1beta1.RestoreSpec{
-						SyncRestoreWithNewBackups:       true,
-						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
-						VeleroManagedClustersBackupName: &skipRestore,
-						VeleroCredentialsBackupName:     &skipRestore,
-						VeleroResourcesBackupName:       &skipRestore,
-					},
-					Status: v1beta1.RestoreStatus{
-						Phase: v1beta1.RestorePhaseFinished,
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					syncRestoreWithNewBackups(true).
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(skipRestore).
+					veleroResourcesBackupName(skipRestore).
+					phase(v1beta1.RestorePhaseFinished).object,
+
 				err: nil,
 			},
 			want: nil,
@@ -805,27 +659,15 @@ func Test_setRestorePhase(t *testing.T) {
 		{
 			name: "Restore list empty and skip all, return finished phase",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-					Spec: v1beta1.RestoreSpec{
-						SyncRestoreWithNewBackups:       true,
-						RestoreSyncInterval:             v1.Duration{Duration: time.Minute * 15},
-						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
-						VeleroManagedClustersBackupName: &skipRestore,
-						VeleroCredentialsBackupName:     &skipRestore,
-						VeleroResourcesBackupName:       &skipRestore,
-					},
-					Status: v1beta1.RestoreStatus{
-						Phase: v1beta1.RestorePhaseRunning,
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 15}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(skipRestore).
+					veleroResourcesBackupName(skipRestore).
+					phase(v1beta1.RestorePhaseRunning).object,
+
 				restoreList: nil,
 			},
 			want: v1beta1.RestorePhaseFinished,
@@ -833,27 +675,15 @@ func Test_setRestorePhase(t *testing.T) {
 		{
 			name: "Restore list empty and NOT skip all, return finished RestorePhaseStarted",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Restore",
-						Namespace: "veleroNamespace",
-					},
-					Spec: v1beta1.RestoreSpec{
-						SyncRestoreWithNewBackups:       true,
-						RestoreSyncInterval:             v1.Duration{Duration: time.Minute * 15},
-						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
-						VeleroManagedClustersBackupName: &latestBackupStr,
-						VeleroCredentialsBackupName:     &skipRestore,
-						VeleroResourcesBackupName:       &skipRestore,
-					},
-					Status: v1beta1.RestoreStatus{
-						Phase: v1beta1.RestorePhaseRunning,
-					},
-				},
+				restore: createACMRestore("Restore", "veleroNamespace").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 15}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(skipRestore).
+					veleroResourcesBackupName(skipRestore).
+					phase(v1beta1.RestorePhaseRunning).object,
+
 				restoreList: nil,
 			},
 			want: v1beta1.RestorePhaseStarted,
@@ -875,45 +705,13 @@ func Test_postRestoreActivation(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	ns1 := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "managed1",
-		},
-	}
-	ns2 := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "managed2",
-		},
-	}
-	autoImporSecretWithLabel := corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Secret",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      autoImportSecretName,
-			Namespace: "managed1",
-			Labels:    map[string]string{activateLabel: "true"},
-		},
-	}
-	autoImporSecretWithoutLabel := corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Secret",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      autoImportSecretName,
-			Namespace: "managed2",
-		},
-	}
+	ns1 := *createNamespace("managed1")
+	ns2 := *createNamespace("managed2")
+	autoImporSecretWithLabel := *createSecret(autoImportSecretName, "managed1",
+		map[string]string{activateLabel: "true"}, nil, nil)
+	autoImporSecretWithoutLabel := *createSecret(autoImportSecretName, "managed2",
+		nil, nil, nil)
+
 	cfg, _ := testEnv.Start()
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	k8sClient1.Create(context.Background(), &ns1)
@@ -943,88 +741,30 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "local-cluster",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-						},
-					},
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test1",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-						},
-					},
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "managed1",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-							ManagedClusterClientConfigs: []clusterv1.ClientConfig{
-								clusterv1.ClientConfig{
-									URL: "someurl",
-								},
+					*createManagedCluster("local-cluster").object,
+					*createManagedCluster("test1").object,
+					*createManagedCluster("managed1").clusterUrl("someurl").
+						conditions([]metav1.Condition{
+							v1.Condition{
+								Status: v1.ConditionTrue,
+								Type:   "ManagedClusterConditionAvailable",
 							},
-						},
-						Status: clusterv1.ManagedClusterStatus{
-							Conditions: []metav1.Condition{
-								v1.Condition{
-									Status: v1.ConditionTrue,
-									Type:   "ManagedClusterConditionAvailable",
-								},
-							},
-						},
-					},
+						}).object,
 				},
+
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "local-cluster",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "local-cluster",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, nil),
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
+						}),
 				}},
 			want: []string{},
 		},
@@ -1034,119 +774,42 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "local-cluster",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-						},
-					},
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test1",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-						},
-					},
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "managed1",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-							ManagedClusterClientConfigs: []clusterv1.ClientConfig{
-								clusterv1.ClientConfig{},
+					*createManagedCluster("local-cluster").object,
+					*createManagedCluster("test1").object,
+					*createManagedCluster("managed1").emptyClusterUrl().
+						conditions([]metav1.Condition{
+							v1.Condition{
+								Status: v1.ConditionFalse,
 							},
-						},
-						Status: clusterv1.ManagedClusterStatus{
-							Conditions: []metav1.Condition{
-								v1.Condition{
-									Status: v1.ConditionFalse,
-								},
-							},
-						},
-					},
+						}).object,
 				},
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "local-cluster",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "local-cluster",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, nil),
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed2",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-						Data: map[string][]byte{
-							"token1": []byte("aaa"), // test invalid token for managed2 ns
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import-pair", // this should be skipped
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-						Data: map[string][]byte{
+						}),
+					*createSecret("auto-import", "managed2",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
+							"token": []byte("aaa"),
+						}),
+					*createSecret("auto-import-pair", "managed1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
+						}),
 				}},
 			want: []string{},
 		},
@@ -1156,128 +819,44 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "local-cluster",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-						},
-					},
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test1",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-						},
-					},
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "managed1",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-							ManagedClusterClientConfigs: []clusterv1.ClientConfig{
-								clusterv1.ClientConfig{
-									URL: "someurl",
-								},
+					*createManagedCluster("local-cluster").object,
+					*createManagedCluster("test1").object,
+					*createManagedCluster("managed1").
+						clusterUrl("someurl").
+						conditions([]metav1.Condition{
+							v1.Condition{
+								Status: v1.ConditionFalse,
 							},
-						},
-						Status: clusterv1.ManagedClusterStatus{
-							Conditions: []metav1.Condition{
-								v1.Condition{
-									Status: v1.ConditionFalse,
-								},
+						}).
+						object,
+					*createManagedCluster("managed2").clusterUrl("someurl").
+						conditions([]metav1.Condition{
+							v1.Condition{
+								Status: v1.ConditionFalse,
 							},
-						},
-					},
-					{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1",
-							Kind:       "ManagedCluster",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "managed2",
-						},
-						Spec: clusterv1.ManagedClusterSpec{
-							HubAcceptsClient: true,
-							ManagedClusterClientConfigs: []clusterv1.ClientConfig{
-								clusterv1.ClientConfig{
-									URL: "someurl",
-								},
-							},
-						},
-						Status: clusterv1.ManagedClusterStatus{
-							Conditions: []metav1.Condition{
-								v1.Condition{
-									Status: v1.ConditionFalse,
-								},
-							},
-						},
-					},
+						}).
+						object,
 				},
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "local-cluster",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "local-cluster",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, nil),
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed2",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": fourHoursAgo,
-								"expirationTimestamp":  nextTenHours,
-							},
-						},
-						Data: map[string][]byte{
+						}),
+					*createSecret("auto-import", "managed2",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
+						}),
 				}},
 			want: []string{"managed1"},
 		},
@@ -1306,37 +885,15 @@ func Test_getVeleroBackupName(t *testing.T) {
 	}
 
 	veleroNamespaceName := "backup-ns"
-	veleroNamespace := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: veleroNamespaceName,
-		},
-	}
+	veleroNamespace := *createNamespace(veleroNamespaceName)
 
-	backup := veleroapi.Backup{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "velero/v1",
-			Kind:       "Backup",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "acm-credentials-cluster-schedule-20220922170041",
-			Namespace: veleroNamespaceName,
-			Labels: map[string]string{
-				"velero.io/schedule-name":  "aa",
-				BackupScheduleClusterLabel: "abcd",
-			},
-		},
-		Spec: veleroapi.BackupSpec{
-			IncludedNamespaces: []string{"please-keep-this-one"},
-		},
-		Status: veleroapi.BackupStatus{
-			Phase:  veleroapi.BackupPhaseCompleted,
-			Errors: 0,
-		},
-	}
+	backup := *createBackup("acm-credentials-cluster-schedule-20220922170041", veleroNamespaceName).
+		labels(map[string]string{
+			BackupVeleroLabel:          "aa",
+			BackupScheduleClusterLabel: "abcd",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).
+		errors(0).object
 
 	cfg, _ := testEnv.Start()
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
@@ -1435,41 +992,19 @@ func Test_isNewBackupAvailable(t *testing.T) {
 	latestBackup := "latest"
 
 	veleroNamespaceName := "backup-ns"
-	veleroNamespace := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: veleroNamespaceName,
-		},
-	}
+	veleroNamespace := *createNamespace(veleroNamespaceName)
 
 	passiveStr := "passive"
 	backupName := "acm-credentials-schedule-20220922170041"
 	restoreName := passiveStr + "-" + backupName
 
-	backup := veleroapi.Backup{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "velero/v1",
-			Kind:       "Backup",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      backupName,
-			Namespace: veleroNamespaceName,
-			Labels: map[string]string{
-				"velero.io/schedule-name":  "aa",
-				BackupScheduleClusterLabel: "abcd",
-			},
-		},
-		Spec: veleroapi.BackupSpec{
-			IncludedNamespaces: []string{"please-keep-this-one"},
-		},
-		Status: veleroapi.BackupStatus{
-			Phase:  veleroapi.BackupPhaseCompleted,
-			Errors: 0,
-		},
-	}
+	backup := *createBackup(backupName, veleroNamespaceName).
+		labels(map[string]string{
+			BackupVeleroLabel:          "aa",
+			BackupScheduleClusterLabel: "abcd",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).
+		errors(0).object
 
 	veleroRestore := veleroapi.Restore{
 		TypeMeta: metav1.TypeMeta{
@@ -1488,68 +1023,31 @@ func Test_isNewBackupAvailable(t *testing.T) {
 		},
 	}
 
-	restoreCreds := v1beta1.Restore{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cluster.open-cluster-management.io/v1beta1",
-			Kind:       "Restore",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      passiveStr,
-			Namespace: veleroNamespaceName,
-		},
-		Spec: v1beta1.RestoreSpec{
-			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
-			SyncRestoreWithNewBackups:       true,
-			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
-			VeleroManagedClustersBackupName: &skipRestore,
-			VeleroCredentialsBackupName:     &latestBackup,
-			VeleroResourcesBackupName:       &latestBackup,
-		},
-	}
+	restoreCreds := *createACMRestore(passiveStr, veleroNamespaceName).
+		syncRestoreWithNewBackups(true).
+		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+		cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+		veleroManagedClustersBackupName(skipRestore).
+		veleroCredentialsBackupName(latestBackup).
+		veleroResourcesBackupName(latestBackup).object
 
-	restoreCredSameBackup := v1beta1.Restore{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cluster.open-cluster-management.io/v1beta1",
-			Kind:       "Restore",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      passiveStr,
-			Namespace: veleroNamespaceName,
-		},
-		Spec: v1beta1.RestoreSpec{
-			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
-			SyncRestoreWithNewBackups:       true,
-			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
-			VeleroManagedClustersBackupName: &skipRestore,
-			VeleroCredentialsBackupName:     &latestBackup,
-			VeleroResourcesBackupName:       &latestBackup,
-		},
-		Status: v1beta1.RestoreStatus{
-			VeleroCredentialsRestoreName: veleroRestore.Name,
-		},
-	}
+	restoreCredSameBackup := *createACMRestore(passiveStr, veleroNamespaceName).
+		syncRestoreWithNewBackups(true).
+		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+		cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+		veleroManagedClustersBackupName(skipRestore).
+		veleroCredentialsBackupName(latestBackup).
+		veleroResourcesBackupName(latestBackup).
+		veleroCredentialsBackupName(veleroRestore.Name).object
 
-	restoreCredNewBackup := v1beta1.Restore{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cluster.open-cluster-management.io/v1beta1",
-			Kind:       "Restore",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      passiveStr,
-			Namespace: veleroNamespaceName,
-		},
-		Spec: v1beta1.RestoreSpec{
-			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
-			SyncRestoreWithNewBackups:       true,
-			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
-			VeleroManagedClustersBackupName: &skipRestore,
-			VeleroCredentialsBackupName:     &latestBackup,
-			VeleroResourcesBackupName:       &latestBackup,
-		},
-		Status: v1beta1.RestoreStatus{
-			VeleroCredentialsRestoreName: veleroRestore.Name + "11",
-		},
-	}
+	restoreCredNewBackup := *createACMRestore(passiveStr, veleroNamespaceName).
+		syncRestoreWithNewBackups(true).
+		cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+		restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
+		veleroManagedClustersBackupName(skipRestore).
+		veleroCredentialsBackupName(latestBackup).
+		veleroResourcesBackupName(latestBackup).
+		veleroCredentialsRestoreName(veleroRestore.Name + "11").object
 
 	type args struct {
 		ctx          context.Context
@@ -1696,19 +1194,9 @@ func Test_isBackupScheduleRunning(t *testing.T) {
 			name: "backup WITH backupcollision",
 			args: args{
 				backupSchedules: []v1beta1.BackupSchedule{
-					v1beta1.BackupSchedule{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1beta1",
-							Kind:       "BackupSchedule",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "backup-name",
-							Namespace: "ns",
-						},
-						Status: v1beta1.BackupScheduleStatus{
-							Phase: v1beta1.SchedulePhaseBackupCollision,
-						},
-					},
+					*createBackupSchedule("backup-name", "ns").
+						phase(v1beta1.SchedulePhaseBackupCollision).
+						object,
 				},
 			},
 			want: "",
@@ -1745,29 +1233,9 @@ func Test_isOtherRestoresRunning(t *testing.T) {
 			args: args{
 				restoreName: "some-name",
 				restores: []v1beta1.Restore{
-					v1beta1.Restore{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1beta1",
-							Kind:       "Restore",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "some-name",
-							Namespace: "ns",
-						},
-					},
-					v1beta1.Restore{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1beta1",
-							Kind:       "Restore",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "some-other-name",
-							Namespace: "ns",
-						},
-						Status: v1beta1.RestoreStatus{
-							Phase: v1beta1.RestorePhaseEnabled,
-						},
-					},
+					*createACMRestore("some-name", "ns").object,
+					*createACMRestore("some-other-name", "ns").
+						phase(v1beta1.RestorePhaseEnabled).object,
 				},
 			},
 			want: "some-other-name",
@@ -1777,29 +1245,9 @@ func Test_isOtherRestoresRunning(t *testing.T) {
 			args: args{
 				restoreName: "some-name",
 				restores: []v1beta1.Restore{
-					v1beta1.Restore{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1beta1",
-							Kind:       "Restore",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "some-name",
-							Namespace: "ns",
-						},
-					},
-					v1beta1.Restore{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1beta1",
-							Kind:       "Restore",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "some-other-name",
-							Namespace: "ns",
-						},
-						Status: v1beta1.RestoreStatus{
-							Phase: v1beta1.RestorePhaseFinishedWithErrors,
-						},
-					},
+					*createACMRestore("some-name", "ns").object,
+					*createACMRestore("some-other-name", "ns").
+						phase(v1beta1.RestorePhaseFinishedWithErrors).object,
 				},
 			},
 			want: "",
@@ -1826,38 +1274,16 @@ func Test_isValidCleanupOption(t *testing.T) {
 		{
 			name: "restore has invalid cleanup option",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "some-name",
-						Namespace: "ns",
-					},
-					Spec: v1beta1.RestoreSpec{
-						CleanupBeforeRestore: "someWrongValue",
-					},
-				},
+				restore: createACMRestore("some-name", "ns").
+					cleanupBeforeRestore("someWrongValue").object,
 			},
 			want: false,
 		},
 		{
 			name: "restore has cleanup option, should cleanup ",
 			args: args{
-				restore: &v1beta1.Restore{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "Restore",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "some-name",
-						Namespace: "ns",
-					},
-					Spec: v1beta1.RestoreSpec{
-						CleanupBeforeRestore: v1beta1.CleanupTypeAll,
-					},
-				},
+				restore: createACMRestore("some-name", "ns").
+					cleanupBeforeRestore(v1beta1.CleanupTypeAll).object,
 			},
 			want: true,
 		},
@@ -1883,61 +1309,25 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 	invalidBackupName := ""
 	backupName := "backup-name"
 
-	backup := veleroapi.Backup{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "velero/v1",
-			Kind:       "Backup",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      backupName,
-			Namespace: veleroNamespaceName,
-		},
-		Spec: veleroapi.BackupSpec{
-			IncludedNamespaces: []string{"please-keep-this-one"},
-		},
-		Status: veleroapi.BackupStatus{
-			Phase:  veleroapi.BackupPhaseCompleted,
-			Errors: 0,
-		},
-	}
+	backup := *createBackup(backupName, veleroNamespaceName).
+		phase(veleroapi.BackupPhaseCompleted).
+		errors(0).object
 
-	restoreCredsNoError := v1beta1.Restore{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cluster.open-cluster-management.io/v1beta1",
-			Kind:       "Restore",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "restore1",
-			Namespace: veleroNamespaceName,
-		},
-		Spec: v1beta1.RestoreSpec{
-			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
-			SyncRestoreWithNewBackups:       true,
-			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
-			VeleroManagedClustersBackupName: &skipRestore,
-			VeleroCredentialsBackupName:     &skipRestore,
-			VeleroResourcesBackupName:       &backupName,
-		},
-	}
+	restoreCredsNoError := *createACMRestore("restore1", veleroNamespaceName).
+		syncRestoreWithNewBackups(true).
+		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+		cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+		veleroManagedClustersBackupName(skipRestore).
+		veleroCredentialsBackupName(skipRestore).
+		veleroResourcesBackupName(backupName).object
 
-	restoreCredsInvalidBackupName := v1beta1.Restore{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cluster.open-cluster-management.io/v1beta1",
-			Kind:       "Restore",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "restore1",
-			Namespace: veleroNamespaceName,
-		},
-		Spec: v1beta1.RestoreSpec{
-			CleanupBeforeRestore:            v1beta1.CleanupTypeAll,
-			SyncRestoreWithNewBackups:       true,
-			RestoreSyncInterval:             metav1.Duration{Duration: time.Minute * 20},
-			VeleroManagedClustersBackupName: &skipRestore,
-			VeleroCredentialsBackupName:     &skipRestore,
-			VeleroResourcesBackupName:       &invalidBackupName,
-		},
-	}
+	restoreCredsInvalidBackupName := *createACMRestore("restore1", veleroNamespaceName).
+		syncRestoreWithNewBackups(true).
+		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+		cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+		veleroManagedClustersBackupName(latestBackupStr).
+		veleroCredentialsBackupName(skipRestore).
+		veleroResourcesBackupName(invalidBackupName).object
 
 	cfg, _ := testEnv.Start()
 	scheme1 := runtime.NewScheme()

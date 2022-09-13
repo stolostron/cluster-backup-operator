@@ -25,7 +25,6 @@ import (
 
 	"github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/version"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -243,15 +242,7 @@ func Test_isScheduleSpecUpdated(t *testing.T) {
 func Test_deleteVeleroSchedules(t *testing.T) {
 
 	veleroNamespaceName := "backup-ns"
-	veleroNamespace := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: veleroNamespaceName,
-		},
-	}
+	veleroNamespace := *createNamespace(veleroNamespaceName)
 
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
@@ -261,20 +252,10 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	k8sClient1.Create(context.Background(), &veleroNamespace)
 
-	rhacmBackupSchedule := v1beta1.BackupSchedule{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cluster.open-cluster-management.io/v1beta1",
-			Kind:       "BackupSchedule",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "backup-sch-to-error-restore",
-			Namespace: veleroNamespaceName,
-		},
-		Spec: v1beta1.BackupScheduleSpec{
-			VeleroSchedule: "backup-schedule",
-			VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
-		},
-	}
+	rhacmBackupSchedule := *createBackupSchedule("backup-sch-to-error-restore", veleroNamespaceName).
+		schedule("backup-schedule").
+		veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
+		object
 
 	type args struct {
 		ctx            context.Context
@@ -349,15 +330,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 func Test_isRestoreRunning(t *testing.T) {
 
 	veleroNamespaceName := "backup-ns"
-	veleroNamespace := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: veleroNamespaceName,
-		},
-	}
+	veleroNamespace := *createNamespace(veleroNamespaceName)
 
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
@@ -367,45 +340,18 @@ func Test_isRestoreRunning(t *testing.T) {
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	k8sClient1.Create(context.Background(), &veleroNamespace)
 
-	rhacmBackupSchedule := v1beta1.BackupSchedule{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cluster.open-cluster-management.io/v1beta1",
-			Kind:       "BackupSchedule",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "backup-sch-to-error-restore",
-			Namespace: veleroNamespaceName,
-		},
-	}
+	rhacmBackupSchedule := *createBackupSchedule("backup-sch-to-error-restore", veleroNamespaceName).
+		object
 
-	rhacmBackupScheduleInvalidNS := v1beta1.BackupSchedule{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cluster.open-cluster-management.io/v1beta1",
-			Kind:       "BackupSchedule",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "backup-sch-to-error-restore",
-			Namespace: "invalid-ns",
-		},
-	}
+	rhacmBackupScheduleInvalidNS := *createBackupSchedule("backup-sch-to-error-restore", "invalid-ns").
+		object
 
 	latestRestore := "latest"
-	rhacmRestore := v1beta1.Restore{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cluster.open-cluster-management.io/v1beta1",
-			Kind:       "Restore",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "restore-name",
-			Namespace: veleroNamespaceName,
-		},
-		Spec: v1beta1.RestoreSpec{
-			CleanupBeforeRestore:            v1beta1.CleanupTypeRestored,
-			VeleroManagedClustersBackupName: &latestRestore,
-			VeleroCredentialsBackupName:     &latestRestore,
-			VeleroResourcesBackupName:       &latestRestore,
-		},
-	}
+	rhacmRestore := *createACMRestore("restore-name", veleroNamespaceName).
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+		veleroManagedClustersBackupName(latestRestore).
+		veleroCredentialsBackupName(latestRestore).
+		veleroResourcesBackupName(latestRestore).object
 
 	type args struct {
 		ctx            context.Context
@@ -462,4 +408,91 @@ func Test_isRestoreRunning(t *testing.T) {
 			testEnv.Stop()
 		}
 	}
+}
+
+func Test_createInitialBackupForSchedule(t *testing.T) {
+
+	veleroNamespaceName := "backup-ns"
+	rhacmBackupSchedule := *createBackupSchedule("backup-sch", veleroNamespaceName).
+		noBackupOnStart(true).
+		object
+
+	rhacmBackupScheduleNoRun := *createBackupSchedule("backup-sch", veleroNamespaceName).
+		noBackupOnStart(false).
+		object
+
+	schNoLabels := *createSchedule("acm-credentials-cluster-schedule", veleroNamespaceName).
+		scheduleLabels(map[string]string{BackupScheduleNameLabel: "aa"}).
+		object
+
+	veleroNamespace := *createNamespace(veleroNamespaceName)
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+
+	type args struct {
+		ctx            context.Context
+		c              client.Client
+		backupSchedule *v1beta1.BackupSchedule
+		veleroSchedule *veleroapi.Schedule
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "backup schedule should not call backup on init schedule",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient,
+				backupSchedule: &rhacmBackupScheduleNoRun,
+				veleroSchedule: &schNoLabels,
+			},
+			want: true,
+		},
+		{
+			name: "backup schedule should call backup on init schedule - error, no ns",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				backupSchedule: &rhacmBackupSchedule,
+				veleroSchedule: &schNoLabels,
+			},
+			want: false,
+		},
+		{
+			name: "backup schedule should call backup on init schedule",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				backupSchedule: &rhacmBackupSchedule,
+				veleroSchedule: &schNoLabels,
+			},
+			want: true,
+		},
+	}
+	for index, tt := range tests {
+
+		if index == 2 {
+			k8sClient1.Create(context.Background(), &veleroNamespace)
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			if _, got := createInitialBackupForSchedule(tt.args.ctx, tt.args.c, tt.args.veleroSchedule,
+				tt.args.backupSchedule, "20220912191647"); (got == nil) != tt.want {
+
+				t.Errorf("createInitialBackupForSchedule() = %v, want %v", got, tt.want)
+				if got != nil {
+					t.Errorf("error %v", got.Error())
+				}
+			}
+		})
+	}
+
+	// clean up
+	testEnv.Stop()
 }

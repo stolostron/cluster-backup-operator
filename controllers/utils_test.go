@@ -4,14 +4,19 @@ package controllers
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
+	ocinfrav1 "github.com/openshift/api/config/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
 func Test_getBackupTimestamp(t *testing.T) {
@@ -193,42 +198,16 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import-no-annotations",
-							Namespace: "managed1",
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import-no-expiration",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
-							},
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import-invalid-expiration",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": "aaa",
-							},
-						},
-					},
+					*createSecret("auto-import-no-annotations", "managed1",
+						nil, nil, nil),
+					*createSecret("auto-import-no-expiration", "managed1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
+						}, nil),
+					*createSecret("auto-import-invalid-expiration", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": "aaa",
+						}, nil),
 				}},
 			want: "",
 		},
@@ -237,19 +216,10 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": fourHoursAgo,
-							},
-						},
-					},
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": fourHoursAgo,
+						}, nil),
 				}},
 			want: "",
 		},
@@ -258,22 +228,12 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": nextHour,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": nextHour,
+						}, map[string][]byte{
 							"token1": []byte("aaa"),
-						},
-					},
+						}),
 				}},
 			want: "",
 		},
@@ -282,38 +242,18 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": nextHour,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": nextHour,
+						}, map[string][]byte{
 							"token1": []byte("aaa"),
-						},
-					},
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": nextHour,
-							},
-						},
-						Data: map[string][]byte{
+						}),
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": nextHour,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
+						}),
 				}},
 			want: "YWRtaW4=",
 		},
@@ -322,22 +262,12 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					corev1.Secret{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "v1",
-							Kind:       "Secret",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "auto-import",
-							Namespace: "managed1",
-							Annotations: map[string]string{
-								"expirationTimestamp": nextHour,
-							},
-						},
-						Data: map[string][]byte{
+					*createSecret("auto-import", "managed1",
+						nil, map[string]string{
+							"expirationTimestamp": nextHour,
+						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
-						},
-					},
+						}),
 				}},
 			want: "YWRtaW4=",
 		},
@@ -356,30 +286,8 @@ func Test_findValidMSAToken(t *testing.T) {
 func Test_managedClusterShouldReimport(t *testing.T) {
 
 	managedClusters1 := []clusterv1.ManagedCluster{
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "local-cluster",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient: true,
-			},
-		},
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient: true,
-			},
-		},
+		*createManagedCluster("local-cluster").object,
+		*createManagedCluster("test1").object,
 	}
 
 	conditionTypeAvailableTrue := v1.Condition{
@@ -393,69 +301,26 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 	}
 
 	managedClustersAvailable := []clusterv1.ManagedCluster{
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient: true,
-			},
-			Status: clusterv1.ManagedClusterStatus{
-				Conditions: []metav1.Condition{
-					conditionTypeAvailableTrue,
-				},
-			},
-		},
+		*createManagedCluster("test1").
+			conditions([]metav1.Condition{
+				conditionTypeAvailableTrue,
+			}).
+			object,
 	}
 
 	managedClustersNOTAvailableNoURL := []clusterv1.ManagedCluster{
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient:            true,
-				ManagedClusterClientConfigs: []clusterv1.ClientConfig{},
-			},
-			Status: clusterv1.ManagedClusterStatus{
-				Conditions: []metav1.Condition{
-					conditionTypeAvailableFalse,
-				},
-			},
-		},
+		*createManagedCluster("test1").emptyClusterUrl().
+			conditions([]metav1.Condition{
+				conditionTypeAvailableFalse,
+			}).object,
 	}
 
 	managedClustersNOTAvailableWithURL := []clusterv1.ManagedCluster{
-		{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient: true,
-				ManagedClusterClientConfigs: []clusterv1.ClientConfig{
-					clusterv1.ClientConfig{
-						URL: "aaaaa",
-					},
-				},
-			},
-			Status: clusterv1.ManagedClusterStatus{
-				Conditions: []metav1.Condition{
-					conditionTypeAvailableFalse,
-				},
-			},
-		},
+		*createManagedCluster("test1").
+			clusterUrl("aaaaa").
+			conditions([]metav1.Condition{
+				conditionTypeAvailableFalse,
+			}).object,
 	}
 
 	type args struct {
@@ -532,6 +397,96 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 				t.Errorf("postRestoreActivation() returns = %v, want %v", got, tt.want)
 			}
 		})
+	}
+
+}
+
+func Test_getHubIdentification(t *testing.T) {
+
+	crNoVersion := createClusterVersion("version", "", nil)
+	crWithVersion := createClusterVersion("version", "aaa", nil)
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, _ := testEnv.Start()
+	scheme1 := runtime.NewScheme()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	type args struct {
+		ctx context.Context
+		c   client.Client
+	}
+	tests := []struct {
+		name     string
+		args     args
+		err_nil  bool
+		want_msg string
+		url      string
+	}{
+		{
+			name: "no clusterversion scheme defined",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+			},
+			err_nil:  false,
+			want_msg: "unknown",
+		},
+		{
+			name: "clusterversion scheme is defined but no resource",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+			},
+			err_nil:  true,
+			want_msg: "unknown",
+		},
+		{
+			name: "clusterversion resource with no id",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+			},
+			err_nil:  true,
+			want_msg: "",
+		},
+		{
+			name: "clusterversion resource with id",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+			},
+			err_nil:  true,
+			want_msg: "aaa",
+		},
+	}
+
+	for index, tt := range tests {
+		if index == 1 {
+			//add clusterversion scheme
+			ocinfrav1.AddToScheme(scheme1)
+		}
+		if index == len(tests)-2 {
+			// add a cr with no id
+			k8sClient1.Create(tt.args.ctx, crNoVersion, &client.CreateOptions{})
+		}
+		if index == len(tests)-1 {
+			// add a cr with id
+			k8sClient1.Delete(tt.args.ctx, crNoVersion) // so that this is not picked up here
+			k8sClient1.Create(tt.args.ctx, crWithVersion, &client.CreateOptions{})
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			if version, err := getHubIdentification(tt.args.ctx, tt.args.c); (err == nil) != tt.err_nil ||
+				version != tt.want_msg {
+				t.Errorf("getHubIdentification() returns no error = %v, want %v and version=%v want=%v", err == nil, tt.err_nil, version, tt.want_msg)
+			}
+		})
+		if index == len(tests)-1 {
+			// clean up
+			testEnv.Stop()
+		}
 	}
 
 }

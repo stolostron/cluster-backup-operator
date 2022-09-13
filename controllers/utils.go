@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -156,17 +155,24 @@ func getGenericCRDFromAPIGroups(
 	veleroBackup *veleroapi.Backup,
 ) ([]string, error) {
 
+	resources := []string{}
+	if groupList, err := dc.ServerGroups(); err == nil && groupList != nil {
+		resources = processGenericCRDFromAPIGroups(ctx, dc, veleroBackup, *groupList)
+	}
+
+	return resources, nil
+}
+
+func processGenericCRDFromAPIGroups(
+	ctx context.Context,
+	dc discovery.DiscoveryInterface,
+	veleroBackup *veleroapi.Backup,
+	groupList v1.APIGroupList,
+) []string {
+
 	logger := log.FromContext(ctx)
 
 	resources := []string{}
-
-	groupList, err := dc.ServerGroups()
-	if err != nil {
-		return resources, fmt.Errorf("failed to get server groups: %v", err)
-	}
-	if groupList == nil {
-		return resources, nil
-	}
 	for _, group := range groupList.Groups {
 		for _, version := range group.Versions {
 			//get all resources for each group version
@@ -192,7 +198,7 @@ func getGenericCRDFromAPIGroups(
 		}
 	}
 
-	return resources, nil
+	return resources
 }
 
 // return hub uid, used to annotate backup schedules

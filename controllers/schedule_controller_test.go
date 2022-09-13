@@ -76,18 +76,7 @@ var _ = Describe("BackupSchedule controller", func() {
 		clusterDeploymentNSName = "vb-pool-fhbjs"
 
 		clusterVersions = []ocinfrav1.ClusterVersion{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "config.openshift.io/v1",
-					Kind:       "ClusterVersion",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "version",
-				},
-				Spec: ocinfrav1.ClusterVersionSpec{
-					ClusterID: "aaa",
-				},
-			},
+			*createClusterVersion("version", "aaa", nil),
 		}
 		managedClustersAddons = []addonv1alpha1.ManagedClusterAddOn{
 			{
@@ -106,173 +95,43 @@ var _ = Describe("BackupSchedule controller", func() {
 		}
 
 		managedClusters = []clusterv1.ManagedCluster{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1",
-					Kind:       "ManagedCluster",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "local-cluster",
-				},
-				Spec: clusterv1.ManagedClusterSpec{
-					HubAcceptsClient: true,
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1",
-					Kind:       "ManagedCluster",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: managedClusterNSName,
-				},
-				Spec: clusterv1.ManagedClusterSpec{
-					HubAcceptsClient: true,
-				},
-			},
+			*createManagedCluster("local-cluster").object,
+			*createManagedCluster(managedClusterNSName).object,
 		}
-		managedClusterNS = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: managedClusterNSName,
-			},
-		}
-		chartsv1NS = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: chartsv1NSName,
-			},
-		}
-		clusterPoolNS = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: clusterPoolNSName,
-			},
-		}
-		aINS = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "openshift-machine-api",
-			},
-		}
-		clusterDeploymentNS = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: clusterDeploymentNSName,
-			},
-		}
-		veleroNamespace = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: veleroNamespaceName,
-			},
-		}
-		acmNamespace = &corev1.Namespace{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "Namespace",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: acmNamespaceName,
-			},
-		}
+		managedClusterNS = createNamespace(managedClusterNSName)
+		chartsv1NS = createNamespace(chartsv1NSName)
+		clusterPoolNS = createNamespace(clusterPoolNSName)
+		aINS = createNamespace("openshift-machine-api")
+		clusterDeploymentNS = createNamespace(clusterDeploymentNSName)
+		veleroNamespace = createNamespace(veleroNamespaceName)
+		acmNamespace = createNamespace(acmNamespaceName)
+
 		clusterPoolSecrets = []corev1.Secret{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Secret",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "app-prow-47-aws-creds",
-					Namespace: clusterPoolNSName,
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Secret",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "auto-import",
-					Namespace: clusterPoolNSName,
-					Labels: map[string]string{
-						"authentication.open-cluster-management.io/is-managed-serviceaccount": "true",
-					},
-					Annotations: map[string]string{
-						"expirationTimestamp":  "2024-08-05T15:25:34Z",
-						"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
-					},
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Secret",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "baremetal",
-					Namespace: clusterPoolNSName,
-					Labels: map[string]string{
-						"environment.metal3.io": "baremetal",
-					},
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Secret",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "ai-secret",
-					Namespace: clusterPoolNSName,
-					Labels: map[string]string{
-						"agent-install.openshift.io/watch": "true",
-					},
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Secret",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "baremetal-api-secret",
-					Namespace: "openshift-machine-api",
-					Labels: map[string]string{
-						"environment.metal3.io": "baremetal",
-					},
-				},
-			},
+			*createSecret("app-prow-47-aws-creds", clusterPoolNSName,
+				nil, nil, nil),
+			*createSecret("auto-import", clusterPoolNSName,
+				map[string]string{
+					"authentication.open-cluster-management.io/is-managed-serviceaccount": "true",
+				}, map[string]string{
+					"expirationTimestamp":  "2024-08-05T15:25:34Z",
+					"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
+				}, nil),
+			*createSecret("baremetal", clusterPoolNSName,
+				map[string]string{
+					"environment.metal3.io": "baremetal",
+				}, nil, nil),
+			*createSecret("ai-secret", clusterPoolNSName,
+				map[string]string{
+					"agent-install.openshift.io/watch": "true",
+				}, nil, nil),
+			*createSecret("baremetal-api-secret", "openshift-machine-api",
+				map[string]string{
+					"environment.metal3.io": "baremetal",
+				}, nil, nil),
 		}
 		clusterDeplSecrets = []corev1.Secret{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Secret",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      clusterDeploymentNSName + "-abcd",
-					Namespace: clusterDeploymentNSName,
-				},
-			},
+			*createSecret(clusterDeploymentNSName+"-abcd", clusterDeploymentNSName,
+				nil, nil, nil),
 		}
 		clusterPools = []hivev1.ClusterPool{
 			{
@@ -315,34 +174,10 @@ var _ = Describe("BackupSchedule controller", func() {
 			},
 		}
 		channels = []chnv1.Channel{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "apps.open-cluster-management.io/v1",
-					Kind:       "Channel",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "charts-v1",
-					Namespace: chartsv1NSName,
-				},
-				Spec: chnv1.ChannelSpec{
-					Type:     chnv1.ChannelTypeHelmRepo,
-					Pathname: "http://test.svc.cluster.local:3000/charts",
-				},
-			},
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "apps.open-cluster-management.io/v1",
-					Kind:       "Channel",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "user-channel",
-					Namespace: "default",
-				},
-				Spec: chnv1.ChannelSpec{
-					Type:     chnv1.ChannelTypeGit,
-					Pathname: "https://github.com/test/app-samples",
-				},
-			},
+			*createChannel("charts-v1", chartsv1NSName,
+				chnv1.ChannelTypeHelmRepo, "http://test.svc.cluster.local:3000/charts").object,
+			*createChannel("user-channel", "default",
+				chnv1.ChannelTypeGit, "https://github.com/test/app-samples").object,
 		}
 
 		veleroBackups = []veleroapi.Backup{}
@@ -354,28 +189,13 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			for key, value := range veleroScheduleNames {
 
-				backup := veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      value + "-" + timestampStr,
-						Namespace: veleroNamespaceName,
-						Labels: map[string]string{
-							"velero.io/schedule-name":  value,
-							BackupScheduleClusterLabel: "abcd",
-						},
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						StartTimestamp: &aFewSecondsAgo,
-						Errors:         0,
-					},
-				}
+				backup := *createBackup(value+"-"+timestampStr, veleroNamespaceName).
+					labels(map[string]string{
+						"velero.io/schedule-name":  value,
+						BackupScheduleClusterLabel: "abcd",
+					}).
+					phase(veleroapi.BackupPhaseCompleted).startTimestamp(aFewSecondsAgo).errors(0).
+					object
 
 				if key == ValidationSchedule {
 
@@ -390,24 +210,9 @@ var _ = Describe("BackupSchedule controller", func() {
 		}
 
 		// create some dummy backups
-		veleroBackups = append(veleroBackups, veleroapi.Backup{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "velero/v1",
-				Kind:       "Backup",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      veleroScheduleNames[Resources] + "-new",
-				Namespace: veleroNamespaceName,
-			},
-			Spec: veleroapi.BackupSpec{
-				IncludedNamespaces: []string{"please-keep-this-one"},
-			},
-			Status: veleroapi.BackupStatus{
-				Phase:          veleroapi.BackupPhaseCompleted,
-				StartTimestamp: &oneHourAgo,
-				Errors:         0,
-			},
-		})
+		veleroBackups = append(veleroBackups, *createBackup(veleroScheduleNames[Resources]+"-new", veleroNamespaceName).
+			phase(veleroapi.BackupPhaseCompleted).startTimestamp(oneHourAgo).errors(0).
+			object)
 	})
 
 	AfterEach(func() {
@@ -551,37 +356,18 @@ var _ = Describe("BackupSchedule controller", func() {
 	})
 	Context("When creating a BackupSchedule", func() {
 		It("Should be creating a Velero Schedule updating the Status", func() {
-			backupStorageLocation = &veleroapi.BackupStorageLocation{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "BackupStorageLocation",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "default",
-					Namespace: veleroNamespaceName,
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion: "oadp.openshift.io/v1alpha1",
-							Kind:       "Velero",
-							Name:       "velero-instnace",
-							UID:        "fed287da-02ea-4c83-a7f8-906ce662451a",
-						},
-					},
-				},
-				Spec: veleroapi.BackupStorageLocationSpec{
-					AccessMode: "ReadWrite",
-					StorageType: veleroapi.StorageType{
-						ObjectStorage: &veleroapi.ObjectStorageLocation{
-							Bucket: "velero-backup-acm-dr",
-							Prefix: "velero",
-						},
-					},
-					Provider: "aws",
-				},
-			}
+			backupStorageLocation = createStorageLocation("default", veleroNamespaceName).
+				setOwner().
+				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
 			Expect(k8sClient.Create(ctx, backupStorageLocation)).Should(Succeed())
-			backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-			Expect(k8sClient.Status().Update(ctx, backupStorageLocation)).Should(Succeed())
+			storageLookupKey := types.NamespacedName{
+				Name:      backupStorageLocation.Name,
+				Namespace: backupStorageLocation.Namespace,
+			}
+			if err := k8sClient.Get(ctx, storageLookupKey, backupStorageLocation); err == nil {
+				backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
+				k8sClient.Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
+			}
 
 			managedClusterList := clusterv1.ManagedClusterList{}
 			Eventually(func() bool {
@@ -614,22 +400,11 @@ var _ = Describe("BackupSchedule controller", func() {
 				return false
 			}, timeout, interval).Should(BeTrue())
 
-			rhacmBackupSchedule := v1beta1.BackupSchedule{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "BackupSchedule",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      backupScheduleName,
-					Namespace: veleroNamespaceName,
-				},
-				Spec: v1beta1.BackupScheduleSpec{
-					VeleroSchedule:           backupSchedule,
-					VeleroTTL:                metav1.Duration{Duration: time.Hour * 72},
-					UseManagedServiceAccount: true,
-					ManagedServiceAccountTTL: metav1.Duration{Duration: time.Hour * 90},
-				},
-			}
+			rhacmBackupSchedule := *createBackupSchedule(backupScheduleName, veleroNamespaceName).
+				schedule(backupSchedule).veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
+				useManagedServiceAccount(true).
+				managedServiceAccountTTL(metav1.Duration{Duration: time.Hour * 90}).
+				object
 			Expect(k8sClient.Create(ctx, &rhacmBackupSchedule)).Should(Succeed())
 
 			backupLookupKey := types.NamespacedName{
@@ -761,33 +536,25 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			// new backup with no TTL
 			backupScheduleNameNoTTL := backupScheduleName + "-nottl"
-			rhacmBackupScheduleNoTTL := v1beta1.BackupSchedule{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "BackupSchedule",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      backupScheduleNameNoTTL,
-					Namespace: veleroNamespaceName,
-				},
-				Spec: v1beta1.BackupScheduleSpec{
-					VeleroSchedule: backupSchedule,
-				},
-			}
+			rhacmBackupScheduleNoTTL := *createBackupSchedule(backupScheduleNameNoTTL, veleroNamespaceName).
+				schedule(backupSchedule).
+				object
 			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleNoTTL)).Should(Succeed())
 
 			// execute a backup collission validation
 			// first make sure the schedule is in enabled state
-			createdBackupSchedule.Status.Phase = v1beta1.SchedulePhaseEnabled
-			Eventually(func() bool {
-				err := k8sClient.
-					Status().Update(context.Background(), &createdBackupSchedule, &client.UpdateOptions{})
-				return err == nil
-			}, timeout, interval).Should(BeTrue())
+			if err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule); err == nil {
+				createdBackupSchedule.Status.Phase = v1beta1.SchedulePhaseEnabled
+				Eventually(func() bool {
+					err := k8sClient.
+						Status().Update(context.Background(), &createdBackupSchedule, &client.UpdateOptions{})
+					return err == nil
+				}, timeout, interval).Should(BeTrue())
+			}
 			Eventually(func() string {
 				err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
 				if err != nil {
-					return "unknown"
+					return err.Error()
 				}
 				return string(createdBackupSchedule.Status.Phase)
 			}, timeout, interval).Should(BeIdenticalTo(string(v1beta1.SchedulePhaseEnabled)))
@@ -817,19 +584,9 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			// new schedule backup
 			backupScheduleName3 := backupScheduleName + "-3"
-			backupSchedule3 := v1beta1.BackupSchedule{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "BackupSchedule",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      backupScheduleName3,
-					Namespace: veleroNamespaceName,
-				},
-				Spec: v1beta1.BackupScheduleSpec{
-					VeleroSchedule: backupSchedule,
-				},
-			}
+			backupSchedule3 := *createBackupSchedule(backupScheduleName3, veleroNamespaceName).
+				schedule(backupSchedule).
+				object
 			Expect(k8sClient.Create(ctx, &backupSchedule3)).Should(Succeed())
 
 			backupLookupKeyNoTTL := types.NamespacedName{
@@ -874,20 +631,9 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			// backup not created in velero namespace, should fail validation
 			acmBackupName := backupScheduleName
-			rhacmBackupScheduleACM := v1beta1.BackupSchedule{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "BackupSchedule",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      acmBackupName,
-					Namespace: acmNamespaceName,
-				},
-				Spec: v1beta1.BackupScheduleSpec{
-					VeleroSchedule: backupSchedule,
-					VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
-				},
-			}
+			rhacmBackupScheduleACM := *createBackupSchedule(acmBackupName, acmNamespaceName).
+				schedule(backupSchedule).veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
+				object
 			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleACM)).Should(Succeed())
 
 			backupLookupKeyACM := types.NamespacedName{
@@ -916,20 +662,9 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			// backup with invalid cron job schedule, should fail validation
 			invalidCronExpBackupName := backupScheduleName + "-invalid-cron-exp"
-			invalidCronExpBackupScheduleACM := v1beta1.BackupSchedule{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "BackupSchedule",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      invalidCronExpBackupName,
-					Namespace: veleroNamespaceName,
-				},
-				Spec: v1beta1.BackupScheduleSpec{
-					VeleroSchedule: "invalid-cron-exp",
-					VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
-				},
-			}
+			invalidCronExpBackupScheduleACM := *createBackupSchedule(invalidCronExpBackupName, veleroNamespaceName).
+				schedule("invalid-cron-exp").veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
+				object
 			Expect(k8sClient.Create(ctx, &invalidCronExpBackupScheduleACM)).Should(Succeed())
 
 			backupLookupKeyInvalidCronExp := types.NamespacedName{
@@ -1097,107 +832,28 @@ var _ = Describe("BackupSchedule controller", func() {
 			aINS = nil
 			clusterDeploymentNS = nil
 			managedClusterNS = nil
-			chartsv1NS = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: newChartsv1NSName,
-				},
-			}
-			acmNamespace = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: newAcmNamespace,
-				},
-			}
-			veleroNamespace = &corev1.Namespace{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Namespace",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: newVeleroNamespace,
-				},
-			}
+			chartsv1NS = createNamespace(newChartsv1NSName)
+			acmNamespace = createNamespace(newAcmNamespace)
+			veleroNamespace = createNamespace(newVeleroNamespace)
+
 			channels = []chnv1.Channel{
-				{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "apps.open-cluster-management.io/v1",
-						Kind:       "Channel",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "charts-v1",
-						Namespace: newChartsv1NSName,
-					},
-					Spec: chnv1.ChannelSpec{
-						Type:     chnv1.ChannelTypeHelmRepo,
-						Pathname: "http://test.svc.cluster.local:3000/charts",
-					},
-				},
+				*createChannel("charts-v1", newChartsv1NSName,
+					chnv1.ChannelTypeHelmRepo, "http://test.svc.cluster.local:3000/charts").object,
 			}
 			veleroBackups = []veleroapi.Backup{
-				veleroapi.Backup{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "velero/v1",
-						Kind:       "Backup",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      veleroScheduleNames[Resources],
-						Namespace: newVeleroNamespace,
-					},
-					Spec: veleroapi.BackupSpec{
-						IncludedNamespaces: []string{"please-keep-this-one"},
-					},
-					Status: veleroapi.BackupStatus{
-						Phase:          veleroapi.BackupPhaseCompleted,
-						StartTimestamp: &oneHourAgo,
-						Errors:         0,
-					},
-				},
+				*createBackup(veleroScheduleNames[Resources], newVeleroNamespace).
+					phase(veleroapi.BackupPhaseCompleted).startTimestamp(oneHourAgo).errors(0).
+					object,
 			}
-			backupStorageLocation = &veleroapi.BackupStorageLocation{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero/v1",
-					Kind:       "BackupStorageLocation",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "default-new",
-					Namespace: veleroNamespace.Name,
-				},
-				Spec: veleroapi.BackupStorageLocationSpec{
-					AccessMode: "ReadWrite",
-					StorageType: veleroapi.StorageType{
-						ObjectStorage: &veleroapi.ObjectStorageLocation{
-							Bucket: "velero-backup-acm-dr",
-							Prefix: "velero",
-						},
-					},
-					Provider: "aws",
-				},
-			}
+			backupStorageLocation = createStorageLocation("default-new", veleroNamespace.Name).
+				phase(veleroapi.BackupStorageLocationPhaseUnavailable).object
 		})
 		It(
 			"Should not create any velero schedule resources, BackupStorageLocation doesnt exist or is invalid",
 			func() {
-				rhacmBackupSchedule := v1beta1.BackupSchedule{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "BackupSchedule",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      backupScheduleName + "-new",
-						Namespace: newVeleroNamespace,
-					},
-					Spec: v1beta1.BackupScheduleSpec{
-						VeleroSchedule: backupSchedule,
-						VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
-					},
-				}
+				rhacmBackupSchedule := *createBackupSchedule(backupScheduleName+"-new", newVeleroNamespace).
+					schedule(backupSchedule).veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
+					object
 
 				Expect(k8sClient.Create(ctx, &rhacmBackupSchedule)).Should(Succeed())
 				// there is no storage location object created
@@ -1225,24 +881,20 @@ var _ = Describe("BackupSchedule controller", func() {
 
 				// create the storage location now but in the wrong ns
 				Expect(k8sClient.Create(ctx, backupStorageLocation)).Should(Succeed())
-				backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-				Expect(k8sClient.Status().Update(ctx, backupStorageLocation)).Should(Succeed())
 
-				rhacmBackupScheduleNew := v1beta1.BackupSchedule{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "cluster.open-cluster-management.io/v1beta1",
-						Kind:       "BackupSchedule",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      backupScheduleName + "-new-1",
-						Namespace: newVeleroNamespace,
-					},
-					Spec: v1beta1.BackupScheduleSpec{
-						VeleroSchedule: backupSchedule,
-						VeleroTTL:      metav1.Duration{Duration: time.Hour * 72},
-					},
+				storageLookupKey := types.NamespacedName{
+					Name:      backupStorageLocation.Name,
+					Namespace: backupStorageLocation.Namespace,
+				}
+				if err := k8sClient.Get(ctx, storageLookupKey, backupStorageLocation); err == nil {
+					backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
+					k8sClient.Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
+
 				}
 
+				rhacmBackupScheduleNew := *createBackupSchedule(backupScheduleName+"-new-1", newVeleroNamespace).
+					schedule(backupSchedule).veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
+					object
 				Expect(k8sClient.Create(ctx, &rhacmBackupScheduleNew)).Should(Succeed())
 				createdScheduleNew := v1beta1.BackupSchedule{}
 				Eventually(func() v1beta1.SchedulePhase {

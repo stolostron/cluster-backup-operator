@@ -44,6 +44,8 @@ var (
 	BackupScheduleClusterLabel string = "cluster.open-cluster-management.io/backup-cluster"
 	// BackupScheduleActivationLabel stores the name of the restore resources that resulted in creating this backup
 	BackupScheduleActivationLabel string = "cluster.open-cluster-management.io/backup-activation-restore"
+	// label for backups generated from velero schedules
+	BackupVeleroLabel string = "velero.io/schedule-name"
 )
 var (
 	// include resources from these api groups
@@ -150,8 +152,6 @@ func setResourcesBackupInfo(
 	backupNS string,
 	c client.Client,
 ) {
-
-	backupLogger := log.FromContext(ctx)
 	var clusterResource bool = true
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
@@ -174,9 +174,7 @@ func setResourcesBackupInfo(
 
 	// exclude acm channel namespaces
 	channels := chnv1.ChannelList{}
-	if err := c.List(ctx, &channels, &client.ListOptions{}); err != nil {
-		backupLogger.Error(err, "failed to get chnv1.ChannelList")
-	} else {
+	if err := c.List(ctx, &channels, &client.ListOptions{}); err == nil {
 		for i := range channels.Items {
 			if channels.Items[i].Name == "charts-v1" {
 				veleroBackupTemplate.ExcludedNamespaces = appendUnique(
@@ -407,22 +405,27 @@ func filterBackups(vs []veleroapi.Backup, f func(veleroapi.Backup) bool) []veler
 func getResourcesToBackup(
 	ctx context.Context,
 	dc discovery.DiscoveryInterface,
-) ([]string, error) {
+) []string {
 
+	backupResourceNames := []string{}
+	if groupList, err := dc.ServerGroups(); err == nil && groupList != nil {
+		backupResourceNames = processResourcesToBackup(ctx, dc, *groupList)
+	}
+
+	return backupResourceNames
+}
+
+func processResourcesToBackup(
+	ctx context.Context,
+	dc discovery.DiscoveryInterface,
+	groupList v1.APIGroupList,
+) []string {
 	backupLogger := log.FromContext(ctx)
 
 	backupResourceNames := backupResources
-
 	// build the list of excluded resources
 	ignoreCRDs := excludedCRDs
 
-	groupList, err := dc.ServerGroups()
-	if err != nil {
-		return backupResourceNames, fmt.Errorf("failed to get server groups: %v", err)
-	}
-	if groupList == nil {
-		return backupResourceNames, nil
-	}
 	for _, group := range groupList.Groups {
 
 		if !shouldBackupAPIGroup(group.Name) {
@@ -441,9 +444,6 @@ func getResourcesToBackup(
 				)
 				continue
 			}
-			if resourceList == nil {
-				continue
-			}
 			for _, resource := range resourceList.APIResources {
 				resourceKind := strings.ToLower(resource.Kind)
 				resourceName := resourceKind + "." + group.Name
@@ -460,7 +460,7 @@ func getResourcesToBackup(
 			}
 		}
 	}
-	return backupResourceNames, nil
+	return backupResourceNames
 }
 
 // returns true if this api group needs to be backed up
@@ -493,7 +493,7 @@ func cleanupExpiredValidationBackups(
 ) {
 	backupLogger := log.FromContext(ctx)
 	validationLabel := labels.SelectorFromSet(
-		map[string]string{"velero.io/schedule-name": veleroScheduleNames[ValidationSchedule]})
+		map[string]string{BackupVeleroLabel: veleroScheduleNames[ValidationSchedule]})
 	veleroBackupList := veleroapi.BackupList{}
 	if err := c.List(ctx, &veleroBackupList, &client.ListOptions{
 		Namespace:     veleroNS,
@@ -506,7 +506,9 @@ func cleanupExpiredValidationBackups(
 				v1.Now().Time.After(backup.Status.Expiration.Time) {
 				backupLogger.Info(fmt.Sprintf("validation backup %s expired, delete it",
 					backup.Name))
-				deleteBackup(ctx, &backup, c)
+				if err = deleteBackup(ctx, &backup, c); err != nil {
+					backupLogger.Error(err, "delete failed")
+				}
 			}
 		}
 	}
@@ -517,7 +519,7 @@ func deleteBackup(
 	ctx context.Context,
 	backup *veleroapi.Backup,
 	c client.Client,
-) {
+) error {
 	// delete backup now
 	backupLogger := log.FromContext(ctx)
 	backupName := backup.ObjectMeta.Name
@@ -540,26 +542,30 @@ func deleteBackup(
 			veleroDeleteBackup.Name = backupDeleteIdentity.Name
 			veleroDeleteBackup.Namespace = backupDeleteIdentity.Namespace
 
-			err = c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{})
-			if err != nil {
+			if err := c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{}); err != nil {
 				backupLogger.Error(
 					err,
 					fmt.Sprintf("create  DeleteBackupRequest request error for %s", backupName),
 				)
+				return err
 			}
 		} else {
 			backupLogger.Error(err, fmt.Sprintf("Failed to create DeleteBackupRequest for resource %s", backupName))
+			return err
 		}
-	} else {
-		backupLogger.Info(fmt.Sprintf("DeleteBackupRequest already exists, skip request creation %s", backupName))
-		if veleroDeleteBackup.Status.Errors != nil {
-			// delete the backup now
-			if err := c.Delete(ctx, backup); err != nil {
-				backupLogger.Error(
-					err,
-					fmt.Sprintf("failed to delete the backup %s", backupName),
-				)
-			}
+		return nil
+	}
+	backupLogger.Info(fmt.Sprintf("DeleteBackupRequest already exists, skip request creation %s", backupName))
+	if veleroDeleteBackup.Status.Errors != nil {
+		// delete the backup now
+		if err := c.Delete(ctx, backup); err != nil {
+			backupLogger.Error(
+				err,
+				fmt.Sprintf("failed to delete the backup %s", backupName),
+			)
+			return err
 		}
 	}
+
+	return nil
 }
