@@ -889,7 +889,7 @@ func Test_getVeleroBackupName(t *testing.T) {
 
 	backup := *createBackup("acm-credentials-cluster-schedule-20220922170041", veleroNamespaceName).
 		labels(map[string]string{
-			"velero.io/schedule-name":  "aa",
+			BackupVeleroLabel:          "aa",
 			BackupScheduleClusterLabel: "abcd",
 		}).
 		phase(veleroapi.BackupPhaseCompleted).
@@ -1000,7 +1000,7 @@ func Test_isNewBackupAvailable(t *testing.T) {
 
 	backup := *createBackup(backupName, veleroNamespaceName).
 		labels(map[string]string{
-			"velero.io/schedule-name":  "aa",
+			BackupVeleroLabel:          "aa",
 			BackupScheduleClusterLabel: "abcd",
 		}).
 		phase(veleroapi.BackupPhaseCompleted).
@@ -1194,19 +1194,9 @@ func Test_isBackupScheduleRunning(t *testing.T) {
 			name: "backup WITH backupcollision",
 			args: args{
 				backupSchedules: []v1beta1.BackupSchedule{
-					v1beta1.BackupSchedule{
-						TypeMeta: metav1.TypeMeta{
-							APIVersion: "cluster.open-cluster-management.io/v1beta1",
-							Kind:       "BackupSchedule",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "backup-name",
-							Namespace: "ns",
-						},
-						Status: v1beta1.BackupScheduleStatus{
-							Phase: v1beta1.SchedulePhaseBackupCollision,
-						},
-					},
+					*createBackupSchedule("backup-name", "ns").
+						phase(v1beta1.SchedulePhaseBackupCollision).
+						object,
 				},
 			},
 			want: "",

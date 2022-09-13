@@ -44,6 +44,8 @@ var (
 	BackupScheduleClusterLabel string = "cluster.open-cluster-management.io/backup-cluster"
 	// BackupScheduleActivationLabel stores the name of the restore resources that resulted in creating this backup
 	BackupScheduleActivationLabel string = "cluster.open-cluster-management.io/backup-activation-restore"
+	// label for backups generated from velero schedules
+	BackupVeleroLabel string = "velero.io/schedule-name"
 )
 var (
 	// include resources from these api groups
@@ -491,7 +493,7 @@ func cleanupExpiredValidationBackups(
 ) {
 	backupLogger := log.FromContext(ctx)
 	validationLabel := labels.SelectorFromSet(
-		map[string]string{"velero.io/schedule-name": veleroScheduleNames[ValidationSchedule]})
+		map[string]string{BackupVeleroLabel: veleroScheduleNames[ValidationSchedule]})
 	veleroBackupList := veleroapi.BackupList{}
 	if err := c.List(ctx, &veleroBackupList, &client.ListOptions{
 		Namespace:     veleroNS,

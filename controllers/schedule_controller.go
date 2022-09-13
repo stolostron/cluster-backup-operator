@@ -375,6 +375,9 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 	// add any missing labels and create any resources required by the backup and restore process
 	r.prepareForBackup(ctx, backupSchedule)
 
+	// use this when generating the backups so all have the same timestamp
+	currentTime := time.Now().Format("20060102150405")
+
 	// loop through schedule names to create a Velero schedule per type
 	for _, scheduleKey := range scheduleKeys {
 		veleroScheduleIdentity := types.NamespacedName{
@@ -453,6 +456,17 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 
 		// set veleroSchedule in backupSchedule status
 		setVeleroScheduleInStatus(scheduleKey, veleroSchedule, backupSchedule)
+		// if initial backup needs to be created, process it here
+		if _, err := createInitialBackupForSchedule(ctx, r.Client,
+			veleroSchedule, backupSchedule, currentTime); err != nil {
+			scheduleLogger.Error(
+				err,
+				"Error in creating velero.io.Backup",
+				"name", veleroScheduleIdentity.Name,
+				"namespace", veleroScheduleIdentity.Namespace,
+			)
+			return err
+		}
 	}
 	return nil
 }
