@@ -414,10 +414,11 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 
 	veleroNamespaceName := "backup-ns"
 	rhacmBackupSchedule := *createBackupSchedule("backup-sch", veleroNamespaceName).
+		noBackupOnStart(true).
 		object
 
 	rhacmBackupScheduleNoRun := *createBackupSchedule("backup-sch", veleroNamespaceName).
-		noBackupOnStart(true).
+		noBackupOnStart(false).
 		object
 
 	schNoLabels := *createSchedule("acm-credentials-cluster-schedule", veleroNamespaceName).
