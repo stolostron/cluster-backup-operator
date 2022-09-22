@@ -118,6 +118,12 @@ var _ = BeforeSuite(func() {
 			{Name: "subscriptions", Namespaced: true, Kind: "Subscription"},
 		},
 	}
+	addonInfo := metav1.APIResourceList{
+		GroupVersion: "addon.open-cluster-management.io/v1alpha1",
+		APIResources: []metav1.APIResource{
+			{Name: "managedclusteraddons", Namespaced: true, Kind: "ManagedClusterAddOn"},
+		},
+	}
 	clusterv1beta1Info := metav1.APIResourceList{
 		GroupVersion: "cluster.open-cluster-management.io/v1beta1",
 		APIResources: []metav1.APIResource{
@@ -181,6 +187,8 @@ var _ = BeforeSuite(func() {
 			list = &argov1alphaInfo
 		case "/apis/config.openshift.io/v1":
 			list = &openshiftv1Info
+		case "/apis/addon.open-cluster-management.io/v1alpha1":
+			list = &addonInfo
 
 		case "/api":
 			list = &metav1.APIVersions{
@@ -568,6 +576,12 @@ var _ = BeforeSuite(func() {
 	hVKList := schema.GroupVersionResource{Group: "hive.openshift.io",
 		Version: "v1", Resource: "hiveconfig"}
 
+	//addon
+	aoGVK := schema.GroupVersionKind{Group: "addon.open-cluster-management.io",
+		Version: "v1alpha1", Kind: "ManagedClusterAddOn"}
+	aoVKList := schema.GroupVersionResource{Group: "addon.open-cluster-management.io",
+		Version: "v1alpha1", Resource: "managedclusteraddons"}
+
 	///
 	gvrToListKindR := map[schema.GroupVersionResource]string{
 		msaGVRList:    "ManagedServiceAccountList",
@@ -585,6 +599,7 @@ var _ = BeforeSuite(func() {
 		imgVKList:     "ClusterImageSetList",
 		hVKList:       "HiveConfigList",
 		subsGVKList:   "SubscriptionList",
+		aoVKList:      "ManagedClusterAddOnList",
 	}
 
 	unstructuredSchemeR := runtime.NewScheme()
@@ -603,6 +618,7 @@ var _ = BeforeSuite(func() {
 	unstructuredSchemeR.AddKnownTypes(imgGVK.GroupVersion())
 	unstructuredSchemeR.AddKnownTypes(hGVK.GroupVersion())
 	unstructuredSchemeR.AddKnownTypes(subsGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(aoGVK.GroupVersion())
 
 	dynR := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredSchemeR,
 		gvrToListKindR,

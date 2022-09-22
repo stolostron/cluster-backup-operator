@@ -29,6 +29,7 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -255,9 +256,31 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 		return ctrl.Result{}, validConfiguration, client.IgnoreNotFound(err)
 	}
 
-	if backupSchedule.Status.Phase == v1beta1.SchedulePhaseBackupCollision {
-		scheduleLogger.Info("ignore resource in SchedulePhaseBackupCollision state")
+	if backupSchedule.Status.Phase == v1beta1.SchedulePhaseBackupCollision ||
+		backupSchedule.Status.Phase == v1beta1.SchedulePhaseFailed {
+		scheduleLogger.Info("ignore resource in SchedulePhaseBackupCollision or SchedulePhaseFailed state")
 		return ctrl.Result{}, validConfiguration, nil
+	}
+
+	// check MSA status for backup schedules in SchedulePhaseFailed
+	if useMSA := backupSchedule.Spec.UseManagedServiceAccount; useMSA {
+		msaKind := schema.GroupKind{
+			Group: "authentication.open-cluster-management.io",
+			Kind:  "ManagedServiceAccount",
+		}
+
+		if _, err := r.RESTMapper.RESTMapping(msaKind, ""); err != nil {
+			msg := "UseManagedServiceAccount option invalid, managedserviceaccount-preview component is not enabled on MCH"
+			backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailed
+			backupSchedule.Status.LastMessage = msg
+
+			return ctrl.Result{}, validConfiguration,
+				errors.Wrap(
+					r.Client.Status().Update(ctx, backupSchedule),
+					msg,
+				)
+		}
+
 	}
 
 	// don't create schedule if an active restore exists
@@ -325,7 +348,7 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 			)
 	}
 
-	// return error if the cluster restore file is not in the same namespace with velero
+	// return error if the backup resource is not in the same namespace with velero
 	if veleroNamespace != req.Namespace {
 		msg := fmt.Sprintf(
 			"Schedule resource [%s/%s] must be created in the velero namespace [%s]",
