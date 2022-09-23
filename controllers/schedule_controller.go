@@ -272,16 +272,8 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	if restoreName != "" {
 		msg := "Restore resource " + restoreName + " is currently active, " +
 			"verify that any active restores are removed."
-		scheduleLogger.Info(msg)
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = msg
-		// retry after failureInterval
-		return ctrl.Result{RequeueAfter: failureInterval},
-			validConfiguration,
-			errors.Wrap(
-				r.Client.Status().Update(ctx, backupSchedule),
-				msg,
-			)
+		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
+			msg, true)
 	}
 
 	// don't create schedules if backup storage location doesn't exist or is not avaialble
@@ -291,18 +283,9 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 
 		msg := "velero.io.BackupStorageLocation resources not found. " +
 			"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."
-		scheduleLogger.Info(msg)
 
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = msg
-
-		// retry after failureInterval
-		return ctrl.Result{RequeueAfter: failureInterval},
-			validConfiguration,
-			errors.Wrap(
-				r.Client.Status().Update(ctx, backupSchedule),
-				msg,
-			)
+		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
+			msg, true)
 	}
 
 	// look for available VeleroStorageLocation
@@ -315,18 +298,8 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	if !isValidStorageLocation {
 		msg := "Backup storage location is not available. " +
 			"Check velero.io.BackupStorageLocation and validate storage credentials."
-		scheduleLogger.Info(msg)
-
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = msg
-
-		// retry after failureInterval
-		return ctrl.Result{RequeueAfter: failureInterval},
-			validConfiguration,
-			errors.Wrap(
-				r.Client.Status().Update(ctx, backupSchedule),
-				msg,
-			)
+		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
+			msg, true)
 	}
 
 	// return error if the backup resource is not in the same namespace with velero
@@ -337,16 +310,8 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 			req.Name,
 			veleroNamespace,
 		)
-		scheduleLogger.Info(msg)
-
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = msg
-
-		return ctrl.Result{},
-			validConfiguration, errors.Wrap(
-				r.Client.Status().Update(ctx, backupSchedule),
-				msg,
-			)
+		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
+			msg, false)
 	}
 
 	// check MSA status for backup schedules
@@ -357,14 +322,8 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	msg := "UseManagedServiceAccount option invalid, managedserviceaccount-preview component is not enabled on MCH"
 	if useMSA := backupSchedule.Spec.UseManagedServiceAccount; useMSA {
 		if _, err := r.RESTMapper.RESTMapping(msaKind, ""); err != nil {
-			backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-			backupSchedule.Status.LastMessage = msg
-
-			return ctrl.Result{}, validConfiguration,
-				errors.Wrap(
-					r.Client.Status().Update(ctx, backupSchedule),
-					err.Error(),
-				)
+			return createFailedValidationResponse(ctx, r.Client, backupSchedule,
+				msg, false)
 		}
 	}
 
