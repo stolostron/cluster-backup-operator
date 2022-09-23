@@ -21,9 +21,11 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/pkg/errors"
 	"github.com/robfig/cron/v3"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -359,4 +361,38 @@ func createInitialBackupForSchedule(
 		)
 	}
 	return veleroBackup, err
+}
+
+func createFailedValidationResponse(
+	ctx context.Context,
+	c client.Client,
+	backupSchedule *v1beta1.BackupSchedule,
+	msg string,
+	requeue bool,
+) (ctrl.Result, bool, error) {
+	scheduleLogger := log.FromContext(ctx)
+	validConfiguration := false
+	scheduleLogger.Info(msg)
+
+	backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
+	backupSchedule.Status.LastMessage = msg
+
+	if requeue {
+		// retry after failureInterval
+		return ctrl.Result{RequeueAfter: failureInterval},
+			validConfiguration,
+			errors.Wrap(
+				c.Status().Update(ctx, backupSchedule),
+				msg,
+			)
+	}
+
+	// no retry
+	return ctrl.Result{},
+		validConfiguration,
+		errors.Wrap(
+			c.Status().Update(ctx, backupSchedule),
+			msg,
+		)
+
 }

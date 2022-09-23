@@ -502,3 +502,69 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 	// clean up
 	testEnv.Stop()
 }
+
+func Test_createFailedValidationResponse(t *testing.T) {
+
+	veleroNamespaceName := "backup-ns-v"
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, _ := testEnv.Start()
+	k8sClient2, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+
+	rhacmBackupSchedule := *createBackupSchedule("backup-sch-v", veleroNamespaceName).
+		object
+
+	type args struct {
+		ctx            context.Context
+		c              client.Client
+		backupSchedule *v1beta1.BackupSchedule
+		phase          v1beta1.SchedulePhase
+		msg            string
+		requeue        bool
+	}
+	tests := []struct {
+		name string
+		args args
+		want time.Duration
+	}{
+		{
+			name: "reque failure interval",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient2,
+				backupSchedule: &rhacmBackupSchedule,
+				requeue:        true,
+				msg:            "some error",
+			},
+			want: failureInterval,
+		},
+		{
+			name: "do not reque",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient2,
+				backupSchedule: &rhacmBackupSchedule,
+				requeue:        false,
+				msg:            "some error",
+			},
+			want: time.Second * 0,
+		},
+	}
+	for _, tt := range tests {
+
+		t.Run(tt.name, func(t *testing.T) {
+			if r, _, _ := createFailedValidationResponse(tt.args.ctx, tt.args.c,
+				tt.args.backupSchedule, tt.args.msg,
+				tt.args.requeue); r.RequeueAfter != tt.want {
+				t.Errorf("createFailedValidationResponse() = %v, want %v", r.RequeueAfter, tt.want)
+			}
+		})
+
+	}
+	// clean up
+	testEnv.Stop()
+
+}

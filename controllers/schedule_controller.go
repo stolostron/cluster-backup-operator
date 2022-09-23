@@ -29,6 +29,7 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -61,6 +62,9 @@ const (
 	// these are user resources, except secrets, labeled with cluster.open-cluster-management.io/backup
 	// secrets labeled with cluster.open-cluster-management.io/backup are already backed up under credentialsCluster
 	ResourcesGeneric ResourceType = "resourcesGeneric"
+
+	msa_kind  = "ManagedServiceAccount"
+	msa_group = "authentication.open-cluster-management.io"
 )
 
 // SecretType is the type of secret
@@ -268,16 +272,8 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	if restoreName != "" {
 		msg := "Restore resource " + restoreName + " is currently active, " +
 			"verify that any active restores are removed."
-		scheduleLogger.Info(msg)
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = msg
-		// retry after failureInterval
-		return ctrl.Result{RequeueAfter: failureInterval},
-			validConfiguration,
-			errors.Wrap(
-				r.Client.Status().Update(ctx, backupSchedule),
-				msg,
-			)
+		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
+			msg, true)
 	}
 
 	// don't create schedules if backup storage location doesn't exist or is not avaialble
@@ -287,18 +283,9 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 
 		msg := "velero.io.BackupStorageLocation resources not found. " +
 			"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."
-		scheduleLogger.Info(msg)
 
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = msg
-
-		// retry after failureInterval
-		return ctrl.Result{RequeueAfter: failureInterval},
-			validConfiguration,
-			errors.Wrap(
-				r.Client.Status().Update(ctx, backupSchedule),
-				msg,
-			)
+		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
+			msg, true)
 	}
 
 	// look for available VeleroStorageLocation
@@ -311,21 +298,11 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	if !isValidStorageLocation {
 		msg := "Backup storage location is not available. " +
 			"Check velero.io.BackupStorageLocation and validate storage credentials."
-		scheduleLogger.Info(msg)
-
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = msg
-
-		// retry after failureInterval
-		return ctrl.Result{RequeueAfter: failureInterval},
-			validConfiguration,
-			errors.Wrap(
-				r.Client.Status().Update(ctx, backupSchedule),
-				msg,
-			)
+		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
+			msg, true)
 	}
 
-	// return error if the cluster restore file is not in the same namespace with velero
+	// return error if the backup resource is not in the same namespace with velero
 	if veleroNamespace != req.Namespace {
 		msg := fmt.Sprintf(
 			"Schedule resource [%s/%s] must be created in the velero namespace [%s]",
@@ -333,16 +310,21 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 			req.Name,
 			veleroNamespace,
 		)
-		scheduleLogger.Info(msg)
+		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
+			msg, false)
+	}
 
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-		backupSchedule.Status.LastMessage = msg
-
-		return ctrl.Result{},
-			validConfiguration, errors.Wrap(
-				r.Client.Status().Update(ctx, backupSchedule),
-				msg,
-			)
+	// check MSA status for backup schedules
+	msaKind := schema.GroupKind{
+		Group: msa_group,
+		Kind:  msa_kind,
+	}
+	msg := "UseManagedServiceAccount option invalid, managedserviceaccount-preview component is not enabled on MCH"
+	if useMSA := backupSchedule.Spec.UseManagedServiceAccount; useMSA {
+		if _, err := r.RESTMapper.RESTMapping(msaKind, ""); err != nil {
+			return createFailedValidationResponse(ctx, r.Client, backupSchedule,
+				msg, false)
+		}
 	}
 
 	validConfiguration = true
