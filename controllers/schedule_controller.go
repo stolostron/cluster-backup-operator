@@ -62,6 +62,9 @@ const (
 	// these are user resources, except secrets, labeled with cluster.open-cluster-management.io/backup
 	// secrets labeled with cluster.open-cluster-management.io/backup are already backed up under credentialsCluster
 	ResourcesGeneric ResourceType = "resourcesGeneric"
+
+	msa_kind  = "ManagedServiceAccount"
+	msa_group = "authentication.open-cluster-management.io"
 )
 
 // SecretType is the type of secret
@@ -256,31 +259,9 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 		return ctrl.Result{}, validConfiguration, client.IgnoreNotFound(err)
 	}
 
-	if backupSchedule.Status.Phase == v1beta1.SchedulePhaseBackupCollision ||
-		backupSchedule.Status.Phase == v1beta1.SchedulePhaseFailed {
-		scheduleLogger.Info("ignore resource in SchedulePhaseBackupCollision or SchedulePhaseFailed state")
+	if backupSchedule.Status.Phase == v1beta1.SchedulePhaseBackupCollision {
+		scheduleLogger.Info("ignore resource in SchedulePhaseBackupCollision state")
 		return ctrl.Result{}, validConfiguration, nil
-	}
-
-	// check MSA status for backup schedules in SchedulePhaseFailed
-	if useMSA := backupSchedule.Spec.UseManagedServiceAccount; useMSA {
-		msaKind := schema.GroupKind{
-			Group: "authentication.open-cluster-management.io",
-			Kind:  "ManagedServiceAccount",
-		}
-
-		if _, err := r.RESTMapper.RESTMapping(msaKind, ""); err != nil {
-			msg := "UseManagedServiceAccount option invalid, managedserviceaccount-preview component is not enabled on MCH"
-			backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailed
-			backupSchedule.Status.LastMessage = msg
-
-			return ctrl.Result{}, validConfiguration,
-				errors.Wrap(
-					r.Client.Status().Update(ctx, backupSchedule),
-					msg,
-				)
-		}
-
 	}
 
 	// don't create schedule if an active restore exists
@@ -366,6 +347,24 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 				r.Client.Status().Update(ctx, backupSchedule),
 				msg,
 			)
+	}
+
+	// check MSA status for backup schedules
+	msaKind := schema.GroupKind{
+		Group: msa_group,
+		Kind:  msa_kind,
+	}
+	if useMSA := backupSchedule.Spec.UseManagedServiceAccount; useMSA {
+		if _, err := r.RESTMapper.RESTMapping(msaKind, ""); err != nil {
+			backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
+			backupSchedule.Status.LastMessage = "UseManagedServiceAccount option invalid, managedserviceaccount-preview component is not enabled on MCH"
+
+			return ctrl.Result{}, validConfiguration,
+				errors.Wrap(
+					r.Client.Status().Update(ctx, backupSchedule),
+					err.Error(),
+				)
+		}
 	}
 
 	validConfiguration = true

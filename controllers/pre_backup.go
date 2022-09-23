@@ -53,8 +53,6 @@ const (
 	addon_label           = "open-cluster-management.io/addon-name-work"
 	role_name             = "klusterlet"
 	msa_api               = "authentication.open-cluster-management.io/v1alpha1"
-	msa_kind              = "ManagedServiceAccount"
-	msa_group             = "authentication.open-cluster-management.io"
 
 	manifest_work_name = "addon-" + msa_addon + "-import"
 	defaultTTL         = 720
