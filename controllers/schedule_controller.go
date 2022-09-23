@@ -354,10 +354,11 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 		Group: msa_group,
 		Kind:  msa_kind,
 	}
+	msg := "UseManagedServiceAccount option invalid, managedserviceaccount-preview component is not enabled on MCH"
 	if useMSA := backupSchedule.Spec.UseManagedServiceAccount; useMSA {
 		if _, err := r.RESTMapper.RESTMapping(msaKind, ""); err != nil {
 			backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailedValidation
-			backupSchedule.Status.LastMessage = "UseManagedServiceAccount option invalid, managedserviceaccount-preview component is not enabled on MCH"
+			backupSchedule.Status.LastMessage = msg
 
 			return ctrl.Result{}, validConfiguration,
 				errors.Wrap(
