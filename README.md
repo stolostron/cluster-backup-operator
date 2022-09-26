@@ -279,10 +279,9 @@ The `backupschedule.cluster.open-cluster-management.io` creates 6 `schedule.vele
 Run `oc get schedules -A | grep acm` to view the list of backup scheduled.
 
 Resources are backed up in 3 separate groups:
-1. credentials backup ( 3 backup files, for hive, ACM and generic backups )
-2. resources backup ( 2 backup files, one for the ACM resources and second for generic resources, labeled with `cluster.open-cluster-management.io/backup`)
-
-3. managed clusters backup, schedule labeled with `cluster.open-cluster-management.io/backup-schedule-type: acm-managed-clusters` ( one backup containing only resources which result in activating the managed cluster connection to the hub where the backup was restored on)
+1. credentials backup - one backup file, storing hive, ACM and user created secrets and configmaps
+2. resources backup - 2 backup files, one for the ACM resources and second for generic resources, labeled with `cluster.open-cluster-management.io/backup`
+3. managed clusters backup, schedule labeled with `cluster.open-cluster-management.io/backup-schedule-type: acm-managed-clusters` - one backup containing only resources which result in activating the managed cluster connection to the hub where the backup was restored on
 
 
 <b>Note</b>:
@@ -539,7 +538,7 @@ At the same time, the backup schedule keeps creating backups based on the `veler
 There are a set of limitations with the above approach which could result in the managed cluster not being auto imported when moving to a new hub. These are the situations that can result in the managed cluster not being imported:
 1. The backup controller is regularly looking for imported managed clusters and it creates the [ManagedServiceAccount](https://github.com/open-cluster-management-io/managed-serviceaccount) resource under the managed cluster namespace as soon as such managed cluster is found. As described in step 3.3 above, this should trigger a token creation on the managed cluster. If the managed cluster is not accessible at the time this operation is executed though, for example the managed cluster is hibernating or is down, the `ManagedServiceAccount` is unable to create this token. As a result, if a hub backup is run at this time, the backup will not contain a token to auto import the managed cluster.
 2. The backup controller looks for imported managed clusters  and requeues this lookup to pick up any new clusters. If managed clusters are imported just after a lookup has completed, they will not be processed until the next call, so any backups executed during this time interval, before the new lookup is processed, will not contain an auto-import token for these newly imported managed clusters.
-3. If the `auto-import-account` secret token is valid and is backed up but the restore operation is run at a time when the token available with the backup has already expired, the auto import operation fails. In this case, the `restore.cluster.open-cluster-management.io` resource status should report the invalid token issue for each managed cluster in this situation. Note that with the paired token approach and the token ttl set to be twice the backup ttl, this scenario should not occur.
+3. If the `auto-import-account` secret token is valid and is backed up but the restore operation is run at a time when the token available with the backup has already expired, the auto import operation fails. In this case, the `restore.cluster.open-cluster-management.io` resource status should report the invalid token issue for each managed cluster in this situation. Note that with the paired token approach and the token ttl set to be twice the backup ttl, this scenario is not expected to occur.
 4. If the token is valid when the restore operation is executed but the managed cluster is not accessible at the time the restore is executed, the auto import operation fails and will not retry to reconnect. In this case the failure should be reported by the auto-import component logs.
 
 ## Backup validation using a Policy
