@@ -390,11 +390,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		case ManagedClusters:
 			setManagedClustersBackupInfo(ctx, veleroBackupTemplate, r.Client)
 		case Credentials:
-			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client, string(UserSecret))
-		case CredentialsHive:
-			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client, string(HiveSecret))
-		case CredentialsCluster:
-			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client, string(ClusterSecret))
+			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client)
 		case Resources:
 			setResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup,
 				backupSchedule.Namespace, r.Client)

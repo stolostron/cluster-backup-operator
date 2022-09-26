@@ -61,7 +61,7 @@ func updateScheduleStatus(
 		"namespace", veleroSchedule.Namespace,
 	)
 
-	for key, value := range veleroScheduleNames {
+	for key, value := range veleroBackupNames {
 		if veleroSchedule.Name == value {
 			// set veleroSchedule in backupSchedule status
 			setVeleroScheduleInStatus(key, veleroSchedule, backupSchedule)
