@@ -574,76 +574,57 @@ func isNewBackupAvailable(
 	// get the latest Velero backup for this resourceType
 	// this backup might be newer than the backup which
 	// was used in the latest Velero restore for this resourceType
-	newVeleroBackupName, newVeleroBackup, err := getVeleroBackupName(
-		ctx,
-		c,
-		restore.Namespace,
-		resourceType,
-		latestBackupStr,
-	)
-	if err != nil {
-		logger.Error(
-			err,
-			"Failed to get new Velero backup for resource type "+string(resourceType),
+	veleroBackups := &veleroapi.BackupList{}
+	if err := c.List(ctx, veleroBackups, client.InNamespace(restore.Namespace)); err == nil {
+
+		newVeleroBackupName, newVeleroBackup, err := getVeleroBackupName(
+			ctx,
+			c,
+			restore.Namespace,
+			resourceType,
+			latestBackupStr,
+			veleroBackups,
 		)
-		return false
-	}
-
-	// find the latest velero restore for this resourceType
-	latestVeleroRestoreName := ""
-	switch resourceType {
-	case Resources:
-		latestVeleroRestoreName = restore.Status.VeleroResourcesRestoreName
-	case Credentials:
-		latestVeleroRestoreName = restore.Status.VeleroCredentialsRestoreName
-	}
-	if latestVeleroRestoreName == "" {
-		logger.Info(
-			fmt.Sprintf(
-				"Failed to find the latest Velero restore name for resource type=%s, restore=%s",
-				string(resourceType),
-				restore.Name,
-			),
-		)
-		return false
-	}
-
-	newVeleroRestoreName := getValidKsRestoreName(restore.Name, newVeleroBackupName)
-	if latestVeleroRestoreName == newVeleroRestoreName {
-		return false
-	}
-
-	latestVeleroRestore := veleroapi.Restore{}
-	err = c.Get(
-		ctx,
-		types.NamespacedName{
-			Name:      latestVeleroRestoreName,
-			Namespace: restore.Namespace,
-		},
-		&latestVeleroRestore,
-	)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return true
+		if err != nil {
+			logger.Error(
+				err,
+				"Failed to get new Velero backup for resource type "+string(resourceType),
+			)
+			return false
 		}
-		logger.Error(
-			err,
-			"Failed to get Velero restore "+latestVeleroRestoreName,
-		)
-		return false
-	}
 
-	// compare the backup name and timestamp of newVeleroBackupName
-	// with the backup used in the latestVeleroRestore
-	if latestVeleroRestore.Spec.BackupName != newVeleroBackupName {
-		latestVeleroBackup := veleroapi.Backup{}
-		err := c.Get(
+		// find the latest velero restore for this resourceType
+		latestVeleroRestoreName := ""
+		switch resourceType {
+		case Resources:
+			latestVeleroRestoreName = restore.Status.VeleroResourcesRestoreName
+		case Credentials:
+			latestVeleroRestoreName = restore.Status.VeleroCredentialsRestoreName
+		}
+		if latestVeleroRestoreName == "" {
+			logger.Info(
+				fmt.Sprintf(
+					"Failed to find the latest Velero restore name for resource type=%s, restore=%s",
+					string(resourceType),
+					restore.Name,
+				),
+			)
+			return false
+		}
+
+		newVeleroRestoreName := getValidKsRestoreName(restore.Name, newVeleroBackupName)
+		if latestVeleroRestoreName == newVeleroRestoreName {
+			return false
+		}
+
+		latestVeleroRestore := veleroapi.Restore{}
+		err = c.Get(
 			ctx,
 			types.NamespacedName{
-				Name:      latestVeleroRestore.Spec.BackupName,
+				Name:      latestVeleroRestoreName,
 				Namespace: restore.Namespace,
 			},
-			&latestVeleroBackup,
+			&latestVeleroRestore,
 		)
 		if err != nil {
 			if errors.IsNotFound(err) {
@@ -651,15 +632,38 @@ func isNewBackupAvailable(
 			}
 			logger.Error(
 				err,
-				"Failed to get Velero backup "+latestVeleroRestore.Spec.BackupName,
+				"Failed to get Velero restore "+latestVeleroRestoreName,
 			)
 			return false
 		}
-		return latestVeleroBackup.Status.StartTimestamp.Before(
-			newVeleroBackup.Status.StartTimestamp,
-		)
-	}
 
+		// compare the backup name and timestamp of newVeleroBackupName
+		// with the backup used in the latestVeleroRestore
+		if latestVeleroRestore.Spec.BackupName != newVeleroBackupName {
+			latestVeleroBackup := veleroapi.Backup{}
+			err := c.Get(
+				ctx,
+				types.NamespacedName{
+					Name:      latestVeleroRestore.Spec.BackupName,
+					Namespace: restore.Namespace,
+				},
+				&latestVeleroBackup,
+			)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					return true
+				}
+				logger.Error(
+					err,
+					"Failed to get Velero backup "+latestVeleroRestore.Spec.BackupName,
+				)
+				return false
+			}
+			return latestVeleroBackup.Status.StartTimestamp.Before(
+				newVeleroBackup.Status.StartTimestamp,
+			)
+		}
+	}
 	return false
 }
 
@@ -722,12 +726,8 @@ func getVeleroBackupName(
 	restoreNamespace string,
 	resourceType ResourceType,
 	backupName string,
+	veleroBackups *veleroapi.BackupList,
 ) (string, *veleroapi.Backup, error) {
-
-	veleroBackups := &veleroapi.BackupList{}
-	if err := c.List(ctx, veleroBackups, client.InNamespace(restoreNamespace)); err != nil {
-		return "", nil, fmt.Errorf("unable to list velero backups: %v", err)
-	}
 
 	if len(veleroBackups.Items) == 0 {
 		return "", nil, fmt.Errorf("no velero backups found")
@@ -736,8 +736,19 @@ func getVeleroBackupName(
 	if backupName == latestBackupStr {
 		// backup name not available, find a proper backup
 		// filter available backups to get only the ones related to this resource type
+
+		searchForBackupType := resourceType
+		if resourceType == CredentialsHive ||
+			resourceType == CredentialsCluster {
+			// for creds hive and cluster backups get the latest Credentials backup
+			// since this version of the controller no longer generates those types
+			// we want to get the related hive and cluster backups based on the latest
+			// controller generated cluster credentials backup - this is for backward compatibility,
+			// when restoring backups which generated 3 backups for credentials
+			searchForBackupType = Credentials
+		}
 		relatedBackups := filterBackups(veleroBackups.Items, func(bkp veleroapi.Backup) bool {
-			return strings.HasPrefix(bkp.Name, veleroBackupNames[resourceType]) &&
+			return strings.HasPrefix(bkp.Name, veleroBackupNames[searchForBackupType]) &&
 				(bkp.Status.Phase == veleroapi.BackupPhaseCompleted ||
 					bkp.Status.Phase == veleroapi.BackupPhasePartiallyFailed)
 		})
@@ -745,7 +756,15 @@ func getVeleroBackupName(
 			return "", nil, fmt.Errorf("no backups found")
 		}
 		sort.Sort(mostRecent(relatedBackups))
-		return relatedBackups[0].Name, &relatedBackups[0], nil
+		// return found backup if the same type as the requested type
+		//or using the orSelector (credential backup)
+		if resourceType == searchForBackupType ||
+			len(relatedBackups[0].Spec.OrLabelSelectors) != 0 {
+			return relatedBackups[0].Name, &relatedBackups[0], nil
+		}
+		// otherwise, this is a hive or cluster credentials backup,
+		// find the most recent based on the credential backup name
+		backupName = relatedBackups[0].Name
 	}
 
 	// get the backup name for this type of resource, based on the requested resource timestamp
@@ -863,94 +882,101 @@ func retrieveRestoreDetails(
 	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, len(restoreKeys))
 	backupsForVeleroRestores := make(map[ResourceType]*veleroapi.Backup, len(restoreKeys))
 
-	for i := range restoreKeys {
-		backupName := latestBackupStr
+	veleroBackups := &veleroapi.BackupList{}
+	if err := c.List(ctx, veleroBackups, client.InNamespace(acmRestore.Namespace)); err == nil {
+		for i := range restoreKeys {
+			backupName := latestBackupStr
 
-		key := restoreKeys[i]
-		switch key {
-		case ManagedClusters:
-			if acmRestore.Spec.VeleroManagedClustersBackupName != nil {
-				backupName = *acmRestore.Spec.VeleroManagedClustersBackupName
+			key := restoreKeys[i]
+			switch key {
+			case ManagedClusters:
+				if acmRestore.Spec.VeleroManagedClustersBackupName != nil {
+					backupName = *acmRestore.Spec.VeleroManagedClustersBackupName
+				}
+			case Credentials, CredentialsHive, CredentialsCluster:
+				if acmRestore.Spec.VeleroCredentialsBackupName != nil {
+					backupName = *acmRestore.Spec.VeleroCredentialsBackupName
+				}
+			case Resources:
+				if acmRestore.Spec.VeleroResourcesBackupName != nil {
+					backupName = *acmRestore.Spec.VeleroResourcesBackupName
+				}
+			case ResourcesGeneric:
+				if acmRestore.Spec.VeleroResourcesBackupName != nil {
+					backupName = *acmRestore.Spec.VeleroResourcesBackupName
+				}
+				if backupName == skipRestoreStr &&
+					acmRestore.Spec.VeleroManagedClustersBackupName != nil {
+					// if resources is set to skip but managed clusters are restored
+					// we still need the generic resources
+					// for the resources with the label value 'cluster-activation'
+					backupName = *acmRestore.Spec.VeleroManagedClustersBackupName
+				}
 			}
-		case Credentials, CredentialsHive, CredentialsCluster:
-			if acmRestore.Spec.VeleroCredentialsBackupName != nil {
-				backupName = *acmRestore.Spec.VeleroCredentialsBackupName
-			}
-		case Resources:
-			if acmRestore.Spec.VeleroResourcesBackupName != nil {
-				backupName = *acmRestore.Spec.VeleroResourcesBackupName
-			}
-		case ResourcesGeneric:
-			if acmRestore.Spec.VeleroResourcesBackupName != nil {
-				backupName = *acmRestore.Spec.VeleroResourcesBackupName
-			}
-			if backupName == skipRestoreStr &&
-				acmRestore.Spec.VeleroManagedClustersBackupName != nil {
-				// if resources is set to skip but managed clusters are restored
-				// we still need the generic resources
-				// for the resources with the label value 'cluster-activation'
-				backupName = *acmRestore.Spec.VeleroManagedClustersBackupName
-			}
-		}
 
-		backupName = strings.ToLower(strings.TrimSpace(backupName))
+			backupName = strings.ToLower(strings.TrimSpace(backupName))
 
-		if backupName == "" {
-			acmRestore.Status.LastMessage = fmt.Sprintf(
-				"Backup name not found for resource type: %s",
-				key,
-			)
-			return veleroRestoresToCreate, backupsForVeleroRestores, fmt.Errorf(
-				"backup name not found",
-			)
-		}
-
-		if backupName == skipRestoreStr {
-			continue
-		}
-
-		veleroRestore := &veleroapi.Restore{}
-		veleroBackupName, veleroBackup, err := getVeleroBackupName(
-			ctx,
-			c,
-			acmRestore.Namespace,
-			key,
-			backupName,
-		)
-		if err != nil {
-			restoreLogger.Info(
-				"backup name not found, skipping restore for",
-				"name", acmRestore.Name,
-				"namespace", acmRestore.Namespace,
-				"type", key,
-			)
-			acmRestore.Status.LastMessage = fmt.Sprintf(
-				"Backup %s Not found for resource type: %s",
-				backupName,
-				key,
-			)
-
-			if key != CredentialsHive && key != CredentialsCluster && key != ResourcesGeneric {
-				// ignore missing hive or cluster key backup files
-				// for the case when the backups were created with an older controller version
-				// or with oadp 1.1 when the OrSelector has being used
-				return veleroRestoresToCreate, backupsForVeleroRestores, err
-			}
-		} else {
-			veleroRestore.Name = getValidKsRestoreName(acmRestore.Name, veleroBackupName)
-
-			veleroRestore.Namespace = acmRestore.Namespace
-			veleroRestore.Spec.BackupName = veleroBackupName
-
-			if err := ctrl.SetControllerReference(acmRestore, veleroRestore, s); err != nil {
+			if backupName == "" {
 				acmRestore.Status.LastMessage = fmt.Sprintf(
-					"Could not set controller reference for resource type: %s",
+					"Backup name not found for resource type: %s",
 					key,
 				)
-				return veleroRestoresToCreate, backupsForVeleroRestores, err
+				return veleroRestoresToCreate, backupsForVeleroRestores, fmt.Errorf(
+					"backup name not found",
+				)
 			}
-			veleroRestoresToCreate[key] = veleroRestore
-			backupsForVeleroRestores[key] = veleroBackup
+
+			if backupName == skipRestoreStr {
+				continue
+			}
+
+			veleroRestore := &veleroapi.Restore{}
+			veleroBackupName, veleroBackup, err := getVeleroBackupName(
+				ctx,
+				c,
+				acmRestore.Namespace,
+				key,
+				backupName,
+				veleroBackups,
+			)
+			if err != nil {
+
+				if key != CredentialsHive && key != CredentialsCluster && key != ResourcesGeneric {
+					// ignore missing hive or cluster key backup files
+					// for the case when the backups were created with an older controller version
+					// or with oadp 1.1 when the OrSelector has being used
+					restoreLogger.Info(
+						"backup name not found, skipping restore for",
+						"name", acmRestore.Name,
+						"namespace", acmRestore.Namespace,
+						"type", key,
+					)
+					acmRestore.Status.LastMessage = fmt.Sprintf(
+						"Backup %s Not found for resource type: %s",
+						backupName,
+						key,
+					)
+
+					return veleroRestoresToCreate, backupsForVeleroRestores, err
+				}
+			} else {
+				veleroRestore.Name = getValidKsRestoreName(acmRestore.Name, veleroBackupName)
+
+				veleroRestore.Namespace = acmRestore.Namespace
+				veleroRestore.Spec.BackupName = veleroBackupName
+				// update existing resources if part of the new backup
+				veleroRestore.Spec.ExistingResourcePolicy = veleroapi.PolicyTypeUpdate
+
+				if err := ctrl.SetControllerReference(acmRestore, veleroRestore, s); err != nil {
+					acmRestore.Status.LastMessage = fmt.Sprintf(
+						"Could not set controller reference for resource type: %s",
+						key,
+					)
+					return veleroRestoresToCreate, backupsForVeleroRestores, err
+				}
+				veleroRestoresToCreate[key] = veleroRestore
+				backupsForVeleroRestores[key] = veleroBackup
+			}
 		}
 	}
 	return veleroRestoresToCreate, backupsForVeleroRestores, nil
