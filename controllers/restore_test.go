@@ -838,6 +838,10 @@ func Test_postRestoreActivation(t *testing.T) {
 						object,
 				},
 				secrets: []corev1.Secret{
+					*createSecret("auto-import-ignore-this-one", "managed1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+						}, nil),
 					*createSecret("auto-import", "local-cluster",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,

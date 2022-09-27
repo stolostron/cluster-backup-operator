@@ -857,8 +857,6 @@ func retrieveRestoreDetails(
 	map[ResourceType]*veleroapi.Backup,
 	error) {
 
-	restoreLogger := log.FromContext(ctx)
-
 	restoreLength := len(veleroBackupNames) - 1 // ignore validation backup
 	if restoreOnlyManagedClusters {
 		restoreLength = 2 // will get only managed clusters and generic resources
@@ -879,6 +877,23 @@ func retrieveRestoreDetails(
 	sort.Slice(restoreKeys, func(i, j int) bool {
 		return restoreKeys[i] > restoreKeys[j]
 	})
+
+	return processRetrieveRestoreDetails(ctx, c, s, acmRestore, restoreKeys)
+
+}
+
+func processRetrieveRestoreDetails(
+	ctx context.Context,
+	c client.Client,
+	s *runtime.Scheme,
+	acmRestore *v1beta1.Restore,
+	restoreKeys []ResourceType,
+) (map[ResourceType]*veleroapi.Restore,
+	map[ResourceType]*veleroapi.Backup,
+	error) {
+
+	restoreLogger := log.FromContext(ctx)
+
 	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, len(restoreKeys))
 	backupsForVeleroRestores := make(map[ResourceType]*veleroapi.Backup, len(restoreKeys))
 
