@@ -291,8 +291,9 @@ func isRestoreRunning(
 	ctx context.Context,
 	c client.Client,
 	backupSchedule *v1beta1.BackupSchedule,
-) (string, error) {
+) string {
 
+	scheduleLogger := log.FromContext(ctx)
 	restoreName := ""
 
 	restoreList := v1beta1.RestoreList{}
@@ -301,11 +302,12 @@ func isRestoreRunning(
 		&restoreList,
 		client.InNamespace(backupSchedule.Namespace),
 	); err != nil {
-		return restoreName, err
+		scheduleLogger.Error(err, "cannot list resource")
+		return restoreName
 	}
 
 	if len(restoreList.Items) == 0 {
-		return restoreName, nil
+		return restoreName
 	}
 
 	for i := range restoreList.Items {
@@ -316,7 +318,7 @@ func isRestoreRunning(
 			break
 		}
 	}
-	return restoreName, nil
+	return restoreName
 }
 
 func createInitialBackupForSchedule(
