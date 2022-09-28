@@ -838,6 +838,10 @@ func Test_postRestoreActivation(t *testing.T) {
 						object,
 				},
 				secrets: []corev1.Secret{
+					*createSecret("auto-import-ignore-this-one", "managed1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+						}, nil),
 					*createSecret("auto-import", "local-cluster",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
@@ -887,11 +891,38 @@ func Test_getVeleroBackupName(t *testing.T) {
 	veleroNamespaceName := "backup-ns"
 	veleroNamespace := *createNamespace(veleroNamespaceName)
 
-	backup := *createBackup("acm-credentials-cluster-schedule-20220922170041", veleroNamespaceName).
+	backup := *createBackup("acm-credentials-schedule-20220922170041", veleroNamespaceName).
 		labels(map[string]string{
 			BackupVeleroLabel:          "aa",
 			BackupScheduleClusterLabel: "abcd",
 		}).
+		phase(veleroapi.BackupPhaseCompleted).
+		errors(0).object
+
+	backupClsNoMatch := *createBackup("acm-credentials-cluster-schedule-20220922170039", veleroNamespaceName).
+		labels(map[string]string{
+			BackupVeleroLabel:          "aa",
+			BackupScheduleClusterLabel: "abcd",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).
+		errors(0).object
+
+	backupClsExactTime := *createBackup("acm-credentials-cluster-schedule-20220922170041", veleroNamespaceName).
+		labels(map[string]string{
+			BackupVeleroLabel:          "aa",
+			BackupScheduleClusterLabel: "abcd",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).
+		errors(0).object
+
+	backupTime, _ := time.Parse(time.RFC3339, "2022-09-22T17:00:15Z")
+
+	backupClsExactWithin30s := *createBackup("acm-credentials-cluster-schedule-202209221745", veleroNamespaceName).
+		labels(map[string]string{
+			BackupVeleroLabel:          "aa",
+			BackupScheduleClusterLabel: "abcd",
+		}).
+		startTimestamp(metav1.NewTime(backupTime)).
 		phase(veleroapi.BackupPhaseCompleted).
 		errors(0).object
 
@@ -944,7 +975,29 @@ func Test_getVeleroBackupName(t *testing.T) {
 			want: "",
 		},
 		{
-			name: "found backup item ",
+			name: "found backup item for credentials",
+			args: args{
+				ctx:              context.Background(),
+				c:                k8sClient1,
+				resourceType:     Credentials,
+				backupName:       latestBackupStr,
+				restoreNamespace: veleroNamespaceName,
+			},
+			want: backup.Name,
+		},
+		{
+			name: "NOT found backup item for credentials hive",
+			args: args{
+				ctx:              context.Background(),
+				c:                k8sClient1,
+				resourceType:     CredentialsHive,
+				backupName:       latestBackupStr,
+				restoreNamespace: veleroNamespaceName,
+			},
+			want: "",
+		},
+		{
+			name: "found backup item for credentials cluster NOT found no exact match on timestamp and not within 30s",
 			args: args{
 				ctx:              context.Background(),
 				c:                k8sClient1,
@@ -952,7 +1005,29 @@ func Test_getVeleroBackupName(t *testing.T) {
 				backupName:       latestBackupStr,
 				restoreNamespace: veleroNamespaceName,
 			},
-			want: backup.Name,
+			want: "",
+		},
+		{
+			name: "found backup item for credentials cluster when exact match on timestamp",
+			args: args{
+				ctx:              context.Background(),
+				c:                k8sClient1,
+				resourceType:     CredentialsCluster,
+				backupName:       latestBackupStr,
+				restoreNamespace: veleroNamespaceName,
+			},
+			want: backupClsExactTime.Name,
+		},
+		{
+			name: "found backup item for credentials cluster when NOT exact match on timestamp but withn 30s",
+			args: args{
+				ctx:              context.Background(),
+				c:                k8sClient1,
+				resourceType:     CredentialsCluster,
+				backupName:       latestBackupStr,
+				restoreNamespace: veleroNamespaceName,
+			},
+			want: backupClsExactWithin30s.Name,
 		},
 	}
 
@@ -964,10 +1039,20 @@ func Test_getVeleroBackupName(t *testing.T) {
 		if index == 2 {
 			k8sClient1.Create(context.Background(), &veleroNamespace)
 			k8sClient1.Create(context.Background(), &backup)
+			k8sClient1.Create(context.Background(), &backupClsNoMatch)
+		}
+		if index == len(tests)-2 {
+			k8sClient1.Create(context.Background(), &backupClsExactTime)
+		}
+		if index == len(tests)-1 {
+			k8sClient1.Create(context.Background(), &backupClsExactWithin30s)
+			k8sClient1.Delete(context.Background(), &backupClsExactTime)
 		}
 		t.Run(tt.name, func(t *testing.T) {
+			veleroBackups := &veleroapi.BackupList{}
+			tt.args.c.List(tt.args.ctx, veleroBackups, client.InNamespace(veleroNamespace.Name))
 			if name, _, _ := getVeleroBackupName(tt.args.ctx, tt.args.c,
-				tt.args.restoreNamespace, tt.args.resourceType, tt.args.backupName); name != tt.want {
+				tt.args.restoreNamespace, tt.args.resourceType, tt.args.backupName, veleroBackups); name != tt.want {
 				t.Errorf("getVeleroBackupName() returns = %v, want %v", name, tt.want)
 			}
 		})

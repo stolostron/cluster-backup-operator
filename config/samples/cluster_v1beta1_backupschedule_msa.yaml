@@ -9,8 +9,8 @@
 apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: BackupSchedule
 metadata:
-  name: schedule-acm
+  name: schedule-acm-msa
 spec:
-  veleroSchedule: 0 */1 * * *
-  veleroTtl: 24h
+  veleroSchedule: 0 */2 * * *
+  veleroTtl: 120h
   useManagedServiceAccount: true

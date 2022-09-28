@@ -37,6 +37,7 @@ Cluster Back up and Restore Operator
 - [Restoring imported managed clusters](#restoring-imported-managed-clusters)
   - [Automatically connecting clusters using ManagedServiceAccount](#automatically-connecting-clusters-using-managedserviceaccount)
   - [Enabling the automatic import feature](#enabling-the-automatic-import-feature)
+  - [ManagedServiceAccount token validity](#managedserviceaccount-token-validity)
   - [Limitations with the automatic import feature](#limitations-with-the-automatic-import-feature)
 - [Backup validation using a Policy](#backup-validation-using-a-policy)
   - [Pod validation](#pod-validation)
@@ -278,10 +279,9 @@ The `backupschedule.cluster.open-cluster-management.io` creates 6 `schedule.vele
 Run `oc get schedules -A | grep acm` to view the list of backup scheduled.
 
 Resources are backed up in 3 separate groups:
-1. credentials backup ( 3 backup files, for hive, ACM and generic backups )
-2. resources backup ( 2 backup files, one for the ACM resources and second for generic resources, labeled with `cluster.open-cluster-management.io/backup`)
-
-3. managed clusters backup, schedule labeled with `cluster.open-cluster-management.io/backup-schedule-type: acm-managed-clusters` ( one backup containing only resources which result in activating the managed cluster connection to the hub where the backup was restored on)
+1. credentials backup - one backup file, storing hive, ACM and user created secrets and configmaps
+2. resources backup - 2 backup files, one for the ACM resources and second for generic resources, labeled with `cluster.open-cluster-management.io/backup`
+3. managed clusters backup, schedule labeled with `cluster.open-cluster-management.io/backup-schedule-type: acm-managed-clusters` - one backup containing only resources which result in activating the managed cluster connection to the hub where the backup was restored on
 
 
 <b>Note</b>:
@@ -435,7 +435,7 @@ spec:
 
 ### View restore events
 
-Use the `oc describe -n <oadp-n> <restore-name>` command to get information about restore events.
+Use the `oc describe Restore.cluster.open-cluster-management.io -n <oadp-n> <restore-name>` command to get information about restore events.
 A sample output is shown below
 
 ```yaml
@@ -507,29 +507,43 @@ When the activation data is next restored on the new hub, the restore controller
 The automatic import using the `ManagedServiceAccount` feature is disabled by default.
 In order to enable the automatic import using the `ManagedServiceAccount` feature:
 1. `ManagedServiceAccount` component must be enabled on the `MultiClusterHub`. Enable the component using the `managedserviceaccount-preview` option under the ` overrides:components` section and set the option to be `enable: true`.
-2. Enabling the `ManagedServiceAccount` component only installs the ManagedServiceAccount CRD. In order to enable the usage of this component with the imported managed clusters post restore operation, you have to enable the `useManagedServiceAccount` spec option on the `BackupSchedule.cluster.open-cluster-management.io` when you create a backup schedule. Set the `useManagedServiceAccount: true` spec option to enable the support. Note that there is another optional property on this resource, `managedServiceAccountTTL` which will be used to set the token validity duration. You can use this property if you want to control how long a token should be valid. If not set, the default value is 2*`veleroTtl` so twice the time a backup expiration time. See an example of enabling the automatic import feature on the `BackupSchedule` resource [with this sample](https://github.com/stolostron/cluster-backup-operator/blob/release-2.6/config/samples/cluster_v1beta1_backupschedule_msa.yaml).
-3. Once step 2 is completed and the `useManagedServiceAccount` is set to `true`, the backup controller will start processing imported managed clusters:
-    - 3.1) For each imported managed clusters, it creates a `ManagedServiceAddon` named `managed-serviceaccount`.
-    - 3.2) For each imported managed clusters, it creates a `ManagedServiceAccount` named `auto-import-account` and sets the token validity as defined in step 2.
-    - 3.3) The `ManagedServiceAccount` resource triggers the creation of a token on the managed cluster which is next pushed back on the hub under a secret named `auto-import-account`, under the managed cluster namespace. This token expiration is set using the `ManagedServiceAccount` token validity option. This secret will be backed up. <br><b>Note:</b> The token is created only if the managed cluster is accessible. If the managed cluster is not accessible at the time the `auto-import-account` ManagedServiceAccount is created, the token will be created at a later time, when the managed cluster becomes available again.
-    - 3.4) For each imported managed clusters, the backup controller creates a `ManifestWork` to push on the managed cluster a `klusterlet` `RoleBinding` for the `ManagedServiceAccount` token.
+2. Enable the automatic import feature. <br>Enabling the `ManagedServiceAccount` component only installs the ManagedServiceAccount CRD. In order to enable the usage of this component with the automatic import feature, you must enable it when creating the `BackupSchedule.cluster.open-cluster-management.io` resource. To enable the automatic import feature, set `useManagedServiceAccount` spec option to `true` on the `BackupSchedule.cluster.open-cluster-management.io` resource. <br> The `managedServiceAccountTTL` spec option is used to set the token validity duration and is set to 2*`veleroTtl` to maximize the change of the token to be valid for all backups. You can change this value if you want to control how long a token should be valid but keep in mind that this could result in producing backups with expired tokens. For more details on how the `managedServiceAccountTTL` is set to maximize the chance of always having a valid token when restoring a backup, [read this section](#managedserviceaccount-token-validity). Here is [an example](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_backupschedule_msa.yaml) of enabling the automatic import feature on the `BackupSchedule` resource. 
+3. Once the `useManagedServiceAccount` is set to `true`, the backup controller will start processing imported managed clusters, for each of them:
+    - 3.1) Creates a `ManagedServiceAddon` named `managed-serviceaccount`.
+    - 3.2) Creates a `ManagedServiceAccount` named `auto-import-account` and sets the token validity as defined in step 2. A pair account `auto-import-account-pair` is generated at the half lifespan of the `auto-import-account` token, to make sure any backups contain a valid import token at any point in time. [Read this section](#managedserviceaccount-token-validity) to understand how this works.
+    - 3.3) The `ManagedServiceAccount` resource triggers the creation of a token on the managed cluster which is next pushed back on the hub under a secret named `auto-import-account`, or `auto-import-account-pair` for the pair account, under the managed cluster namespace. This token expiration is set using the `ManagedServiceAccount` token validity option. This secret will be backed up. <br><b>Note:</b> The token is created only if the managed cluster is accessible. If the managed cluster is not accessible at the time the `auto-import-account` ManagedServiceAccount is created, the token will be created at a later time, when the managed cluster becomes available.
+    - 3.4) For each of the `ManagedServiceAccount` resources, the backup controller creates a `ManifestWork` to setup on the managed cluster a `klusterlet` `RoleBinding` for the `ManagedServiceAccount` token.
 
 <br>
-<b>Note:</b> You can disable the automatic import cluster feature at any time by setting the `useManagedServiceAccount` option to `false` on the `BackupSchedule` resource. As a result, the backup controller will clean up all resources created: `ManagedServiceAddon`, `ManagedServiceAccount` and `ManifestWork`, which in turn will delete the `auto-import-account` token.
+
+<b>Note:</b>
+
+You can disable the automatic import cluster feature at any time by setting the `useManagedServiceAccount` option to `false` on the `BackupSchedule` resource. In this case, the backup controller will remove all created resources: `ManagedServiceAddon`, `ManagedServiceAccount` and `ManifestWork`, which in turn will delete the `auto-import-account` token.
 <br>
+
+### ManagedServiceAccount token validity
+
+A backup can be used by a restore operation any time during the backup TTL ( time to live ), which means the backed up `ManagedServiceAccount` token for an imported managed cluster should be valid for the entire life of any backup containing the token. For this constraint to be fulfilled we have to take into consideration the fact that the token and the backups containing the token are being created at different points in time and the fact that once a backup is produced, the backup can be used until it expires. <br><br>
+The solution for ensuring that any backup, at any point in its lifespan, contains a valid import token is to create for each managed cluster a token with a `tokenTTL` = 2*`veleroTtl` (`veleroTtl` is the backup TTL) and a second pair token created at half lifespan of the first token, with the same TTL, `tokenTTL` = 2*`veleroTtl` . This is what the operator implements to ensure that any backup, at any point in time, contains at least one valid token : either the initial token or the paired one. You can provide a custom TTL value for the tokens using the `BackupSchedule` `managedServiceAccountTTL` spec property but this might result in having backups with expired tokens if this custom TTL does not cover the backups lifespan.<br><br>
+Following is an explanation of the procedure used to make sure any backup contains a valid token for a managed cluster at any point in the backup life:<br>
+Let `tokenTTL` be the managed cluster account token TTL,  and `veleroTtl` be the backup TTL. <br>
+We start with the scenario where the backup `B0` and the token are generated at the same time `T0`. The backup will be available as defined by the `veleroTtl`, which means the `tokenTTL` must equal or exceed the `veleroTtl` value, for the token to be valid as long as backup `B0` exists. <br>
+At the same time, the backup schedule keeps creating backups based on the `veleroSchedule` cron schedule, and these backups will also store the token. So the token must be valid during these backups life as well.
+<br>If `tokenTTL` = `veleroTtl`, and a backup `B1` is created at  `T1` = `T0` + `veleroTtl` - t time, then `B1` will contain an invalid token if restored any time after `T0` + `veleroTtl` ( the backup is still available at that time but the stored token had expired ). For this case, setting `tokenTTL` = 2*`veleroTtl`, would keep the token valid for the entire duration of the `B1` backup. Having the `tokenTTL` = 2*`veleroTtl` is still not sufficient though; it solves the token validity for the `B1` backup, but is still not addressing backups created at `T2` = `T0` + 2*`veleroTtl` - t time. We can set the `tokenTTL` = 4*`veleroTtl` and address the backups created at `T2` but then we have the same problem to solve for `T3` = `T0` + 3*`veleroTtl` - t; it is obvious that as we increase the `tokenTTL` to cover more backups, we still get the next `Tn` = `T0` + n*`veleroTtl` - t which is not being covered. This is because one token cannot be valid for all backups lifespan unless the token never expires, which is not an acceptable proposition.
+<br> To address the `Tn` = `T0` + n*`veleroTtl` - t conundrum, we keep `tokenTTL` = 2*`veleroTtl` and  create a second token to pair with the initial one. This pair token will be created at the half lifespan of the initial token expirarion, and have the same validity as the initial one : `tokenTTL` = 2*`veleroTtl`. With this pair token, you can verify that any backup, at any point in time, contains at least one valid token : either the initial token or the paired one.
 
 
 ### Limitations with the automatic import feature 
 
 There are a set of limitations with the above approach which could result in the managed cluster not being auto imported when moving to a new hub. These are the situations that can result in the managed cluster not being imported:
 1. The backup controller is regularly looking for imported managed clusters and it creates the [ManagedServiceAccount](https://github.com/open-cluster-management-io/managed-serviceaccount) resource under the managed cluster namespace as soon as such managed cluster is found. As described in step 3.3 above, this should trigger a token creation on the managed cluster. If the managed cluster is not accessible at the time this operation is executed though, for example the managed cluster is hibernating or is down, the `ManagedServiceAccount` is unable to create this token. As a result, if a hub backup is run at this time, the backup will not contain a token to auto import the managed cluster.
-2. The backup controller looks for imported managed clusters  and requeues this lookup every 30 minutes to pick up any new clusters. If managed clusters are imported just after a lookup has completed, they will not be processed until the next call, so any backups executed during this time interval, before the new lookup is processed, will not contain an auto-import token for these newly imported managed clusters.
-3. If the `auto-import-account` secret token is valid and is backed up but the restore operation is run at a time when the token available with the backup has already expired, the auto import operation fails. In this case, the `restore.cluster.open-cluster-management.io` resource status should report the invalid token issue for each managed cluster in this situation.
+2. The backup controller looks for imported managed clusters  and requeues this lookup to pick up any new clusters. If managed clusters are imported just after a lookup has completed, they will not be processed until the next call, so any backups executed during this time interval, before the new lookup is processed, will not contain an auto-import token for these newly imported managed clusters.
+3. If the `auto-import-account` secret token is valid and is backed up but the restore operation is run at a time when the token available with the backup has already expired, the auto import operation fails. In this case, the `restore.cluster.open-cluster-management.io` resource status should report the invalid token issue for each managed cluster in this situation. Note that with the paired token approach and the token ttl set to be twice the backup ttl, this scenario is not expected to occur.
 4. If the token is valid when the restore operation is executed but the managed cluster is not accessible at the time the restore is executed, the auto import operation fails and will not retry to reconnect. In this case the failure should be reported by the auto-import component logs.
 
 ## Backup validation using a Policy
 
-The Cluster Back up and Restore Operator [chart](https://github.com/stolostron/cluster-backup-chart) installs the [backup-restore-enabled](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. 
+The Cluster Back up and Restore Operator [helm chart](https://github.com/stolostron/cluster-backup-chart) installs the [backup-restore-enabled](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. 
 
 The Policy has a set of templates which check for the following constraints and informs when any of them are violated. 
 

@@ -53,7 +53,6 @@ const (
 	addon_label           = "open-cluster-management.io/addon-name-work"
 	role_name             = "klusterlet"
 	msa_api               = "authentication.open-cluster-management.io/v1alpha1"
-	msa_kind              = "ManagedServiceAccount"
 
 	manifest_work_name = "addon-" + msa_addon + "-import"
 	defaultTTL         = 720
@@ -89,13 +88,13 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 	logger := log.FromContext(ctx)
 
 	// check if user has checked the UseManagedServiceAccount option
-	isMSAEnabled := backupSchedule.Spec.UseManagedServiceAccount
+	useMSA := backupSchedule.Spec.UseManagedServiceAccount
 
 	// check if ManagedServiceAccount CRD exists,
 	// meaning the managedservice account option is enabled on MCH
 	msaKind := schema.GroupKind{
-		Group: "authentication.open-cluster-management.io",
-		Kind:  "ManagedServiceAccount",
+		Group: msa_group,
+		Kind:  msa_kind,
 	}
 	msaMapping, err := r.RESTMapper.RESTMapping(msaKind, "")
 	var dr dynamic.NamespaceableResourceInterface
@@ -103,7 +102,7 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		logger.Info("ManagedServiceAccounts is enabled, generate MSA accounts if needed")
 		dr = r.DynamicClient.Resource(msaMapping.Resource)
 		if dr != nil {
-			if isMSAEnabled {
+			if useMSA {
 				prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule)
 			} else {
 				cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping)
@@ -115,7 +114,7 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 	updateAISecrets(ctx, r.Client)
 	updateMetalSecrets(ctx, r.Client)
 
-	if isMSAEnabled && err == nil && dr != nil {
+	if useMSA && err == nil && dr != nil {
 		// managedserviceaccount is enabled, add backup labels
 		updateMSAResources(ctx, r.Client, dr)
 	}

@@ -135,8 +135,6 @@ var (
 	// mapping ResourceTypes to Velero schedule names
 	veleroScheduleNames = map[ResourceType]string{
 		Credentials:        "acm-credentials-schedule",
-		CredentialsHive:    "acm-credentials-hive-schedule",
-		CredentialsCluster: "acm-credentials-cluster-schedule",
 		Resources:          "acm-resources-schedule",
 		ResourcesGeneric:   "acm-resources-generic-schedule",
 		ManagedClusters:    "acm-managed-clusters-schedule",
@@ -263,43 +261,46 @@ func setCredsBackupInfo(
 	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
 	c client.Client,
-	credentialType string,
 ) {
-
-	var labelKey string
-	switch credentialType {
-	case string(HiveSecret):
-		labelKey = backupCredsHiveLabel
-	case string(ClusterSecret):
-		labelKey = backupCredsClusterLabel
-	default:
-		labelKey = backupCredsUserLabel
-	}
-
 	var clusterResource bool = false
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 
-	for i := range backupCredsResources { // acm secrets
+	for i := range backupCredsResources { // secrets and configmaps
 		veleroBackupTemplate.IncludedResources = appendUnique(
 			veleroBackupTemplate.IncludedResources,
 			backupCredsResources[i],
 		)
 	}
 
-	if veleroBackupTemplate.LabelSelector == nil {
-		labels := &v1.LabelSelector{}
-		veleroBackupTemplate.LabelSelector = labels
+	OrSelectors := []*v1.LabelSelector{}
 
-		requirements := make([]v1.LabelSelectorRequirement, 0)
-		veleroBackupTemplate.LabelSelector.MatchExpressions = requirements
-	}
-	req := &v1.LabelSelectorRequirement{}
-	req.Key = labelKey
-	req.Operator = "Exists"
-	veleroBackupTemplate.LabelSelector.MatchExpressions = append(
-		veleroBackupTemplate.LabelSelector.MatchExpressions,
-		*req,
+	// hive label selector
+	reqHive := &v1.LabelSelectorRequirement{}
+	reqHive.Key = backupCredsHiveLabel
+	reqHive.Operator = "Exists"
+	OrSelectors = append(
+		OrSelectors,
+		&v1.LabelSelector{MatchExpressions: []v1.LabelSelectorRequirement{*reqHive}},
 	)
+	// generic backup selector
+	reqUser := &v1.LabelSelectorRequirement{}
+	reqUser.Key = backupCredsUserLabel
+	reqUser.Operator = "Exists"
+	OrSelectors = append(
+		OrSelectors,
+		&v1.LabelSelector{MatchExpressions: []v1.LabelSelectorRequirement{*reqUser}},
+	)
+
+	// cluster backup selector
+	reqCls := &v1.LabelSelectorRequirement{}
+	reqCls.Key = backupCredsClusterLabel
+	reqCls.Operator = "Exists"
+	OrSelectors = append(
+		OrSelectors,
+		&v1.LabelSelector{MatchExpressions: []v1.LabelSelectorRequirement{*reqCls}},
+	)
+
+	veleroBackupTemplate.OrLabelSelectors = OrSelectors
 }
 
 // set managed clusters backup info
