@@ -265,11 +265,7 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	}
 
 	// don't create schedule if an active restore exists
-	restoreName, err := isRestoreRunning(ctx, r.Client, backupSchedule)
-	if err != nil {
-		return ctrl.Result{}, validConfiguration, err
-	}
-	if restoreName != "" {
+	if restoreName := isRestoreRunning(ctx, r.Client, backupSchedule); restoreName != "" {
 		msg := "Restore resource " + restoreName + " is currently active, " +
 			"verify that any active restores are removed."
 		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
@@ -349,9 +345,9 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 	sort.Sort(SortResourceType(scheduleKeys))
 	// swap the last two items to put the resources last, after the resourcesGeneric
 	swapF := reflect.Swapper(scheduleKeys)
-	if len(scheduleKeys) > 5 {
+	if len(scheduleKeys) > 3 {
 		// swap resources and resourcesGeneric, so resources is the last backup to be created
-		swapF(4, 5)
+		swapF(2, 3)
 	}
 
 	// add any missing labels and create any resources required by the backup and restore process
