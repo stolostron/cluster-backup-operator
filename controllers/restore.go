@@ -508,14 +508,14 @@ func isOtherResourcesRunning(
 		ctx,
 		&restoreList,
 		client.InNamespace(restore.Namespace),
-	); err != nil {
-		return "", err
-	}
-	otherRestoreName := isOtherRestoresRunning(restoreList.Items, restore.Name)
-	if otherRestoreName != "" {
-		msg := "This resource is ignored because Restore resource " + otherRestoreName + " is currently active, " +
-			"before creating another resource verify that any active resources are removed."
-		return msg, nil
+	); err == nil {
+
+		otherRestoreName := isOtherRestoresRunning(restoreList.Items, restore.Name)
+		if otherRestoreName != "" {
+			msg := "This resource is ignored because Restore resource " + otherRestoreName + " is currently active, " +
+				"before creating another resource verify that any active resources are removed."
+			return msg, nil
+		}
 	}
 
 	return "", nil
