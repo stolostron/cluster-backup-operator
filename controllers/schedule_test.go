@@ -398,7 +398,7 @@ func Test_isRestoreRunning(t *testing.T) {
 		}
 
 		t.Run(tt.name, func(t *testing.T) {
-			if got, _ := isRestoreRunning(tt.args.ctx, tt.args.c,
+			if got := isRestoreRunning(tt.args.ctx, tt.args.c,
 				tt.args.backupSchedule); got != tt.want {
 				t.Errorf("isRestoreRunning() = %v, want %v", got, tt.want)
 			}
