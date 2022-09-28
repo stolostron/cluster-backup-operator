@@ -24,8 +24,11 @@ import (
 	"time"
 
 	"github.com/stolostron/cluster-backup-operator/api/v1beta1"
+	backupv1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/version"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -337,8 +340,10 @@ func Test_isRestoreRunning(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
-	k8sClient1.Create(context.Background(), &veleroNamespace)
+	scheme2 := runtime.NewScheme()
+	veleroapi.AddToScheme(scheme2)
+	corev1.AddToScheme(scheme2)
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme2})
 
 	rhacmBackupSchedule := *createBackupSchedule("backup-sch-to-error-restore", veleroNamespaceName).
 		object
@@ -363,6 +368,15 @@ func Test_isRestoreRunning(t *testing.T) {
 		args args
 		want string
 	}{
+		{
+			name: "velero schema not found",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				backupSchedule: &rhacmBackupSchedule,
+			},
+			want: "",
+		},
 		{
 			name: "velero has no restores",
 			args: args{
@@ -394,6 +408,10 @@ func Test_isRestoreRunning(t *testing.T) {
 	for index, tt := range tests {
 
 		if index == 1 {
+			k8sClient1.Create(context.Background(), &veleroNamespace)
+		}
+		if index == 2 {
+			backupv1beta1.AddToScheme(scheme2)
 			k8sClient1.Create(tt.args.ctx, &rhacmRestore)
 		}
 
@@ -403,11 +421,8 @@ func Test_isRestoreRunning(t *testing.T) {
 				t.Errorf("isRestoreRunning() = %v, want %v", got, tt.want)
 			}
 		})
-		if index == len(tests)-1 {
-			// clean up
-			testEnv.Stop()
-		}
 	}
+	testEnv.Stop()
 }
 
 func Test_createInitialBackupForSchedule(t *testing.T) {
@@ -432,7 +447,10 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	scheme1 := runtime.NewScheme()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	corev1.AddToScheme(scheme1)
+	veleroapi.AddToScheme(scheme1)
 
 	type args struct {
 		ctx            context.Context
