@@ -22,12 +22,10 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	clusterv1 "open-cluster-management.io/api/cluster/v1"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -207,19 +205,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	} else {
 		setRestorePhase(&veleroRestoreList, restore)
-
-		if (restore.Status.Phase == v1beta1.RestorePhaseFinished ||
-			restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors) &&
-			*restore.Spec.VeleroManagedClustersBackupName != skipRestoreStr {
-
-			// get all managed clusters
-			managedClusters := &clusterv1.ManagedClusterList{}
-			if err := r.Client.List(ctx, managedClusters, &client.ListOptions{}); err == nil {
-				// this cluster was activated so try to auto import pending managed clusters
-				postRestoreActivation(ctx, r.Client, getMSASecrets(ctx, r.Client, ""),
-					managedClusters.Items, time.Now().In(time.UTC))
-			}
-		}
+		executePostRestoreTasks(ctx, r.Client, restore)
 	}
 
 	if restore.Spec.SyncRestoreWithNewBackups && !isValidSync {
@@ -408,7 +394,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 	}
 
 	// loop through resourceTypes to create a Velero restore per type
-	veleroRestoresToCreate, backupsForVeleroRestores, err := retrieveRestoreDetails(
+	veleroRestoresToCreate, err := retrieveRestoreDetails(
 		ctx,
 		r.Client,
 		r.Scheme,
@@ -424,8 +410,6 @@ func (r *RestoreReconciler) initVeleroRestores(
 		return nil
 	}
 
-	// clean up resources only if requested
-	r.prepareForRestore(ctx, *restore, veleroRestoresToCreate, backupsForVeleroRestores)
 	newVeleroRestoreCreated := false
 
 	// now create the restore resources and start the actual restore
@@ -513,82 +497,4 @@ func (r *RestoreReconciler) initVeleroRestores(
 		restore.Status.LastMessage = fmt.Sprintf(noopMsg, restore.Name)
 	}
 	return nil
-}
-
-// before restore clean up resources if required
-func (r *RestoreReconciler) prepareForRestore(
-	ctx context.Context,
-	acmRestore v1beta1.Restore,
-	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
-	backupsForVeleroRestores map[ResourceType]*veleroapi.Backup,
-) {
-
-	if acmRestore.Spec.CleanupBeforeRestore != v1beta1.CleanupTypeNone {
-
-		deletePolicy := metav1.DeletePropagationForeground
-		delOptions := metav1.DeleteOptions{
-			PropagationPolicy: &deletePolicy,
-		}
-
-		reconcileArgs := DynamicStruct{
-			dc:     r.DiscoveryClient,
-			dyn:    r.DynamicClient,
-			mapper: r.RESTMapper,
-		}
-
-		restoreOptions := RestoreOptions{
-			dynamicArgs:   reconcileArgs,
-			cleanupType:   acmRestore.Spec.CleanupBeforeRestore,
-			deleteOptions: delOptions,
-		}
-
-		for key := range veleroRestoresToCreate {
-
-			veleroRestore := veleroapi.Restore{}
-			err := r.Get(
-				ctx,
-				types.NamespacedName{
-					Name:      veleroRestoresToCreate[key].Name,
-					Namespace: veleroRestoresToCreate[key].Namespace,
-				},
-				&veleroRestore,
-			)
-			if err == nil {
-				// restore with this name already exists
-				// so ignore the cleanup because the restore won't be created afterwards
-				continue
-			}
-
-			additionalLabel := ""
-			if key == ManagedClusters && veleroRestoresToCreate[ResourcesGeneric] == nil &&
-				!acmRestore.Spec.SyncRestoreWithNewBackups {
-				// process here generic resources with an activation label
-				// since generic resources are not restored
-				additionalLabel = "cluster.open-cluster-management.io/backup in (cluster-activation)"
-				r.prepareRestoreForBackup(
-					ctx,
-					&acmRestore,
-					restoreOptions,
-					ResourcesGeneric,
-					backupsForVeleroRestores[key],
-					additionalLabel,
-				)
-			}
-
-			if key == ManagedClusters && veleroRestoresToCreate[Resources] != nil {
-				// managed clusters restore are being processed with resources
-				// so ignore this call here
-				continue
-			}
-
-			r.prepareRestoreForBackup(
-				ctx,
-				&acmRestore,
-				restoreOptions,
-				key,
-				backupsForVeleroRestores[key],
-				additionalLabel,
-			)
-		}
-	}
 }
