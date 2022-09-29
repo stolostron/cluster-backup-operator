@@ -882,6 +882,82 @@ func Test_postRestoreActivation(t *testing.T) {
 
 }
 
+func Test_executePostRestoreTasks(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	cfg, _ := testEnv.Start()
+	scheme1 := runtime.NewScheme()
+	v1beta1.AddToScheme(scheme1)
+	clusterv1.AddToScheme(scheme1)
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	acmRestoreFinished := *createACMRestore("restore", "ns").
+		phase(v1beta1.RestorePhaseFinished).
+		veleroManagedClustersBackupName(latestBackupStr).
+		object
+	acmRestoreFinishedSkipRestore := *createACMRestore("restore", "ns").
+		phase(v1beta1.RestorePhaseFinished).
+		veleroManagedClustersBackupName(skipRestoreStr).
+		object
+	acmRestoreNotFinished := *createACMRestore("restore", "ns").
+		phase(v1beta1.RestorePhaseRunning).
+		object
+
+	type args struct {
+		ctx     context.Context
+		c       client.Client
+		restore v1beta1.Restore
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "restore finished, and velero latest, process",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				restore: acmRestoreFinished,
+			},
+			want: true,
+		},
+		{
+			name: "restore finished, and velero skip, no processing",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				restore: acmRestoreFinishedSkipRestore,
+			},
+			want: false,
+		},
+		{
+			name: "restore not finished, no processing",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				restore: acmRestoreNotFinished,
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := executePostRestoreTasks(tt.args.ctx, tt.args.c,
+				&tt.args.restore); got != tt.want {
+				t.Errorf("postRestoreActivation() returns = %v, want %v", got, tt.want)
+			}
+		})
+
+	}
+	testEnv.Stop()
+}
+
 func Test_getVeleroBackupName(t *testing.T) {
 
 	testEnv := &envtest.Environment{
@@ -1460,7 +1536,7 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 
 	for index, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, _, got := retrieveRestoreDetails(tt.args.ctx, tt.args.c,
+			if _, got := retrieveRestoreDetails(tt.args.ctx, tt.args.c,
 				tt.args.s, tt.args.restore, tt.args.restoreOnlyManagedClusters); (got == nil) != tt.want {
 				t.Errorf("retrieveRestoreDetails() returns = %v, want %v", got == nil, tt.want)
 			}
