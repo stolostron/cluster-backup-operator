@@ -24,6 +24,7 @@ import (
 	"github.com/pkg/errors"
 
 	v1 "k8s.io/api/core/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/discovery"
@@ -458,18 +459,14 @@ func (r *RestoreReconciler) initVeleroRestores(
 		}
 		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
 		if err != nil {
-			restoreLogger.Error(
-				err,
+			restoreLogger.Info(
 				"unable to create Velero restore for restore",
 				"namespace", veleroRestoresToCreate[key].Namespace,
 				"name", veleroRestoresToCreate[key].Name,
 			)
-			r.Recorder.Event(
-				restore,
-				v1.EventTypeNormal,
-				"Velero restore already exists:",
-				veleroRestoresToCreate[key].Name,
-			)
+			if k8serr.IsAlreadyExists(err) && key == Credentials {
+				restore.Status.VeleroCredentialsRestoreName = veleroRestoresToCreate[key].Name
+			}
 		} else {
 			newVeleroRestoreCreated = true
 			r.Recorder.Event(
