@@ -32,7 +32,6 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
@@ -267,116 +266,45 @@ func deleteDynamicResource(
 	return true, errMsg
 }
 
+// execute any tasks after restore is done
+func executePostRestoreTasks(
+	ctx context.Context,
+	c client.Client,
+	acmRestore *v1beta1.Restore,
+) bool {
+
+	processed := false
+
+	if acmRestore.Status.Phase == v1beta1.RestorePhaseFinished ||
+		acmRestore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors ||
+		acmRestore.Status.Phase == v1beta1.RestorePhaseEnabled {
+		// clean up delta resources, restored resources not created by the latest restore
+		cleanupDeltaResources(ctx, acmRestore)
+	}
+
+	if (acmRestore.Status.Phase == v1beta1.RestorePhaseFinished ||
+		acmRestore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors) &&
+		*acmRestore.Spec.VeleroManagedClustersBackupName != skipRestoreStr {
+
+		// get all managed clusters and run the auto import for imported clusters
+		managedClusters := &clusterv1.ManagedClusterList{}
+		if err := c.List(ctx, managedClusters, &client.ListOptions{}); err == nil {
+			processed = true
+			// this cluster was activated so try to auto import pending managed clusters
+			postRestoreActivation(ctx, c, getMSASecrets(ctx, c, ""),
+				managedClusters.Items, time.Now().In(time.UTC))
+		}
+	}
+	return processed
+}
+
 // clean up resources for the restored backup resources
-func (r *RestoreReconciler) prepareRestoreForBackup(
+func cleanupDeltaResources(
 	ctx context.Context,
 	acmRestore *v1beta1.Restore,
-	restoreOptions RestoreOptions,
-	restoreType ResourceType,
-	veleroBackup *veleroapi.Backup,
-	additionalLabels string,
 ) {
 	logger := log.FromContext(ctx)
-
-	logger.Info("enter prepareForRestoreResources for " + string(restoreType))
-
-	r.Recorder.Event(
-		acmRestore,
-		corev1.EventTypeNormal,
-		"Prepare to restore:",
-		"Cleaning up resources for backup "+veleroBackup.Name,
-	)
-
-	labelSelector := ""
-	if restoreOptions.cleanupType == v1beta1.CleanupTypeRestored ||
-		restoreType == ResourcesGeneric {
-		// delete each resource from included resources, if it has a velero annotation
-		// meaning that the resource was created by another restore
-		labelSelector = "velero.io/backup-name,"
-	}
-	switch restoreType {
-	case Resources:
-		labelSelector = labelSelector + "!" + policyRootLabel
-	case ResourcesGeneric:
-		labelSelector = labelSelector + backupCredsClusterLabel
-	case Credentials:
-		labelSelector = labelSelector + backupCredsUserLabel +
-			"," + backupCredsHiveLabel +
-			"," + backupCredsClusterLabel
-	}
-
-	if additionalLabels != "" {
-		labelSelector = labelSelector + ", " + additionalLabels
-	}
-	labelSelector = strings.TrimPrefix(labelSelector, ",")
-	labelSelector = strings.TrimSuffix(labelSelector, ",")
-
-	var resources []string
-	if restoreType != ResourcesGeneric {
-		resources = veleroBackup.Spec.IncludedResources
-
-		if restoreType == Resources {
-			// include managed cluster resources, they need to be cleaned up even if the managed clusters are not restored now
-			for i := range backupManagedClusterResources {
-				resources = appendUnique(
-					resources,
-					backupManagedClusterResources[i],
-				)
-			}
-		}
-	} else {
-		// for generic resources get all CRDs and exclude the ones in the veleroBackup.Spec.ExcludedResources
-		resources, _ = getGenericCRDFromAPIGroups(ctx, restoreOptions.dynamicArgs.dc, veleroBackup)
-	}
-
-	for i := range resources {
-
-		kind, groupName := getResourceDetails(resources[i])
-
-		if kind == "clusterimageset" || kind == "hiveconfig" {
-			// ignore clusterimagesets and hiveconfig
-			continue
-		}
-
-		if kind == "clusterdeployment" || kind == "machinepool" {
-			// old backups have a short version for these resource
-			groupName = "hive.openshift.io"
-		}
-
-		groupKind := schema.GroupKind{
-			Group: groupName,
-			Kind:  kind,
-		}
-		mapping, err := restoreOptions.dynamicArgs.mapper.RESTMapping(groupKind, "")
-		if err != nil {
-			logger.Info(fmt.Sprintf("Failed to get dynamic mapper for group=%s, error : %s",
-				groupKind, err.Error()))
-			continue
-		}
-		var dr = restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource)
-		if dr != nil {
-			var listOptions = v1.ListOptions{}
-			if labelSelector != "" {
-				listOptions = v1.ListOptions{LabelSelector: labelSelector}
-			}
-
-			dynamiclist, err := dr.List(ctx, listOptions)
-			if err == nil {
-				// get all items and delete them
-				for i := range dynamiclist.Items {
-					deleteDynamicResource(
-						ctx,
-						mapping,
-						dr,
-						dynamiclist.Items[i],
-						restoreOptions.deleteOptions,
-						veleroBackup.Spec.ExcludedNamespaces,
-					)
-				}
-			}
-		}
-	}
-	logger.Info("exit prepareForRestoreResources for " + string(restoreType))
+	logger.Info("enter cleanupDeltaResources ")
 }
 
 // activate managed clusters by creating auto-import-secret
@@ -508,14 +436,14 @@ func isOtherResourcesRunning(
 		ctx,
 		&restoreList,
 		client.InNamespace(restore.Namespace),
-	); err != nil {
-		return "", err
-	}
-	otherRestoreName := isOtherRestoresRunning(restoreList.Items, restore.Name)
-	if otherRestoreName != "" {
-		msg := "This resource is ignored because Restore resource " + otherRestoreName + " is currently active, " +
-			"before creating another resource verify that any active resources are removed."
-		return msg, nil
+	); err == nil {
+
+		otherRestoreName := isOtherRestoresRunning(restoreList.Items, restore.Name)
+		if otherRestoreName != "" {
+			msg := "This resource is ignored because Restore resource " + otherRestoreName + " is currently active, " +
+				"before creating another resource verify that any active resources are removed."
+			return msg, nil
+		}
 	}
 
 	return "", nil
@@ -854,7 +782,6 @@ func retrieveRestoreDetails(
 	acmRestore *v1beta1.Restore,
 	restoreOnlyManagedClusters bool,
 ) (map[ResourceType]*veleroapi.Restore,
-	map[ResourceType]*veleroapi.Backup,
 	error) {
 
 	restoreLength := len(veleroBackupNames) - 1 // ignore validation backup
@@ -889,13 +816,11 @@ func processRetrieveRestoreDetails(
 	acmRestore *v1beta1.Restore,
 	restoreKeys []ResourceType,
 ) (map[ResourceType]*veleroapi.Restore,
-	map[ResourceType]*veleroapi.Backup,
 	error) {
 
 	restoreLogger := log.FromContext(ctx)
 
 	veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore, len(restoreKeys))
-	backupsForVeleroRestores := make(map[ResourceType]*veleroapi.Backup, len(restoreKeys))
 
 	veleroBackups := &veleroapi.BackupList{}
 	if err := c.List(ctx, veleroBackups, client.InNamespace(acmRestore.Namespace)); err == nil {
@@ -936,7 +861,7 @@ func processRetrieveRestoreDetails(
 					"Backup name not found for resource type: %s",
 					key,
 				)
-				return veleroRestoresToCreate, backupsForVeleroRestores, fmt.Errorf(
+				return veleroRestoresToCreate, fmt.Errorf(
 					"backup name not found",
 				)
 			}
@@ -946,7 +871,7 @@ func processRetrieveRestoreDetails(
 			}
 
 			veleroRestore := &veleroapi.Restore{}
-			veleroBackupName, veleroBackup, err := getVeleroBackupName(
+			veleroBackupName, _, err := getVeleroBackupName(
 				ctx,
 				c,
 				acmRestore.Namespace,
@@ -972,7 +897,7 @@ func processRetrieveRestoreDetails(
 						key,
 					)
 
-					return veleroRestoresToCreate, backupsForVeleroRestores, err
+					return veleroRestoresToCreate, err
 				}
 			} else {
 				veleroRestore.Name = getValidKsRestoreName(acmRestore.Name, veleroBackupName)
@@ -987,12 +912,11 @@ func processRetrieveRestoreDetails(
 						"Could not set controller reference for resource type: %s",
 						key,
 					)
-					return veleroRestoresToCreate, backupsForVeleroRestores, err
+					return veleroRestoresToCreate, err
 				}
 				veleroRestoresToCreate[key] = veleroRestore
-				backupsForVeleroRestores[key] = veleroBackup
 			}
 		}
 	}
-	return veleroRestoresToCreate, backupsForVeleroRestores, nil
+	return veleroRestoresToCreate, nil
 }

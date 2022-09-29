@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
@@ -881,6 +882,82 @@ func Test_postRestoreActivation(t *testing.T) {
 
 }
 
+func Test_executePostRestoreTasks(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	cfg, _ := testEnv.Start()
+	scheme1 := runtime.NewScheme()
+	v1beta1.AddToScheme(scheme1)
+	clusterv1.AddToScheme(scheme1)
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	acmRestoreFinished := *createACMRestore("restore", "ns").
+		phase(v1beta1.RestorePhaseFinished).
+		veleroManagedClustersBackupName(latestBackupStr).
+		object
+	acmRestoreFinishedSkipRestore := *createACMRestore("restore", "ns").
+		phase(v1beta1.RestorePhaseFinished).
+		veleroManagedClustersBackupName(skipRestoreStr).
+		object
+	acmRestoreNotFinished := *createACMRestore("restore", "ns").
+		phase(v1beta1.RestorePhaseRunning).
+		object
+
+	type args struct {
+		ctx     context.Context
+		c       client.Client
+		restore v1beta1.Restore
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "restore finished, and velero latest, process",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				restore: acmRestoreFinished,
+			},
+			want: true,
+		},
+		{
+			name: "restore finished, and velero skip, no processing",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				restore: acmRestoreFinishedSkipRestore,
+			},
+			want: false,
+		},
+		{
+			name: "restore not finished, no processing",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				restore: acmRestoreNotFinished,
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := executePostRestoreTasks(tt.args.ctx, tt.args.c,
+				&tt.args.restore); got != tt.want {
+				t.Errorf("postRestoreActivation() returns = %v, want %v", got, tt.want)
+			}
+		})
+
+	}
+	testEnv.Stop()
+}
+
 func Test_getVeleroBackupName(t *testing.T) {
 
 	testEnv := &envtest.Environment{
@@ -1071,7 +1148,8 @@ func Test_isNewBackupAvailable(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	scheme1 := runtime.NewScheme()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
 
 	skipRestore := "skip"
 	latestBackup := "latest"
@@ -1212,8 +1290,9 @@ func Test_isNewBackupAvailable(t *testing.T) {
 	for index, tt := range tests {
 
 		if index == 1 {
-			v1beta1.AddToScheme(scheme.Scheme)
-			veleroapi.AddToScheme(scheme.Scheme)
+			corev1.AddToScheme(scheme1)
+			v1beta1.AddToScheme(scheme1)
+			veleroapi.AddToScheme(scheme1)
 		}
 		if index == 2 {
 			k8sClient1.Create(tt.args.ctx, &veleroNamespace)
@@ -1222,7 +1301,7 @@ func Test_isNewBackupAvailable(t *testing.T) {
 		}
 		if index == len(tests)-1 {
 			// create restore
-			k8sClient1.Create(context.Background(), &restoreCredNewBackup)
+			k8sClient1.Create(tt.args.ctx, &restoreCredNewBackup)
 		}
 		t.Run(tt.name, func(t *testing.T) {
 			if got := isNewBackupAvailable(tt.args.ctx, tt.args.c,
@@ -1230,11 +1309,8 @@ func Test_isNewBackupAvailable(t *testing.T) {
 				t.Errorf("isNewBackupAvailable() returns = %v, want %v, %v", got, tt.want, tt.args.resourceType)
 			}
 		})
-		if index == len(tests)-1 {
-			// clean up
-			testEnv.Stop()
-		}
 	}
+	testEnv.Stop()
 
 }
 
@@ -1460,7 +1536,7 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 
 	for index, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, _, got := retrieveRestoreDetails(tt.args.ctx, tt.args.c,
+			if _, got := retrieveRestoreDetails(tt.args.ctx, tt.args.c,
 				tt.args.s, tt.args.restore, tt.args.restoreOnlyManagedClusters); (got == nil) != tt.want {
 				t.Errorf("retrieveRestoreDetails() returns = %v, want %v", got == nil, tt.want)
 			}
@@ -1470,5 +1546,150 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 			testEnv.Stop()
 		}
 	}
+
+}
+
+func Test_isOtherResourcesRunning(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	veleroNamespaceName := "default"
+	restoreName := "restore-backup-name"
+	backupName := "backup-name"
+
+	restore := *createACMRestore(restoreName, veleroNamespaceName).
+		syncRestoreWithNewBackups(true).
+		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+		cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+		veleroManagedClustersBackupName(latestBackupStr).
+		veleroCredentialsBackupName(skipRestoreStr).
+		veleroResourcesBackupName(backupName).object
+
+	restoreOther := *createACMRestore("other-"+restoreName, veleroNamespaceName).
+		syncRestoreWithNewBackups(true).
+		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+		cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+		veleroManagedClustersBackupName(latestBackupStr).
+		veleroCredentialsBackupName(skipRestoreStr).
+		veleroResourcesBackupName(backupName).object
+
+	backupCollision := *createBackupSchedule(backupName+"-collission", veleroNamespaceName).
+		phase(v1beta1.SchedulePhaseBackupCollision).
+		object
+	backupFailed := *createBackupSchedule(backupName+"-failed", veleroNamespaceName).
+		object
+
+	cfg, _ := testEnv.Start()
+	scheme1 := runtime.NewScheme()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	type args struct {
+		ctx     context.Context
+		c       client.Client
+		restore *v1beta1.Restore
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "isOtherResourcesRunning has error, CRD not installed",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				restore: &restore,
+			},
+			want: "",
+		},
+		{
+			name: "isOtherResourcesRunning has no errors, no backups found",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				restore: &restore,
+			},
+			want: "",
+		},
+		{
+			name: "isOtherResourcesRunning has no errors, backup found but in collission state",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				restore: &restore,
+			},
+			want: "",
+		},
+		{
+			name: "isOtherResourcesRunning has errors, backup found and not in collision state",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				restore: &restore,
+			},
+			want: "This resource is ignored because BackupSchedule resource backup-name-failed is currently active, before creating another resource verify that any active resources are removed.",
+		},
+		{
+			name: "isOtherResourcesRunning has no errors, no another restore is running",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				restore: &restore,
+			},
+			want: "",
+		},
+		{
+			name: "isOtherResourcesRunning has errors, another restore is running",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				restore: &restore,
+			},
+			want: "This resource is ignored because Restore resource other-restore-backup-name is currently active, before creating another resource verify that any active resources are removed.",
+		},
+	}
+
+	for index, tt := range tests {
+
+		if index == 1 {
+			//create CRD
+			v1beta1.AddToScheme(scheme1)
+			if err := k8sClient1.Create(tt.args.ctx, &restore, &client.CreateOptions{}); err != nil {
+				panic(err.Error())
+			}
+
+		}
+		if index == 2 {
+			//create backup in collission state
+			k8sClient1.Create(tt.args.ctx, &backupCollision, &client.CreateOptions{})
+			k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+				Name:      backupCollision.Name,
+				Namespace: backupCollision.Namespace}, &backupCollision)
+			backupCollision.Status.Phase = v1beta1.SchedulePhaseBackupCollision
+			k8sClient1.Status().Update(tt.args.ctx, &backupCollision)
+
+		}
+		if index == 3 {
+			k8sClient1.Create(tt.args.ctx, &backupFailed)
+		}
+		if index == len(tests)-2 {
+			k8sClient1.Delete(tt.args.ctx, &backupFailed)
+		}
+		if index == len(tests)-1 {
+			k8sClient1.Create(tt.args.ctx, &restoreOther)
+		}
+
+		t.Run(tt.name, func(t *testing.T) {
+			if got, _ := isOtherResourcesRunning(tt.args.ctx, tt.args.c,
+				tt.args.restore); got != tt.want {
+				t.Errorf("isOtherResourcesRunning() returns = %v, want %v", got, tt.want)
+			}
+		})
+	}
+	// clean up
+	testEnv.Stop()
 
 }
