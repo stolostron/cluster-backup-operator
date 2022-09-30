@@ -68,10 +68,10 @@ func cleanupDeltaResources(
 	cleanupOnRestore bool,
 	restoreOptions RestoreOptions,
 ) {
-	if cleanupOnRestore ||
-		acmRestore.Status.Phase == v1beta1.RestorePhaseFinished ||
-		acmRestore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors ||
-		acmRestore.Status.Phase == v1beta1.RestorePhaseEnabled {
+	restoreCompleted := (acmRestore.Status.Phase == v1beta1.RestorePhaseFinished ||
+		acmRestore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors)
+
+	if cleanupOnRestore || restoreCompleted {
 		// clean up delta resources, restored resources not created by the latest restore
 		logger := log.FromContext(ctx)
 		logger.Info("enter cleanupDeltaResources ")
