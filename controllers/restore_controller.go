@@ -61,7 +61,6 @@ type DynamicStruct struct {
 }
 
 type RestoreOptions struct {
-	cleanupType   v1beta1.CleanupType
 	deleteOptions metav1.DeleteOptions
 	dynamicArgs   DynamicStruct
 }
@@ -205,7 +204,24 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			)
 		}
 	} else {
-		setRestorePhase(&veleroRestoreList, restore)
+		_, cleanupOnRestore := setRestorePhase(&veleroRestoreList, restore)
+
+		deletePolicy := metav1.DeletePropagationForeground
+		delOptions := metav1.DeleteOptions{
+			PropagationPolicy: &deletePolicy,
+		}
+
+		reconcileArgs := DynamicStruct{
+			dc:     r.DiscoveryClient,
+			dyn:    r.DynamicClient,
+			mapper: r.RESTMapper,
+		}
+
+		restoreOptions := RestoreOptions{
+			dynamicArgs:   reconcileArgs,
+			deleteOptions: delOptions,
+		}
+		cleanupDeltaResources(ctx, r.Client, restore, cleanupOnRestore, restoreOptions)
 		executePostRestoreTasks(ctx, r.Client, restore)
 	}
 
@@ -247,22 +263,25 @@ func sendResult(restore *v1beta1.Restore, err error) (ctrl.Result, error) {
 func setRestorePhase(
 	veleroRestoreList *veleroapi.RestoreList,
 	restore *v1beta1.Restore,
-) v1beta1.RestorePhase {
+) (v1beta1.RestorePhase, bool) {
+
+	// returns true if the status has changed and resource delta need to be cleaned up
+	cleanupOnEnabled := false
 
 	if restore.Status.Phase == v1beta1.RestorePhaseEnabled &&
 		restore.Spec.SyncRestoreWithNewBackups {
-		return restore.Status.Phase
+		return restore.Status.Phase, cleanupOnEnabled
 	}
 
 	if veleroRestoreList == nil || len(veleroRestoreList.Items) == 0 {
 		if isSkipAllRestores(restore) {
 			restore.Status.Phase = v1beta1.RestorePhaseFinished
 			restore.Status.LastMessage = fmt.Sprintf(noopMsg, restore.Name)
-			return restore.Status.Phase
+			return restore.Status.Phase, cleanupOnEnabled
 		}
 		restore.Status.Phase = v1beta1.RestorePhaseStarted
 		restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
-		return restore.Status.Phase
+		return restore.Status.Phase, cleanupOnEnabled
 	}
 
 	// get all velero restores and check status for each
@@ -276,7 +295,7 @@ func setRestorePhase(
 				"Unknown status for Velero restore %s",
 				veleroRestore.Name,
 			)
-			return restore.Status.Phase
+			return restore.Status.Phase, cleanupOnEnabled
 		}
 		if veleroRestore.Status.Phase == veleroapi.RestorePhaseNew {
 			restore.Status.Phase = v1beta1.RestorePhaseStarted
@@ -284,7 +303,7 @@ func setRestorePhase(
 				"Velero restore %s has started",
 				veleroRestore.Name,
 			)
-			return restore.Status.Phase
+			return restore.Status.Phase, cleanupOnEnabled
 		}
 		if veleroRestore.Status.Phase == veleroapi.RestorePhaseInProgress {
 			restore.Status.Phase = v1beta1.RestorePhaseRunning
@@ -292,7 +311,7 @@ func setRestorePhase(
 				"Velero restore %s is currently executing",
 				veleroRestore.Name,
 			)
-			return restore.Status.Phase
+			return restore.Status.Phase, cleanupOnEnabled
 		}
 		if veleroRestore.Status.Phase == veleroapi.RestorePhaseFailed ||
 			veleroRestore.Status.Phase == veleroapi.RestorePhaseFailedValidation {
@@ -301,7 +320,7 @@ func setRestorePhase(
 				"Velero restore %s has failed validation or encountered errors",
 				veleroRestore.Name,
 			)
-			return restore.Status.Phase
+			return restore.Status.Phase, cleanupOnEnabled
 		}
 		if veleroRestore.Status.Phase == veleroapi.RestorePhasePartiallyFailed {
 			partiallyFailed = true
@@ -316,6 +335,9 @@ func setRestorePhase(
 		restore.Status.Phase = v1beta1.RestorePhaseEnabled
 		restore.Status.LastMessage = "Velero restores have run to completion, " +
 			"restore will continue to sync with new backups"
+
+		// delta cleanup needed now
+		cleanupOnEnabled = true
 	} else if partiallyFailed {
 		restore.Status.Phase = v1beta1.RestorePhaseFinishedWithErrors
 		restore.Status.LastMessage = "Velero restores have run to completion but encountered 1+ errors"
@@ -324,7 +346,7 @@ func setRestorePhase(
 		restore.Status.LastMessage = "All Velero restores have run successfully"
 	}
 
-	return restore.Status.Phase
+	return restore.Status.Phase, cleanupOnEnabled
 }
 
 // SetupWithManager sets up the controller with the Manager.
