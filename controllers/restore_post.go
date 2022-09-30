@@ -245,6 +245,7 @@ func cleanupDeltaForManagedClusters(
 	}
 }
 
+// get the backup used by this restore
 func getBackupInfoFromRestore(
 	ctx context.Context,
 	c client.Client,

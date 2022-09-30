@@ -668,3 +668,115 @@ func Test_cleanupDeltaResources(t *testing.T) {
 	testEnv.Stop()
 
 }
+
+func Test_getBackupInfoFromRestore(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	namespace := "ns"
+	backupName := "passive-sync-2-acm-credentials-schedule-20220929220007"
+	validRestoreName := "restore-acm-passive-sync-2-acm-credentials-schedule-2022092922123"
+	validRestoreNameWBackup := "restore-acm-" + backupName
+
+	scheme1 := runtime.NewScheme()
+	veleroapi.AddToScheme(scheme1)
+	corev1.AddToScheme(scheme1)
+
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	type args struct {
+		ctx         context.Context
+		c           client.Client
+		restoreName string
+		namespace   string
+	}
+	tests := []struct {
+		name           string
+		args           args
+		wantBackupName string
+	}{
+		{
+			name: "restore name is empty",
+			args: args{
+				ctx:         context.Background(),
+				c:           k8sClient1,
+				restoreName: "",
+				namespace:   namespace,
+			},
+			wantBackupName: "",
+		},
+		{
+			name: "restore name not found",
+			args: args{
+				ctx:         context.Background(),
+				c:           k8sClient1,
+				restoreName: "some-restore",
+				namespace:   namespace,
+			},
+			wantBackupName: "",
+		},
+		{
+			name: "restore name not found",
+			args: args{
+				ctx:         context.Background(),
+				c:           k8sClient1,
+				restoreName: "some-restore",
+				namespace:   namespace,
+			},
+			wantBackupName: "",
+		},
+		{
+			name: "restore found but no backup",
+			args: args{
+				ctx:         context.Background(),
+				c:           k8sClient1,
+				restoreName: validRestoreName,
+				namespace:   namespace,
+			},
+			wantBackupName: "",
+		},
+		{
+			name: "restore found with backup",
+			args: args{
+				ctx:         context.Background(),
+				c:           k8sClient1,
+				restoreName: validRestoreNameWBackup,
+				namespace:   namespace,
+			},
+			wantBackupName: backupName,
+		},
+	}
+
+	for index, tt := range tests {
+		if index == 0 {
+			ns1 := *createNamespace(namespace)
+			veleroRestore := *createRestore(validRestoreName,
+				namespace).object
+
+			veleroRestoreWBackup := *createRestore(validRestoreNameWBackup,
+				namespace).
+				backupName(backupName).
+				object
+
+			veleroBackup := *createBackup(backupName, namespace).object
+
+			k8sClient1.Create(tt.args.ctx, &ns1)
+			k8sClient1.Create(tt.args.ctx, &veleroRestore)
+			k8sClient1.Create(tt.args.ctx, &veleroRestoreWBackup)
+			k8sClient1.Create(tt.args.ctx, &veleroBackup)
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			if got, _ := getBackupInfoFromRestore(tt.args.ctx, tt.args.c,
+				tt.args.restoreName, tt.args.namespace); got != tt.wantBackupName {
+				t.Errorf("getBackupInfoFromRestore() returns = %v, want %v", got, tt.wantBackupName)
+			}
+		})
+
+	}
+	testEnv.Stop()
+
+}
