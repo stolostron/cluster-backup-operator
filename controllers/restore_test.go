@@ -387,6 +387,23 @@ func Test_setRestorePhase(t *testing.T) {
 			wantCleanupOnEnabled: false,
 		},
 		{
+			name: "Restore phase is RestorePhaseEnabled and sync option, return wantCleanupOnEnabled is false",
+			args: args{
+				restore: createACMRestore("Restore", "veleroNamespace").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 15}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).
+					phase(v1beta1.RestorePhaseEnabled).object,
+
+				restoreList: nil,
+			},
+			wantPhase:            v1beta1.RestorePhaseEnabled,
+			wantCleanupOnEnabled: false,
+		},
+		{
 			name: "Restore list empty and NOT skip all, return finished RestorePhaseEnabled and wantCleanupOnEnabled is TRUE",
 			args: args{
 				restore: createACMRestore("Restore", "veleroNamespace").
