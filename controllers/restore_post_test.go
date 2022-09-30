@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -773,6 +774,77 @@ func Test_getBackupInfoFromRestore(t *testing.T) {
 			if got, _ := getBackupInfoFromRestore(tt.args.ctx, tt.args.c,
 				tt.args.restoreName, tt.args.namespace); got != tt.wantBackupName {
 				t.Errorf("getBackupInfoFromRestore() returns = %v, want %v", got, tt.wantBackupName)
+			}
+		})
+
+	}
+	testEnv.Stop()
+
+}
+
+func Test_deleteSecretsWithLabelSelector(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	namespace := "ns"
+
+	scheme1 := runtime.NewScheme()
+	veleroapi.AddToScheme(scheme1)
+	corev1.AddToScheme(scheme1)
+
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	type args struct {
+		ctx         context.Context
+		c           client.Client
+		backupName  string
+		otherLabels []labels.Requirement
+	}
+	tests := []struct {
+		name string
+		args args
+		want []string
+	}{
+		{
+			name: "keep secrets with no backup or backup matching",
+			args: args{
+				ctx:         context.Background(),
+				c:           k8sClient1,
+				backupName:  "name1",
+				otherLabels: []labels.Requirement{},
+			},
+			want: []string{"aws-creds-delete"},
+		},
+	}
+
+	for index, tt := range tests {
+		if index == 0 {
+			ns1 := *createNamespace(namespace)
+
+			secretKeep := *createSecret("aws-creds-keep", namespace, map[string]string{
+				"velero.io/backup-name": "name1",
+			}, nil, nil) // matches backup label
+			secretKeep2 := *createSecret("aws-creds-keep2", namespace, map[string]string{
+				"velero.io/backup-name-dummy": "name2",
+			}, nil, nil) // no backup label
+			secretDelete := *createSecret("aws-creds-delete", namespace, map[string]string{
+				"velero.io/backup-name": "name2",
+			}, nil, nil)
+
+			k8sClient1.Create(tt.args.ctx, &ns1)
+			k8sClient1.Create(tt.args.ctx, &secretKeep)
+			k8sClient1.Create(tt.args.ctx, &secretKeep2)
+			k8sClient1.Create(tt.args.ctx, &secretDelete)
+
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			if got := deleteSecretsWithLabelSelector(tt.args.ctx, tt.args.c,
+				tt.args.backupName, tt.args.otherLabels); len(got) != len(tt.want) {
+				t.Errorf("deleteSecretsWithLabelSelector() returns = %v, want %v", got, tt.want)
 			}
 		})
 
