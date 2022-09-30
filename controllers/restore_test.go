@@ -347,9 +347,10 @@ func Test_setRestorePhase(t *testing.T) {
 		restoreList *veleroapi.RestoreList
 	}
 	tests := []struct {
-		name string
-		args args
-		want v1beta1.RestorePhase
+		name                 string
+		args                 args
+		wantPhase            v1beta1.RestorePhase
+		wantCleanupOnEnabled bool
 	}{
 		{
 			name: "Restore list empty and skip all, return finished phase",
@@ -365,7 +366,8 @@ func Test_setRestorePhase(t *testing.T) {
 
 				restoreList: nil,
 			},
-			want: v1beta1.RestorePhaseFinished,
+			wantPhase:            v1beta1.RestorePhaseFinished,
+			wantCleanupOnEnabled: false,
 		},
 		{
 			name: "Restore list empty and NOT skip all, return finished RestorePhaseStarted",
@@ -381,13 +383,50 @@ func Test_setRestorePhase(t *testing.T) {
 
 				restoreList: nil,
 			},
-			want: v1beta1.RestorePhaseStarted,
+			wantPhase:            v1beta1.RestorePhaseStarted,
+			wantCleanupOnEnabled: false,
+		},
+		{
+			name: "Restore list empty and NOT skip all, return finished RestorePhaseEnabled and wantCleanupOnEnabled is TRUE",
+			args: args{
+				restore: createACMRestore("Restore", "veleroNamespace").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 15}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).
+					phase(v1beta1.RestorePhaseRunning).object,
+
+				restoreList: &veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						veleroapi.Restore{
+							TypeMeta: metav1.TypeMeta{
+								APIVersion: "velero/v1",
+								Kind:       "Restore",
+							},
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "restore",
+								Namespace: "veleroNamespace",
+							},
+							Spec: veleroapi.RestoreSpec{
+								BackupName: "backup",
+							},
+							Status: veleroapi.RestoreStatus{
+								Phase: veleroapi.RestorePhaseCompleted,
+							},
+						},
+					},
+				},
+			},
+			wantPhase:            v1beta1.RestorePhaseEnabled,
+			wantCleanupOnEnabled: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if phase, _ := setRestorePhase(tt.args.restoreList, tt.args.restore); phase != tt.want {
-				t.Errorf("setRestorePhase() = %v, want %v", phase, tt.want)
+			if phase, cleanupOnEnabled := setRestorePhase(tt.args.restoreList, tt.args.restore); phase != tt.wantPhase || cleanupOnEnabled != tt.wantCleanupOnEnabled {
+				t.Errorf("setRestorePhase() phase = %v, want %v, cleanupOnEnabled = %v, want %v", phase, tt.wantPhase, cleanupOnEnabled, tt.wantCleanupOnEnabled)
 			}
 		})
 	}

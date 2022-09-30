@@ -67,15 +67,19 @@ func cleanupDeltaResources(
 	acmRestore *v1beta1.Restore,
 	cleanupOnRestore bool,
 	restoreOptions RestoreOptions,
-) {
+) bool {
+	processed := false
+
 	restoreCompleted := (acmRestore.Status.Phase == v1beta1.RestorePhaseFinished ||
 		acmRestore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors)
 
 	if cleanupOnRestore || restoreCompleted {
 		// clean up delta resources, restored resources not created by the latest restore
+		processed = true
 		logger := log.FromContext(ctx)
 		logger.Info("enter cleanupDeltaResources ")
 	}
+	return processed
 }
 
 // activate managed clusters by creating auto-import-secret
