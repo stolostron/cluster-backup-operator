@@ -278,7 +278,7 @@ func Test_updateMSAToken(t *testing.T) {
 				tt.args.namespaceName,
 				tt.args.name,
 				tt.args.validity); got != tt.want {
-				t.Errorf("deleteDynamicResource() returns = %v, want %v", got, tt.want)
+				t.Errorf("updateMSAToken() returns = %v, want %v", got, tt.want)
 			}
 		})
 	}
