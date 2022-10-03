@@ -214,7 +214,7 @@ func deleteSecretsWithLabelSelector(
 			}
 		}
 	}
-	// delete config maps, they are aso backed up here
+	// delete config maps, they are also backed up here
 	configmaps := &corev1.ConfigMapList{}
 	if err := c.List(ctx, configmaps, &client.ListOptions{LabelSelector: labelSelector}); err == nil {
 		for s := range configmaps.Items {

@@ -54,7 +54,7 @@ func createSecret(name string, ns string,
 
 }
 
-func createConfiMap(name string, ns string,
+func createConfigMap(name string, ns string,
 	labels map[string]string) *corev1.ConfigMap {
 	cmap := &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{

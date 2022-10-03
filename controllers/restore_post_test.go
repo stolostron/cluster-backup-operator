@@ -834,7 +834,7 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 			secretDelete := *createSecret("aws-creds-delete", namespace, map[string]string{
 				"velero.io/backup-name": "name2",
 			}, nil, nil)
-			configMapDelete := *createConfiMap("aws-cmap-delete", namespace, map[string]string{
+			configMapDelete := *createConfigMap("aws-cmap-delete", namespace, map[string]string{
 				"velero.io/backup-name": "name2",
 			})
 
