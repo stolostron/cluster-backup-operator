@@ -176,15 +176,13 @@ func deleteSecretsForBackupType(
 	if err := c.List(ctx, veleroBackups, client.InNamespace(relatedVeleroBackup.Namespace),
 		&client.ListOptions{LabelSelector: backupSelector}); err == nil {
 
-		if hiveBackupName, _, _ := getVeleroBackupName(ctx, c, relatedVeleroBackup.Namespace,
+		if backupName, _, _ := getVeleroBackupName(ctx, c, relatedVeleroBackup.Namespace,
 			backupType,
 			relatedVeleroBackup.Name,
-			veleroBackups); hiveBackupName != "" {
-
-			deleteSecretsWithLabelSelector(ctx, c, hiveBackupName, secretsSelector)
+			veleroBackups); backupName != "" {
+			deleteSecretsWithLabelSelector(ctx, c, backupName, secretsSelector)
 		}
 	}
-
 }
 
 // delete all secrets matching the label selectors
@@ -193,10 +191,9 @@ func deleteSecretsWithLabelSelector(
 	c client.Client,
 	backupName string,
 	otherLabels []labels.Requirement,
-) []string {
+) {
 	logger := log.FromContext(ctx)
 
-	secretNames := []string{}
 	veleroRestoreLabelExists, _ := labels.NewRequirement("velero.io/backup-name",
 		selection.Exists, []string{})
 	veleroRestoreLabel, _ := labels.NewRequirement("velero.io/backup-name",
@@ -205,19 +202,18 @@ func deleteSecretsWithLabelSelector(
 	labelSelector = labelSelector.Add(*veleroRestoreLabelExists)
 	labelSelector = labelSelector.Add(*veleroRestoreLabel)
 
-	labelSelector.Add(otherLabels...)
+	labelSelector = labelSelector.Add(otherLabels...)
+
 	secrets := &corev1.SecretList{}
 	if err := c.List(ctx, secrets, &client.ListOptions{LabelSelector: labelSelector}); err == nil {
 		for s := range secrets.Items {
 			secret := secrets.Items[s]
-			secretNames = append(secretNames, secret.Name)
 			logger.Info("deleting secret " + secret.Name)
 			if err := c.Delete(ctx, &secret, &client.DeleteOptions{}); err != nil {
 				logger.Error(err, "failed to delete secret")
 			}
 		}
 	}
-	return secretNames
 }
 
 func cleanupDeltaForResources(

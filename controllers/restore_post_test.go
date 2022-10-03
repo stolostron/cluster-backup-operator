@@ -32,6 +32,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -807,7 +809,6 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want []string
 	}{
 		{
 			name: "keep secrets with no backup or backup matching",
@@ -817,7 +818,6 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 				backupName:  "name1",
 				otherLabels: []labels.Requirement{},
 			},
-			want: []string{"aws-creds-delete"},
 		},
 	}
 
@@ -842,9 +842,241 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 
 		}
 		t.Run(tt.name, func(t *testing.T) {
-			if got := deleteSecretsWithLabelSelector(tt.args.ctx, tt.args.c,
-				tt.args.backupName, tt.args.otherLabels); len(got) != len(tt.want) {
-				t.Errorf("deleteSecretsWithLabelSelector() returns = %v, want %v", got, tt.want)
+			deleteSecretsWithLabelSelector(tt.args.ctx, tt.args.c,
+				tt.args.backupName, tt.args.otherLabels)
+
+			secret := corev1.Secret{}
+			if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+				Name: "aws-creds-delete", Namespace: namespace}, &secret); err == nil {
+				t.Errorf("deleteSecretsWithLabelSelector() aws-creds-delete should not be found, it was deleted !")
+			}
+		})
+
+	}
+	testEnv.Stop()
+
+}
+
+func Test_deleteSecretsForBackupType(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	namespace := "ns"
+
+	scheme1 := runtime.NewScheme()
+	veleroapi.AddToScheme(scheme1)
+	corev1.AddToScheme(scheme1)
+
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	ns1 := *createNamespace(namespace)
+
+	timeNow, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
+	rightNow := v1.NewTime(timeNow)
+	tenHourAgo := rightNow.Add(-10 * time.Hour)
+	aFewSecondsAgo := rightNow.Add(-2 * time.Second)
+
+	currentTime := rightNow.Format("20060102150405")
+	tenHourAgoTime := tenHourAgo.Format("20060102150405")
+	aFewSecondsAgoTime := aFewSecondsAgo.Format("20060102150405")
+
+	secretKeepCloseToCredsBackup := *createSecret("secret-keep-close-to-creds-backup", namespace, map[string]string{
+		backupCredsHiveLabel:    "hive",
+		"velero.io/backup-name": "acm-credentials-hive-schedule-" + aFewSecondsAgoTime,
+	}, nil, nil) // matches backup label from hive backup and it has the hive backup; keep it
+
+	secretKeepIgnoredCloseToCredsBackup := *createSecret("secret-keep-ignored-close-to-creds-backup", namespace, map[string]string{
+		"velero.io/backup-name": "acm-credentials-hive-schedule-" + aFewSecondsAgoTime,
+	}, nil, nil) // matches backup label from hive backup and it DOES NOT have the hive backup; keep it, ignore it
+
+	secretKeep2 := *createSecret("aws-creds-keep2", namespace, map[string]string{
+		"velero.io/backup-name-dummy": "name2",
+	}, nil, nil) // no backup label
+
+	deleteSecretFromOldBackup := *createSecret("delete-secret-from-old-backup", namespace, map[string]string{
+		backupCredsHiveLabel:    "hive",
+		"velero.io/backup-name": "acm-credentials-hive-schedule-" + tenHourAgoTime,
+	}, nil, nil) // from the old backup, delete
+
+	ignoreSecretFromOldBackup := *createSecret("ignore-secret-from-old-backup", namespace, map[string]string{
+		"velero.io/backup-name": "acm-credentials-hive-schedule-" + tenHourAgoTime,
+	}, nil, nil) // from the old backup, ignore since it doesn't have the hive label
+
+	secretDelete := *createSecret("creds-delete", namespace, map[string]string{
+		backupCredsHiveLabel:    "hive",
+		"velero.io/backup-name": "name2", // doesn't match the CloseToCredsBackup and it has the hive label
+	}, nil, nil)
+
+	keepSecretNoHiveLabel := *createSecret("keep-secret-no-hive-label", namespace, map[string]string{
+		"velero.io/backup-name": "name2", // doesn't match the CloseToCredsBackup but it DOES NOT have the hive label, ignore it
+	}, nil, nil)
+
+	ctx := context.Background()
+	k8sClient1.Create(ctx, &ns1)
+	// keep secrets
+	k8sClient1.Create(ctx, &secretKeepCloseToCredsBackup)
+	k8sClient1.Create(ctx, &secretKeepIgnoredCloseToCredsBackup)
+	k8sClient1.Create(ctx, &secretKeep2)
+	k8sClient1.Create(ctx, &keepSecretNoHiveLabel)
+	k8sClient1.Create(ctx, &ignoreSecretFromOldBackup)
+	// delete secrets
+	k8sClient1.Create(ctx, &deleteSecretFromOldBackup)
+	k8sClient1.Create(ctx, &secretDelete)
+
+	relatedCredentialsBackup := *createBackup("acm-credentials-schedule-"+currentTime, namespace).
+		labels(map[string]string{BackupScheduleTypeLabel: string(Credentials),
+			BackupScheduleNameLabel: "acm-credentials-hive-schedule-" + currentTime}).
+		phase(veleroapi.BackupPhaseCompleted).
+		startTimestamp(rightNow).
+		object
+
+	k8sClient1.Create(ctx, &relatedCredentialsBackup)
+
+	hiveCredsLabel, _ := labels.NewRequirement(backupCredsHiveLabel,
+		selection.Exists, []string{})
+
+	// no matching backups so non secrets should be deleted
+	secretsToBeDeleted := []string{
+		deleteSecretFromOldBackup.Name,
+		secretDelete.Name,
+	}
+	secretsToKeep := []string{
+		secretKeepCloseToCredsBackup.Name,
+		secretKeepIgnoredCloseToCredsBackup.Name,
+		secretKeep2.Name,
+		keepSecretNoHiveLabel.Name,
+		ignoreSecretFromOldBackup.Name,
+	}
+
+	type args struct {
+		ctx                 context.Context
+		c                   client.Client
+		backupType          ResourceType
+		relatedVeleroBackup veleroapi.Backup
+		otherLabels         []labels.Requirement
+	}
+	tests := []struct {
+		name string
+		args args
+	}{
+
+		{
+			name: "keep secrets with no backup or backup matching",
+			args: args{
+				ctx:                 context.Background(),
+				c:                   k8sClient1,
+				backupType:          CredentialsHive,
+				relatedVeleroBackup: relatedCredentialsBackup,
+				otherLabels:         []labels.Requirement{*hiveCredsLabel},
+			},
+		},
+		{
+			name: "keep secrets with no backup or backup matching, added an old backup",
+			args: args{
+				ctx:                 context.Background(),
+				c:                   k8sClient1,
+				backupType:          CredentialsHive,
+				relatedVeleroBackup: relatedCredentialsBackup,
+				otherLabels:         []labels.Requirement{*hiveCredsLabel},
+			},
+		},
+		{
+			name: "keep secrets with no backup or backup matching, added a matching backup and an old backup",
+			args: args{
+				ctx:                 context.Background(),
+				c:                   k8sClient1,
+				backupType:          CredentialsHive,
+				relatedVeleroBackup: relatedCredentialsBackup,
+				otherLabels:         []labels.Requirement{*hiveCredsLabel},
+			},
+		},
+	}
+
+	for index, tt := range tests {
+
+		if index == 1 {
+			hiveOldBackup := *createBackup("acm-credentials-hive-schedule-"+tenHourAgoTime, namespace).
+				labels(map[string]string{BackupScheduleTypeLabel: string(CredentialsHive),
+					BackupScheduleNameLabel: "acm-credentials-hive-schedule-" + tenHourAgoTime}).
+				phase(veleroapi.BackupPhaseCompleted).
+				startTimestamp(v1.NewTime(tenHourAgo)).
+				object
+
+			k8sClient1.Create(ctx, &hiveOldBackup)
+
+		}
+
+		if index == 2 {
+			hiveCloseToCredsBackup := *createBackup("acm-credentials-hive-schedule-"+aFewSecondsAgoTime, namespace).
+				labels(map[string]string{BackupScheduleTypeLabel: string(CredentialsHive),
+					BackupScheduleNameLabel: "acm-credentials-hive-schedule-" + aFewSecondsAgoTime}).
+				phase(veleroapi.BackupPhaseCompleted).
+				startTimestamp(v1.NewTime(aFewSecondsAgo)).
+				object
+
+			k8sClient1.Create(ctx, &hiveCloseToCredsBackup)
+
+		}
+
+		t.Run(tt.name, func(t *testing.T) {
+			deleteSecretsForBackupType(tt.args.ctx, tt.args.c,
+				tt.args.backupType, tt.args.relatedVeleroBackup, tt.args.otherLabels)
+
+			if index == 0 {
+				// no matching backups so non secrets should be deleted
+				secret := corev1.Secret{}
+				if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+					Name: deleteSecretFromOldBackup.Name, Namespace: namespace}, &secret); err != nil {
+					t.Errorf("deleteSecretsForBackupType() deleteSecretFromOldBackup should be found, there was no hive backup matching the related backup  !")
+				}
+			}
+
+			if index == 1 {
+				// no matching backups so non secrets should be deleted
+				for i := range secretsToBeDeleted {
+					secret := corev1.Secret{}
+					if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+						Name: secretsToBeDeleted[i], Namespace: namespace}, &secret); err != nil {
+						t.Errorf("deleteSecretsForBackupType() index=%v, secret %s should be found",
+							index, secretsToBeDeleted[i])
+					}
+
+				}
+
+				for i := range secretsToKeep {
+					secret := corev1.Secret{}
+					if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+						Name: secretsToKeep[i], Namespace: namespace}, &secret); err != nil {
+						t.Errorf("deleteSecretsForBackupType() index=%v, %s should be found",
+							index, secretsToKeep[i])
+					}
+				}
+			}
+
+			if index == 2 {
+				for i := range secretsToBeDeleted {
+					secret := corev1.Secret{}
+					if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+						Name: secretsToBeDeleted[i], Namespace: namespace}, &secret); err == nil {
+						t.Errorf("deleteSecretsForBackupType() index=%v, secret %s should NOT be found",
+							index, secretsToBeDeleted[i])
+					}
+
+				}
+
+				for i := range secretsToKeep {
+					secret := corev1.Secret{}
+					if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+						Name: secretsToKeep[i], Namespace: namespace}, &secret); err != nil {
+						t.Errorf("deleteSecretsForBackupType() index=%v, %s should be found",
+							index, secretsToKeep[i])
+					}
+
+				}
 			}
 		})
 
