@@ -103,6 +103,11 @@ func createBackup(name string, ns string) *BackupHelper {
 	}
 }
 
+func (b *BackupHelper) orLabelSelectors(selectors []*metav1.LabelSelector) *BackupHelper {
+	b.object.Spec.OrLabelSelectors = selectors
+	return b
+}
+
 func (b *BackupHelper) startTimestamp(timestamp metav1.Time) *BackupHelper {
 	b.object.Status.StartTimestamp = &timestamp
 	return b
