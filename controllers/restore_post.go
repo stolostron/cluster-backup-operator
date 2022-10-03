@@ -211,7 +211,17 @@ func deleteSecretsWithLabelSelector(
 			err := c.Delete(ctx, &secret, &client.DeleteOptions{})
 			if err == nil {
 				logger.Info("deleted secret " + secret.Name)
-				continue
+			}
+		}
+	}
+	// delete config maps, they are aso backed up here
+	configmaps := &corev1.ConfigMapList{}
+	if err := c.List(ctx, configmaps, &client.ListOptions{LabelSelector: labelSelector}); err == nil {
+		for s := range configmaps.Items {
+			cmap := configmaps.Items[s]
+			err := c.Delete(ctx, &cmap, &client.DeleteOptions{})
+			if err == nil {
+				logger.Info("deleted configmap " + cmap.Name)
 			}
 		}
 	}

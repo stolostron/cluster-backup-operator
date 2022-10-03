@@ -834,11 +834,15 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 			secretDelete := *createSecret("aws-creds-delete", namespace, map[string]string{
 				"velero.io/backup-name": "name2",
 			}, nil, nil)
+			configMapDelete := *createConfiMap("aws-cmap-delete", namespace, map[string]string{
+				"velero.io/backup-name": "name2",
+			})
 
 			k8sClient1.Create(tt.args.ctx, &ns1)
 			k8sClient1.Create(tt.args.ctx, &secretKeep)
 			k8sClient1.Create(tt.args.ctx, &secretKeep2)
 			k8sClient1.Create(tt.args.ctx, &secretDelete)
+			k8sClient1.Create(tt.args.ctx, &configMapDelete)
 
 		}
 		t.Run(tt.name, func(t *testing.T) {
@@ -849,6 +853,11 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 			if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
 				Name: "aws-creds-delete", Namespace: namespace}, &secret); err == nil {
 				t.Errorf("deleteSecretsWithLabelSelector() aws-creds-delete should not be found, it was deleted !")
+			}
+			cmap := corev1.ConfigMap{}
+			if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+				Name: "aws-cmap-delete", Namespace: namespace}, &cmap); err == nil {
+				t.Errorf("deleteSecretsWithLabelSelector() aws-cmap-delete should not be found, it was deleted !")
 			}
 		})
 
