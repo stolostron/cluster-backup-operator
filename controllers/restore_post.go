@@ -208,10 +208,12 @@ func deleteSecretsWithLabelSelector(
 	if err := c.List(ctx, secrets, &client.ListOptions{LabelSelector: labelSelector}); err == nil {
 		for s := range secrets.Items {
 			secret := secrets.Items[s]
-			logger.Info("deleting secret " + secret.Name)
-			if err := c.Delete(ctx, &secret, &client.DeleteOptions{}); err != nil {
-				logger.Error(err, "failed to delete secret")
+			err := c.Delete(ctx, &secret, &client.DeleteOptions{})
+			if err == nil {
+				logger.Info("deleted secret " + secret.Name)
+				continue
 			}
+			logger.Error(err, "failed to delete secret")
 		}
 	}
 }
