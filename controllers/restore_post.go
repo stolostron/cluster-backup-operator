@@ -213,7 +213,6 @@ func deleteSecretsWithLabelSelector(
 				logger.Info("deleted secret " + secret.Name)
 				continue
 			}
-			logger.Error(err, "failed to delete secret")
 		}
 	}
 }
