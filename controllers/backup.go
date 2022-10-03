@@ -46,6 +46,8 @@ var (
 	BackupScheduleActivationLabel string = "cluster.open-cluster-management.io/backup-activation-restore"
 	// label for backups generated from velero schedules
 	BackupVeleroLabel string = "velero.io/schedule-name"
+	// label for backups generated from velero schedules
+	BackupNameVeleroLabel string = "velero.io/backup-name"
 )
 var (
 	// include resources from these api groups
