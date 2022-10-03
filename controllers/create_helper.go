@@ -54,6 +54,26 @@ func createSecret(name string, ns string,
 
 }
 
+func createConfigMap(name string, ns string,
+	labels map[string]string) *corev1.ConfigMap {
+	cmap := &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "ConfigMap",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+	}
+	if labels != nil {
+		cmap.Labels = labels
+	}
+
+	return cmap
+
+}
+
 func createClusterVersion(name string, cid ocinfrav1.ClusterID,
 	labels map[string]string) *ocinfrav1.ClusterVersion {
 	clusterVersion := &ocinfrav1.ClusterVersion{
@@ -101,6 +121,11 @@ func createBackup(name string, ns string) *BackupHelper {
 			},
 		},
 	}
+}
+
+func (b *BackupHelper) orLabelSelectors(selectors []*metav1.LabelSelector) *BackupHelper {
+	b.object.Spec.OrLabelSelectors = selectors
+	return b
 }
 
 func (b *BackupHelper) startTimestamp(timestamp metav1.Time) *BackupHelper {
