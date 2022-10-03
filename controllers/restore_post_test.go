@@ -1084,3 +1084,75 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 	testEnv.Stop()
 
 }
+
+func Test_cleanupDeltaForCredentials(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	cfg, _ := testEnv.Start()
+	scheme1 := runtime.NewScheme()
+	veleroapi.AddToScheme(scheme1)
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	type args struct {
+		ctx          context.Context
+		c            client.Client
+		veleroBackup *veleroapi.Backup
+		backupName   string
+	}
+	tests := []struct {
+		name string
+		args args
+	}{
+		{
+			name: "no backup name, return",
+			args: args{
+				ctx:        context.Background(),
+				c:          k8sClient1,
+				backupName: "",
+				veleroBackup: createBackup("acm-credentials-hive-schedule-20220726152532", "veleroNamespace").
+					object,
+			},
+		},
+		{
+			name: "with backup name, no ORSelector",
+			args: args{
+				ctx:        context.Background(),
+				c:          k8sClient1,
+				backupName: "acm-credentials-hive-schedule-20220726152532",
+				veleroBackup: createBackup("acm-credentials-hive-schedule-20220726152532", "veleroNamespace").
+					object,
+			},
+		},
+		{
+			name: "with backup name, and ORSelector",
+			args: args{
+				ctx:        context.Background(),
+				c:          k8sClient1,
+				backupName: "acm-credentials-hive-schedule-20220726152532",
+				veleroBackup: createBackup("acm-credentials-hive-schedule-20220726152532", "veleroNamespace").
+					orLabelSelectors([]*metav1.LabelSelector{
+						&metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"test": "test",
+							},
+						},
+					}).
+					object,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleanupDeltaForCredentials(tt.args.ctx, tt.args.c,
+				tt.args.backupName, tt.args.veleroBackup)
+		})
+
+	}
+	testEnv.Stop()
+
+}
