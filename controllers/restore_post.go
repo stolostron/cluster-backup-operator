@@ -281,7 +281,7 @@ func cleanupDeltaForClustersBackup(
 		return
 	}
 
-	deleteDynamicResourcesForBackup(ctx, c, restoreOptions, veleroBackup, "")
+	//deleteDynamicResourcesForBackup(ctx, c, restoreOptions, veleroBackup, "")
 
 }
 
