@@ -281,8 +281,7 @@ func cleanupDeltaForClustersBackup(
 		return
 	}
 
-	//deleteDynamicResourcesForBackup(ctx, c, restoreOptions, veleroBackup, "")
-
+	deleteDynamicResourcesForBackup(ctx, c, restoreOptions, veleroBackup, "")
 }
 
 func deleteDynamicResourcesForBackup(
@@ -340,34 +339,23 @@ func deleteDynamicResourcesForBackup(
 				groupKind, err.Error()))
 			continue
 		}
-		var dr = restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource)
-		if dr == nil {
-			continue
-		}
+		if dr := restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource); dr != nil {
 
-		var listOptions = v1.ListOptions{}
-		if labelSelector != "" {
-			listOptions = v1.ListOptions{LabelSelector: labelSelector}
+			listOptions := v1.ListOptions{LabelSelector: labelSelector}
+			if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
+				// get all items and delete them
+				for i := range dynamiclist.Items {
+					deleteDynamicResource(
+						ctx,
+						mapping,
+						dr,
+						dynamiclist.Items[i],
+						restoreOptions.deleteOptions,
+						veleroBackup.Spec.ExcludedNamespaces,
+					)
+				}
+			}
 		}
-
-		dynamiclist, err := dr.List(ctx, listOptions)
-		if err != nil {
-			// ignore error
-			continue
-		}
-		// get all items and delete them
-		for i := range dynamiclist.Items {
-			deleteDynamicResource(
-				ctx,
-				mapping,
-				dr,
-				dynamiclist.Items[i],
-				restoreOptions.deleteOptions,
-				veleroBackup.Spec.ExcludedNamespaces,
-			)
-
-		}
-
 	}
 
 }
