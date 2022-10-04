@@ -28,6 +28,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
@@ -91,13 +92,14 @@ func cleanupDeltaResources(
 		// clean up resources and generic resources
 		backupName, veleroBackup = getBackupInfoFromRestore(ctx, c,
 			acmRestore.Status.VeleroResourcesRestoreName, acmRestore.Namespace)
-		cleanupDeltaForResources(ctx, c, restoreOptions,
+		cleanupDeltaForResourcesBackup(ctx, c, restoreOptions,
 			backupName, veleroBackup,
 			*acmRestore.Spec.VeleroManagedClustersBackupName == skipRestoreStr)
+
 		// clean up managed cluster resources
 		backupName, veleroBackup = getBackupInfoFromRestore(ctx, c,
 			acmRestore.Status.VeleroManagedClustersRestoreName, acmRestore.Namespace)
-		cleanupDeltaForManagedClusters(ctx, c, restoreOptions,
+		cleanupDeltaForClustersBackup(ctx, c, restoreOptions,
 			backupName, veleroBackup)
 
 		logger.Info("exit cleanupDeltaResources ")
@@ -194,9 +196,9 @@ func deleteSecretsWithLabelSelector(
 ) {
 	logger := log.FromContext(ctx)
 
-	veleroRestoreLabelExists, _ := labels.NewRequirement("velero.io/backup-name",
+	veleroRestoreLabelExists, _ := labels.NewRequirement(BackupNameVeleroLabel,
 		selection.Exists, []string{})
-	veleroRestoreLabel, _ := labels.NewRequirement("velero.io/backup-name",
+	veleroRestoreLabel, _ := labels.NewRequirement(BackupNameVeleroLabel,
 		selection.NotEquals, []string{backupName})
 	labelSelector := labels.NewSelector()
 	labelSelector = labelSelector.Add(*veleroRestoreLabelExists)
@@ -227,7 +229,7 @@ func deleteSecretsWithLabelSelector(
 	}
 }
 
-func cleanupDeltaForResources(
+func cleanupDeltaForResourcesBackup(
 	ctx context.Context,
 	c client.Client,
 	restoreOptions RestoreOptions,
@@ -239,9 +241,35 @@ func cleanupDeltaForResources(
 		// nothing to clean up
 		return
 	}
+
+	deleteDynamicResourcesForBackup(ctx, c, restoreOptions, veleroBackup, "")
+
+	backupLabel, _ := labels.NewRequirement(BackupScheduleTypeLabel,
+		selection.Equals, []string{string(ResourcesGeneric)})
+	backupSelector := labels.NewSelector()
+	backupSelector = backupSelector.Add(*backupLabel)
+
+	// delete generic resources
+	veleroBackups := &veleroapi.BackupList{}
+	if err := c.List(ctx, veleroBackups, client.InNamespace(veleroBackup.Namespace),
+		&client.ListOptions{LabelSelector: backupSelector}); err == nil {
+
+		if genericBackupName, genericBackup, _ := getVeleroBackupName(ctx, c, veleroBackup.Namespace,
+			ResourcesGeneric,
+			veleroBackup.Name,
+			veleroBackups); genericBackupName != "" {
+			otherLabels := ""
+			if managedClustersSkipped {
+				// don't clean up activation resources
+				otherLabels = fmt.Sprintf("%s notin (cluster-activation)", backupCredsClusterLabel)
+			}
+			deleteDynamicResourcesForBackup(ctx, c, restoreOptions, genericBackup, otherLabels)
+		}
+	}
+
 }
 
-func cleanupDeltaForManagedClusters(
+func cleanupDeltaForClustersBackup(
 	ctx context.Context,
 	c client.Client,
 	restoreOptions RestoreOptions,
@@ -252,6 +280,96 @@ func cleanupDeltaForManagedClusters(
 		// nothing to clean up
 		return
 	}
+
+	//deleteDynamicResourcesForBackup(ctx, c, restoreOptions, veleroBackup, "")
+
+}
+
+func deleteDynamicResourcesForBackup(
+	ctx context.Context,
+	c client.Client,
+	restoreOptions RestoreOptions,
+	veleroBackup *veleroapi.Backup,
+	otherLabels string,
+) {
+	logger := log.FromContext(ctx)
+
+	backupName := veleroBackup.Name
+	resources := veleroBackup.Spec.IncludedResources
+
+	// delete each resource from included resources, if it has a velero annotation
+	// and velero annotation has a different backup name then the current backup
+	// this means that the resource was created by another restore so it should be deleted now
+
+	// resources with a backupCredsClusterLabel should be processed
+	// by the generic backup
+	genericLabel := fmt.Sprintf("!%s", backupCredsClusterLabel)
+	if veleroBackup.GetLabels()[BackupScheduleTypeLabel] == string(ResourcesGeneric) {
+		// we want the resources with the backupCredsClusterLabel here
+		genericLabel = backupCredsClusterLabel
+
+		// for generic resources get all CRDs and exclude the ones in the veleroBackup.Spec.ExcludedResources
+		resources, _ = getGenericCRDFromAPIGroups(ctx, restoreOptions.dynamicArgs.dc, veleroBackup)
+	}
+	labelSelector := fmt.Sprintf("%s, %s notin (%s), %s",
+		BackupNameVeleroLabel, BackupNameVeleroLabel, backupName, genericLabel)
+	if otherLabels != "" {
+		labelSelector = fmt.Sprintf("%s, %s", labelSelector, otherLabels)
+	}
+
+	for i := range resources {
+		kind, groupName := getResourceDetails(resources[i])
+
+		if kind == "clusterimageset" || kind == "hiveconfig" {
+			// ignore clusterimagesets and hiveconfig
+			continue
+		}
+
+		if kind == "clusterdeployment" || kind == "machinepool" {
+			// old backups have a short version for these resource
+			groupName = "hive.openshift.io"
+		}
+
+		groupKind := schema.GroupKind{
+			Group: groupName,
+			Kind:  kind,
+		}
+		mapping, err := restoreOptions.dynamicArgs.mapper.RESTMapping(groupKind, "")
+		if err != nil {
+			logger.Info(fmt.Sprintf("Failed to get dynamic mapper for group=%s, error : %s",
+				groupKind, err.Error()))
+			continue
+		}
+		var dr = restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource)
+		if dr == nil {
+			continue
+		}
+
+		var listOptions = v1.ListOptions{}
+		if labelSelector != "" {
+			listOptions = v1.ListOptions{LabelSelector: labelSelector}
+		}
+
+		dynamiclist, err := dr.List(ctx, listOptions)
+		if err != nil {
+			// ignore error
+			continue
+		}
+		// get all items and delete them
+		for i := range dynamiclist.Items {
+			deleteDynamicResource(
+				ctx,
+				mapping,
+				dr,
+				dynamiclist.Items[i],
+				restoreOptions.deleteOptions,
+				veleroBackup.Spec.ExcludedNamespaces,
+			)
+
+		}
+
+	}
+
 }
 
 // get the backup used by this restore
