@@ -111,10 +111,6 @@ func createBackup(name string, ns string) *BackupHelper {
 				Name:      name,
 				Namespace: ns,
 			},
-			Spec: veleroapi.BackupSpec{
-				IncludedNamespaces: []string{"please-keep-this-one"},
-				IncludedResources:  backupManagedClusterResources,
-			},
 			Status: veleroapi.BackupStatus{
 				Phase:  veleroapi.BackupPhaseCompleted,
 				Errors: 0,
@@ -145,6 +141,16 @@ func (b *BackupHelper) errors(error int) *BackupHelper {
 
 func (b *BackupHelper) includedResources(resources []string) *BackupHelper {
 	b.object.Spec.IncludedResources = resources
+	return b
+}
+
+func (b *BackupHelper) excludedResources(resources []string) *BackupHelper {
+	b.object.Spec.ExcludedResources = resources
+	return b
+}
+
+func (b *BackupHelper) excludedNamespaces(nspaces []string) *BackupHelper {
+	b.object.Spec.ExcludedNamespaces = nspaces
 	return b
 }
 
