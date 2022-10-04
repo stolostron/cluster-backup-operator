@@ -363,7 +363,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			req := &metav1.LabelSelectorRequirement{}
 			req.Key = backupCredsClusterLabel
 			req.Operator = "NotIn"
-			req.Values = []string{"cluster-activation"}
+			req.Values = []string{ClusterActivationLabel}
 			restoreObj.Spec.LabelSelector.MatchExpressions = append(
 				restoreObj.Spec.LabelSelector.MatchExpressions,
 				*req,
@@ -383,7 +383,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			req := &metav1.LabelSelectorRequirement{}
 			req.Key = backupCredsClusterLabel
 			req.Operator = "In"
-			req.Values = []string{"cluster-activation"}
+			req.Values = []string{ClusterActivationLabel}
 			restoreObj.Spec.LabelSelector.MatchExpressions = append(
 				restoreObj.Spec.LabelSelector.MatchExpressions,
 				*req,

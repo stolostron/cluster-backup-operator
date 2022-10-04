@@ -48,6 +48,8 @@ var (
 	BackupVeleroLabel string = "velero.io/schedule-name"
 	// label for backups generated from velero schedules
 	BackupNameVeleroLabel string = "velero.io/backup-name"
+
+	ClusterActivationLabel string = "cluster-activation"
 )
 var (
 	// include resources from these api groups
