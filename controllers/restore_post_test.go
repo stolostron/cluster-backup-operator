@@ -1246,7 +1246,7 @@ func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
 		object
 
 	genericBackupOld := *createBackup(veleroGenericBackupNameOlder, namespaceName).
-		//excludedResources(resources).
+		excludedResources(resources).
 		startTimestamp(v1.NewTime(tenHourAgo)).
 		labels(map[string]string{
 			BackupScheduleTypeLabel: string(Resources),
