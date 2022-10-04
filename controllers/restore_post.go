@@ -295,11 +295,6 @@ func deleteDynamicResourcesForBackup(
 	logger := log.FromContext(ctx)
 
 	backupName := veleroBackup.Name
-	if backupName == "" {
-		// nothing to clean up
-		return
-	}
-
 	resources := veleroBackup.Spec.IncludedResources
 
 	// delete each resource from included resources, if it has a velero annotation
