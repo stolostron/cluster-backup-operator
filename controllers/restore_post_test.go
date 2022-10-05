@@ -2172,7 +2172,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 				tt.args.veleroBackup)
 		})
 
-		// managed cluster
+		// managed cluster group
 		groupKind := schema.GroupKind{
 			Group: clsGVK.Group,
 			Kind:  clsGVK.Kind,
