@@ -24,6 +24,7 @@ import (
 	"github.com/pkg/errors"
 
 	v1 "k8s.io/api/core/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/discovery"
@@ -60,7 +61,6 @@ type DynamicStruct struct {
 }
 
 type RestoreOptions struct {
-	cleanupType   v1beta1.CleanupType
 	deleteOptions metav1.DeleteOptions
 	dynamicArgs   DynamicStruct
 }
@@ -204,7 +204,24 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			)
 		}
 	} else {
-		setRestorePhase(&veleroRestoreList, restore)
+		_, cleanupOnRestore := setRestorePhase(&veleroRestoreList, restore)
+
+		deletePolicy := metav1.DeletePropagationForeground
+		delOptions := metav1.DeleteOptions{
+			PropagationPolicy: &deletePolicy,
+		}
+
+		reconcileArgs := DynamicStruct{
+			dc:     r.DiscoveryClient,
+			dyn:    r.DynamicClient,
+			mapper: r.RESTMapper,
+		}
+
+		restoreOptions := RestoreOptions{
+			dynamicArgs:   reconcileArgs,
+			deleteOptions: delOptions,
+		}
+		cleanupDeltaResources(ctx, r.Client, restore, cleanupOnRestore, restoreOptions)
 		executePostRestoreTasks(ctx, r.Client, restore)
 	}
 
@@ -240,90 +257,6 @@ func sendResult(restore *v1beta1.Restore, err error) (ctrl.Result, error) {
 		err,
 		fmt.Sprintf("could not update status for restore %s/%s", restore.Namespace, restore.Name),
 	)
-}
-
-// set cumulative status of restores
-func setRestorePhase(
-	veleroRestoreList *veleroapi.RestoreList,
-	restore *v1beta1.Restore,
-) v1beta1.RestorePhase {
-
-	if restore.Status.Phase == v1beta1.RestorePhaseEnabled &&
-		restore.Spec.SyncRestoreWithNewBackups {
-		return restore.Status.Phase
-	}
-
-	if veleroRestoreList == nil || len(veleroRestoreList.Items) == 0 {
-		if isSkipAllRestores(restore) {
-			restore.Status.Phase = v1beta1.RestorePhaseFinished
-			restore.Status.LastMessage = fmt.Sprintf(noopMsg, restore.Name)
-			return restore.Status.Phase
-		}
-		restore.Status.Phase = v1beta1.RestorePhaseStarted
-		restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
-		return restore.Status.Phase
-	}
-
-	// get all velero restores and check status for each
-	partiallyFailed := false
-	for i := range veleroRestoreList.Items {
-		veleroRestore := veleroRestoreList.Items[i].DeepCopy()
-
-		if veleroRestore.Status.Phase == "" {
-			restore.Status.Phase = v1beta1.RestorePhaseUnknown
-			restore.Status.LastMessage = fmt.Sprintf(
-				"Unknown status for Velero restore %s",
-				veleroRestore.Name,
-			)
-			return restore.Status.Phase
-		}
-		if veleroRestore.Status.Phase == veleroapi.RestorePhaseNew {
-			restore.Status.Phase = v1beta1.RestorePhaseStarted
-			restore.Status.LastMessage = fmt.Sprintf(
-				"Velero restore %s has started",
-				veleroRestore.Name,
-			)
-			return restore.Status.Phase
-		}
-		if veleroRestore.Status.Phase == veleroapi.RestorePhaseInProgress {
-			restore.Status.Phase = v1beta1.RestorePhaseRunning
-			restore.Status.LastMessage = fmt.Sprintf(
-				"Velero restore %s is currently executing",
-				veleroRestore.Name,
-			)
-			return restore.Status.Phase
-		}
-		if veleroRestore.Status.Phase == veleroapi.RestorePhaseFailed ||
-			veleroRestore.Status.Phase == veleroapi.RestorePhaseFailedValidation {
-			restore.Status.Phase = v1beta1.RestorePhaseError
-			restore.Status.LastMessage = fmt.Sprintf(
-				"Velero restore %s has failed validation or encountered errors",
-				veleroRestore.Name,
-			)
-			return restore.Status.Phase
-		}
-		if veleroRestore.Status.Phase == veleroapi.RestorePhasePartiallyFailed {
-			partiallyFailed = true
-			continue
-		}
-	}
-
-	isValidSync, _ := isValidSyncOptions(restore)
-	// sync is enabled only when the backup name for managed clusters is set to skip
-	if isValidSync &&
-		*restore.Spec.VeleroManagedClustersBackupName == skipRestoreStr {
-		restore.Status.Phase = v1beta1.RestorePhaseEnabled
-		restore.Status.LastMessage = "Velero restores have run to completion, " +
-			"restore will continue to sync with new backups"
-	} else if partiallyFailed {
-		restore.Status.Phase = v1beta1.RestorePhaseFinishedWithErrors
-		restore.Status.LastMessage = "Velero restores have run to completion but encountered 1+ errors"
-	} else {
-		restore.Status.Phase = v1beta1.RestorePhaseFinished
-		restore.Status.LastMessage = "All Velero restores have run successfully"
-	}
-
-	return restore.Status.Phase
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -430,7 +363,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			req := &metav1.LabelSelectorRequirement{}
 			req.Key = backupCredsClusterLabel
 			req.Operator = "NotIn"
-			req.Values = []string{"cluster-activation"}
+			req.Values = []string{ClusterActivationLabel}
 			restoreObj.Spec.LabelSelector.MatchExpressions = append(
 				restoreObj.Spec.LabelSelector.MatchExpressions,
 				*req,
@@ -450,7 +383,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			req := &metav1.LabelSelectorRequirement{}
 			req.Key = backupCredsClusterLabel
 			req.Operator = "In"
-			req.Values = []string{"cluster-activation"}
+			req.Values = []string{ClusterActivationLabel}
 			restoreObj.Spec.LabelSelector.MatchExpressions = append(
 				restoreObj.Spec.LabelSelector.MatchExpressions,
 				*req,
@@ -458,18 +391,14 @@ func (r *RestoreReconciler) initVeleroRestores(
 		}
 		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
 		if err != nil {
-			restoreLogger.Error(
-				err,
+			restoreLogger.Info(
 				"unable to create Velero restore for restore",
 				"namespace", veleroRestoresToCreate[key].Namespace,
 				"name", veleroRestoresToCreate[key].Name,
 			)
-			r.Recorder.Event(
-				restore,
-				v1.EventTypeNormal,
-				"Velero restore already exists:",
-				veleroRestoresToCreate[key].Name,
-			)
+			if k8serr.IsAlreadyExists(err) && key == Credentials {
+				restore.Status.VeleroCredentialsRestoreName = veleroRestoresToCreate[key].Name
+			}
 		} else {
 			newVeleroRestoreCreated = true
 			r.Recorder.Event(

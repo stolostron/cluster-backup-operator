@@ -370,8 +370,7 @@ func createMSA(
 				"name":      name,
 				"namespace": managedClusterName,
 				"labels": map[string]interface{}{
-					backupCredsClusterLabel: backup_label,
-					msa_label:               name,
+					msa_label: name,
 				},
 			},
 			"spec": map[string]interface{}{
