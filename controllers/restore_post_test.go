@@ -1190,7 +1190,7 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 
 }
 
-func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
+func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
@@ -1219,6 +1219,9 @@ func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
 	veleroGenericBackupNameOlder := veleroScheduleNames[ResourcesGeneric] + "-" + tenHourAgoTime
 	veleroGenericBackupName := veleroScheduleNames[ResourcesGeneric] + "-" + aFewSecondsAgoTime
 
+	veleroClustersBackupNameOlder := veleroScheduleNames[ManagedClusters] + "-" + tenHourAgoTime
+	veleroClustersBackupName := veleroScheduleNames[ManagedClusters] + "-" + aFewSecondsAgoTime
+
 	// create a resources backup
 	resources := []string{
 		"crd-not-found.apps.open-cluster-management.io",
@@ -1237,7 +1240,7 @@ func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
 		object
 
 	genericBackup := *createBackup(veleroGenericBackupName, namespaceName).
-		//excludedResources(resources).
+		excludedResources(backupManagedClusterResources).
 		startTimestamp(v1.NewTime(aFewSecondsAgo)).
 		labels(map[string]string{
 			BackupScheduleTypeLabel: string(ResourcesGeneric),
@@ -1246,10 +1249,29 @@ func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
 		object
 
 	genericBackupOld := *createBackup(veleroGenericBackupNameOlder, namespaceName).
-		excludedResources(resources).
+		excludedResources(backupManagedClusterResources).
 		startTimestamp(v1.NewTime(tenHourAgo)).
 		labels(map[string]string{
-			BackupScheduleTypeLabel: string(Resources),
+			BackupScheduleTypeLabel: string(ResourcesGeneric),
+		}).
+		object
+
+	clustersBackup := *createBackup(veleroClustersBackupName, namespaceName).
+		includedResources(backupManagedClusterResources).
+		excludedNamespaces([]string{"local-cluster"}).
+		startTimestamp(v1.NewTime(aFewSecondsAgo)).
+		labels(map[string]string{
+			BackupScheduleTypeLabel: string(ManagedClusters),
+		}).
+		phase(veleroapi.BackupPhaseCompleted).
+		object
+
+	clustersBackupOld := *createBackup(veleroClustersBackupNameOlder, namespaceName).
+		includedResources(backupManagedClusterResources).
+		excludedNamespaces([]string{"local-cluster"}).
+		startTimestamp(v1.NewTime(tenHourAgo)).
+		labels(map[string]string{
+			BackupScheduleTypeLabel: string(ManagedClusters),
 		}).
 		object
 
@@ -1259,6 +1281,54 @@ func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
 		"kind":       "Namespace",
 		"metadata": map[string]interface{}{
 			"name": namespaceName,
+		},
+	})
+
+	cls_with_backup_label_same := &unstructured.Unstructured{}
+	cls_with_backup_label_same.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "cluster.open-cluster-management.io/v1beta1",
+		"kind":       "ManagedCluster",
+		"metadata": map[string]interface{}{
+			"name":      "cls-with-backup-label-same",
+			"namespace": "default",
+			"labels": map[string]interface{}{
+				BackupNameVeleroLabel: clustersBackup.Name,
+			},
+		},
+	})
+	cls_with_backup_label_diff_excl_ns := &unstructured.Unstructured{}
+	cls_with_backup_label_diff_excl_ns.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "cluster.open-cluster-management.io/v1beta1",
+		"kind":       "ManagedCluster",
+		"metadata": map[string]interface{}{
+			"name":      "cls-with-backup-label-diff-excl-ns",
+			"namespace": "local-cluster",
+			"labels": map[string]interface{}{
+				BackupNameVeleroLabel: veleroClustersBackupNameOlder,
+			},
+		},
+	})
+	cls_with_backup_label_diff := &unstructured.Unstructured{}
+	cls_with_backup_label_diff.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "cluster.open-cluster-management.io/v1beta1",
+		"kind":       "ManagedCluster",
+		"metadata": map[string]interface{}{
+			"name":      "channel-with-backup-label-diff",
+			"namespace": "default",
+			"labels": map[string]interface{}{
+				BackupNameVeleroLabel: veleroClustersBackupNameOlder,
+			},
+			"finalizers": []interface{}{"hive.openshift.io/deprovision"},
+		},
+	})
+
+	cls_with_no_backup_label := &unstructured.Unstructured{}
+	cls_with_no_backup_label.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "cluster.open-cluster-management.io/v1beta1",
+		"kind":       "ManagedCluster",
+		"metadata": map[string]interface{}{
+			"name":      "cls-with-no-backup-label",
+			"namespace": "default",
 		},
 	})
 
@@ -1563,6 +1633,12 @@ func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
 		channel_with_backup_label_generic_match_activ,
 		channel_with_backup_label_generic_old_activ,
 	}
+	clusterRuntimeObjects := []runtime.Object{
+		cls_with_backup_label_same,
+		cls_with_backup_label_diff,
+		cls_with_backup_label_diff_excl_ns,
+		cls_with_no_backup_label,
+	}
 	unstructuredScheme := runtime.NewScheme()
 	unstructuredScheme.AddKnownTypes(msaGVK.GroupVersion(), msaObj)
 	unstructuredScheme.AddKnownTypes(clsVGVK.GroupVersion(), clsvObj)
@@ -1570,7 +1646,7 @@ func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
 	unstructuredScheme.AddKnownTypes(plsGVK.GroupVersion())
 	unstructuredScheme.AddKnownTypes(crGVK.GroupVersion())
 	unstructuredScheme.AddKnownTypes(chGVK.GroupVersion(), channelRuntimeObjects...)
-	unstructuredScheme.AddKnownTypes(clsGVK.GroupVersion())
+	unstructuredScheme.AddKnownTypes(clsGVK.GroupVersion(), clusterRuntimeObjects...)
 	unstructuredScheme.AddKnownTypes(clsSGVK.GroupVersion())
 	unstructuredScheme.AddKnownTypes(bsSGVK.GroupVersion())
 	unstructuredScheme.AddKnownTypes(mGVK.GroupVersion())
@@ -1798,7 +1874,7 @@ func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
 	testRequest := "authentication.open-cluster-management.io/v1alpha1"
 	fakeDiscovery.ServerResourcesForGroupVersion(testRequest)
 
-	//create some resources
+	//create some channel resources
 	dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
 		channel_with_backup_label_same, v1.CreateOptions{})
 	dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
@@ -1809,6 +1885,16 @@ func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
 		channel_with_backup_label_generic, v1.CreateOptions{})
 	dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
 		channel_with_no_backup_label, v1.CreateOptions{})
+
+	//create some cluster resources
+	dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
+		cls_with_backup_label_diff, v1.CreateOptions{})
+	dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
+		cls_with_backup_label_same, v1.CreateOptions{})
+	dyn.Resource(clsGVKList).Namespace("local-cluster").Create(context.Background(),
+		cls_with_backup_label_diff_excl_ns, v1.CreateOptions{})
+	dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
+		cls_with_no_backup_label, v1.CreateOptions{})
 
 	//
 	dyn.Resource(msaGVRList).Namespace("managed1").Create(context.Background(),
@@ -1838,12 +1924,13 @@ func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
 		backupName             string
 		managedClustersSkipped bool
 	}
-	tests := []struct {
+	testsResources := []struct {
 		name                 string
 		args                 args
 		resourcesToBeDeleted []unstructured.Unstructured
 		resourcesToKeep      []unstructured.Unstructured
 		extraBackups         []veleroapi.Backup
+		resourcesToCreate    []unstructured.Unstructured
 	}{
 		{
 			name: "cleanup resources backup, no generic backup found",
@@ -1862,7 +1949,8 @@ func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
 				*channel_with_backup_label_same,
 				*channel_with_backup_label_diff_excl_ns,
 			},
-			extraBackups: []veleroapi.Backup{},
+			extraBackups:      []veleroapi.Backup{},
+			resourcesToCreate: []unstructured.Unstructured{},
 		},
 		{
 			name: "cleanup resources backup, with generic backup NOT found, old one available",
@@ -1882,6 +1970,37 @@ func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
 				*channel_with_backup_label_diff_excl_ns,
 			},
 			extraBackups: []veleroapi.Backup{genericBackupOld},
+			resourcesToCreate: []unstructured.Unstructured{
+				*channel_with_backup_label_diff, // this is the one deleted by the previous test, add it back
+			},
+		},
+		{
+			name: "cleanup resources backup, with generic backup NOT found and clusters backup not skipped",
+			args: args{
+				ctx:                    context.Background(),
+				c:                      k8sClient1,
+				restoreOptions:         resOptions,
+				veleroBackup:           &resourcesBackup,
+				backupName:             veleroResourcesBackupName,
+				managedClustersSkipped: false,
+			},
+			resourcesToBeDeleted: []unstructured.Unstructured{
+				*channel_with_backup_label_diff,
+			},
+			resourcesToKeep: []unstructured.Unstructured{
+				*channel_with_no_backup_label,
+				*channel_with_backup_label_same,
+				*channel_with_backup_label_diff_excl_ns,
+				*channel_with_backup_label_generic_match,
+				*channel_with_backup_label_generic_match_activ,
+				*channel_with_backup_label_generic_old, // should not be deleted since the matching generic backup was not found
+				*channel_with_backup_label_generic,     // should not be deleted since the matching generic backup was not found
+
+			},
+			extraBackups: []veleroapi.Backup{},
+			resourcesToCreate: []unstructured.Unstructured{ // this is the one deleted by the previous test, add it back
+				*channel_with_backup_label_diff,
+			},
 		},
 		{
 			name: "cleanup resources backup, with generic backup found",
@@ -1907,23 +2026,92 @@ func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
 				*channel_with_backup_label_generic_old_activ,
 			},
 			extraBackups: []veleroapi.Backup{genericBackup},
+			resourcesToCreate: []unstructured.Unstructured{
+				*channel_with_backup_label_diff, // this is the one deleted by the previous test, add it back
+			},
+		},
+		{
+			name: "cleanup resources backup, with generic backup found and clusters backup not skipped",
+			args: args{
+				ctx:                    context.Background(),
+				c:                      k8sClient1,
+				restoreOptions:         resOptions,
+				veleroBackup:           &resourcesBackup,
+				backupName:             veleroResourcesBackupName,
+				managedClustersSkipped: false,
+			},
+			resourcesToBeDeleted: []unstructured.Unstructured{
+				*channel_with_backup_label_diff,
+				*channel_with_backup_label_generic_old,
+				*channel_with_backup_label_generic,           // it's deleted bc the backup name doesn't match the generic backup
+				*channel_with_backup_label_generic_old_activ, // deleted bc the clusters backup is enabled
+			},
+			resourcesToKeep: []unstructured.Unstructured{
+				*channel_with_no_backup_label,
+				*channel_with_backup_label_same,
+				*channel_with_backup_label_diff_excl_ns,
+				*channel_with_backup_label_generic_match,
+				*channel_with_backup_label_generic_match_activ,
+			},
+			extraBackups: []veleroapi.Backup{},
+			resourcesToCreate: []unstructured.Unstructured{ // this is the one deleted by the previous test, add it back
+				*channel_with_backup_label_diff,
+			},
+		},
+	}
+
+	testsClusters := []struct {
+		name                 string
+		args                 args
+		resourcesToBeDeleted []unstructured.Unstructured
+		resourcesToKeep      []unstructured.Unstructured
+		extraBackups         []veleroapi.Backup
+		resourcesToCreate    []unstructured.Unstructured
+	}{
+		{
+			name: "cleanup clusters backup",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				restoreOptions: resOptions,
+				veleroBackup:   &clustersBackup,
+				backupName:     veleroClustersBackupName,
+			},
+			resourcesToBeDeleted: []unstructured.Unstructured{*cls_with_backup_label_diff},
+			resourcesToKeep: []unstructured.Unstructured{
+				*cls_with_no_backup_label,
+				*cls_with_backup_label_same,
+				*cls_with_backup_label_diff_excl_ns,
+			},
+			extraBackups:      []veleroapi.Backup{clustersBackupOld},
+			resourcesToCreate: []unstructured.Unstructured{},
 		},
 	}
 
 	if err := k8sClient1.Create(context.Background(), createNamespace(genericBackup.GetNamespace())); err != nil {
 		panic(err.Error())
 	}
-	for _, tt := range tests {
+
+	for _, tt := range testsResources {
 
 		k8sClient1.Create(tt.args.ctx, tt.args.veleroBackup)
 		// create extra backups for this test
 		for i := range tt.extraBackups {
 			if err := k8sClient1.Create(tt.args.ctx, &tt.extraBackups[i]); err != nil {
+				t.Errorf("cannot create backup %s ", err.Error())
+			}
+		}
+
+		// create resources for this test
+		for i := range tt.resourcesToCreate {
+			if _, err := dyn.Resource(chGVKList).Namespace(tt.resourcesToCreate[i].GetNamespace()).Create(context.Background(),
+				&tt.resourcesToCreate[i], v1.CreateOptions{}); err != nil {
 				t.Errorf("cannot create resource %s ", err.Error())
 			}
 		}
 
 		t.Run(tt.name, func(t *testing.T) {
+
 			cleanupDeltaForResourcesBackup(tt.args.ctx,
 				tt.args.c,
 				tt.args.restoreOptions,
@@ -1942,16 +2130,69 @@ func Test_cleanupDeltaForResourcesBackup(t *testing.T) {
 		for i := range tt.resourcesToBeDeleted {
 			if _, err := dr.Namespace(tt.resourcesToBeDeleted[i].GetNamespace()).
 				Get(tt.args.ctx, tt.resourcesToBeDeleted[i].GetName(), v1.GetOptions{}); err == nil {
-				t.Errorf("cleanupDeltaForResourcesBackup() resource %s should NOT be found",
-					tt.resourcesToBeDeleted[i])
+				t.Errorf("cleanupDeltaForResourcesBackup(%s) resource %s should NOT be found",
+					tt.name, tt.resourcesToBeDeleted[i])
 			}
 		}
 
 		for i := range tt.resourcesToKeep {
 			if _, err := dr.Namespace(tt.resourcesToKeep[i].GetNamespace()).
 				Get(tt.args.ctx, tt.resourcesToKeep[i].GetName(), v1.GetOptions{}); err != nil {
-				t.Errorf("cleanupDeltaForResourcesBackup() resource %s should be found ! they were deleted",
-					tt.resourcesToKeep[i].GetName())
+				t.Errorf("cleanupDeltaForResourcesBackup(%s) resource %s should be found ! they were deleted",
+					tt.name, tt.resourcesToKeep[i].GetName())
+			}
+		}
+
+	}
+
+	for _, tt := range testsClusters {
+
+		k8sClient1.Create(tt.args.ctx, tt.args.veleroBackup)
+		// create extra backups for this test
+		for i := range tt.extraBackups {
+			if err := k8sClient1.Create(tt.args.ctx, &tt.extraBackups[i]); err != nil {
+				t.Errorf("cannot create backup %s ", err.Error())
+			}
+		}
+
+		// create resources for this test
+		for i := range tt.resourcesToCreate {
+			if _, err := dyn.Resource(chGVKList).Namespace(tt.resourcesToCreate[i].GetNamespace()).Create(context.Background(),
+				&tt.resourcesToCreate[i], v1.CreateOptions{}); err != nil {
+				t.Errorf("cannot create resource %s ", err.Error())
+			}
+		}
+
+		t.Run(tt.name, func(t *testing.T) {
+
+			cleanupDeltaForClustersBackup(tt.args.ctx,
+				tt.args.c,
+				tt.args.restoreOptions,
+				tt.args.backupName,
+				tt.args.veleroBackup)
+		})
+
+		// managed cluster group
+		groupKind := schema.GroupKind{
+			Group: clsGVK.Group,
+			Kind:  clsGVK.Kind,
+		}
+		mapping, _ := tt.args.restoreOptions.dynamicArgs.mapper.RESTMapping(groupKind, "")
+		var dr = tt.args.restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource)
+
+		for i := range tt.resourcesToBeDeleted {
+			if _, err := dr.Namespace(tt.resourcesToBeDeleted[i].GetNamespace()).
+				Get(tt.args.ctx, tt.resourcesToBeDeleted[i].GetName(), v1.GetOptions{}); err == nil {
+				t.Errorf("cleanupDeltaForClustersBackup(%s) resource %s should NOT be found",
+					tt.name, tt.resourcesToBeDeleted[i])
+			}
+		}
+
+		for i := range tt.resourcesToKeep {
+			if _, err := dr.Namespace(tt.resourcesToKeep[i].GetNamespace()).
+				Get(tt.args.ctx, tt.resourcesToKeep[i].GetName(), v1.GetOptions{}); err != nil {
+				t.Errorf("cleanupDeltaForClustersBackup(%s) resource %s should be found ! they were deleted",
+					tt.name, tt.resourcesToKeep[i].GetName())
 			}
 		}
 
