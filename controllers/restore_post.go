@@ -74,6 +74,10 @@ func cleanupDeltaResources(
 ) bool {
 	processed := false
 
+	if acmRestore.Spec.CleanupBeforeRestore == v1beta1.CleanupTypeNone {
+		// request to not process cleanup, return now
+		return processed
+	}
 	restoreCompleted := (acmRestore.Status.Phase == v1beta1.RestorePhaseFinished ||
 		acmRestore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors)
 
