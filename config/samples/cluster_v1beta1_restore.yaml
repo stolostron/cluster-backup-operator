@@ -1,11 +1,7 @@
 # apply this resource to restore all backup data, including managed clusters activation data 
-# cleanupBeforeRestore - required, asks to clean up cluster before applying restore
+# cleanupBeforeRestore - required, asks to clean up cluster after applying restore
 # valid options : 
-# CleanupRestored - clean up only resources created by a previous acm restore
-# CleanupAll - clean up all resources defined by the acm backups IncludedResources spec
-#              even if they were not created as a result of a restore operation
-#              Use this option with caution as this could cleanup resources on the hub
-#              created by the user, that should be kept even if they are not in the restored resources
+# CleanupRestored - clean up resources created by a previous acm restore and not part of the currently restored backup
 # None : don't clean up anything, just apply the restore
 
 apiVersion: cluster.open-cluster-management.io/v1beta1

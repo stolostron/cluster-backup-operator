@@ -383,19 +383,13 @@ Use the [restore sample](https://github.com/stolostron/cluster-backup-operator/b
 After you create a `restore.cluster.open-cluster-management.io` resource on the hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on your hub that the backed up resources contained by the backup file have been created.
 
 ### Cleaning up the hub before restore
-Velero currently skips backed up resources if they are already installed on the hub. This limits the scenarios that can be used when restoring hub data on a new hub. Unless the new hub is not used and the restore is applied only once, the hub could not be relibly used as a passive configuration: the data on this hub is not reflective of the data available with the restored resources.
+Velero updates existing resources if they have changed with the currently restored backup. It does not clean up delta resources, which are resources created by a previous restore and not part of the currently restored backup. This limits the scenarios that can be used when restoring hub data on a new hub. Unless the restore is applied only once, the new hub could not be relibly used as a passive configuration: the data on this hub is not reflective of the data available with the restored resources.
 
-Restore limitations examples:
-1. A Policy exists on the new hub, before the backup data is restored on this hub. After the restore of the backup resources, the new hub is not identical with the initial hub from where the data was restored. The Policy should not be running on the new hub since this is a Policy not available with the backup resources.
-2. A Policy exists on the new hub, before the backup data is restored on this hub. The backup data contains the same Policy but in an updated configuration. Since Velero skips existing resources, the Policy will stay unchanged on the new hub, so the Policy is not the same as the one backed up on the initial hub.
-3. A Policy is restored on the new hub. The primary hub keeps updating the content and the Policy content changes as well. The user reapplies the backup on the new hub, expecting to get the updated Policy. Since the Policy already exists on the hub - created by the previous restore - it will not be restored again. So the new hub has now a different configuration from the primary hub, even if the backup contains the expected updated content; that content is not updated by Velero on the new hub.
+To address this limitation, when a `Restore.cluster.open-cluster-management.io` resource is created, the Cluster Back up and Restore Operator runs a post restore operation  which will clean up the hub and remove any resources created by a previous acm restore and not part of the currently restored backup.
 
-To address above limitations, when a `Restore.cluster.open-cluster-management.io` resource is created, the Cluster Back up and Restore Operator runs a prepare for restore set of steps which will clean up the hub, before Velero restore is called. 
-
-The prepare for cleanup option uses the `cleanupBeforeRestore` property to identify the subset of objects to clean up. There are 3 options you could set for this clean up: 
-- `None` : no clean up necessary, just call Velero restore. This is to be used on a brand new hub.
-- `CleanupRestored` : clean up all resources created by a previous acm restore. This should be the common usage for this property. It is less intrusive then the `CleanupAll` and covers the scenario where you start with a clean hub and keep restoring resources on this hub ( limitation sample 3 above )
-- `CleanupAll` : clean up all resources on the hub which could be part of an acm backup, even if they were not created as a result of a restore operation. This is to be used when extra content has been created on this hub which requires clean up ( limitation samples 1 and 2 above ). Use this option with caution though as this will cleanup resources on the hub created by the user, not by a previous backup. It is <b>strongly recommended</b> to use the `CleanupRestored` option and to refrain from manually updating hub content when the hub is designated as a passive candidate for a disaster scenario. Basically avoid getting into the situation where you have to swipe the cluster using the `CleanupAll` option; this is given as a last alternative.
+The post restore cleanup option uses the `cleanupBeforeRestore` property to identify the subset of objects to clean up. There are two options you could set for this clean up: 
+- `None` : no clean up necessary, just call Velero restore. This is to be used on a brand new hub and when running the restore and restore all resources, active and passive data.
+- `CleanupRestored` : clean up all resources created by a previous acm restore and not part of the currently restored backup.
 
 <b>Note:</b> 
 
