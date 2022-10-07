@@ -497,8 +497,9 @@ When the activation data is next restored on the new hub, the restore controller
 
 ###  Enabling the automatic import feature
 
-Enable the `ManagedServiceAccount` component:
-1. `ManagedServiceAccount` component must be enabled on the `MultiClusterEngine`. 
+The automatic import feature using the ManagedServiceAccount component is disabled by default. To enable this feature: <br>
+
+1. Enable the `ManagedServiceAccount` component on `MultiClusterEngine`. 
 ```yaml
 apiVersion: multicluster.openshift.io/v1
 kind: MultiClusterEngine
