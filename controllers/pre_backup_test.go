@@ -119,6 +119,18 @@ func Test_createMSA(t *testing.T) {
 			secretsGeneratedNow: false,
 			secretsUpdated:      false,
 		},
+		{
+			name: "msa not generated now AND invalid token",
+			args: args{
+				ctx:            context.Background(),
+				dr:             resInterface,
+				managedCluster: "managed1",
+				name:           msa_service_name,
+				validity:       "\"invalid-token",
+			},
+			secretsGeneratedNow: false,
+			secretsUpdated:      true,
+		},
 	}
 	for index, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -266,6 +278,19 @@ func Test_updateMSAToken(t *testing.T) {
 				namespaceName: "managed1",
 				name:          msa_service_name,
 				validity:      "50h",
+			},
+			want: false,
+		},
+		{
+			name: "MSA token is invalid, patch should fail",
+			args: args{
+				ctx:           context.Background(),
+				mapping:       &targetMapping,
+				dr:            resInterface,
+				resource:      *obj3,
+				namespaceName: "managed1",
+				name:          msa_service_name,
+				validity:      "\"invalid value",
 			},
 			want: false,
 		},
