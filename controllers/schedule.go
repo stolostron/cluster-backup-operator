@@ -25,6 +25,8 @@ import (
 	"github.com/robfig/cron/v3"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -363,6 +365,30 @@ func createInitialBackupForSchedule(
 		)
 	}
 	return veleroBackup, err
+}
+
+func verifyMSAOption(
+	ctx context.Context,
+	c client.Client,
+	backupSchedule *v1beta1.BackupSchedule,
+	m *restmapper.DeferredDiscoveryRESTMapper,
+) (ctrl.Result, bool, error) {
+	msaKind := schema.GroupKind{
+		Group: msa_group,
+		Kind:  msa_kind,
+	}
+
+	scheduleLogger := log.FromContext(ctx)
+	msg := "UseManagedServiceAccount option cannot be used, managedserviceaccount-preview component is not enabled"
+	if useMSA := backupSchedule.Spec.UseManagedServiceAccount; useMSA {
+		if _, err := m.RESTMapping(msaKind, ""); err != nil {
+			scheduleLogger.Error(err, "MSA CRD not found")
+			return createFailedValidationResponse(ctx, c, backupSchedule,
+				msg, false)
+		}
+	}
+
+	return ctrl.Result{}, true, nil
 }
 
 func createFailedValidationResponse(

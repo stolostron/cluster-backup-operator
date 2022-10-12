@@ -18,6 +18,9 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -28,14 +31,23 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/version"
+	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
+	discoveryclient "k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
 	fakediscovery "k8s.io/client-go/discovery/fake"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
+	restclient "k8s.io/client-go/rest"
+	"k8s.io/client-go/restmapper"
 )
 
 func initBackupSchedule(cronString string) *v1beta1.BackupSchedule {
@@ -585,4 +597,159 @@ func Test_createFailedValidationResponse(t *testing.T) {
 	// clean up
 	testEnv.Stop()
 
+}
+
+func Test_verifyMSAOptione(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	cfg, _ := testEnv.Start()
+	scheme1 := runtime.NewScheme()
+	veleroapi.AddToScheme(scheme1)
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	appsInfo := metav1.APIResourceList{
+		GroupVersion: "apps.open-cluster-management.io/v1beta1",
+		APIResources: []metav1.APIResource{
+			{Name: "channels", Namespaced: true, Kind: "Channel"},
+			{Name: "subscriptions", Namespaced: true, Kind: "Subscription"},
+		},
+	}
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		var list interface{}
+		switch req.URL.Path {
+		case "/apis/apps.open-cluster-management.io/v1beta1":
+			list = &appsInfo
+		case "/api":
+			list = &metav1.APIVersions{
+				Versions: []string{
+					"v1",
+					"v1beta1",
+				},
+			}
+		case "/apis":
+			list = &metav1.APIGroupList{
+				Groups: []metav1.APIGroup{
+					{
+						Name: "config.openshift.io",
+						Versions: []metav1.GroupVersionForDiscovery{
+							{
+								GroupVersion: "config.openshift.io/v1",
+								Version:      "v1",
+							},
+						},
+					},
+					{
+						Name: "apps.open-cluster-management.io",
+						Versions: []metav1.GroupVersionForDiscovery{
+							{GroupVersion: "apps.open-cluster-management.io/v1beta1", Version: "v1beta1"},
+							{GroupVersion: "apps.open-cluster-management.io/v1", Version: "v1"},
+						},
+					},
+				},
+			}
+		default:
+			//t.Logf("unexpected request: %s", req.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		output, err := json.Marshal(list)
+		if err != nil {
+			//t.Errorf("unexpected encoding error: %v", err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(output)
+	}))
+
+	res_local_ns := &unstructured.Unstructured{}
+	res_local_ns.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":      "channel-new",
+			"namespace": "default",
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
+	unstructuredScheme := runtime.NewScheme()
+	chnv1.AddToScheme(unstructuredScheme)
+
+	dynClient := dynamicfake.NewSimpleDynamicClient(unstructuredScheme, res_local_ns)
+
+	targetGVK := schema.GroupVersionKind{Group: "apps.open-cluster-management.io", Version: "v1", Kind: "Channel"}
+	targetGVR := targetGVK.GroupVersion().WithResource("channel")
+
+	resInterface := dynClient.Resource(targetGVR)
+
+	sch := *createBackupSchedule("name", "ns").
+		schedule("0 */6 * * *").object
+
+	sch_msa := *createBackupSchedule("name", "ns").
+		useManagedServiceAccount(true).
+		schedule("0 */6 * * *").object
+
+	// create resources which should be found
+	resInterface.Namespace("default").Create(context.Background(), res_local_ns, v1.CreateOptions{})
+
+	fakeDiscovery := discoveryclient.NewDiscoveryClientForConfigOrDie(
+		&restclient.Config{Host: server.URL},
+	)
+	fakemapper := restmapper.NewDeferredDiscoveryRESTMapper(
+		memory.NewMemCacheClient(fakeDiscovery),
+	)
+
+	type args struct {
+		ctx            context.Context
+		c              client.Client
+		backupSchedule *v1beta1.BackupSchedule
+		mapping        *restmapper.DeferredDiscoveryRESTMapper
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "no CRD found for MSA, but MSA not enabled",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				mapping:        fakemapper,
+				backupSchedule: &sch,
+			},
+			want: true,
+		},
+		{
+			name: "no CRD found for MSA, MSA enabled",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				mapping:        fakemapper,
+				backupSchedule: &sch_msa,
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, got, _ := verifyMSAOption(tt.args.ctx,
+				tt.args.c,
+				tt.args.backupSchedule,
+				tt.args.mapping); got != tt.want {
+				t.Errorf("verifyMSAOption() = %v, want %v", got,
+					tt.want)
+			}
+		})
+	}
+
+	testEnv.Stop()
 }
