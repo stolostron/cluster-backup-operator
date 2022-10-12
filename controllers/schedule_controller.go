@@ -318,6 +318,7 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	msg := "UseManagedServiceAccount option cannot be used, managedserviceaccount-preview component is not enabled"
 	if useMSA := backupSchedule.Spec.UseManagedServiceAccount; useMSA {
 		if _, err := r.RESTMapper.RESTMapping(msaKind, ""); err != nil {
+			scheduleLogger.Error(err, "MSA CRD not found")
 			return createFailedValidationResponse(ctx, r.Client, backupSchedule,
 				msg, false)
 		}
