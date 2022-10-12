@@ -29,7 +29,6 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -311,21 +310,8 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	}
 
 	// check MSA status for backup schedules
-	msaKind := schema.GroupKind{
-		Group: msa_group,
-		Kind:  msa_kind,
-	}
-	msg := "UseManagedServiceAccount option cannot be used, managedserviceaccount-preview component is not enabled"
-	if useMSA := backupSchedule.Spec.UseManagedServiceAccount; useMSA {
-		if _, err := r.RESTMapper.RESTMapping(msaKind, ""); err != nil {
-			scheduleLogger.Error(err, "MSA CRD not found")
-			return createFailedValidationResponse(ctx, r.Client, backupSchedule,
-				msg, false)
-		}
-	}
+	return verifyMSAOption(ctx, r.Client, backupSchedule, r.RESTMapper)
 
-	validConfiguration = true
-	return ctrl.Result{}, validConfiguration, nil
 }
 
 // create velero.io.Schedule resource for each resource type that needs backup
