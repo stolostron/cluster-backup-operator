@@ -163,7 +163,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 			name: "Credentials should be set to skip or latest",
 			args: args{
 				restore: createACMRestore("Restore", "veleroNamespace").
-					cleanupBeforeRestore(v1beta1.CleanupTypeAll).syncRestoreWithNewBackups(true).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).syncRestoreWithNewBackups(true).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(backupName).
 					veleroResourcesBackupName(latestBackup).object,
@@ -174,7 +174,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 			name: "Resources should be set to latest",
 			args: args{
 				restore: createACMRestore("Restore", "veleroNamespace").
-					cleanupBeforeRestore(v1beta1.CleanupTypeAll).syncRestoreWithNewBackups(true).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).syncRestoreWithNewBackups(true).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(latestBackup).
 					veleroResourcesBackupName(skipRestore).object,
@@ -185,7 +185,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 			name: "InValid config, no sync",
 			args: args{
 				restore: createACMRestore("Restore", "veleroNamespace").
-					cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(latestBackup).
 					veleroResourcesBackupName(latestBackup).object,
@@ -197,7 +197,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 			args: args{
 				restore: createACMRestore("Restore", "veleroNamespace").
 					syncRestoreWithNewBackups(true).
-					cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(latestBackup).
 					veleroResourcesBackupName(latestBackup).object,
@@ -248,7 +248,7 @@ func Test_isSkipAllRestores(t *testing.T) {
 			name: "Do not skip all",
 			args: args{
 				restore: createACMRestore("Restore", "veleroNamespace").
-					cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(latestBackup).
 					veleroResourcesBackupName(latestBackup).object,
@@ -259,7 +259,7 @@ func Test_isSkipAllRestores(t *testing.T) {
 			name: "Managed clusters name is not skip",
 			args: args{
 				restore: createACMRestore("Restore", "veleroNamespace").
-					cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(latestBackup).
 					veleroCredentialsBackupName(latestBackup).
 					veleroResourcesBackupName(latestBackup).object,
@@ -680,7 +680,7 @@ func Test_isNewBackupAvailable(t *testing.T) {
 	restoreCreds := *createACMRestore(passiveStr, veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
 		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
-		cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 		veleroManagedClustersBackupName(skipRestore).
 		veleroCredentialsBackupName(latestBackup).
 		veleroResourcesBackupName(latestBackup).object
@@ -688,7 +688,7 @@ func Test_isNewBackupAvailable(t *testing.T) {
 	restoreCredSameBackup := *createACMRestore(passiveStr, veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
 		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
-		cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 		veleroManagedClustersBackupName(skipRestore).
 		veleroCredentialsBackupName(latestBackup).
 		veleroResourcesBackupName(latestBackup).
@@ -696,7 +696,7 @@ func Test_isNewBackupAvailable(t *testing.T) {
 
 	restoreCredNewBackup := *createACMRestore(passiveStr, veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
-		cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 		restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 		veleroManagedClustersBackupName(skipRestore).
 		veleroCredentialsBackupName(latestBackup).
@@ -933,7 +933,7 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 	restoreCredsNoError := *createACMRestore("restore1", veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
 		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
-		cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 		veleroManagedClustersBackupName(skipRestore).
 		veleroCredentialsBackupName(skipRestore).
 		veleroResourcesBackupName(backupName).object
@@ -941,7 +941,7 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 	restoreCredsInvalidBackupName := *createACMRestore("restore1", veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
 		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
-		cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 		veleroManagedClustersBackupName(latestBackupStr).
 		veleroCredentialsBackupName(skipRestore).
 		veleroResourcesBackupName(invalidBackupName).object
@@ -1019,7 +1019,7 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 	restore := *createACMRestore(restoreName, veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
 		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
-		cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 		veleroManagedClustersBackupName(latestBackupStr).
 		veleroCredentialsBackupName(skipRestoreStr).
 		veleroResourcesBackupName(backupName).object
@@ -1027,7 +1027,7 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 	restoreOther := *createACMRestore("other-"+restoreName, veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
 		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
-		cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 		veleroManagedClustersBackupName(latestBackupStr).
 		veleroCredentialsBackupName(skipRestoreStr).
 		veleroResourcesBackupName(backupName).object

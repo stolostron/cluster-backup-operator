@@ -620,11 +620,28 @@ func Test_cleanupDeltaResources(t *testing.T) {
 		want bool
 	}{
 		{
+			name: "post activation  should NOT run now, CleanupTypeNone",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+				restore: createACMRestore("Restore", "veleroNamespace").
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+					veleroManagedClustersBackupName(skipRestoreStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).
+					phase(v1beta1.RestorePhaseEnabled).object,
+				cleanupOnRestore: true,
+				restoreOptions:   RestoreOptions{},
+			},
+			want: false,
+		},
+		{
 			name: "post activation  should NOT run now, state is enabled but cleanup is false",
 			args: args{
 				ctx: context.Background(),
 				c:   k8sClient1,
 				restore: createACMRestore("Restore", "veleroNamespace").
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestoreStr).
 					veleroCredentialsBackupName(latestBackupStr).
 					veleroResourcesBackupName(latestBackupStr).
@@ -640,6 +657,7 @@ func Test_cleanupDeltaResources(t *testing.T) {
 				ctx: context.Background(),
 				c:   k8sClient1,
 				restore: createACMRestore("Restore", "veleroNamespace").
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestoreStr).
 					veleroCredentialsBackupName(latestBackupStr).
 					veleroResourcesBackupName(latestBackupStr).
@@ -655,6 +673,7 @@ func Test_cleanupDeltaResources(t *testing.T) {
 				ctx: context.Background(),
 				c:   k8sClient1,
 				restore: createACMRestore("Restore", "veleroNamespace").
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(latestBackupStr).
 					veleroCredentialsBackupName(latestBackupStr).
 					veleroResourcesBackupName(latestBackupStr).

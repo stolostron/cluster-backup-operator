@@ -45,10 +45,6 @@ type CleanupType string
 const (
 	// clean up only resources created as a result of a previous restore operation
 	CleanupTypeRestored = "CleanupRestored"
-	// clean up all resources created by CRD in the acm backup criteria
-	// Use this option with caution as this could cleanup resources on the hub
-	// created by the user, that should be kept even if they are not in the restored resources
-	CleanupTypeAll = "CleanupAll"
 	// don't clean up any resources
 	// this can be used on a new hub where there is no need to clean up any previously created data
 	CleanupTypeNone = "None"
@@ -78,11 +74,7 @@ type RestoreSpec struct {
 	//
 	// 1. Use CleanupRestored if you want to delete all
 	// resources created by a previous restore operation, before restoring the new data
-	// 2. Use CleanupAll if you want to delete all
-	// resources of the type contained by the acm backup criteria, before restoring the new data.
-	// Use this option with caution as this will also cleanup resources on the hub
-	// created by the user, so not only resources previously restored.
-	// 3. Use None if you don't want to clean up any resources before restoring the new data.
+	// 2. Use None if you don't want to clean up any resources before restoring the new data.
 	//
 	CleanupBeforeRestore CleanupType `json:"cleanupBeforeRestore"`
 	// +kubebuilder:validation:Optional

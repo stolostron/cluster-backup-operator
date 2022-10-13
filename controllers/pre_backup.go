@@ -155,14 +155,10 @@ func cleanupMSAForImportedClusters(
 	if err := c.List(ctx, addons, &client.ListOptions{LabelSelector: label}); err == nil {
 
 		for i := range addons.Items {
-			if err := c.Delete(ctx, &addons.Items[i]); err != nil {
-				logger.Error(
-					err,
-					fmt.Sprintf("failed to delete the addon %s", addons.Items[i].Name),
-				)
-			} else {
+			logger.Info(fmt.Sprintf("deleting addon %s", addons.Items[i].Name))
+			if err := c.Delete(ctx, &addons.Items[i]); err == nil {
 				logger.Info(
-					fmt.Sprintf("deleted addon %s", addons.Items[i].Name),
+					fmt.Sprintf(" addon deleted %s", addons.Items[i].Name),
 				)
 			}
 		}
@@ -175,12 +171,10 @@ func cleanupMSAForImportedClusters(
 	if err := c.List(ctx, manifestWorkList, &client.ListOptions{LabelSelector: label}); err == nil {
 
 		for i := range manifestWorkList.Items {
-			if err := c.Delete(ctx, &manifestWorkList.Items[i]); err != nil {
-				logger.Error(
-					err,
-					fmt.Sprintf("failed to delete manifestwork %s", manifestWorkList.Items[i].Name),
-				)
-			} else {
+			logger.Info(
+				fmt.Sprintf("deleting manifestwork %s", manifestWorkList.Items[i].Name),
+			)
+			if err := c.Delete(ctx, &manifestWorkList.Items[i]); err == nil {
 				logger.Info(
 					fmt.Sprintf("deleted manifestwork %s", manifestWorkList.Items[i].Name),
 				)
@@ -414,9 +408,6 @@ func updateMSAToken(
 			continue
 		}
 		rotationValues := iter.Value().Interface().(map[string]interface{})
-		if rotationValues == nil {
-			return false, nil
-		}
 		iterRotation := reflect.ValueOf(rotationValues).MapRange()
 		for iterRotation.Next() {
 			if iterRotation.Key().String() == "validity" &&

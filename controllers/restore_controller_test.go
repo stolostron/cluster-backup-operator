@@ -190,7 +190,7 @@ var _ = Describe("Basic Restore controller", func() {
 
 		managedClusterNamespaces = []corev1.Namespace{}
 		rhacmRestore = *createACMRestore(restoreName, veleroNamespace.Name).
-			cleanupBeforeRestore(v1beta1.CleanupTypeAll).syncRestoreWithNewBackups(true).
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).syncRestoreWithNewBackups(true).
 			restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 			veleroManagedClustersBackupName(veleroManagedClustersBackupName).
 			veleroCredentialsBackupName(veleroCredentialsBackupName).
@@ -256,7 +256,7 @@ var _ = Describe("Basic Restore controller", func() {
 				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
 
 			rhacmRestore = *createACMRestore(restoreName, veleroNamespace.Name).
-				cleanupBeforeRestore(v1beta1.CleanupTypeAll).syncRestoreWithNewBackups(true).
+				cleanupBeforeRestore(v1beta1.CleanupTypeRestored).syncRestoreWithNewBackups(true).
 				restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 				veleroManagedClustersBackupName(skipRestore).
 				veleroCredentialsBackupName(latestBackup).
@@ -906,7 +906,7 @@ var _ = Describe("Basic Restore controller", func() {
 				setOwner().object
 
 			rhacmRestore = *createACMRestore(restoreName, veleroNamespace.Name).
-				cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+				cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 				veleroManagedClustersBackupName(skipRestore).
 				veleroCredentialsBackupName(latestBackup).
 				veleroResourcesBackupName(latestBackup).object
@@ -1020,7 +1020,7 @@ var _ = Describe("Basic Restore controller", func() {
 
 			// cannot create another restore, one is enabled
 			restoreFailing := *createACMRestore(restoreName+"-fail", veleroNamespace.Name).
-				cleanupBeforeRestore(v1beta1.CleanupTypeAll).syncRestoreWithNewBackups(true).
+				cleanupBeforeRestore(v1beta1.CleanupTypeRestored).syncRestoreWithNewBackups(true).
 				restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 				veleroManagedClustersBackupName(skipRestore).
 				veleroCredentialsBackupName(veleroCredentialsBackupName).
@@ -1117,7 +1117,7 @@ var _ = Describe("Basic Restore controller", func() {
 
 			backupName := "acm-managed-clusters-schedule-good-very-recent-backup"
 			rhacmRestore = *createACMRestore(restoreName, veleroNamespace.Name).
-				cleanupBeforeRestore(v1beta1.CleanupTypeAll).
+				cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 				veleroManagedClustersBackupName(backupName).
 				veleroCredentialsBackupName(skipRestore).
 				veleroResourcesBackupName(skipRestore).object
