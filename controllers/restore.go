@@ -34,8 +34,9 @@ import (
 )
 
 const (
-	activateLabel        = "cluster.open-cluster-management.io/restore-auto-import-secret" // #nosec G101 -- This is a false positive
-	autoImportSecretName = "auto-import-secret"                                            // #nosec G101 -- This is a false positive
+	/* #nosec G101 -- This is a false positive */
+	activateLabel        = "cluster.open-cluster-management.io/restore-auto-import-secret"
+	autoImportSecretName = "auto-import-secret"
 )
 
 var (
