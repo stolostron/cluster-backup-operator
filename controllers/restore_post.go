@@ -31,7 +31,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/restmapper"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -320,6 +322,10 @@ func deleteDynamicResourcesForBackup(
 		labelSelector = fmt.Sprintf("%s, %s", labelSelector, otherLabels)
 	}
 
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
+		memory.NewMemCacheClient(restoreOptions.dynamicArgs.dc),
+	)
+
 	for i := range resources {
 		kind, groupName := getResourceDetails(resources[i])
 
@@ -337,7 +343,7 @@ func deleteDynamicResourcesForBackup(
 			Group: groupName,
 			Kind:  kind,
 		}
-		mapping, err := restoreOptions.dynamicArgs.mapper.RESTMapping(groupKind, "")
+		mapping, err := mapper.RESTMapping(groupKind, "")
 		if err != nil {
 			logger.Info(fmt.Sprintf("Failed to get dynamic mapper for group=%s, error : %s",
 				groupKind, err.Error()))

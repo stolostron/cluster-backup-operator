@@ -1886,9 +1886,6 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	fakeDiscovery := discoveryclient.NewDiscoveryClientForConfigOrDie(
 		&restclient.Config{Host: server.URL},
 	)
-	fakemapper := restmapper.NewDeferredDiscoveryRESTMapper(
-		memory.NewMemCacheClient(fakeDiscovery),
-	)
 
 	testRequest := "authentication.open-cluster-management.io/v1alpha1"
 	fakeDiscovery.ServerResourcesForGroupVersion(testRequest)
@@ -1925,9 +1922,8 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	}
 
 	reconcileArgs := DynamicStruct{
-		dc:     fakeDiscovery,
-		dyn:    dyn,
-		mapper: fakemapper,
+		dc:  fakeDiscovery,
+		dyn: dyn,
 	}
 
 	resOptions := RestoreOptions{
@@ -2111,6 +2107,10 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		panic(err.Error())
 	}
 
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
+		memory.NewMemCacheClient(resOptions.dynamicArgs.dc),
+	)
+
 	for _, tt := range testsResources {
 
 		k8sClient1.Create(tt.args.ctx, tt.args.veleroBackup)
@@ -2143,7 +2143,8 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			Group: chGVK.Group,
 			Kind:  chGVK.Kind,
 		}
-		mapping, _ := tt.args.restoreOptions.dynamicArgs.mapper.RESTMapping(groupKind, "")
+
+		mapping, _ := mapper.RESTMapping(groupKind, "")
 		var dr = tt.args.restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource)
 
 		for i := range tt.resourcesToBeDeleted {
@@ -2196,7 +2197,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			Group: clsGVK.Group,
 			Kind:  clsGVK.Kind,
 		}
-		mapping, _ := tt.args.restoreOptions.dynamicArgs.mapper.RESTMapping(groupKind, "")
+		mapping, _ := mapper.RESTMapping(groupKind, "")
 		var dr = tt.args.restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource)
 
 		for i := range tt.resourcesToBeDeleted {

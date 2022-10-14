@@ -26,6 +26,8 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -371,7 +373,7 @@ func verifyMSAOption(
 	ctx context.Context,
 	c client.Client,
 	backupSchedule *v1beta1.BackupSchedule,
-	m *restmapper.DeferredDiscoveryRESTMapper,
+	dc discovery.DiscoveryInterface,
 ) (ctrl.Result, bool, error) {
 	msaKind := schema.GroupKind{
 		Group: msa_group,
@@ -381,6 +383,10 @@ func verifyMSAOption(
 	scheduleLogger := log.FromContext(ctx)
 	msg := "UseManagedServiceAccount option cannot be used, managedserviceaccount-preview component is not enabled"
 	if useMSA := backupSchedule.Spec.UseManagedServiceAccount; useMSA {
+		m := restmapper.NewDeferredDiscoveryRESTMapper(
+			memory.NewMemCacheClient(dc),
+		)
+
 		if _, err := m.RESTMapping(msaKind, ""); err != nil {
 			scheduleLogger.Error(err, "MSA CRD not found")
 			return createFailedValidationResponse(ctx, c, backupSchedule,

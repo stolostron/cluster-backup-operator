@@ -31,10 +31,8 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	certsv1 "k8s.io/api/certificates/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	"k8s.io/client-go/discovery/cached/memory"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -434,10 +432,6 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(mgr).NotTo(BeNil())
 
-	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
-		memory.NewMemCacheClient(fakeDiscovery),
-	)
-
 	res_channel_default := &unstructured.Unstructured{}
 	res_channel_default.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "apps.open-cluster-management.io/v1beta1",
@@ -637,7 +631,6 @@ var _ = BeforeSuite(func() {
 		Scheme:          mgr.GetScheme(),
 		DiscoveryClient: fakeDiscovery,
 		DynamicClient:   dynR,
-		RESTMapper:      mapper,
 		Recorder:        mgr.GetEventRecorderFor("restore reconciler"),
 	}).SetupWithManager(mgr)
 	Expect(err).ToNot(HaveOccurred())
@@ -647,7 +640,6 @@ var _ = BeforeSuite(func() {
 		Scheme:          mgr.GetScheme(),
 		DiscoveryClient: fakeDiscovery,
 		DynamicClient:   dyn,
-		RESTMapper:      mapper,
 	}).SetupWithManager(mgr)
 	Expect(err).ToNot(HaveOccurred())
 
