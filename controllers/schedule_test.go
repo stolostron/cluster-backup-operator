@@ -736,7 +736,7 @@ func Test_verifyMSAOptione(t *testing.T) {
 				mapping:        fakemapper,
 				backupSchedule: &sch_msa,
 			},
-			want: true,
+			want: false,
 		},
 	}
 	for _, tt := range tests {
