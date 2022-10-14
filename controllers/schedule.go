@@ -384,7 +384,7 @@ func verifyMSAOption(
 		if _, err := m.RESTMapping(msaKind, ""); err != nil {
 			scheduleLogger.Error(err, "MSA CRD not found")
 			return createFailedValidationResponse(ctx, c, backupSchedule,
-				msg, false)
+				msg, true) // want to reque, if CRD is installed after
 		}
 	}
 

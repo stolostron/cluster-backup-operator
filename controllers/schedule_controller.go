@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -120,6 +121,12 @@ func (r *BackupScheduleReconciler) Reconcile(
 	cleanupExpiredValidationBackups(ctx, req.Namespace, r.Client)
 
 	backupSchedule := &v1beta1.BackupSchedule{}
+
+	// reload rest mapper in case resources have been installed or uninstalled
+	// after the backup pod was created
+	r.RESTMapper = restmapper.NewDeferredDiscoveryRESTMapper(
+		memory.NewMemCacheClient(r.DiscoveryClient),
+	)
 
 	if result, validConfiguration, err := r.isValidateConfiguration(ctx, req,
 		backupSchedule); !validConfiguration {
