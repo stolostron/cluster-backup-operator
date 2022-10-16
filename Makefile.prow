@@ -14,5 +14,5 @@ build-prow:
 export HOME = /tmp/home
 unit-tests:
 	mkdir $(HOME)
-	GOFLAGS="" go test -timeout 300s -v -short ./controllers
+	GOFLAGS="" go test -timeout 600s -v -short ./controllers
 	

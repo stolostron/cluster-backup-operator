@@ -563,6 +563,8 @@ var _ = Describe("BackupSchedule controller", func() {
 			// when the clusterID is checked, it is going to be (unkonwn) - since we have no cluster resource on test
 			// and the previous schedules had used abcd as clusterId
 			time.Sleep(time.Second * 7)
+			// get the schedule again
+			k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
 			createdBackupSchedule.Spec.VeleroTTL = metav1.Duration{Duration: time.Hour * 50}
 			Eventually(func() bool {
 				err := k8sClient.Update(
@@ -755,22 +757,6 @@ var _ = Describe("BackupSchedule controller", func() {
 			}, timeout, interval).Should(BeTrue())
 			Expect(len(veleroScheduleList.Items)).To(BeNumerically("==", len(veleroScheduleNames)))
 
-			// delete existing velero schedule
-			Eventually(func() bool {
-				scheduleObj := veleroScheduleList.Items[0].DeepCopy()
-				err := k8sClient.Delete(ctx, scheduleObj)
-				return err == nil
-			}, timeout, interval).Should(BeTrue())
-
-			// count velero schedules, should still be 5
-			veleroScheduleList = veleroapi.ScheduleList{}
-			Eventually(func() int {
-				err := k8sClient.List(ctx, &veleroScheduleList, &client.ListOptions{})
-				if err != nil {
-					return 0
-				}
-				return len(veleroScheduleList.Items)
-			}, timeout, interval).Should(BeNumerically("==", len(veleroScheduleNames)))
 			for i := range veleroScheduleList.Items {
 
 				veleroSchedule := veleroScheduleList.Items[i]

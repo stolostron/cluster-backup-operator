@@ -31,7 +31,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -96,7 +98,11 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		Group: msa_group,
 		Kind:  msa_kind,
 	}
-	msaMapping, err := r.RESTMapper.RESTMapping(msaKind, "")
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
+		memory.NewMemCacheClient(r.DiscoveryClient),
+	)
+
+	msaMapping, err := mapper.RESTMapping(msaKind, "")
 	var dr dynamic.NamespaceableResourceInterface
 	if err == nil {
 		logger.Info("ManagedServiceAccounts is enabled, generate MSA accounts if needed")
