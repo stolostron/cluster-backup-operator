@@ -845,6 +845,9 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 		secretsToKeep   []string
 		secretsToDelete []string
 		secretsToCreate []corev1.Secret
+		mapsToKeep      []string
+		mapsToDelete    []string
+		mapsToCreate    []corev1.ConfigMap
 	}{
 		{
 			name: "keep secrets with no backup or backup matching cleanupAll",
@@ -884,6 +887,35 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 					backupCredsHiveLabel: "hive",
 				}, nil, nil),
 			},
+			mapsToKeep: []string{
+				"aws-map-1", //has the same backup label as the backup
+				"aws-map-2", // this is not an ACM map, no ACM label
+				"aws-map-3", // this is not an ACM map, no ACM label
+
+			},
+			mapsToDelete: []string{
+				"aws-map-4", // ACM secret and different backup
+				"aws-ap-5",  // ACM map no backup label
+			},
+			mapsToCreate: []corev1.ConfigMap{
+				*createConfigMap("aws-map-1", namespace, map[string]string{
+					BackupNameVeleroLabel: "name1",
+					backupCredsHiveLabel:  "hive",
+				}),
+				*createConfigMap("aws-map-2", namespace, map[string]string{
+					"velero.io/backup-name-dummy": "name2",
+				}), // no backup label
+				*createConfigMap("aws-map-3", namespace, map[string]string{
+					BackupNameVeleroLabel: "name2",
+				}), // has backup label but no ACM secret label
+				*createConfigMap("aws-map-4", namespace, map[string]string{
+					BackupNameVeleroLabel: "name2",
+					backupCredsHiveLabel:  "hive",
+				}),
+				*createConfigMap("aws-map-5", namespace, map[string]string{
+					backupCredsHiveLabel: "hive",
+				}),
+			},
 		},
 		{
 			name: "keep secrets with no backup or backup matching cleanupRestored",
@@ -912,6 +944,24 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 					backupCredsHiveLabel: "hive",
 				}, nil, nil),
 			},
+			mapsToKeep: []string{
+				"aws-map-1", //has the same backup label as the backup
+				"aws-map-2", // this is not an ACM map, no ACM label
+				"aws-map-3", // this is not an ACM map, no ACM label
+				"aws-map-5", // user created map, not deleted when CleanupTypeRestored
+			},
+			mapsToDelete: []string{
+				"aws-map-4", // ACM map and different backup
+			},
+			mapsToCreate: []corev1.ConfigMap{
+				*createConfigMap("aws-map-4", namespace, map[string]string{
+					BackupNameVeleroLabel: "name2",
+					backupCredsHiveLabel:  "hive",
+				}),
+				*createConfigMap("aws-map-5", namespace, map[string]string{
+					backupCredsHiveLabel: "hive",
+				}),
+			},
 		},
 	}
 
@@ -920,6 +970,13 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 		for i := range tt.secretsToCreate {
 			if err := k8sClient1.Create(context.Background(), &tt.secretsToCreate[i]); err != nil {
 				t.Errorf("failed to create secret %s ", err.Error())
+
+			}
+		}
+
+		for i := range tt.mapsToCreate {
+			if err := k8sClient1.Create(context.Background(), &tt.mapsToCreate[i]); err != nil {
+				t.Errorf("failed to create map %s ", err.Error())
 
 			}
 		}
@@ -950,6 +1007,26 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 				}
 			}
 
+			for i := range tt.mapsToDelete {
+				maps := corev1.ConfigMap{}
+				if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+					Name: tt.mapsToDelete[i], Namespace: namespace},
+					&maps); err == nil {
+					t.Errorf("deleteSecretsWithLabelSelector() map %s should be deleted",
+						tt.mapsToDelete[i])
+				}
+
+			}
+
+			for i := range tt.mapsToKeep {
+				maps := corev1.ConfigMap{}
+				if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+					Name: tt.mapsToKeep[i], Namespace: namespace},
+					&maps); err != nil {
+					t.Errorf("deleteSecretsWithLabelSelector()map  %s should be found",
+						tt.mapsToKeep[i])
+				}
+			}
 		})
 
 	}
