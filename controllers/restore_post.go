@@ -502,7 +502,8 @@ func isValidCleanupOption(
 
 	if ok := findValue([]string{
 		v1beta1.CleanupTypeNone,
-		v1beta1.CleanupTypeRestored},
+		v1beta1.CleanupTypeRestored,
+		v1beta1.CleanupTypeAll},
 		string(acmRestore.Spec.CleanupBeforeRestore)); !ok {
 
 		msg := "invalid CleanupBeforeRestore value : " +
