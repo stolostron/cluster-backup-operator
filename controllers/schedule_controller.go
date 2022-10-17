@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -90,7 +89,6 @@ type BackupScheduleReconciler struct {
 	client.Client
 	DiscoveryClient discovery.DiscoveryInterface
 	DynamicClient   dynamic.Interface
-	RESTMapper      *restmapper.DeferredDiscoveryRESTMapper
 	Scheme          *runtime.Scheme
 }
 
@@ -162,7 +160,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 		metav1.Now().Sub(veleroScheduleList.Items[0].CreationTimestamp.Time).Seconds() > 5 &&
 		backupSchedule.Status.Phase != "" &&
 		backupSchedule.Status.Phase != v1beta1.SchedulePhaseNew {
-		if isThisTheOwner, lastBackup := r.scheduleOwnsLatestStorageBackups(ctx,
+		if isThisTheOwner, lastBackup := scheduleOwnsLatestStorageBackups(ctx, r.Client,
 			&veleroScheduleList.Items[0]); !isThisTheOwner {
 			// set exception status, because another cluster is creating backups
 			// and storing them at the same location
@@ -310,7 +308,7 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	}
 
 	// check MSA status for backup schedules
-	return verifyMSAOption(ctx, r.Client, backupSchedule, r.RESTMapper)
+	return verifyMSAOption(ctx, r.Client, backupSchedule, r.DiscoveryClient)
 
 }
 

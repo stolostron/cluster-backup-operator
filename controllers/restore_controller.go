@@ -30,7 +30,6 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -55,9 +54,8 @@ const (
 )
 
 type DynamicStruct struct {
-	dc     discovery.DiscoveryInterface
-	dyn    dynamic.Interface
-	mapper *restmapper.DeferredDiscoveryRESTMapper
+	dc  discovery.DiscoveryInterface
+	dyn dynamic.Interface
 }
 
 type RestoreOptions struct {
@@ -71,7 +69,6 @@ type RestoreReconciler struct {
 	KubeClient      kubernetes.Interface
 	DiscoveryClient discovery.DiscoveryInterface
 	DynamicClient   dynamic.Interface
-	RESTMapper      *restmapper.DeferredDiscoveryRESTMapper
 	Scheme          *runtime.Scheme
 	Recorder        record.EventRecorder
 }
@@ -212,9 +209,8 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 
 		reconcileArgs := DynamicStruct{
-			dc:     r.DiscoveryClient,
-			dyn:    r.DynamicClient,
-			mapper: r.RESTMapper,
+			dc:  r.DiscoveryClient,
+			dyn: r.DynamicClient,
 		}
 
 		restoreOptions := RestoreOptions{

@@ -31,7 +31,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -51,7 +53,7 @@ const (
 	backup_label          = "msa"
 	addon_work_label      = "open-cluster-management.io/addon-name-work"
 	addon_label           = "open-cluster-management.io/addon-name-work"
-	role_name             = "klusterlet"
+	role_name             = "klusterlet-bootstrap-kubeconfig"
 	msa_api               = "authentication.open-cluster-management.io/v1alpha1"
 
 	manifest_work_name = "addon-" + msa_addon + "-import"
@@ -96,7 +98,11 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		Group: msa_group,
 		Kind:  msa_kind,
 	}
-	msaMapping, err := r.RESTMapper.RESTMapping(msaKind, "")
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
+		memory.NewMemCacheClient(r.DiscoveryClient),
+	)
+
+	msaMapping, err := mapper.RESTMapping(msaKind, "")
 	var dr dynamic.NamespaceableResourceInterface
 	if err == nil {
 		logger.Info("ManagedServiceAccounts is enabled, generate MSA accounts if needed")
