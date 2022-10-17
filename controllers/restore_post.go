@@ -374,32 +374,46 @@ func deleteDynamicResourcesForBackup(
 				groupKind, err.Error()))
 			continue
 		}
-		if dr := restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource); dr != nil {
+		invokeDynamicDelete(ctx, restoreOptions, labelSelector,
+			veleroBackup, mapping)
+	}
 
-			var listOptions = v1.ListOptions{}
-			if labelSelector != "" {
-				listOptions = v1.ListOptions{LabelSelector: labelSelector}
-			}
-			if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
-				// get all items and delete them
-				for i := range dynamiclist.Items {
+}
 
-					item := dynamiclist.Items[i]
-					if restoreOptions.cleanupType == v1beta1.CleanupTypeAll &&
-						item.GetLabels()[BackupNameVeleroLabel] == backupName {
-						// exclude here resources with the same backup as the last restore
-						continue
-					}
+func invokeDynamicDelete(
+	ctx context.Context,
+	restoreOptions RestoreOptions,
+	labelSelector string,
+	veleroBackup *veleroapi.Backup,
+	mapping *meta.RESTMapping,
+) {
 
-					deleteDynamicResource(
-						ctx,
-						mapping,
-						dr,
-						item,
-						restoreOptions.deleteOptions,
-						veleroBackup.Spec.ExcludedNamespaces,
-					)
+	backupName := veleroBackup.Name
+	if dr := restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource); dr != nil {
+
+		var listOptions = v1.ListOptions{}
+		if labelSelector != "" {
+			listOptions = v1.ListOptions{LabelSelector: labelSelector}
+		}
+		if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
+			// get all items and delete them
+			for i := range dynamiclist.Items {
+
+				item := dynamiclist.Items[i]
+				if restoreOptions.cleanupType == v1beta1.CleanupTypeAll &&
+					item.GetLabels()[BackupNameVeleroLabel] == backupName {
+					// exclude here resources with the same backup as the last restore
+					continue
 				}
+
+				deleteDynamicResource(
+					ctx,
+					mapping,
+					dr,
+					item,
+					restoreOptions.deleteOptions,
+					veleroBackup.Spec.ExcludedNamespaces,
+				)
 			}
 		}
 	}

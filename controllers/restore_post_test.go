@@ -2060,9 +2060,16 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		dyn: dyn,
 	}
 
-	resOptions := RestoreOptions{
+	resOptionsCleanupAll := RestoreOptions{
 		deleteOptions: delOptions,
 		dynamicArgs:   reconcileArgs,
+		cleanupType:   v1beta1.CleanupTypeAll,
+	}
+
+	resOptionsCleanupRestored := RestoreOptions{
+		deleteOptions: delOptions,
+		dynamicArgs:   reconcileArgs,
+		cleanupType:   v1beta1.CleanupTypeRestored,
 	}
 
 	type args struct {
@@ -2086,7 +2093,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			args: args{
 				ctx:                    context.Background(),
 				c:                      k8sClient1,
-				restoreOptions:         resOptions,
+				restoreOptions:         resOptionsCleanupRestored,
 				veleroBackup:           &resourcesBackup,
 				backupName:             veleroResourcesBackupName,
 				managedClustersSkipped: true,
@@ -2106,7 +2113,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			args: args{
 				ctx:                    context.Background(),
 				c:                      k8sClient1,
-				restoreOptions:         resOptions,
+				restoreOptions:         resOptionsCleanupRestored,
 				veleroBackup:           &resourcesBackup,
 				backupName:             veleroResourcesBackupName,
 				managedClustersSkipped: true,
@@ -2128,7 +2135,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			args: args{
 				ctx:                    context.Background(),
 				c:                      k8sClient1,
-				restoreOptions:         resOptions,
+				restoreOptions:         resOptionsCleanupRestored,
 				veleroBackup:           &resourcesBackup,
 				backupName:             veleroResourcesBackupName,
 				managedClustersSkipped: false,
@@ -2156,7 +2163,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			args: args{
 				ctx:                    context.Background(),
 				c:                      k8sClient1,
-				restoreOptions:         resOptions,
+				restoreOptions:         resOptionsCleanupRestored,
 				veleroBackup:           &resourcesBackup,
 				backupName:             veleroResourcesBackupName,
 				managedClustersSkipped: true,
@@ -2184,7 +2191,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			args: args{
 				ctx:                    context.Background(),
 				c:                      k8sClient1,
-				restoreOptions:         resOptions,
+				restoreOptions:         resOptionsCleanupRestored,
 				veleroBackup:           &resourcesBackup,
 				backupName:             veleroResourcesBackupName,
 				managedClustersSkipped: false,
@@ -2207,6 +2214,37 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 				*channel_with_backup_label_diff,
 			},
 		},
+		{
+			name: "cleanup resources backup, with generic backup found and clusters backup not skipped, cleanup all",
+			args: args{
+				ctx:                    context.Background(),
+				c:                      k8sClient1,
+				restoreOptions:         resOptionsCleanupAll,
+				veleroBackup:           &resourcesBackup,
+				backupName:             veleroResourcesBackupName,
+				managedClustersSkipped: false,
+			},
+			resourcesToBeDeleted: []unstructured.Unstructured{
+				*channel_with_backup_label_diff,
+				*channel_with_backup_label_generic_old,
+				*channel_with_backup_label_generic,           // it's deleted bc the backup name doesn't match the generic backup
+				*channel_with_backup_label_generic_old_activ, // deleted bc the clusters backup is enabled
+				*channel_with_no_backup_label,                // delete all, even the ones with no label
+			},
+			resourcesToKeep: []unstructured.Unstructured{
+				*channel_with_backup_label_same,
+				*channel_with_backup_label_diff_excl_ns,
+				*channel_with_backup_label_generic_match,
+				*channel_with_backup_label_generic_match_activ,
+			},
+			extraBackups: []veleroapi.Backup{},
+			resourcesToCreate: []unstructured.Unstructured{ // this is the one deleted by the previous test, add it back
+				*channel_with_backup_label_diff,
+				*channel_with_backup_label_generic_old,
+				*channel_with_backup_label_generic,           // it's deleted bc the backup name doesn't match the generic backup
+				*channel_with_backup_label_generic_old_activ, // deleted bc the clusters backup is enabled
+			},
+		},
 	}
 
 	testsClusters := []struct {
@@ -2222,7 +2260,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			args: args{
 				ctx:            context.Background(),
 				c:              k8sClient1,
-				restoreOptions: resOptions,
+				restoreOptions: resOptionsCleanupRestored,
 				veleroBackup:   &clustersBackup,
 				backupName:     veleroClustersBackupName,
 			},
@@ -2242,7 +2280,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	}
 
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
-		memory.NewMemCacheClient(resOptions.dynamicArgs.dc),
+		memory.NewMemCacheClient(resOptionsCleanupRestored.dynamicArgs.dc),
 	)
 
 	for _, tt := range testsResources {
