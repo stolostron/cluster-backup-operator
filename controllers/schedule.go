@@ -204,15 +204,16 @@ func parseCronSchedule(
 
 // returns true if this schedule has generated the latest backups in the
 // storage location
-func (r *BackupScheduleReconciler) scheduleOwnsLatestStorageBackups(
+func scheduleOwnsLatestStorageBackups(
 	ctx context.Context,
+	c client.Client,
 	backupSchedule *veleroapi.Schedule,
 ) (bool, *veleroapi.Backup) {
 
 	logger := log.FromContext(ctx)
 
 	backups := veleroapi.BackupList{}
-	if err := r.List(ctx, &backups,
+	if err := c.List(ctx, &backups,
 		client.MatchingLabels{BackupVeleroLabel: veleroScheduleNames[Resources]}); err != nil {
 		logger.Info(err.Error())
 		return true, nil

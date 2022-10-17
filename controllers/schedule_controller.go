@@ -160,7 +160,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 		metav1.Now().Sub(veleroScheduleList.Items[0].CreationTimestamp.Time).Seconds() > 5 &&
 		backupSchedule.Status.Phase != "" &&
 		backupSchedule.Status.Phase != v1beta1.SchedulePhaseNew {
-		if isThisTheOwner, lastBackup := r.scheduleOwnsLatestStorageBackups(ctx,
+		if isThisTheOwner, lastBackup := scheduleOwnsLatestStorageBackups(ctx, r.Client,
 			&veleroScheduleList.Items[0]); !isThisTheOwner {
 			// set exception status, because another cluster is creating backups
 			// and storing them at the same location

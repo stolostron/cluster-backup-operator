@@ -749,3 +749,99 @@ func Test_verifyMSAOptione(t *testing.T) {
 
 	testEnv.Stop()
 }
+
+func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
+
+	veleroNamespaceName := "default"
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, _ := testEnv.Start()
+	scheme1 := runtime.NewScheme()
+	veleroapi.AddToScheme(scheme1)
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	velero_schedule := *createSchedule(veleroScheduleNames[Resources], veleroNamespaceName).
+		scheduleLabels(map[string]string{BackupScheduleClusterLabel: "cls"}).
+		object
+
+	aFewSecondsAgo := metav1.NewTime(time.Now().Add(-2 * time.Second))
+	anHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
+
+	type args struct {
+		ctx      context.Context
+		c        client.Client
+		schedule *veleroapi.Schedule
+	}
+	tests := []struct {
+		name      string
+		args      args
+		want      bool
+		resources []*veleroapi.Backup
+	}{
+		{
+			name: "no backups",
+			args: args{
+				ctx:      context.Background(),
+				c:        k8sClient1,
+				schedule: &velero_schedule,
+			},
+			want:      true,
+			resources: []*veleroapi.Backup{},
+		},
+		{
+			name: "has backups, diferent cluster version",
+			args: args{
+				ctx:      context.Background(),
+				c:        k8sClient1,
+				schedule: &velero_schedule,
+			},
+			want: false,
+			resources: []*veleroapi.Backup{
+				createBackup(veleroScheduleNames[Resources]+"-1", veleroNamespaceName).
+					startTimestamp(anHourAgo).errors(0).
+					labels(map[string]string{BackupScheduleClusterLabel: "abcd",
+						BackupVeleroLabel: veleroScheduleNames[Resources]}).
+					object,
+			},
+		},
+		{
+			name: "has backups, same cluster version",
+			args: args{
+				ctx:      context.Background(),
+				c:        k8sClient1,
+				schedule: &velero_schedule,
+			},
+			want: true,
+			resources: []*veleroapi.Backup{
+				createBackup(veleroScheduleNames[Resources]+"-2", veleroNamespaceName).
+					startTimestamp(aFewSecondsAgo).errors(0).
+					labels(map[string]string{BackupScheduleClusterLabel: "cls",
+						BackupVeleroLabel: veleroScheduleNames[Resources]}).
+					object,
+			},
+		},
+	}
+	for _, tt := range tests {
+
+		for i := range tt.resources {
+			if err := k8sClient1.Create(tt.args.ctx, tt.resources[i]); err != nil {
+				t.Errorf("failed to create %s", err.Error())
+			}
+
+		}
+
+		t.Run(tt.name, func(t *testing.T) {
+			if got, _ := scheduleOwnsLatestStorageBackups(tt.args.ctx, tt.args.c,
+				tt.args.schedule); got != tt.want {
+				t.Errorf("scheduleOwnsLatestStorageBackups() = got %v, want %v", got, tt.want)
+			}
+		})
+
+	}
+	// clean up
+	testEnv.Stop()
+
+}
