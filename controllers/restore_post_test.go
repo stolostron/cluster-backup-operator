@@ -364,7 +364,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 			"name":      "channel-new-default-excluded",
 			"namespace": "default",
 			"labels": map[string]interface{}{
-				"velero.io/exclude-from-backup": "true",
+				ExcludeBackupLabel: "true",
 			},
 		},
 		"spec": map[string]interface{}{
