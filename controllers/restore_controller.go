@@ -61,6 +61,7 @@ type DynamicStruct struct {
 type RestoreOptions struct {
 	deleteOptions metav1.DeleteOptions
 	dynamicArgs   DynamicStruct
+	cleanupType   v1beta1.CleanupType
 }
 
 // RestoreReconciler reconciles a Restore object
@@ -216,6 +217,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		restoreOptions := RestoreOptions{
 			dynamicArgs:   reconcileArgs,
 			deleteOptions: delOptions,
+			cleanupType:   restore.Spec.CleanupBeforeRestore,
 		}
 		cleanupDeltaResources(ctx, r.Client, restore, cleanupOnRestore, restoreOptions)
 		executePostRestoreTasks(ctx, r.Client, restore)
