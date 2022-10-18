@@ -140,6 +140,8 @@ func cleanupMSAForImportedClusters(
 	delOptions := metav1.DeleteOptions{
 		PropagationPolicy: &deletePolicy,
 	}
+
+	// delete ManagedServiceAccounts with msa_service_name label
 	listOptions := v1.ListOptions{LabelSelector: fmt.Sprintf("%s in (%s)", msa_label, msa_service_name)}
 	if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
 		for i := range dynamiclist.Items {
@@ -154,7 +156,7 @@ func cleanupMSAForImportedClusters(
 		}
 	}
 
-	// delete managedclusters addons
+	// delete managedclusters addons with msa_service_name label
 	addons := &addonv1alpha1.ManagedClusterAddOnList{}
 	label := labels.SelectorFromSet(
 		map[string]string{msa_label: msa_service_name})
@@ -170,7 +172,7 @@ func cleanupMSAForImportedClusters(
 		}
 	}
 
-	// delete manifest work
+	// delete manifest work with msa_addon label
 	manifestWorkList := &workv1.ManifestWorkList{}
 	label = labels.SelectorFromSet(
 		map[string]string{addon_work_label: msa_addon})
@@ -242,7 +244,8 @@ func prepareImportedClusters(ctx context.Context,
 				msaAddon.Namespace = managedCluster.Name
 				msaAddon.Spec.InstallNamespace = installNamespace
 				labels := map[string]string{
-					msa_label: msa_service_name}
+					msa_label:          msa_service_name,
+					ExcludeBackupLabel: "true"}
 				msaAddon.SetLabels(labels)
 
 				err := c.Create(ctx, msaAddon, &client.CreateOptions{})
