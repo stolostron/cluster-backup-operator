@@ -361,14 +361,14 @@ func createMSA(
 
 	if generateMSA {
 		// delete any secret with the same name as the MSA
-		msa_secret := corev1.Secret{}
+		msaSecret := corev1.Secret{}
 		if err := c.Get(ctx, types.NamespacedName{
 			Name:      name,
 			Namespace: managedClusterName,
-		}, &msa_secret); err == nil {
+		}, &msaSecret); err == nil {
 			// found an MSA secret with the same name as the MSA; delete it, it will be recreated by the MSA
 			logger.Info("Deleting MSA secret %s in ns %s", name, managedClusterName)
-			if err := c.Delete(ctx, &msa_secret); err == nil {
+			if err := c.Delete(ctx, &msaSecret); err == nil {
 				logger.Info("Deleted MSA secret %s in ns %s", name, managedClusterName)
 			}
 		}
