@@ -826,82 +826,207 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 	cfg, _ := testEnv.Start()
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
 
+	ns1 := *createNamespace(namespace)
+	k8sClient1.Create(context.Background(), &ns1)
+
+	hiveCredsLabel, _ := labels.NewRequirement(backupCredsHiveLabel,
+		selection.Exists, []string{})
+
 	type args struct {
 		ctx         context.Context
 		c           client.Client
 		backupName  string
+		cleanupType v1beta1.CleanupType
 		otherLabels []labels.Requirement
 	}
 	tests := []struct {
-		name string
-		args args
+		name            string
+		args            args
+		secretsToKeep   []string
+		secretsToDelete []string
+		secretsToCreate []corev1.Secret
+		mapsToKeep      []string
+		mapsToDelete    []string
+		mapsToCreate    []corev1.ConfigMap
 	}{
 		{
-			name: "keep secrets with no backup or backup matching",
+			name: "keep secrets with no backup or backup matching cleanupAll",
 			args: args{
 				ctx:         context.Background(),
 				c:           k8sClient1,
 				backupName:  "name1",
-				otherLabels: []labels.Requirement{},
+				cleanupType: v1beta1.CleanupTypeAll,
+				otherLabels: []labels.Requirement{*hiveCredsLabel},
+			},
+			secretsToKeep: []string{
+				"aws-creds-1", //has the same backup label as the backup
+				"aws-creds-2", // this is not an ACM secret, no ACM label
+				"aws-creds-3", // this is not an ACM secret, no ACM label
+
+			},
+			secretsToDelete: []string{
+				"aws-creds-4", // ACM secret and different backup
+				"aws-creds-5", // ACM secret no backup label
+			},
+			secretsToCreate: []corev1.Secret{
+				*createSecret("aws-creds-1", namespace, map[string]string{
+					BackupNameVeleroLabel: "name1",
+					backupCredsHiveLabel:  "hive",
+				}, nil, nil),
+				*createSecret("aws-creds-2", namespace, map[string]string{
+					"velero.io/backup-name-dummy": "name2",
+				}, nil, nil), // no backup label
+				*createSecret("aws-creds-3", namespace, map[string]string{
+					BackupNameVeleroLabel: "name2",
+				}, nil, nil), // has backup label but no ACM secret label
+				*createSecret("aws-creds-4", namespace, map[string]string{
+					BackupNameVeleroLabel: "name2",
+					backupCredsHiveLabel:  "hive",
+				}, nil, nil),
+				*createSecret("aws-creds-5", namespace, map[string]string{
+					backupCredsHiveLabel: "hive",
+				}, nil, nil),
+			},
+			mapsToKeep: []string{
+				"aws-map-1", //has the same backup label as the backup
+				"aws-map-2", // this is not an ACM map, no ACM label
+				"aws-map-3", // this is not an ACM map, no ACM label
+
+			},
+			mapsToDelete: []string{
+				"aws-map-4", // ACM secret and different backup
+				"aws-ap-5",  // ACM map no backup label
+			},
+			mapsToCreate: []corev1.ConfigMap{
+				*createConfigMap("aws-map-1", namespace, map[string]string{
+					BackupNameVeleroLabel: "name1",
+					backupCredsHiveLabel:  "hive",
+				}),
+				*createConfigMap("aws-map-2", namespace, map[string]string{
+					"velero.io/backup-name-dummy": "name2",
+				}), // no backup label
+				*createConfigMap("aws-map-3", namespace, map[string]string{
+					BackupNameVeleroLabel: "name2",
+				}), // has backup label but no ACM secret label
+				*createConfigMap("aws-map-4", namespace, map[string]string{
+					BackupNameVeleroLabel: "name2",
+					backupCredsHiveLabel:  "hive",
+				}),
+				*createConfigMap("aws-map-5", namespace, map[string]string{
+					backupCredsHiveLabel: "hive",
+				}),
+			},
+		},
+		{
+			name: "keep secrets with no backup or backup matching cleanupRestored",
+			args: args{
+				ctx:         context.Background(),
+				c:           k8sClient1,
+				backupName:  "name1",
+				cleanupType: v1beta1.CleanupTypeRestored,
+				otherLabels: []labels.Requirement{*hiveCredsLabel},
+			},
+			secretsToKeep: []string{
+				"aws-creds-1", //has the same backup label as the backup
+				"aws-creds-2", // this is not an ACM secret, no ACM label
+				"aws-creds-3", // this is not an ACM secret, no ACM label
+				"aws-creds-5", // user created secret, not deleted when CleanupTypeRestored
+			},
+			secretsToDelete: []string{
+				"aws-creds-4", // ACM secret and different backup
+			},
+			secretsToCreate: []corev1.Secret{
+				*createSecret("aws-creds-4", namespace, map[string]string{
+					BackupNameVeleroLabel: "name2",
+					backupCredsHiveLabel:  "hive",
+				}, nil, nil),
+				*createSecret("aws-creds-5", namespace, map[string]string{
+					backupCredsHiveLabel: "hive",
+				}, nil, nil),
+			},
+			mapsToKeep: []string{
+				"aws-map-1", //has the same backup label as the backup
+				"aws-map-2", // this is not an ACM map, no ACM label
+				"aws-map-3", // this is not an ACM map, no ACM label
+				"aws-map-5", // user created map, not deleted when CleanupTypeRestored
+			},
+			mapsToDelete: []string{
+				"aws-map-4", // ACM map and different backup
+			},
+			mapsToCreate: []corev1.ConfigMap{
+				*createConfigMap("aws-map-4", namespace, map[string]string{
+					BackupNameVeleroLabel: "name2",
+					backupCredsHiveLabel:  "hive",
+				}),
+				*createConfigMap("aws-map-5", namespace, map[string]string{
+					backupCredsHiveLabel: "hive",
+				}),
 			},
 		},
 	}
 
-	for index, tt := range tests {
-		if index == 0 {
-			ns1 := *createNamespace(namespace)
+	for _, tt := range tests {
 
-			secretKeep := *createSecret("aws-creds-keep", namespace, map[string]string{
-				BackupNameVeleroLabel: "name1",
-			}, nil, nil) // matches backup label
-			secretKeep2 := *createSecret("aws-creds-keep2", namespace, map[string]string{
-				"velero.io/backup-name-dummy": "name2",
-			}, nil, nil) // no backup label
-			secretDelete := *createSecret("aws-creds-delete", namespace, map[string]string{
-				BackupNameVeleroLabel: "name2",
-			}, nil, nil)
-			configMapDelete := *createConfigMap("aws-cmap-delete", namespace, map[string]string{
-				BackupNameVeleroLabel: "name2",
-			})
-			cmapKeep := *createConfigMap("aws-map-keep", namespace, map[string]string{
-				BackupNameVeleroLabel: "name1",
-			}) // matches backup label
+		for i := range tt.secretsToCreate {
+			if err := k8sClient1.Create(context.Background(), &tt.secretsToCreate[i]); err != nil {
+				t.Errorf("failed to create secret %s ", err.Error())
 
-			k8sClient1.Create(tt.args.ctx, &ns1)
-			k8sClient1.Create(tt.args.ctx, &secretKeep)
-			k8sClient1.Create(tt.args.ctx, &secretKeep2)
-			k8sClient1.Create(tt.args.ctx, &secretDelete)
-			k8sClient1.Create(tt.args.ctx, &configMapDelete)
-			k8sClient1.Create(tt.args.ctx, &cmapKeep)
-
+			}
 		}
+
+		for i := range tt.mapsToCreate {
+			if err := k8sClient1.Create(context.Background(), &tt.mapsToCreate[i]); err != nil {
+				t.Errorf("failed to create map %s ", err.Error())
+
+			}
+		}
+
 		t.Run(tt.name, func(t *testing.T) {
 			deleteSecretsWithLabelSelector(tt.args.ctx, tt.args.c,
-				tt.args.backupName, tt.args.otherLabels)
+				tt.args.backupName, tt.args.cleanupType, tt.args.otherLabels)
 
-			secret := corev1.Secret{}
-			if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
-				Name: "aws-creds-keep", Namespace: namespace}, &secret); err != nil {
-				t.Errorf("deleteSecretsWithLabelSelector() aws-creds-delete should be found !")
+			// no matching backups so secrets should be deleted
+			for i := range tt.secretsToDelete {
+				secret := corev1.Secret{}
+				if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+					Name: tt.secretsToDelete[i], Namespace: namespace},
+					&secret); err == nil {
+					t.Errorf("deleteSecretsWithLabelSelector() secret %s should be deleted",
+						tt.secretsToDelete[i])
+				}
+
 			}
 
-			secret = corev1.Secret{}
-			if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
-				Name: "aws-creds-delete", Namespace: namespace}, &secret); err == nil {
-				t.Errorf("deleteSecretsWithLabelSelector() aws-creds-delete should not be found, it was deleted !")
+			for i := range tt.secretsToKeep {
+				secret := corev1.Secret{}
+				if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+					Name: tt.secretsToKeep[i], Namespace: namespace},
+					&secret); err != nil {
+					t.Errorf("deleteSecretsWithLabelSelector() %s should be found",
+						tt.secretsToKeep[i])
+				}
 			}
 
-			cmap := corev1.ConfigMap{}
-			if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
-				Name: "aws-map-keep", Namespace: namespace}, &cmap); err != nil {
-				t.Errorf("deleteSecretsWithLabelSelector() aws-cmap-delete should be found !")
-			}
-			cmap = corev1.ConfigMap{}
-			if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
-				Name: "aws-cmap-delete", Namespace: namespace}, &cmap); err == nil {
-				t.Errorf("deleteSecretsWithLabelSelector() aws-cmap-delete should not be found, it was deleted !")
+			for i := range tt.mapsToDelete {
+				maps := corev1.ConfigMap{}
+				if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+					Name: tt.mapsToDelete[i], Namespace: namespace},
+					&maps); err == nil {
+					t.Errorf("deleteSecretsWithLabelSelector() map %s should be deleted",
+						tt.mapsToDelete[i])
+				}
+
 			}
 
+			for i := range tt.mapsToKeep {
+				maps := corev1.ConfigMap{}
+				if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+					Name: tt.mapsToKeep[i], Namespace: namespace},
+					&maps); err != nil {
+					t.Errorf("deleteSecretsWithLabelSelector()map  %s should be found",
+						tt.mapsToKeep[i])
+				}
+			}
 		})
 
 	}
@@ -1009,6 +1134,7 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 		c                   client.Client
 		backupType          ResourceType
 		relatedVeleroBackup veleroapi.Backup
+		cleanupType         v1beta1.CleanupType
 		otherLabels         []labels.Requirement
 	}
 	tests := []struct {
@@ -1022,6 +1148,7 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
 				backupType:          CredentialsHive,
+				cleanupType:         v1beta1.CleanupTypeAll,
 				relatedVeleroBackup: relatedCredentialsBackup,
 				otherLabels:         []labels.Requirement{*hiveCredsLabel},
 			},
@@ -1032,6 +1159,7 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
 				backupType:          CredentialsHive,
+				cleanupType:         v1beta1.CleanupTypeAll,
 				relatedVeleroBackup: relatedCredentialsBackup,
 				otherLabels:         []labels.Requirement{*hiveCredsLabel},
 			},
@@ -1042,6 +1170,7 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
 				backupType:          CredentialsHive,
+				cleanupType:         v1beta1.CleanupTypeAll,
 				relatedVeleroBackup: relatedCredentialsBackup,
 				otherLabels:         []labels.Requirement{*hiveCredsLabel},
 			},
@@ -1076,7 +1205,8 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 
 		t.Run(tt.name, func(t *testing.T) {
 			deleteSecretsForBackupType(tt.args.ctx, tt.args.c,
-				tt.args.backupType, tt.args.relatedVeleroBackup, tt.args.otherLabels)
+				tt.args.backupType, tt.args.relatedVeleroBackup,
+				tt.args.cleanupType, tt.args.otherLabels)
 
 			if index == 0 {
 				// no matching backups so non secrets should be deleted
@@ -1088,7 +1218,7 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 			}
 
 			if index == 1 {
-				// no matching backups so non secrets should be deleted
+				// no matching backups so secrets should be deleted
 				for i := range secretsToBeDeleted {
 					secret := corev1.Secret{}
 					if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
@@ -1154,6 +1284,7 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 		c            client.Client
 		veleroBackup *veleroapi.Backup
 		backupName   string
+		cleanupType  v1beta1.CleanupType
 	}
 	tests := []struct {
 		name string
@@ -1162,9 +1293,10 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 		{
 			name: "no backup name, return",
 			args: args{
-				ctx:        context.Background(),
-				c:          k8sClient1,
-				backupName: "",
+				ctx:         context.Background(),
+				c:           k8sClient1,
+				cleanupType: v1beta1.CleanupTypeAll,
+				backupName:  "",
 				veleroBackup: createBackup("acm-credentials-hive-schedule-20220726152532", "veleroNamespace").
 					object,
 			},
@@ -1172,9 +1304,10 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 		{
 			name: "with backup name, no ORSelector",
 			args: args{
-				ctx:        context.Background(),
-				c:          k8sClient1,
-				backupName: "acm-credentials-hive-schedule-20220726152532",
+				ctx:         context.Background(),
+				c:           k8sClient1,
+				cleanupType: v1beta1.CleanupTypeAll,
+				backupName:  "acm-credentials-hive-schedule-20220726152532",
 				veleroBackup: createBackup("acm-credentials-hive-schedule-20220726152532", "veleroNamespace").
 					object,
 			},
@@ -1182,9 +1315,10 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 		{
 			name: "with backup name, and ORSelector",
 			args: args{
-				ctx:        context.Background(),
-				c:          k8sClient1,
-				backupName: "acm-credentials-hive-schedule-20220726152532",
+				ctx:         context.Background(),
+				c:           k8sClient1,
+				cleanupType: v1beta1.CleanupTypeAll,
+				backupName:  "acm-credentials-hive-schedule-20220726152532",
 				veleroBackup: createBackup("acm-credentials-hive-schedule-20220726152532", "veleroNamespace").
 					orLabelSelectors([]*metav1.LabelSelector{
 						&metav1.LabelSelector{
@@ -1201,7 +1335,7 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cleanupDeltaForCredentials(tt.args.ctx, tt.args.c,
-				tt.args.backupName, tt.args.veleroBackup)
+				tt.args.backupName, tt.args.veleroBackup, tt.args.cleanupType)
 		})
 
 	}
@@ -1926,9 +2060,16 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		dyn: dyn,
 	}
 
-	resOptions := RestoreOptions{
+	resOptionsCleanupAll := RestoreOptions{
 		deleteOptions: delOptions,
 		dynamicArgs:   reconcileArgs,
+		cleanupType:   v1beta1.CleanupTypeAll,
+	}
+
+	resOptionsCleanupRestored := RestoreOptions{
+		deleteOptions: delOptions,
+		dynamicArgs:   reconcileArgs,
+		cleanupType:   v1beta1.CleanupTypeRestored,
 	}
 
 	type args struct {
@@ -1952,7 +2093,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			args: args{
 				ctx:                    context.Background(),
 				c:                      k8sClient1,
-				restoreOptions:         resOptions,
+				restoreOptions:         resOptionsCleanupRestored,
 				veleroBackup:           &resourcesBackup,
 				backupName:             veleroResourcesBackupName,
 				managedClustersSkipped: true,
@@ -1972,7 +2113,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			args: args{
 				ctx:                    context.Background(),
 				c:                      k8sClient1,
-				restoreOptions:         resOptions,
+				restoreOptions:         resOptionsCleanupRestored,
 				veleroBackup:           &resourcesBackup,
 				backupName:             veleroResourcesBackupName,
 				managedClustersSkipped: true,
@@ -1994,7 +2135,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			args: args{
 				ctx:                    context.Background(),
 				c:                      k8sClient1,
-				restoreOptions:         resOptions,
+				restoreOptions:         resOptionsCleanupRestored,
 				veleroBackup:           &resourcesBackup,
 				backupName:             veleroResourcesBackupName,
 				managedClustersSkipped: false,
@@ -2022,7 +2163,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			args: args{
 				ctx:                    context.Background(),
 				c:                      k8sClient1,
-				restoreOptions:         resOptions,
+				restoreOptions:         resOptionsCleanupRestored,
 				veleroBackup:           &resourcesBackup,
 				backupName:             veleroResourcesBackupName,
 				managedClustersSkipped: true,
@@ -2050,7 +2191,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			args: args{
 				ctx:                    context.Background(),
 				c:                      k8sClient1,
-				restoreOptions:         resOptions,
+				restoreOptions:         resOptionsCleanupRestored,
 				veleroBackup:           &resourcesBackup,
 				backupName:             veleroResourcesBackupName,
 				managedClustersSkipped: false,
@@ -2073,6 +2214,37 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 				*channel_with_backup_label_diff,
 			},
 		},
+		{
+			name: "cleanup resources backup, with generic backup found and clusters backup not skipped, cleanup all",
+			args: args{
+				ctx:                    context.Background(),
+				c:                      k8sClient1,
+				restoreOptions:         resOptionsCleanupAll,
+				veleroBackup:           &resourcesBackup,
+				backupName:             veleroResourcesBackupName,
+				managedClustersSkipped: false,
+			},
+			resourcesToBeDeleted: []unstructured.Unstructured{
+				*channel_with_backup_label_diff,
+				*channel_with_backup_label_generic_old,
+				*channel_with_backup_label_generic,           // it's deleted bc the backup name doesn't match the generic backup
+				*channel_with_backup_label_generic_old_activ, // deleted bc the clusters backup is enabled
+				*channel_with_no_backup_label,                // delete all, even the ones with no label
+			},
+			resourcesToKeep: []unstructured.Unstructured{
+				*channel_with_backup_label_same,
+				*channel_with_backup_label_diff_excl_ns,
+				*channel_with_backup_label_generic_match,
+				*channel_with_backup_label_generic_match_activ,
+			},
+			extraBackups: []veleroapi.Backup{},
+			resourcesToCreate: []unstructured.Unstructured{ // this is the one deleted by the previous test, add it back
+				*channel_with_backup_label_diff,
+				*channel_with_backup_label_generic_old,
+				*channel_with_backup_label_generic,           // it's deleted bc the backup name doesn't match the generic backup
+				*channel_with_backup_label_generic_old_activ, // deleted bc the clusters backup is enabled
+			},
+		},
 	}
 
 	testsClusters := []struct {
@@ -2088,7 +2260,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			args: args{
 				ctx:            context.Background(),
 				c:              k8sClient1,
-				restoreOptions: resOptions,
+				restoreOptions: resOptionsCleanupRestored,
 				veleroBackup:   &clustersBackup,
 				backupName:     veleroClustersBackupName,
 			},
@@ -2108,7 +2280,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	}
 
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
-		memory.NewMemCacheClient(resOptions.dynamicArgs.dc),
+		memory.NewMemCacheClient(resOptionsCleanupRestored.dynamicArgs.dc),
 	)
 
 	for _, tt := range testsResources {

@@ -93,7 +93,7 @@ func cleanupDeltaResources(
 		backupName, veleroBackup := getBackupInfoFromRestore(ctx, c,
 			acmRestore.Status.VeleroCredentialsRestoreName, acmRestore.Namespace)
 		cleanupDeltaForCredentials(ctx, c,
-			backupName, veleroBackup)
+			backupName, veleroBackup, acmRestore.Spec.CleanupBeforeRestore)
 
 		// clean up resources and generic resources
 		backupName, veleroBackup = getBackupInfoFromRestore(ctx, c,
@@ -118,6 +118,7 @@ func cleanupDeltaForCredentials(
 	c client.Client,
 	backupName string,
 	veleroBackup *veleroapi.Backup,
+	cleanupType v1beta1.CleanupType,
 ) {
 
 	if backupName == "" {
@@ -125,29 +126,41 @@ func cleanupDeltaForCredentials(
 		return
 	}
 
+	// this is the user credentials backup, delete user credentials
+	userCredsLabel, _ := labels.NewRequirement(backupCredsUserLabel,
+		selection.Exists, []string{})
+	deleteSecretsWithLabelSelector(ctx, c, backupName, cleanupType, []labels.Requirement{
+		*userCredsLabel,
+	})
+
 	// check if this is a credentials backup using  the OrLabelSelectors
 	// which means all credentials are in one backup
 	if len(veleroBackup.Spec.OrLabelSelectors) > 0 {
-		// cleanup ALL credentials if they have the velero label
+		// cleanup ALL ACM credentials if they have the velero label
 		// but don't match the current backup
 		// it means those resources were removed and they should be cleaned up
-		deleteSecretsWithLabelSelector(ctx, c, backupName, []labels.Requirement{})
+
+		// hive credentials
+		hiveCredsLabel, _ := labels.NewRequirement(backupCredsHiveLabel,
+			selection.Exists, []string{})
+		deleteSecretsWithLabelSelector(ctx, c, backupName, cleanupType,
+			[]labels.Requirement{*hiveCredsLabel})
+
+		// cluster credentials
+		clsCredsLabel, _ := labels.NewRequirement(backupCredsClusterLabel,
+			selection.Exists, []string{})
+		deleteSecretsWithLabelSelector(ctx, c, backupName, cleanupType,
+			[]labels.Requirement{*clsCredsLabel})
 
 	} else {
 		// clean up credentials based on backup type, secrets should be stored in 3 separate files
-
-		// this is the user credentials backup, add that label selector and delete
-		userCredsLabel, _ := labels.NewRequirement(backupCredsUserLabel,
-			selection.Exists, []string{})
-		deleteSecretsWithLabelSelector(ctx, c, backupName, []labels.Requirement{
-			*userCredsLabel,
-		})
 
 		// now get related backups
 		// get hive backup and delete related secrets
 		hiveCredsLabel, _ := labels.NewRequirement(backupCredsHiveLabel,
 			selection.Exists, []string{})
 		deleteSecretsForBackupType(ctx, c, CredentialsHive, *veleroBackup,
+			cleanupType,
 			[]labels.Requirement{
 				*hiveCredsLabel,
 			})
@@ -157,6 +170,7 @@ func cleanupDeltaForCredentials(
 		clsCredsLabel, _ := labels.NewRequirement(backupCredsClusterLabel,
 			selection.Exists, []string{})
 		deleteSecretsForBackupType(ctx, c, CredentialsCluster, *veleroBackup,
+			cleanupType,
 			[]labels.Requirement{
 				*clsCredsLabel,
 			})
@@ -172,6 +186,7 @@ func deleteSecretsForBackupType(
 	c client.Client,
 	backupType ResourceType,
 	relatedVeleroBackup veleroapi.Backup,
+	cleanupType v1beta1.CleanupType,
 	secretsSelector []labels.Requirement,
 
 ) {
@@ -188,7 +203,7 @@ func deleteSecretsForBackupType(
 			backupType,
 			relatedVeleroBackup.Name,
 			veleroBackups); backupName != "" {
-			deleteSecretsWithLabelSelector(ctx, c, backupName, secretsSelector)
+			deleteSecretsWithLabelSelector(ctx, c, backupName, cleanupType, secretsSelector)
 		}
 	}
 }
@@ -198,16 +213,22 @@ func deleteSecretsWithLabelSelector(
 	ctx context.Context,
 	c client.Client,
 	backupName string,
+	cleanupType v1beta1.CleanupType,
 	otherLabels []labels.Requirement,
 ) {
 	logger := log.FromContext(ctx)
 
-	veleroRestoreLabelExists, _ := labels.NewRequirement(BackupNameVeleroLabel,
-		selection.Exists, []string{})
+	labelSelector := labels.NewSelector()
+
+	if cleanupType != v1beta1.CleanupTypeAll {
+		// if cleanup is all, get all secrets, even the ones without a restore label
+		veleroRestoreLabelExists, _ := labels.NewRequirement(BackupNameVeleroLabel,
+			selection.Exists, []string{})
+		labelSelector = labelSelector.Add(*veleroRestoreLabelExists)
+
+	}
 	veleroRestoreLabel, _ := labels.NewRequirement(BackupNameVeleroLabel,
 		selection.NotEquals, []string{backupName})
-	labelSelector := labels.NewSelector()
-	labelSelector = labelSelector.Add(*veleroRestoreLabelExists)
 	labelSelector = labelSelector.Add(*veleroRestoreLabel)
 
 	labelSelector = labelSelector.Add(otherLabels...)
@@ -318,6 +339,10 @@ func deleteDynamicResourcesForBackup(
 	}
 	labelSelector := fmt.Sprintf("%s, %s notin (%s), %s",
 		BackupNameVeleroLabel, BackupNameVeleroLabel, backupName, genericLabel)
+	if restoreOptions.cleanupType == v1beta1.CleanupTypeAll {
+		// get all resources, including user created
+		labelSelector = genericLabel
+	}
 	if otherLabels != "" {
 		labelSelector = fmt.Sprintf("%s, %s", labelSelector, otherLabels)
 	}
@@ -349,21 +374,46 @@ func deleteDynamicResourcesForBackup(
 				groupKind, err.Error()))
 			continue
 		}
-		if dr := restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource); dr != nil {
+		invokeDynamicDelete(ctx, restoreOptions, labelSelector,
+			veleroBackup, mapping)
+	}
 
-			listOptions := v1.ListOptions{LabelSelector: labelSelector}
-			if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
-				// get all items and delete them
-				for i := range dynamiclist.Items {
-					deleteDynamicResource(
-						ctx,
-						mapping,
-						dr,
-						dynamiclist.Items[i],
-						restoreOptions.deleteOptions,
-						veleroBackup.Spec.ExcludedNamespaces,
-					)
+}
+
+func invokeDynamicDelete(
+	ctx context.Context,
+	restoreOptions RestoreOptions,
+	labelSelector string,
+	veleroBackup *veleroapi.Backup,
+	mapping *meta.RESTMapping,
+) {
+
+	backupName := veleroBackup.Name
+	if dr := restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource); dr != nil {
+
+		var listOptions = v1.ListOptions{}
+		if labelSelector != "" {
+			listOptions = v1.ListOptions{LabelSelector: labelSelector}
+		}
+		if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
+			// get all items and delete them
+			for i := range dynamiclist.Items {
+
+				item := dynamiclist.Items[i]
+				if restoreOptions.cleanupType == v1beta1.CleanupTypeAll &&
+					item.GetLabels()[BackupNameVeleroLabel] == backupName {
+					// exclude here resources with the same backup as the last restore
+					continue
 				}
+
+				deleteDynamicResource(
+					ctx,
+					mapping,
+					dr,
+					item,
+					restoreOptions.deleteOptions,
+					veleroBackup.Spec.ExcludedNamespaces,
+				)
 			}
 		}
 	}
@@ -502,7 +552,8 @@ func isValidCleanupOption(
 
 	if ok := findValue([]string{
 		v1beta1.CleanupTypeNone,
-		v1beta1.CleanupTypeRestored},
+		v1beta1.CleanupTypeRestored,
+		v1beta1.CleanupTypeAll},
 		string(acmRestore.Spec.CleanupBeforeRestore)); !ok {
 
 		msg := "invalid CleanupBeforeRestore value : " +

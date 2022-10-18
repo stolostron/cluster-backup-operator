@@ -48,6 +48,12 @@ const (
 	// don't clean up any resources
 	// this can be used on a new hub where there is no need to clean up any previously created data
 	CleanupTypeNone = "None"
+	// clean up all resources created by CRD in the acm backup included criteria,
+	// even if these resources were not created by a previous restore
+	// this option cleans up all resources not available with the current restored backup,
+	// including user created resources
+	// Use this option with caution as this could cleanup hub or user created resources
+	CleanupTypeAll = "CleanupAll"
 )
 
 // RestoreSpec defines the desired state of Restore

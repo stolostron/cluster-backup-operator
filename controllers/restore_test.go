@@ -163,7 +163,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 			name: "Credentials should be set to skip or latest",
 			args: args{
 				restore: createACMRestore("Restore", "veleroNamespace").
-					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).syncRestoreWithNewBackups(true).
+					cleanupBeforeRestore(v1beta1.CleanupTypeAll).syncRestoreWithNewBackups(true).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(backupName).
 					veleroResourcesBackupName(latestBackup).object,
