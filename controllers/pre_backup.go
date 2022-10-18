@@ -360,6 +360,19 @@ func createMSA(
 	}
 
 	if generateMSA {
+		// delete any secret with the same name as the MSA
+		msa_secret := corev1.Secret{}
+		if err := c.Get(ctx, types.NamespacedName{
+			Name:      name,
+			Namespace: managedClusterName,
+		}, &msa_secret); err == nil {
+			// found an MSA secret with the same name as the MSA; delete it, it will be recreated by the MSA
+			logger.Info("Deleting MSA secret %s in ns %s", name, managedClusterName)
+			if err := c.Delete(ctx, &msa_secret); err == nil {
+				logger.Info("Deleted MSA secret %s in ns %s", name, managedClusterName)
+			}
+		}
+
 		// create ManagedServiceAccount in the managed cluster namespace
 		secretsGeneratedNow = true
 		msaRC := &unstructured.Unstructured{}
@@ -370,7 +383,8 @@ func createMSA(
 				"name":      name,
 				"namespace": managedClusterName,
 				"labels": map[string]interface{}{
-					msa_label: name,
+					msa_label:          name,
+					ExcludeBackupLabel: "true",
 				},
 			},
 			"spec": map[string]interface{}{
@@ -453,7 +467,9 @@ func createManifestWork(
 				manifestWork := &workv1.ManifestWork{}
 				manifestWork.Name = manifest_work_name
 				manifestWork.Namespace = namespace
-				manifestWork.Labels = map[string]string{addon_work_label: msa_addon}
+				manifestWork.Labels = map[string]string{
+					addon_work_label:   msa_addon,
+					ExcludeBackupLabel: "true"}
 
 				manifest := &workv1.Manifest{}
 				manifest.Raw = []byte(fmt.Sprintf(manifestwork, role_name, msa_service_name))

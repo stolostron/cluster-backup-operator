@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
@@ -43,7 +42,19 @@ func Test_createMSA(t *testing.T) {
 	}
 
 	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	scheme1 := runtime.NewScheme()
+	corev1.AddToScheme(scheme1)
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	namespace := "managed1"
+	if err := k8sClient1.Create(context.Background(), createNamespace(namespace)); err != nil {
+		t.Errorf("cannot create ns %s", err.Error())
+
+	}
+	if err := k8sClient1.Create(context.Background(),
+		createSecret(msa_service_name, namespace, nil, nil, nil)); err != nil {
+		t.Errorf("cannot create secret %s", err.Error())
+	}
 
 	obj1 := &unstructured.Unstructured{}
 	obj1.SetUnstructuredContent(map[string]interface{}{
@@ -51,7 +62,7 @@ func Test_createMSA(t *testing.T) {
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
 			"name":      msa_service_name,
-			"namespace": "managed1",
+			"namespace": namespace,
 		},
 		"spec": map[string]interface{}{
 			"somethingelse": "aaa",
@@ -88,7 +99,7 @@ func Test_createMSA(t *testing.T) {
 			args: args{
 				ctx:            context.Background(),
 				dr:             resInterface,
-				managedCluster: "managed1",
+				managedCluster: namespace,
 				name:           msa_service_name,
 				validity:       "20h",
 			},
@@ -100,7 +111,7 @@ func Test_createMSA(t *testing.T) {
 			args: args{
 				ctx:            context.Background(),
 				dr:             resInterface,
-				managedCluster: "managed1",
+				managedCluster: namespace,
 				name:           msa_service_name,
 				validity:       "50h",
 			},
@@ -112,7 +123,7 @@ func Test_createMSA(t *testing.T) {
 			args: args{
 				ctx:            context.Background(),
 				dr:             resInterface,
-				managedCluster: "managed1",
+				managedCluster: namespace,
 				name:           msa_service_name_pair,
 				validity:       "50h",
 			},
@@ -124,7 +135,7 @@ func Test_createMSA(t *testing.T) {
 			args: args{
 				ctx:            context.Background(),
 				dr:             resInterface,
-				managedCluster: "managed1",
+				managedCluster: namespace,
 				name:           msa_service_name,
 				validity:       "\"invalid-token",
 			},
@@ -132,7 +143,7 @@ func Test_createMSA(t *testing.T) {
 			secretsUpdated:      true,
 		},
 	}
-	for index, tt := range tests {
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			secretsGeneratedNow, secretsUpdated, _ := createMSA(tt.args.ctx, k8sClient1,
 				tt.args.dr,
@@ -147,12 +158,8 @@ func Test_createMSA(t *testing.T) {
 				t.Errorf("createMSA() returns secretsUpdated = %v, want %v", secretsUpdated, tt.secretsUpdated)
 			}
 		})
-
-		if index == len(tests)-1 {
-			// clean up
-			testEnv.Stop()
-		}
 	}
+	testEnv.Stop()
 
 }
 
