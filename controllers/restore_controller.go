@@ -267,13 +267,10 @@ func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			// grab the job object, extract the owner...
 			job := rawObj.(*veleroapi.Restore)
 			owner := metav1.GetControllerOf(job)
-			if owner == nil {
+			if owner == nil || owner.APIVersion != apiGVStr || owner.Kind != "Restore" {
 				return nil
 			}
-			// ..should be a Restore in Group cluster.open-cluster-management.io
-			if owner.APIVersion != apiGVStr || owner.Kind != "Restore" {
-				return nil
-			}
+
 			return []string{owner.Name}
 		}); err != nil {
 		return err

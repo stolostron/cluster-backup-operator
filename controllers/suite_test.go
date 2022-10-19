@@ -469,6 +469,27 @@ var _ = BeforeSuite(func() {
 		},
 	})
 
+	// this is used by the auto-import updateMSAResources()
+	msaObj2 := &unstructured.Unstructured{}
+	msaObj2.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"kind":       "ManagedServiceAccount",
+		"metadata": map[string]interface{}{
+			"name":      "auto-import",
+			"namespace": "app",
+			"labels": map[string]interface{}{
+				msa_label: msa_service_name,
+			},
+		},
+		"spec": map[string]interface{}{
+			"somethingelse": "aaa",
+			"rotation": map[string]interface{}{
+				"validity": "50h",
+				"enabled":  true,
+			},
+		},
+	})
+
 	msaGVK := schema.GroupVersionKind{Group: "authentication.open-cluster-management.io",
 		Version: "v1alpha1", Kind: "ManagedServiceAccount"}
 	msaGVRList := schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
@@ -479,10 +500,10 @@ var _ = BeforeSuite(func() {
 	}
 
 	unstructuredScheme := runtime.NewScheme()
-	unstructuredScheme.AddKnownTypes(msaGVK.GroupVersion(), msaObj)
+	unstructuredScheme.AddKnownTypes(msaGVK.GroupVersion(), msaObj, msaObj2)
 	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredScheme,
 		gvrToListKind,
-		msaObj)
+		msaObj, msaObj2)
 
 	//cluster version
 	clsVGVK := schema.GroupVersionKind{Group: "config.openshift.io",
@@ -598,6 +619,7 @@ var _ = BeforeSuite(func() {
 
 	unstructuredSchemeR := runtime.NewScheme()
 	unstructuredSchemeR.AddKnownTypes(msaGVK.GroupVersion(), msaObj)
+	unstructuredSchemeR.AddKnownTypes(msaGVK.GroupVersion(), msaObj2)
 	unstructuredSchemeR.AddKnownTypes(clsVGVK.GroupVersion(), clsvObj)
 	unstructuredSchemeR.AddKnownTypes(clsDGVK.GroupVersion())
 	unstructuredSchemeR.AddKnownTypes(plsGVK.GroupVersion())
@@ -616,7 +638,7 @@ var _ = BeforeSuite(func() {
 
 	dynR := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredSchemeR,
 		gvrToListKindR,
-		msaObj, clsvObj, res_channel_default)
+		msaObj, msaObj2, clsvObj, res_channel_default)
 
 	//create some resources
 	dynR.Resource(chGVKList).Namespace("default").Create(context.Background(),
@@ -624,6 +646,8 @@ var _ = BeforeSuite(func() {
 	//
 	dynR.Resource(msaGVRList).Namespace("managed1").Create(context.Background(),
 		msaObj, v1.CreateOptions{})
+	dynR.Resource(msaGVRList).Namespace("app").Create(context.Background(),
+		msaObj2, v1.CreateOptions{})
 
 	err = (&RestoreReconciler{
 		KubeClient:      nil,

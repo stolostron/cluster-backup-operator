@@ -95,6 +95,33 @@ func createClusterVersion(name string, cid ocinfrav1.ClusterID,
 	return clusterVersion
 }
 
+type BackupDeleteRequest struct {
+	object *veleroapi.DeleteBackupRequest
+}
+
+func createBackupDeleteRequest(name string, ns string, backup string) *BackupDeleteRequest {
+	return &BackupDeleteRequest{
+		object: &veleroapi.DeleteBackupRequest{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: veleroApiVersion,
+				Kind:       "DeleteBackupRequest",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: ns,
+			},
+			Spec: veleroapi.DeleteBackupRequestSpec{
+				BackupName: backup,
+			},
+		},
+	}
+}
+
+func (b *BackupDeleteRequest) errors(errs []string) *BackupDeleteRequest {
+	b.object.Status.Errors = errs
+	return b
+}
+
 //backup helper
 type BackupHelper struct {
 	object *veleroapi.Backup
