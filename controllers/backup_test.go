@@ -254,6 +254,15 @@ func Test_deleteBackup(t *testing.T) {
 			},
 			err_nil: true,
 		},
+		{
+			name: "delete backup exists, backup does no exists but request does and it has errors",
+			args: args{
+				ctx:    context.Background(),
+				c:      k8sClient1,
+				backup: *createBackup("backup-does-not-exist", "ns3").object,
+			},
+			err_nil: false,
+		},
 	}
 
 	for index, tt := range tests {
@@ -265,21 +274,34 @@ func Test_deleteBackup(t *testing.T) {
 			// create ns so create calls pass through
 			corev1.AddToScheme(scheme1)
 			k8sClient1.Create(tt.args.ctx, createNamespace("ns1"), &client.CreateOptions{})
-			k8sClient1.Create(tt.args.ctx, createBackup("backup1", "ns1").object, &client.CreateOptions{})
+			if err := k8sClient1.Create(tt.args.ctx, createBackup("backup1", "ns1").object, &client.CreateOptions{}); err != nil {
+				t.Errorf("failed to create %s", err.Error())
+			}
+		}
+		if index == len(tests)-2 {
+			// create the delete request to find one already
+			k8sClient1.Create(tt.args.ctx, createNamespace("ns2"), &client.CreateOptions{})
+			if err := k8sClient1.Create(tt.args.ctx, createBackup("backup2", "ns1").object, &client.CreateOptions{}); err != nil {
+				t.Errorf("failed to create %s", err.Error())
+			}
 		}
 		if index == len(tests)-1 {
 			// create the delete request to find one already
-			k8sClient1.Create(tt.args.ctx, createBackup("backup2", "ns1").object, &client.CreateOptions{})
-		}
-		t.Run(tt.name, func(t *testing.T) {
-			if err := deleteBackup(tt.args.ctx, &tt.args.backup, tt.args.c); (err == nil) != tt.err_nil {
-				t.Errorf("deleteBackup() returns no error = %v, want %v", err == nil, tt.err_nil)
+			k8sClient1.Create(tt.args.ctx, createNamespace("ns3"), &client.CreateOptions{})
+			if err := k8sClient1.Create(tt.args.ctx,
+				createBackupDeleteRequest("backup-does-not-exist", "ns3", "backup-does-not-exist").
+					errors([]string{"err1", "err2"}).
+					object, &client.CreateOptions{}); err != nil {
+				t.Errorf("failed to create %s", err.Error())
 			}
-		})
-		if index == len(tests)-1 {
-			// clean up
-			testEnv.Stop()
+			t.Run(tt.name, func(t *testing.T) {
+				if err := deleteBackup(tt.args.ctx, &tt.args.backup, tt.args.c); (err == nil) != tt.err_nil {
+					t.Errorf("deleteBackup() returns no error = %v, want %v", err == nil, tt.err_nil)
+				}
+			})
 		}
+
 	}
+	testEnv.Stop()
 
 }

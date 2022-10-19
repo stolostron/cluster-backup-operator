@@ -398,9 +398,9 @@ func createMSA(
 			},
 		})
 		// attempt to create managedservice account for auto-import
-		if _, err := dr.Namespace(managedClusterName).Create(ctx, msaRC, v1.CreateOptions{}); err != nil {
-			logger.Info(fmt.Sprintf("Failed to create ManagedServiceAccount for cluster =%s, error : %s",
-				managedClusterName, err.Error()))
+		logger.Info(fmt.Sprintf("Attempt to create ManagedServiceAccount for cluster =%s", managedClusterName))
+		if _, err := dr.Namespace(managedClusterName).Create(ctx, msaRC, v1.CreateOptions{}); err == nil {
+			logger.Info(fmt.Sprintf("Created ManagedServiceAccount for cluster =%s", managedClusterName))
 		}
 		// create ManifestWork to push the role binding
 		createManifestWork(ctx, c, managedClusterName)
@@ -481,14 +481,9 @@ func createManifestWork(
 					*manifest,
 				}
 
-				err := c.Create(ctx, manifestWork, &client.CreateOptions{})
-				if err != nil {
-					logger.Error(
-						err,
-						"Error in creating ManifestWork",
-						"name", manifest_work_name,
-						"namespace", namespace,
-					)
+				logger.Info(fmt.Sprintf("Attempt to create ManifestWork %s in ns %s", manifest_work_name, namespace))
+				if err := c.Create(ctx, manifestWork, &client.CreateOptions{}); err == nil {
+					logger.Info(fmt.Sprintf("Created ManifestWork %s in ns %s ", manifest_work_name, namespace))
 				}
 			}
 		}
@@ -554,8 +549,10 @@ func updateMSAResources(
 			backup_label, false)
 
 		if secretTimestampUpdated || backupLabelSet {
-			if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err != nil {
-				logger.Error(err, "failed to update secret")
+			logger.Info(fmt.Sprintf("Attempt to update secret %s in ns %s", secret.Name, secret.Namespace))
+
+			if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err == nil {
+				logger.Info(fmt.Sprintf("Updated secret %s in ns %s", secret.Name, secret.Namespace))
 			}
 		}
 	}
@@ -643,8 +640,8 @@ func updateHiveResources(ctx context.Context,
 				clusterDeployment.SetLabels(labels)
 				msg := "update clusterDeployment " + clusterDeployment.Name
 				logger.Info(msg)
-				if err := c.Update(ctx, &clusterDeployment, &client.UpdateOptions{}); err != nil {
-					logger.Error(err, "failed to update clusterDeployment")
+				if err := c.Update(ctx, &clusterDeployment, &client.UpdateOptions{}); err == nil {
+					logger.Info("Updated clusterDeployment " + clusterDeployment.Name)
 				}
 			}
 		}
@@ -762,8 +759,8 @@ func updateSecret(ctx context.Context,
 			// secret does not need refresh
 			return true
 		}
-		if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err != nil {
-			logger.Error(err, "failed to update secret")
+		if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err == nil {
+			logger.Info(fmt.Sprintf("Updated secret %s in ns %s", secret.Name, secret.Namespace))
 		}
 		// secret needs refresh
 		return true

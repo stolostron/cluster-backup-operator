@@ -511,10 +511,11 @@ func cleanupExpiredValidationBackups(
 			backup := veleroBackupList.Items[i]
 			if backup.Status.Expiration != nil &&
 				v1.Now().Time.After(backup.Status.Expiration.Time) {
-				backupLogger.Info(fmt.Sprintf("validation backup %s expired, delete it",
+				backupLogger.Info(fmt.Sprintf("validation backup %s expired, attepmpt to delete it",
 					backup.Name))
-				if err = deleteBackup(ctx, &backup, c); err != nil {
-					backupLogger.Error(err, "delete failed")
+				if err = deleteBackup(ctx, &backup, c); err == nil {
+					backupLogger.Info(fmt.Sprintf("Delete completed for %s",
+						backup.Name))
 				}
 			}
 		}
