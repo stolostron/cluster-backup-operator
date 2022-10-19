@@ -50,6 +50,8 @@ var (
 	BackupNameVeleroLabel string = "velero.io/backup-name"
 
 	ClusterActivationLabel string = "cluster-activation"
+
+	ExcludeBackupLabel string = "velero.io/exclude-from-backup"
 )
 var (
 	// include resources from these api groups

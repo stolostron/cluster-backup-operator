@@ -140,6 +140,8 @@ func cleanupMSAForImportedClusters(
 	delOptions := metav1.DeleteOptions{
 		PropagationPolicy: &deletePolicy,
 	}
+
+	// delete ManagedServiceAccounts with msa_service_name label
 	listOptions := v1.ListOptions{LabelSelector: fmt.Sprintf("%s in (%s)", msa_label, msa_service_name)}
 	if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
 		for i := range dynamiclist.Items {
@@ -154,7 +156,7 @@ func cleanupMSAForImportedClusters(
 		}
 	}
 
-	// delete managedclusters addons
+	// delete managedclusters addons with msa_service_name label
 	addons := &addonv1alpha1.ManagedClusterAddOnList{}
 	label := labels.SelectorFromSet(
 		map[string]string{msa_label: msa_service_name})
@@ -170,7 +172,7 @@ func cleanupMSAForImportedClusters(
 		}
 	}
 
-	// delete manifest work
+	// delete manifest work with msa_addon label
 	manifestWorkList := &workv1.ManifestWorkList{}
 	label = labels.SelectorFromSet(
 		map[string]string{addon_work_label: msa_addon})
@@ -242,7 +244,8 @@ func prepareImportedClusters(ctx context.Context,
 				msaAddon.Namespace = managedCluster.Name
 				msaAddon.Spec.InstallNamespace = installNamespace
 				labels := map[string]string{
-					msa_label: msa_service_name}
+					msa_label:          msa_service_name,
+					ExcludeBackupLabel: "true"}
 				msaAddon.SetLabels(labels)
 
 				err := c.Create(ctx, msaAddon, &client.CreateOptions{})
@@ -360,6 +363,19 @@ func createMSA(
 	}
 
 	if generateMSA {
+		// delete any secret with the same name as the MSA
+		msaSecret := corev1.Secret{}
+		if err := c.Get(ctx, types.NamespacedName{
+			Name:      name,
+			Namespace: managedClusterName,
+		}, &msaSecret); err == nil {
+			// found an MSA secret with the same name as the MSA; delete it, it will be recreated by the MSA
+			logger.Info("Deleting MSA secret %s in ns %s", name, managedClusterName)
+			if err := c.Delete(ctx, &msaSecret); err == nil {
+				logger.Info("Deleted MSA secret %s in ns %s", name, managedClusterName)
+			}
+		}
+
 		// create ManagedServiceAccount in the managed cluster namespace
 		secretsGeneratedNow = true
 		msaRC := &unstructured.Unstructured{}
@@ -370,7 +386,8 @@ func createMSA(
 				"name":      name,
 				"namespace": managedClusterName,
 				"labels": map[string]interface{}{
-					msa_label: name,
+					msa_label:          name,
+					ExcludeBackupLabel: "true",
 				},
 			},
 			"spec": map[string]interface{}{
@@ -453,7 +470,9 @@ func createManifestWork(
 				manifestWork := &workv1.ManifestWork{}
 				manifestWork.Name = manifest_work_name
 				manifestWork.Namespace = namespace
-				manifestWork.Labels = map[string]string{addon_work_label: msa_addon}
+				manifestWork.Labels = map[string]string{
+					addon_work_label:   msa_addon,
+					ExcludeBackupLabel: "true"}
 
 				manifest := &workv1.Manifest{}
 				manifest.Raw = []byte(fmt.Sprintf(manifestwork, role_name, msa_service_name))
