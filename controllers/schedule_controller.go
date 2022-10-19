@@ -393,29 +393,29 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 			veleroSchedule.Spec.Template.TTL = backupSchedule.Spec.VeleroTTL
 		}
 		// this is always successful since veleroSchedule is defined now
-		ctrl.SetControllerReference(backupSchedule, veleroSchedule, r.Scheme)
-
-		err := r.Create(ctx, veleroSchedule, &client.CreateOptions{})
-		if err != nil {
-			scheduleLogger.Error(
-				err,
-				"Error in creating velero.io.Schedule",
-				"name", veleroScheduleIdentity.Name,
-				"namespace", veleroScheduleIdentity.Namespace,
+		if err := ctrl.SetControllerReference(backupSchedule, veleroSchedule, r.Scheme); err == nil {
+			err := r.Create(ctx, veleroSchedule, &client.CreateOptions{})
+			if err != nil {
+				scheduleLogger.Error(
+					err,
+					"Error in creating velero.io.Schedule",
+					"name", veleroScheduleIdentity.Name,
+					"namespace", veleroScheduleIdentity.Namespace,
+				)
+				return err
+			}
+			scheduleLogger.Info(
+				"Velero schedule created",
+				"name", veleroSchedule.Name,
+				"namespace", veleroSchedule.Namespace,
 			)
-			return err
-		}
-		scheduleLogger.Info(
-			"Velero schedule created",
-			"name", veleroSchedule.Name,
-			"namespace", veleroSchedule.Namespace,
-		)
 
-		// set veleroSchedule in backupSchedule status
-		setVeleroScheduleInStatus(scheduleKey, veleroSchedule, backupSchedule)
-		// if initial backup needs to be created, process it here
-		createInitialBackupForSchedule(ctx, r.Client,
-			veleroSchedule, backupSchedule, currentTime)
+			// set veleroSchedule in backupSchedule status
+			setVeleroScheduleInStatus(scheduleKey, veleroSchedule, backupSchedule)
+			// if initial backup needs to be created, process it here
+			createInitialBackupForSchedule(ctx, r.Client,
+				veleroSchedule, backupSchedule, currentTime)
+		}
 	}
 	return nil
 }
