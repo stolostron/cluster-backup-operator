@@ -326,7 +326,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 			want: true,
 		},
 	}
-	for index, tt := range tests {
+	for _, tt := range tests {
 
 		t.Run(tt.name, func(t *testing.T) {
 			if got := deleteVeleroSchedules(tt.args.ctx, tt.args.c,
@@ -334,11 +334,8 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 				t.Errorf("deleteVeleroSchedules() = %v, want len of string is empty %v", got, tt.want)
 			}
 		})
-		if index == len(tests)-1 {
-			// clean up
-			testEnv.Stop()
-		}
 	}
+	testEnv.Stop()
 }
 
 func Test_isRestoreRunning(t *testing.T) {
@@ -483,7 +480,6 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 				backupSchedule: &rhacmBackupScheduleNoRun,
 				veleroSchedule: &schNoLabels,
 			},
-			want:              true,
 			want_veleroBackup: "", // no backup
 		},
 		{
@@ -494,8 +490,7 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 				backupSchedule: &rhacmBackupSchedule,
 				veleroSchedule: &schNoLabels,
 			},
-			want:              false,
-			want_veleroBackup: schNoLabels.Name + "-" + timeStr,
+			want_veleroBackup: "",
 		},
 		{
 			name: "backup schedule should call backup on init schedule",
@@ -505,8 +500,17 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 				backupSchedule: &rhacmBackupSchedule,
 				veleroSchedule: &schNoLabels,
 			},
-			want:              true,
 			want_veleroBackup: schNoLabels.Name + "-" + timeStr,
+		},
+		{
+			name: "backup schedule should call backup on init schedule, but error since schedule already created",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				backupSchedule: &rhacmBackupSchedule,
+				veleroSchedule: &schNoLabels,
+			},
+			want_veleroBackup: "",
 		},
 	}
 	for index, tt := range tests {
@@ -515,15 +519,12 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 			k8sClient1.Create(context.Background(), &veleroNamespace)
 		}
 		t.Run(tt.name, func(t *testing.T) {
-			if got_backup, got := createInitialBackupForSchedule(tt.args.ctx, tt.args.c, tt.args.veleroSchedule,
-				tt.args.backupSchedule, timeStr); (got == nil) != tt.want ||
-				got_backup.Name != tt.want_veleroBackup {
+			if got_backup := createInitialBackupForSchedule(tt.args.ctx, tt.args.c, tt.args.veleroSchedule,
+				tt.args.backupSchedule, timeStr); got_backup != tt.want_veleroBackup {
 
-				t.Errorf("createInitialBackupForSchedule() err is %v, want %v, backupName is %v, want %v",
-					got, tt.want, got_backup.Name, tt.want_veleroBackup)
-				if got != nil {
-					t.Errorf("error %v", got.Error())
-				}
+				t.Errorf("createInitialBackupForSchedule() backupName is %v, want %v",
+					got_backup, tt.want_veleroBackup)
+
 			}
 		})
 	}

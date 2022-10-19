@@ -180,8 +180,9 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 			// delete schedules, don't generate new backups
 			for i := range veleroScheduleList.Items {
-				if err := r.Delete(ctx, &veleroScheduleList.Items[i]); err != nil {
-					scheduleLogger.Error(err, "Failed to delete schedule")
+				scheduleLogger.Info("Attempt to delete schedule " + veleroScheduleList.Items[i].Name)
+				if err := r.Delete(ctx, &veleroScheduleList.Items[i]); err == nil {
+					scheduleLogger.Info("Schedule deleted successfully " + veleroScheduleList.Items[i].Name)
 				}
 			}
 
@@ -392,39 +393,29 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 			// TTL for a validation backup is already set using the cron job interval
 			veleroSchedule.Spec.Template.TTL = backupSchedule.Spec.VeleroTTL
 		}
-
-		if err := ctrl.SetControllerReference(backupSchedule, veleroSchedule, r.Scheme); err != nil {
-			return err
-		}
-
-		err := r.Create(ctx, veleroSchedule, &client.CreateOptions{})
-		if err != nil {
-			scheduleLogger.Error(
-				err,
-				"Error in creating velero.io.Schedule",
-				"name", veleroScheduleIdentity.Name,
-				"namespace", veleroScheduleIdentity.Namespace,
+		// this is always successful since veleroSchedule is defined now
+		if err := ctrl.SetControllerReference(backupSchedule, veleroSchedule, r.Scheme); err == nil {
+			err := r.Create(ctx, veleroSchedule, &client.CreateOptions{})
+			if err != nil {
+				scheduleLogger.Error(
+					err,
+					"Error in creating velero.io.Schedule",
+					"name", veleroScheduleIdentity.Name,
+					"namespace", veleroScheduleIdentity.Namespace,
+				)
+				return err
+			}
+			scheduleLogger.Info(
+				"Velero schedule created",
+				"name", veleroSchedule.Name,
+				"namespace", veleroSchedule.Namespace,
 			)
-			return err
-		}
-		scheduleLogger.Info(
-			"Velero schedule created",
-			"name", veleroSchedule.Name,
-			"namespace", veleroSchedule.Namespace,
-		)
 
-		// set veleroSchedule in backupSchedule status
-		setVeleroScheduleInStatus(scheduleKey, veleroSchedule, backupSchedule)
-		// if initial backup needs to be created, process it here
-		if _, err := createInitialBackupForSchedule(ctx, r.Client,
-			veleroSchedule, backupSchedule, currentTime); err != nil {
-			scheduleLogger.Error(
-				err,
-				"Error in creating velero.io.Backup",
-				"name", veleroScheduleIdentity.Name,
-				"namespace", veleroScheduleIdentity.Namespace,
-			)
-			return err
+			// set veleroSchedule in backupSchedule status
+			setVeleroScheduleInStatus(scheduleKey, veleroSchedule, backupSchedule)
+			// if initial backup needs to be created, process it here
+			createInitialBackupForSchedule(ctx, r.Client,
+				veleroSchedule, backupSchedule, currentTime)
 		}
 	}
 	return nil
@@ -439,10 +430,7 @@ func (r *BackupScheduleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		func(rawObj client.Object) []string {
 			schedule := rawObj.(*veleroapi.Schedule)
 			owner := metav1.GetControllerOf(schedule)
-			if owner == nil {
-				return nil
-			}
-			if owner.APIVersion != apiGVString || owner.Kind != "BackupSchedule" {
+			if owner == nil || owner.APIVersion != apiGVString || owner.Kind != "BackupSchedule" {
 				return nil
 			}
 

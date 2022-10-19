@@ -332,7 +332,7 @@ func createInitialBackupForSchedule(
 	schedule *veleroapi.Schedule,
 	backupSchedue *v1beta1.BackupSchedule,
 	timeStr string,
-) (*veleroapi.Backup, error) {
+) string {
 
 	scheduleLogger := log.FromContext(ctx)
 	veleroBackup := &veleroapi.Backup{}
@@ -340,7 +340,7 @@ func createInitialBackupForSchedule(
 	if backupSchedue.Spec.NoBackupOnStart {
 		// do not generate backups, exit now
 		scheduleLogger.Info("skip backup creation, backupSchedue.Spec.NoBackupOnStart set to true")
-		return veleroBackup, nil
+		return ""
 	}
 
 	// create backup now
@@ -359,15 +359,22 @@ func createInitialBackupForSchedule(
 	veleroBackup.Spec = schedule.Spec.Template
 
 	// now create the backup
-	err := c.Create(ctx, veleroBackup, &client.CreateOptions{})
-	if err == nil {
-		scheduleLogger.Info(
-			"Velero backup created",
+	if err := c.Create(ctx, veleroBackup, &client.CreateOptions{}); err != nil {
+		scheduleLogger.Error(
+			err,
+			"Error in creating velero.io.Backup",
 			"name", veleroBackup.Name,
 			"namespace", veleroBackup.Namespace,
 		)
+		return ""
 	}
-	return veleroBackup, err
+	scheduleLogger.Info(
+		"Velero backup created",
+		"name", veleroBackup.Name,
+		"namespace", veleroBackup.Namespace,
+	)
+
+	return veleroBackup.Name
 }
 
 func verifyMSAOption(
