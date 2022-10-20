@@ -110,6 +110,9 @@ type RestoreStatus struct {
 	// Message on the last operation
 	// +kubebuilder:validation:Optional
 	LastMessage string `json:"lastMessage"`
+	//Messages contains any messages that were encountered during
+	// the restore process.
+	Messages []string `json:"messages"`
 }
 
 // +kubebuilder:object:root=true

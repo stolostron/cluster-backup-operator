@@ -220,7 +220,7 @@ func Test_postRestoreActivation(t *testing.T) {
 
 	for index, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := postRestoreActivation(tt.args.ctx, k8sClient1,
+			if got, _ := postRestoreActivation(tt.args.ctx, k8sClient1,
 				tt.args.secrets, tt.args.managedClusters, tt.args.currentTime); len(got) != len(tt.want) {
 				t.Errorf("postRestoreActivation() returns = %v, want %v", got, tt.want)
 			}

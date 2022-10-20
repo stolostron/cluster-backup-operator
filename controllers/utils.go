@@ -289,14 +289,15 @@ func findValidMSAToken(
 func managedClusterShouldReimport(
 	ctx context.Context,
 	managedClusters []clusterv1.ManagedCluster,
-	clusterName string) (bool, string) {
+	clusterName string,
+) (bool, string, string) {
 
 	logger := log.FromContext(ctx)
 
 	url := ""
 	if clusterName == "local-cluster" {
 		// skip local-cluster
-		return false, url
+		return false, url, ""
 	}
 
 	for i := range managedClusters {
@@ -319,21 +320,23 @@ func managedClusterShouldReimport(
 		}
 		if isManagedClusterAvailable {
 			logger.Info("managed cluster already available " + managedCluster.Name)
-			return false, url
+			return false, url, ""
 		}
 
 		// if empty, the managed cluster has no accessible address for the hub to connect with it
 		if len(managedCluster.Spec.ManagedClusterClientConfigs) == 0 ||
 			managedCluster.Spec.ManagedClusterClientConfigs[0].URL == "" {
-			logger.Info(fmt.Sprintf("Cannot reimport cluster (%s) it doesn't have a serverUrl property Spec.ManagedClusterClientConfigs",
-				managedCluster.Name))
+			msg := fmt.Sprintf("Cannot reimport cluster (%s) it doesn't have a serverUrl property Spec.ManagedClusterClientConfigs",
+				managedCluster.Name)
 
-			return false, url
+			logger.Info(msg)
+
+			return false, url, msg
 		}
 
 		url = managedCluster.Spec.ManagedClusterClientConfigs[0].URL
-		return true, url
+		return true, url, ""
 	}
 
-	return false, url
+	return false, url, ""
 }

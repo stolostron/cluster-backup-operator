@@ -97,6 +97,12 @@ spec:
               lastMessage:
                 description: Message on the last operation
                 type: string
+              messages:
+                description: Messages contains any messages that were encountered
+                  during the restore process.
+                items:
+                  type: string
+                type: array
               phase:
                 description: Phase is the current phase of the restore
                 type: string

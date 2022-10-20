@@ -57,8 +57,9 @@ func executePostRestoreTasks(
 		if err := c.List(ctx, managedClusters, &client.ListOptions{}); err == nil {
 			processed = true
 			// this cluster was activated so try to auto import pending managed clusters
-			postRestoreActivation(ctx, c, getMSASecrets(ctx, c, ""),
+			_, activationMessages := postRestoreActivation(ctx, c, getMSASecrets(ctx, c, ""),
 				managedClusters.Items, time.Now().In(time.UTC))
+			acmRestore.Status.Messages = activationMessages
 		}
 	}
 	return processed
@@ -452,11 +453,13 @@ func postRestoreActivation(
 	msaSecrets []corev1.Secret,
 	managedClusters []clusterv1.ManagedCluster,
 	currentTime time.Time,
-) []string {
+) ([]string, []string) {
 	logger := log.FromContext(ctx)
 	logger.Info("enter postRestoreActivation")
 	// return the list of auto import secrets created here
 	autoImportSecretsCreated := []string{}
+
+	activationMessages := []string{}
 
 	processedClusters := []string{}
 	for s := range msaSecrets {
@@ -471,15 +474,20 @@ func postRestoreActivation(
 		accessToken := ""
 		if accessToken = findValidMSAToken([]corev1.Secret{secret}, currentTime); accessToken == "" {
 			// this secret should not be processed
-			logger.Info(fmt.Sprintf("Skip MSA access token for secret (%s:%s) no loger valid!",
-				secret.Namespace, secret.Name))
+			msg := fmt.Sprintf("Skip MSA access token for secret (%s:%s) no loger valid!",
+				secret.Namespace, secret.Name)
+			activationMessages = append(activationMessages, msg)
+			logger.Info(msg)
 			continue
 		}
 
 		// found a valid access token for this cluster name, add it to the list
 		processedClusters = append(processedClusters, clusterName)
 
-		reimport, url := managedClusterShouldReimport(ctx, managedClusters, clusterName)
+		reimport, url, message := managedClusterShouldReimport(ctx, managedClusters, clusterName)
+		if message != "" {
+			activationMessages = append(activationMessages, message)
+		}
 		if !reimport {
 			// no need to reimport this managed cluster
 			// the cluster is already active or the url is not set
@@ -500,28 +508,39 @@ func postRestoreActivation(
 			autoImportSecret.GetLabels()[activateLabel] == "true" {
 			// found secret
 			if err := c.Delete(ctx, autoImportSecret); err != nil {
+				msg := fmt.Sprintf(fmt.Sprintf(
+					"failed to delete the auto-import-secret from namespace %s",
+					clusterName,
+				))
+				activationMessages = append(activationMessages, msg)
+
 				logger.Error(
 					err,
-					fmt.Sprintf(
-						"failed to delete the auto-import-secret from namespace %s",
-						clusterName,
-					),
+					msg,
 				)
 			} else {
-				logger.Info("deleted auto-import-secret from namespace " + clusterName)
+				msg := "deleted auto-import-secret from namespace " + clusterName
+				activationMessages = append(activationMessages, msg)
+
+				logger.Info(msg)
 			}
 		}
 
 		// create an auto-import-secret for this managed cluster
 		if err := createAutoImportSecret(ctx, c, clusterName, accessToken, url); err != nil {
-			logger.Error(err, "Error in creating AutoImportSecret")
+			msg := fmt.Sprintf("error creating auto-import-secret for cluster (%s)",
+				clusterName)
+			activationMessages = append(activationMessages, msg)
+			logger.Error(err, msg)
 		} else {
 			autoImportSecretsCreated = append(autoImportSecretsCreated, clusterName)
-			logger.Info("created auto-import-secret for managed cluster " + clusterName)
+			msg := fmt.Sprintf("created auto-import-secret for managed cluster (%s)",
+				clusterName)
+			activationMessages = append(activationMessages, msg)
 		}
 	}
 
-	return autoImportSecretsCreated
+	return autoImportSecretsCreated, activationMessages
 }
 
 // create an autoImportSecret using the url and accessToken
