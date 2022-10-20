@@ -471,6 +471,8 @@ func postRestoreActivation(
 		accessToken := ""
 		if accessToken = findValidMSAToken([]corev1.Secret{secret}, currentTime); accessToken == "" {
 			// this secret should not be processed
+			logger.Info(fmt.Sprintf("Skip MSA access token for secret (%s:%s) no loger valid!",
+				secret.Namespace, secret.Name))
 			continue
 		}
 
@@ -481,6 +483,8 @@ func postRestoreActivation(
 		if !reimport {
 			// no need to reimport this managed cluster
 			// the cluster is already active or the url is not set
+			logger.Info(fmt.Sprintf("Will not reimport cluster (%s) the cluster is already active or the server url is not set",
+				clusterName))
 			continue
 		}
 

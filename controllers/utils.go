@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -324,6 +325,9 @@ func managedClusterShouldReimport(
 		// if empty, the managed cluster has no accessible address for the hub to connect with it
 		if len(managedCluster.Spec.ManagedClusterClientConfigs) == 0 ||
 			managedCluster.Spec.ManagedClusterClientConfigs[0].URL == "" {
+			logger.Info(fmt.Sprintf("Cannot reimport cluster (%s) it doesn't have a serverUrl property Spec.ManagedClusterClientConfigs",
+				managedCluster.Name))
+
 			return false, url
 		}
 
