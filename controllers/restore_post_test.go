@@ -220,7 +220,7 @@ func Test_postRestoreActivation(t *testing.T) {
 
 	for index, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := postRestoreActivation(tt.args.ctx, k8sClient1,
+			if got, _ := postRestoreActivation(tt.args.ctx, k8sClient1,
 				tt.args.secrets, tt.args.managedClusters, tt.args.currentTime); len(got) != len(tt.want) {
 				t.Errorf("postRestoreActivation() returns = %v, want %v", got, tt.want)
 			}
@@ -1892,7 +1892,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		},
 	}
 
-	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var list interface{}
 		switch req.URL.Path {
 		case "/apis/cluster.open-cluster-management.io/v1beta1":
@@ -2018,7 +2018,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	}))
 
 	fakeDiscovery := discoveryclient.NewDiscoveryClientForConfigOrDie(
-		&restclient.Config{Host: server.URL},
+		&restclient.Config{Host: server1.URL},
 	)
 
 	testRequest := "authentication.open-cluster-management.io/v1alpha1"

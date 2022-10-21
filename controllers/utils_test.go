@@ -392,9 +392,9 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got, _ := managedClusterShouldReimport(tt.args.ctx,
+			if got, _, _ := managedClusterShouldReimport(tt.args.ctx,
 				tt.args.managedClusters, tt.args.clusterName); got != tt.want {
-				t.Errorf("postRestoreActivation() returns = %v, want %v", got, tt.want)
+				t.Errorf("managedClusterShouldReimport() returns = %v, want %v", got, tt.want)
 			}
 		})
 	}
