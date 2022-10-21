@@ -370,14 +370,14 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 
 		switch scheduleKey {
 		case ManagedClusters:
-			setManagedClustersBackupInfo(ctx, veleroBackupTemplate, r.Client)
+			setManagedClustersBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
 		case Credentials:
 			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client)
 		case Resources:
 			setResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup,
 				backupSchedule.Namespace, r.Client)
 		case ResourcesGeneric:
-			setGenericResourcesBackupInfo(ctx, veleroBackupTemplate, r.Client)
+			setGenericResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
 		case ValidationSchedule:
 			veleroBackupTemplate = setValidationBackupInfo(
 				ctx,

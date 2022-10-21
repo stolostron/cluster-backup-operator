@@ -345,8 +345,6 @@ var _ = BeforeSuite(func() {
 
 	// check that these resources are backed up
 	resourcesToBackup = []string{
-		"clusterdeployment.hive.openshift.io",
-		"machinepool.hive.openshift.io",
 		"placement.cluster.open-cluster-management.io",
 	}
 	test := tests[1]

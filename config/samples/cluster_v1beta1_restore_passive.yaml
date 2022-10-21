@@ -1,5 +1,5 @@
 # apply this resource to restore hub resources in a passive configuration
-# restored managed clusters will show as detached on the current hub, where this resource is applied
+# restored managed clusters will show not show on the current hub, where this resource is applied
 
 # cleanupBeforeRestore - required, asks to clean up cluster after applying restore
 # valid options : 
