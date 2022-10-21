@@ -102,6 +102,7 @@ spec:
                   during the restore process.
                 items:
                   type: string
+                nullable: true
                 type: array
               phase:
                 description: Phase is the current phase of the restore
