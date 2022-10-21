@@ -789,6 +789,9 @@ var _ = Describe("BackupSchedule controller", func() {
 
 					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
 						"clusterdeployment.hive.openshift.io")).Should(BeTrue())
+					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
+						"clusterpool.other.hive.openshift.io")).Should(BeTrue())
+
 				}
 			}
 

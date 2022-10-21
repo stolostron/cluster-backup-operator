@@ -151,11 +151,16 @@ var _ = BeforeSuite(func() {
 	hiveInfo := metav1.APIResourceList{
 		GroupVersion: "hive.openshift.io/v1",
 		APIResources: []metav1.APIResource{
-			{Name: "clusterpools", Namespaced: true, Kind: "ClusterPool"},
 			{Name: "clusterdeployments", Namespaced: false, Kind: "ClusterDeployment"},
 			{Name: "dnszones", Namespaced: false, Kind: "DNSZone"},
 			{Name: "clusterimageset", Namespaced: false, Kind: "ClusterImageSet"},
 			{Name: "hiveconfig", Namespaced: false, Kind: "HiveConfig"},
+		},
+	}
+	hiveExtraInfo := metav1.APIResourceList{
+		GroupVersion: "other.hive.openshift.io/v1",
+		APIResources: []metav1.APIResource{
+			{Name: "clusterpools", Namespaced: true, Kind: "ClusterPool"},
 		},
 	}
 	authAlpha1 := metav1.APIResourceList{
@@ -174,6 +179,10 @@ var _ = BeforeSuite(func() {
 		case "/apis/admission.cluster.open-cluster-management.io/v1beta1":
 			list = &excluded
 		case "/apis/hive.openshift.io/v1":
+			list = &hiveInfo
+		case "/apis/other.hive.openshift.io/v1":
+			list = &hiveExtraInfo
+		case "/apis/hive.openshift.io/v1beta1":
 			list = &hiveInfo
 		case "/apis/authentication.open-cluster-management.io/v1alpha1":
 			list = authAlpha1
@@ -251,6 +260,12 @@ var _ = BeforeSuite(func() {
 						Versions: []metav1.GroupVersionForDiscovery{
 							{GroupVersion: "hive.openshift.io/v1", Version: "v1"},
 							{GroupVersion: "hive.openshift.io/v1beta1", Version: "v1beta1"},
+						},
+					},
+					{
+						Name: "other.hive.openshift.io",
+						Versions: []metav1.GroupVersionForDiscovery{
+							{GroupVersion: "other.hive.openshift.io/v1", Version: "v1"},
 						},
 					},
 					{
@@ -333,6 +348,12 @@ var _ = BeforeSuite(func() {
 			resourcesList: &hiveInfo,
 			path:          "/apis/hive.openshift.io/v1",
 			request:       "hive.openshift.io/v1",
+			expectErr:     false,
+		},
+		{
+			resourcesList: &hiveExtraInfo,
+			path:          "/apis/other.hive.openshift.io/v1",
+			request:       "other.hive.openshift.io/v1",
 			expectErr:     false,
 		},
 		{
@@ -493,16 +514,6 @@ var _ = BeforeSuite(func() {
 	msaGVRList := schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
 		Version: "v1alpha1", Resource: "managedserviceaccounts"}
 
-	gvrToListKind := map[schema.GroupVersionResource]string{
-		msaGVRList: "ManagedServiceAccountList",
-	}
-
-	unstructuredScheme := runtime.NewScheme()
-	unstructuredScheme.AddKnownTypes(msaGVK.GroupVersion(), msaObj, msaObj2)
-	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredScheme,
-		gvrToListKind,
-		msaObj, msaObj2)
-
 	//cluster version
 	clsVGVK := schema.GroupVersionKind{Group: "config.openshift.io",
 		Version: "v1", Kind: "ClusterVersion"}
@@ -526,6 +537,17 @@ var _ = BeforeSuite(func() {
 		Version: "v1", Kind: "ClusterDeployment"}
 	clsDGVKList := schema.GroupVersionResource{Group: "hive.openshift.io",
 		Version: "v1", Resource: "clusterdeployments"}
+
+	// cluster pools
+	clsHiveObj := &unstructured.Unstructured{}
+	clsHiveObj.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "other.hive.openshift.io/v1",
+		"kind":       "ClusterPool",
+		"metadata": map[string]interface{}{
+			"name":      "vb-hive-1-worker",
+			"namespace": "managed1",
+		},
+	})
 
 	// placements
 	plsGVK := schema.GroupVersionKind{Group: "cluster.open-cluster-management.io",
@@ -569,9 +591,9 @@ var _ = BeforeSuite(func() {
 	mVKList := schema.GroupVersionResource{Group: "admission.cluster.open-cluster-management.io",
 		Version: "v1beta1", Resource: "managedclustermutators"}
 	//pools
-	cpGVK := schema.GroupVersionKind{Group: "hive.openshift.io",
+	cpGVK := schema.GroupVersionKind{Group: "other.hive.openshift.io",
 		Version: "v1", Kind: "ClusterPool"}
-	cpVKList := schema.GroupVersionResource{Group: "hive.openshift.io",
+	cpVKList := schema.GroupVersionResource{Group: "other.hive.openshift.io",
 		Version: "v1", Resource: "clusterpools"}
 	//dns
 	dnsGVK := schema.GroupVersionKind{Group: "hive.openshift.io",
@@ -627,7 +649,7 @@ var _ = BeforeSuite(func() {
 	unstructuredSchemeR.AddKnownTypes(clsSGVK.GroupVersion())
 	unstructuredSchemeR.AddKnownTypes(bsSGVK.GroupVersion())
 	unstructuredSchemeR.AddKnownTypes(mGVK.GroupVersion())
-	unstructuredSchemeR.AddKnownTypes(cpGVK.GroupVersion())
+	unstructuredSchemeR.AddKnownTypes(cpGVK.GroupVersion(), clsHiveObj)
 	unstructuredSchemeR.AddKnownTypes(dnsGVK.GroupVersion())
 	unstructuredSchemeR.AddKnownTypes(imgGVK.GroupVersion())
 	unstructuredSchemeR.AddKnownTypes(hGVK.GroupVersion())
@@ -636,7 +658,7 @@ var _ = BeforeSuite(func() {
 
 	dynR := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredSchemeR,
 		gvrToListKindR,
-		msaObj, msaObj2, clsvObj, res_channel_default)
+		msaObj, msaObj2, clsvObj, res_channel_default, clsHiveObj)
 
 	//create some resources
 	dynR.Resource(chGVKList).Namespace("default").Create(context.Background(),
@@ -646,6 +668,8 @@ var _ = BeforeSuite(func() {
 		msaObj, v1.CreateOptions{})
 	dynR.Resource(msaGVRList).Namespace("app").Create(context.Background(),
 		msaObj2, v1.CreateOptions{})
+	dynR.Resource(cpVKList).Namespace("managed1").Create(context.Background(),
+		clsHiveObj, v1.CreateOptions{})
 
 	err = (&RestoreReconciler{
 		KubeClient:      nil,
@@ -661,7 +685,7 @@ var _ = BeforeSuite(func() {
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		DiscoveryClient: fakeDiscovery,
-		DynamicClient:   dyn,
+		DynamicClient:   dynR,
 	}).SetupWithManager(mgr)
 	Expect(err).ToNot(HaveOccurred())
 
