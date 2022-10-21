@@ -506,24 +506,17 @@ func postRestoreActivation(
 		if err := c.Get(ctx, secretIdentity, autoImportSecret); err == nil &&
 			autoImportSecret.GetLabels() != nil &&
 			autoImportSecret.GetLabels()[activateLabel] == "true" {
+
+			msg := fmt.Sprintf(fmt.Sprintf(
+				"failed to delete the auto-import-secret from namespace %s",
+				clusterName,
+			))
 			// found secret
-			if err := c.Delete(ctx, autoImportSecret); err != nil {
-				msg := fmt.Sprintf(fmt.Sprintf(
-					"failed to delete the auto-import-secret from namespace %s",
-					clusterName,
-				))
-				activationMessages = append(activationMessages, msg)
-
-				logger.Error(
-					err,
-					msg,
-				)
-			} else {
-				msg := "deleted auto-import-secret from namespace " + clusterName
-				activationMessages = append(activationMessages, msg)
-
-				logger.Info(msg)
+			if err := c.Delete(ctx, autoImportSecret); err == nil {
+				msg = "deleted auto-import-secret from namespace " + clusterName
 			}
+			logger.Info(msg)
+			activationMessages = append(activationMessages, msg)
 		}
 
 		// create an auto-import-secret for this managed cluster

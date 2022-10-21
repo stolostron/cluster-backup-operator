@@ -326,7 +326,7 @@ func managedClusterShouldReimport(
 		// if empty, the managed cluster has no accessible address for the hub to connect with it
 		if len(managedCluster.Spec.ManagedClusterClientConfigs) == 0 ||
 			managedCluster.Spec.ManagedClusterClientConfigs[0].URL == "" {
-			msg := fmt.Sprintf("Cannot reimport cluster (%s) it doesn't have a serverUrl property Spec.ManagedClusterClientConfigs",
+			msg := fmt.Sprintf("Cannot reimport cluster %s, no serverUrl property",
 				managedCluster.Name)
 
 			logger.Info(msg)

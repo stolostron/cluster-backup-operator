@@ -1892,7 +1892,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		},
 	}
 
-	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var list interface{}
 		switch req.URL.Path {
 		case "/apis/cluster.open-cluster-management.io/v1beta1":
@@ -2018,7 +2018,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	}))
 
 	fakeDiscovery := discoveryclient.NewDiscoveryClientForConfigOrDie(
-		&restclient.Config{Host: server.URL},
+		&restclient.Config{Host: server1.URL},
 	)
 
 	testRequest := "authentication.open-cluster-management.io/v1alpha1"
