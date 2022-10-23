@@ -257,6 +257,9 @@ Aside of these activation data resources, identified by using the `cluster.open-
   - managedclustersetbinding.cluster.open-cluster-management.io
   - clusterpool.hive.openshift.io
   - clusterclaim.hive.openshift.io
+  - clusterdeployment.hive.openshift.io
+  - machinepool.hive.openshift.io
+  - clustersync.hiveinternal.openshift.io
   - clustercurator.cluster.open-cluster-management.io
 
 ### Passive data
