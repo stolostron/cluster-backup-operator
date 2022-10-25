@@ -31,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -85,6 +84,7 @@ const (
 // prepare resources before backing up
 func (r *BackupScheduleReconciler) prepareForBackup(
 	ctx context.Context,
+	mapper *restmapper.DeferredDiscoveryRESTMapper,
 	backupSchedule *v1beta1.BackupSchedule,
 ) {
 	logger := log.FromContext(ctx)
@@ -98,9 +98,6 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		Group: msa_group,
 		Kind:  msa_kind,
 	}
-	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
-		memory.NewMemCacheClient(r.DiscoveryClient),
-	)
 
 	msaMapping, err := mapper.RESTMapping(msaKind, "")
 	var dr dynamic.NamespaceableResourceInterface
