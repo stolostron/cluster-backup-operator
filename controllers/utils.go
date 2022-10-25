@@ -319,8 +319,11 @@ func managedClusterShouldReimport(
 			}
 		}
 		if isManagedClusterAvailable {
-			logger.Info("managed cluster already available " + managedCluster.Name)
-			return false, url, ""
+			msg := fmt.Sprintf("managed cluster %s already available",
+				managedCluster.Name)
+
+			logger.Info(msg)
+			return false, url, msg
 		}
 
 		// if empty, the managed cluster has no accessible address for the hub to connect with it

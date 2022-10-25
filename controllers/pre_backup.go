@@ -136,23 +136,25 @@ func cleanupMSAForImportedClusters(
 ) {
 	logger := log.FromContext(ctx)
 
-	deletePolicy := metav1.DeletePropagationForeground
-	delOptions := metav1.DeleteOptions{
-		PropagationPolicy: &deletePolicy,
-	}
+	if msaMapping != nil {
+		deletePolicy := metav1.DeletePropagationForeground
+		delOptions := metav1.DeleteOptions{
+			PropagationPolicy: &deletePolicy,
+		}
 
-	// delete ManagedServiceAccounts with msa_service_name label
-	listOptions := v1.ListOptions{LabelSelector: fmt.Sprintf("%s in (%s)", msa_label, msa_service_name)}
-	if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
-		for i := range dynamiclist.Items {
-			deleteDynamicResource(
-				ctx,
-				msaMapping,
-				dr,
-				dynamiclist.Items[i],
-				delOptions,
-				[]string{},
-			)
+		// delete ManagedServiceAccounts with msa_service_name label
+		listOptions := v1.ListOptions{LabelSelector: fmt.Sprintf("%s in (%s)", msa_label, msa_service_name)}
+		if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
+			for i := range dynamiclist.Items {
+				deleteDynamicResource(
+					ctx,
+					msaMapping,
+					dr,
+					dynamiclist.Items[i],
+					delOptions,
+					[]string{},
+				)
+			}
 		}
 	}
 
