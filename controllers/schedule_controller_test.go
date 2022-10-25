@@ -262,7 +262,12 @@ var _ = Describe("BackupSchedule controller", func() {
 		if clusterPoolNS != nil {
 
 			for i := range clusterPoolSecrets {
-				Expect(k8sClient.Delete(ctx, &clusterPoolSecrets[i])).Should(Succeed())
+				if clusterPoolSecrets[i].Name == "auto-import" {
+					// this should be already cleaned up by the MSA disabled function
+					Expect(k8sClient.Delete(ctx, &clusterPoolSecrets[i])).ShouldNot(Succeed())
+				} else {
+					Expect(k8sClient.Delete(ctx, &clusterPoolSecrets[i])).Should(Succeed())
+				}
 			}
 			for i := range clusterPools {
 				Expect(k8sClient.Delete(ctx, &clusterPools[i])).Should(Succeed())

@@ -396,7 +396,10 @@ func verifyMSAOption(
 		)
 
 		if _, err := m.RESTMapping(msaKind, ""); err != nil {
-			scheduleLogger.Error(err, "MSA CRD not found")
+			scheduleLogger.Info("ManagedServiceAccount CRD not found")
+			//cleanupMSAForImportedClusters
+			cleanupMSAForImportedClusters(ctx, c, nil, nil)
+			// return error
 			return createFailedValidationResponse(ctx, c, backupSchedule,
 				msg, true) // want to reque, if CRD is installed after
 		}
