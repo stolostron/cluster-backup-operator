@@ -2060,16 +2060,22 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		dyn: dyn,
 	}
 
+	m := restmapper.NewDeferredDiscoveryRESTMapper(
+		memory.NewMemCacheClient(fakeDiscovery),
+	)
+
 	resOptionsCleanupAll := RestoreOptions{
 		deleteOptions: delOptions,
 		dynamicArgs:   reconcileArgs,
 		cleanupType:   v1beta1.CleanupTypeAll,
+		mapper:        m,
 	}
 
 	resOptionsCleanupRestored := RestoreOptions{
 		deleteOptions: delOptions,
 		dynamicArgs:   reconcileArgs,
 		cleanupType:   v1beta1.CleanupTypeRestored,
+		mapper:        m,
 	}
 
 	type args struct {
