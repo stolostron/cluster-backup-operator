@@ -1,5 +1,5 @@
 # apply this resource to restore hub resources in a passive configuration
-# restored managed clusters will show as detached on the current hub, where this resource is applied
+# restored managed clusters will show not show on the current hub, where this resource is applied
 
 # cleanupBeforeRestore - required, asks to clean up cluster after applying restore
 # valid options : 
@@ -11,6 +11,7 @@ apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Restore
 metadata:
   name: restore-acm-passive
+  namespace: open-cluster-management-backup
 spec:
   cleanupBeforeRestore: CleanupRestored
   veleroManagedClustersBackupName: skip

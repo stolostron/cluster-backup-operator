@@ -35,7 +35,7 @@ Cluster Back up and Restore Operator
   - [Cleaning up the hub before restore](#cleaning-up-the-hub-before-restore)
   - [View restore events](#view-restore-events)
 - [Restoring imported managed clusters](#restoring-imported-managed-clusters)
-  - [Automatically connecting clusters using ManagedServiceAccount](#automatically-connecting-clusters-using-managedserviceaccount)
+  - [Automatically connecting clusters using ManagedServiceAccount - Tech Preview](#automatically-connecting-clusters-using-managedserviceaccount---tech-preview)
   - [Enabling the automatic import feature](#enabling-the-automatic-import-feature)
   - [Limitations with the automatic import feature](#limitations-with-the-automatic-import-feature)
 - [Backup validation using a Policy](#backup-validation-using-a-policy)
@@ -81,7 +81,7 @@ The Cluster Back up and Restore Operator provides disaster recovery solutions fo
 
 The Cluster Back up and Restore Operator runs on the Red Hat Advanced Cluster Management for Kubernetes hub and depends on the [OADP Operator](https://github.com/openshift/oadp-operator) to create a connection to a backup storage location on the hub, which is then used to backup and restore user created hub resources. 
 
-The Cluster Back up and Restore Operator chart is not installed automatically. Starting with Red Hat Advanced Cluster Management version 2.5, in order to enable the backup component, you have to set the `cluster-backup` option to `true` on the MultiClusterHub resource. The OADP Operator will be installed automatically with the Cluster Back up and Restore Operator chart, as a chart hook.
+The Cluster Back up and Restore Operator chart is not installed automatically. Starting with Red Hat Advanced Cluster Management version 2.5, in order to enable the backup component, you have to set the `cluster-backup` option to `true` on the MultiClusterHub resource. The OADP Operator will be installed automatically with the Cluster Back up and Restore Operator chart, as a chart hook. The backup chart and OADP Operator are both installed under the `open-cluster-management-backup` namespace.
 
 Before you can use the Cluster Back up and Restore operator, the [OADP Operator](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md) must be configured to set the connection to the storage location where backups will be saved. Make sure you follow the steps to create the [secret for the cloud storage](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-credentials-secret) where the backups are going to be saved, then use that secret when creating the [DataProtectionApplication resource](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md#create-the-dataprotectionapplication-custom-resource) to setup the connection to the storage location.
 
@@ -90,7 +90,7 @@ Before you can use the Cluster Back up and Restore operator, the [OADP Operator]
 The Cluster Back up and Restore Operator chart is not installed automatically.
 Starting with Red Hat Advanced Cluster Management version 2.5, the Cluster Back up and Restore Operator chart is installed by setting the `cluster-backup` option to `true` on the `MultiClusterHub` resource. 
 
-The Cluster Back up and Restore Operator chart in turn automatically installs the [OADP Operator](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md), in the same namespace with the backup chart. 
+The Cluster Back up and Restore Operator chart in turn automatically installs the [OADP Operator](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md), in the `open-cluster-management-backup` namespace, which is the namespace where the chart is installed. 
 
 <b>Note</b>: 
 - The OADP Operator 1.0 has disabled building multi-arch builds and only produces x86_64 builds for the official release. This means that if you are using an architecture other than x86_64, the OADP Operator installed by the chart will have to be replaced with the right version. In this case, uninstall the OADP Operator and find the operator matching your architecture then install it.
@@ -257,6 +257,9 @@ Aside of these activation data resources, identified by using the `cluster.open-
   - managedclustersetbinding.cluster.open-cluster-management.io
   - clusterpool.hive.openshift.io
   - clusterclaim.hive.openshift.io
+  - clusterdeployment.hive.openshift.io
+  - machinepool.hive.openshift.io
+  - clustersync.hiveinternal.openshift.io
   - clustercurator.cluster.open-cluster-management.io
 
 ### Passive data
@@ -271,9 +274,9 @@ Managed clusters activation data or activation data, is backup data which when r
 
 A backup schedule is activated when creating the `backupschedule.cluster.open-cluster-management.io` resource, as shown [here](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_backupschedule.yaml)
 
-After you create a `backupschedule.cluster.open-cluster-management.io` resource you should be able to run `oc get bsch -n <oadp-operator-ns>` and get the status of the scheduled cluster backups. The `<oadp-operator-ns>` is the namespace where BackupSchedule was created and it should be the same namespace where the OADP Operator was installed.
+After you create a `backupschedule.cluster.open-cluster-management.io` resource you should be able to run `oc get bsch -n open-cluster-management-backup` and get the status of the scheduled cluster backups.
 
-The `backupschedule.cluster.open-cluster-management.io` creates 6 `schedule.velero.io` resources, used to generate the backups.
+The `backupschedule.cluster.open-cluster-management.io` creates a set of `schedule.velero.io` resources, used to generate the backups.
 
 Run `oc get schedules -A | grep acm` to view the list of backup scheduled.
 
@@ -285,7 +288,7 @@ Resources are backed up in 3 separate groups:
 
 <b>Note</b>:
 
-a. The backup file created in step 2. above contains managed cluster specific resources but does not contain the subset of resources which will result in managed clusters connect to this hub. These resources, also called activation resources, are contained by the managed clusters backup, created in step 3. When you restore on a new hub just the resources from step 1 and 2 above, the new hub shows all managed clusters created with the hive api but they are in a detached state. Managed clusters imported on the primary hub using the <i>Import cluster</i> operation will show only when the activation data is restored on the passive hub. The managed clusters are still connected to the original hub that had produced the backup files.
+a. The backup file created in step 2. above contains managed cluster specific resources but does not contain the subset of resources which will result in managed clusters connect to this hub. These resources, also called activation resources, are contained by the managed clusters backup, created in step 3. When you restore on a new hub just the resources from step 1 and 2 above, the new hub does not shows any managed clusters on the Clusters page. The managed clusters are still connected to the original hub that had produced the backup files. Managed clusters will show on the restore hub only when the activation data is restored on this cluster.
 
 b. Only managed clusters created using the hive api will be automatically connected with the new hub when the `acm-managed-clusters` backup from step 3 is restored on another hub. Read more about this under the [Restoring imported managed clusters](#restoring-imported-managed-clusters) section.
 
@@ -337,7 +340,7 @@ There are also cases where you want to restore the data on the same hub where th
 
 A restore backup is executed when creating the `restore.cluster.open-cluster-management.io` resource on the hub. A few samples are available [here](https://github.com/stolostron/cluster-backup-operator/tree/main/config/samples)
 
-By passive data we mean resource that don't result in activating the connection between the new hub and managed clusters. When the passive data is restored on the new hub, the managed clusters show up but they are in detached state. The hub that produced the backup is still managing these clusters.
+By passive data we mean resource that don't result in activating the connection between the new hub and managed clusters. When the passive data is restored on the new hub, the managed clusters do not show up on the restored hub Clusters page. The hub that produced the backup is still managing these clusters.
 
 By activation data we mean resources that, when restored on the new hub, result in making the managed clusters to be managed by the new hub. The new hub is now the active hub, managing the clusters.
 
@@ -380,7 +383,7 @@ When restoring activation resources using the `veleroManagedClustersBackupName: 
 
 Use the [restore sample](https://github.com/stolostron/cluster-backup-operator/blob/main/config/samples/cluster_v1beta1_restore.yaml) if you want to restore all data at once and make this hub take over the managed clusters in one step.
 
-After you create a `restore.cluster.open-cluster-management.io` resource on the hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on your hub that the backed up resources contained by the backup file have been created.
+After you create a `Restore.cluster.open-cluster-management.io` resource on the hub, you should be able to run `oc get restore -n open-cluster-management-backup` and get the status of the restore operation. You should also be able to verify on your hub that the backed up resources contained by the backup file have been created.
 
 ### Cleaning up the hub before restore
 Velero updates existing resources if they have changed with the currently restored backup. It does not clean up delta resources, which are resources created by a previous restore and not part of the currently restored backup. This limits the scenarios that can be used when restoring hub data on a new hub. Unless the restore is applied only once, the new hub could not be relibly used as a passive configuration: the data on this hub is not reflective of the data available with the restored resources.
@@ -491,7 +494,7 @@ For a large number of imported managed clusters, this is a very tedious operatio
 
 We propose a new solution for automatically connecting imported clusters to the new hub, using the ManagedServiceAccount feature, as explained below. 
 
-### Automatically connecting clusters using ManagedServiceAccount
+### Automatically connecting clusters using ManagedServiceAccount - Tech Preview
 
 The backup controller implements a solution to automatically connect imported clusters on the new hub. This solution is available with the backup controller packaged with ACM and uses the [ManagedServiceAccount](https://github.com/open-cluster-management-io/managed-serviceaccount) component on the primary hub to create a token for each of the imported clusters. This token is backed up under each managed cluster namespace and is set to use a `klusterlet-bootstrap-kubeconfig` `ClusterRole` binding, which allows the token to be used by an auto import operation. The `klusterlet-bootstrap-kubeconfig` `ClusterRole` can only get or update the `bootstrap-hub-kubeconfig` secret. <br>
 When the activation data is next restored on the new hub, the restore controller runs a post restore operation and looks for all managed clusters in Pending Import state. For these managed clusters, it checks if there is a valid token generated by the `ManagedServiceAccount` and if found, it creates an `auto-import-secret` using this token. As a result, the import component will try to reconnect the managed cluster and if the cluster is accessible the operation should be successful.
@@ -687,6 +690,7 @@ apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: BackupSchedule
 metadata:
   name: schedule-acm
+  namespace: open-cluster-management-backup
 spec:
   veleroSchedule: 0 */6 * * * # Create a backup every 6 hours
   veleroTtl: 72h # deletes scheduled backups after 72h; optional, if not specified, the maximum default value set by velero is used - 720h
@@ -704,6 +708,7 @@ apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Restore
 metadata:
   name: restore-acm
+  namespace: open-cluster-management-backup
 spec:
   cleanupBeforeRestore: CleanupRestored
   veleroManagedClustersBackupName: latest
@@ -713,33 +718,31 @@ spec:
 
 
 In order to create an instance of `backupschedule.cluster.open-cluster-management.io` or `restore.cluster.open-cluster-management.io` you can start from one of the [sample configurations](config/samples).
-Replace the `<oadp-operator-ns>` with the namespace name used to install the OADP Operator.
-
 
 ```shell
-kubectl create -n <oadp-operator-ns> -f config/samples/cluster_v1beta1_backupschedule.yaml
-kubectl create -n <oadp-operator-ns> -f config/samples/cluster_v1beta1_restore.yaml
+kubectl create -n open-cluster-management-backup -f config/samples/cluster_v1beta1_backupschedule.yaml
+kubectl create -n open-cluster-management-backup -f config/samples/cluster_v1beta1_restore.yaml
 ```
 
 ### Testing
 
 #### Schedule  a backup 
 
-After you create a `backupschedule.cluster.open-cluster-management.io` resource you should be able to run `oc get bsch -n <oadp-operator-ns>` and get the status of the scheduled cluster backups.
+After you create a `backupschedule.cluster.open-cluster-management.io` resource you should be able to run `oc get bsch -n open-cluster-management-backup` and get the status of the scheduled cluster backups.
 
 In the example below, you have created a `backupschedule.cluster.open-cluster-management.io` resource named schedule-acm.
 
 The resource status shows the definition for the 3 `schedule.velero.io` resources created by this cluster backup scheduler. 
 
 ```
-$ oc get bsch -n <oadp-operator-ns>
+$ oc get bsch -n   open-cluster-management-backup
 NAME           PHASE
 schedule-acm   
 ```
 
 #### Restore a backup
 
-After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -n <oadp-operator-ns>` and get the status of the restore operation. You should also be able to verify on the new hub that the backed up resources contained by the backup file have been created.
+After you create a `restore.cluster.open-cluster-management.io` resource on the new hub, you should be able to run `oc get restore -n open-cluster-management-backup` and get the status of the restore operation. You should also be able to verify on the new hub that the backed up resources contained by the backup file have been created.
 
 Velero sets a `PartiallyFailed` status for a velero restore resource if the backup restored had no resources. This means that a `restore.cluster.open-cluster-management.io` resource could be in `PartiallyFailed` status if any of the `restore.velero.io` resources created did not restore any resources because the corresponding backup was empty. 
 
@@ -765,6 +768,7 @@ apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Restore
 metadata:
   name: restore-acm
+  namespace: open-cluster-management-backup
 spec:
   cleanupBeforeRestore: CleanupRestored
   veleroManagedClustersBackupName: latest
@@ -779,6 +783,7 @@ apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Restore
 metadata:
   name: restore-acm
+  namespace: open-cluster-management-backup
 spec:
   cleanupBeforeRestore: None
   veleroManagedClustersBackupName: latest
@@ -793,6 +798,7 @@ apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Restore
 metadata:
   name: restore-acm
+  namespace: open-cluster-management-backup
 spec:
   cleanupBeforeRestore: None
   veleroManagedClustersBackupName: acm-managed-clusters-schedule-20210902205438
@@ -801,5 +807,5 @@ spec:
 ```
 
 <!---
-Date: Aug/15/2022
+Date: Oct/20/2022
 -->

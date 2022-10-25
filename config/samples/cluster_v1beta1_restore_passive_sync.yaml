@@ -1,6 +1,6 @@
 # apply this resource to restore hub resources in a passive configuration
 # and keeps checking for new backups and restore if updates are available
-# restored managed clusters will show as detached on the current hub, where this resource is applied
+# restored managed clusters will not show on the current hub, where this resource is applied
 
 ######
 # syncRestoreWithNewBackups - enable this restore and keep checking for new backups and restore if updates are available.
@@ -26,6 +26,7 @@ apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Restore
 metadata:
   name: restore-acm-passive-sync
+  namespace: open-cluster-management-backup
 spec:
   syncRestoreWithNewBackups: true # restore again when new backups are available
   restoreSyncInterval: 10m # check for new backups every 10 minutes
