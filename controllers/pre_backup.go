@@ -191,6 +191,22 @@ func cleanupMSAForImportedClusters(
 			}
 		}
 	}
+
+	// clean up MSA secrets for clusters not accessible at this time
+	// these clusters are not being cleaned up by the MSA remote addon
+	secrets := getMSASecrets(ctx, c, "")
+	for s := range secrets {
+		secret := secrets[s]
+		logger.Info(
+			fmt.Sprintf("deleting MSA secret %s", secret.Name),
+		)
+		if err := c.Delete(ctx, &secret); err == nil {
+			logger.Info(
+				fmt.Sprintf("deleted MSA secret %s", secret.Name),
+			)
+		}
+	}
+
 }
 
 // here we go over all managed clusters and find the ones imported with the hub
