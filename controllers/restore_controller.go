@@ -216,15 +216,11 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			dc:  r.DiscoveryClient,
 			dyn: r.DynamicClient,
 		}
-		m := restmapper.NewDeferredDiscoveryRESTMapper(
-			memory.NewMemCacheClient(r.DiscoveryClient),
-		)
-
 		restoreOptions := RestoreOptions{
 			dynamicArgs:   reconcileArgs,
 			deleteOptions: delOptions,
 			cleanupType:   restore.Spec.CleanupBeforeRestore,
-			mapper:        m,
+			mapper:        restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(r.DiscoveryClient)),
 		}
 		cleanupDeltaResources(ctx, r.Client, restore, cleanupOnRestore, restoreOptions)
 		executePostRestoreTasks(ctx, r.Client, restore)
