@@ -565,8 +565,19 @@ spec:
 ### Limitations with the automatic import feature 
 
 There are a set of limitations with the above approach which could result in the managed cluster not being auto imported when moving to a new hub. These are the situations that can result in the managed cluster not being imported:
-1. The backup controller is regularly looking for imported managed clusters and it creates the [ManagedServiceAccount](https://github.com/open-cluster-management-io/managed-serviceaccount) resource under the managed cluster namespace as soon as such managed cluster is found. This should trigger a token creation on the managed cluster. If the managed cluster is not accessible at the time this operation is executed though, for example the managed cluster is hibernating or is down, the `ManagedServiceAccount` is unable to create the token. As a result, if a hub backup is run at this time, the backup will not contain a token to auto import the managed cluster.
-2. The backup controller looks for imported managed clusters  and requeues this lookup to pick up any new clusters. If managed clusters are imported just after a lookup has completed, they will not be processed until the next call, so any backups executed during this time interval, before the new lookup is processed, will not contain an auto-import token for these newly imported managed clusters.
+1. Since the `auto-import-secret` created on restore uses the `ManagedServiceAccount` token to connect to the managed cluster, the managed cluster must also provide the kube `apiserver` information. The `apiserver` must be set on the `ManagedCluster` resource as in the sample below. Only OCP clusters have this `apiserver` setup automatically when the cluster is imported on the hub. For any other type of managed clusters, such as EKS clusters, this information must be set manually by the user, otherwise the automatic import feature will ignore these clusters and they stay in `Pending Import` when moved to the restore hub. 
+```yaml
+apiVersion: cluster.open-cluster-management.io/v1
+kind: ManagedCluster
+metadata:
+  name: managed-cluster-name
+spec:
+  hubAcceptsClient: true
+  leaseDurationSeconds: 60
+  managedClusterClientConfigs:
+      url: <apiserver>
+```
+2. The backup controller is regularly looking for imported managed clusters and it creates the [ManagedServiceAccount](https://github.com/open-cluster-management-io/managed-serviceaccount) resource under the managed cluster namespace as soon as such managed cluster is found. This should trigger a token creation on the managed cluster. If the managed cluster is not accessible at the time this operation is executed though, for example the managed cluster is hibernating or is down, the `ManagedServiceAccount` is unable to create the token. As a result, if a hub backup is run at this time, the backup will not contain a token to auto import the managed cluster.
 3. If the `auto-import-account` secret token is valid and is backed up but the restore operation is run at a time when the token available with the backup has already expired, the auto import operation fails. In this case, the `restore.cluster.open-cluster-management.io` resource status should report the invalid token issue for each managed cluster in this situation. 
 4. If the token is valid when the restore operation is executed but the managed cluster is not accessible at the time the restore is executed, the auto import operation fails and will not retry to reconnect. In this case the failure should be reported by the auto-import component logs.
 
