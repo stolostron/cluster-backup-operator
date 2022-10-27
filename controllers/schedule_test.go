@@ -59,6 +59,13 @@ func initBackupSchedule(cronString string) *v1beta1.BackupSchedule {
 	}
 }
 
+func initEmptyCronBackupSchedule() *v1beta1.BackupSchedule {
+	return &v1beta1.BackupSchedule{
+		Spec:   v1beta1.BackupScheduleSpec{},
+		Status: v1beta1.BackupScheduleStatus{},
+	}
+}
+
 func initBackupScheduleWithStatus(phase v1beta1.SchedulePhase) *v1beta1.BackupSchedule {
 	return &v1beta1.BackupSchedule{
 		Status: v1beta1.BackupScheduleStatus{
@@ -126,6 +133,14 @@ func Test_parseCronSchedule(t *testing.T) {
 		args args
 		want []string
 	}{
+		{
+			name: "No cron",
+			args: args{
+				ctx:            context.TODO(),
+				backupSchedule: initEmptyCronBackupSchedule(),
+			},
+			want: []string{"Schedule must be a non-empty valid Cron expression"},
+		},
 		{
 			name: "Empty cron",
 			args: args{
@@ -765,7 +780,6 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 	}
 	cfg, _ := testEnv.Start()
 	scheme1 := runtime.NewScheme()
-	veleroapi.AddToScheme(scheme1)
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
 
 	velero_schedule := *createSchedule(veleroScheduleNames[Resources], veleroNamespaceName).
@@ -786,6 +800,16 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 		want      bool
 		resources []*veleroapi.Backup
 	}{
+		{
+			name: "no crd",
+			args: args{
+				ctx:      context.Background(),
+				c:        k8sClient1,
+				schedule: &velero_schedule,
+			},
+			want:      true,
+			resources: []*veleroapi.Backup{},
+		},
 		{
 			name: "no backups",
 			args: args{
@@ -829,8 +853,11 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 			},
 		},
 	}
-	for _, tt := range tests {
+	for index, tt := range tests {
 
+		if index == 1 {
+			veleroapi.AddToScheme(scheme1)
+		}
 		for i := range tt.resources {
 			if err := k8sClient1.Create(tt.args.ctx, tt.resources[i]); err != nil {
 				t.Errorf("failed to create %s", err.Error())
