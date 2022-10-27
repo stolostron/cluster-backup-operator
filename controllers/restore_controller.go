@@ -61,10 +61,9 @@ type DynamicStruct struct {
 }
 
 type RestoreOptions struct {
-	deleteOptions metav1.DeleteOptions
-	dynamicArgs   DynamicStruct
-	cleanupType   v1beta1.CleanupType
-	mapper        *restmapper.DeferredDiscoveryRESTMapper
+	dynamicArgs DynamicStruct
+	cleanupType v1beta1.CleanupType
+	mapper      *restmapper.DeferredDiscoveryRESTMapper
 }
 
 // RestoreReconciler reconciles a Restore object
@@ -207,20 +206,14 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	} else {
 		_, cleanupOnRestore := setRestorePhase(&veleroRestoreList, restore)
 
-		deletePolicy := metav1.DeletePropagationForeground
-		delOptions := metav1.DeleteOptions{
-			PropagationPolicy: &deletePolicy,
-		}
-
 		reconcileArgs := DynamicStruct{
 			dc:  r.DiscoveryClient,
 			dyn: r.DynamicClient,
 		}
 		restoreOptions := RestoreOptions{
-			dynamicArgs:   reconcileArgs,
-			deleteOptions: delOptions,
-			cleanupType:   restore.Spec.CleanupBeforeRestore,
-			mapper:        restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(r.DiscoveryClient)),
+			dynamicArgs: reconcileArgs,
+			cleanupType: restore.Spec.CleanupBeforeRestore,
+			mapper:      restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(r.DiscoveryClient)),
 		}
 		cleanupDeltaResources(ctx, r.Client, restore, cleanupOnRestore, restoreOptions)
 		executePostRestoreTasks(ctx, r.Client, restore)
