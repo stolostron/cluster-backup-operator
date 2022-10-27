@@ -620,11 +620,12 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 	cfg, _ := testEnv.Start()
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: unstructuredScheme})
 	clusterv1.AddToScheme(unstructuredScheme)
+	corev1.AddToScheme(unstructuredScheme)
 
 	backupNS := "velero-ns"
 	backupSchedule := *createBackupSchedule("acm-schedule", backupNS).object
 
-	if err := k8sClient1.Create(context.Background(), createNamespace(backupNS)); err != nil {
+	if err := k8sClient1.Create(context.Background(), createNamespace("managed1")); err != nil {
 		t.Errorf("cannot create ns %s ", err.Error())
 	}
 
