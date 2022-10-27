@@ -408,7 +408,7 @@ func invokeDynamicDelete(
 					dr,
 					item,
 					veleroBackup.Spec.ExcludedNamespaces,
-					true,
+					true, // skip resource if ExcludeBackupLabel is set
 				)
 			}
 		}

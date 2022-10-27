@@ -144,7 +144,7 @@ func cleanupMSAForImportedClusters(
 					dr,
 					dynamiclist.Items[i],
 					[]string{},
-					false,
+					false, // don't skip resource if ExcludeBackupLabel is set
 				)
 			}
 		}

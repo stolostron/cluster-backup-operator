@@ -446,12 +446,13 @@ func Test_deleteDynamicResource(t *testing.T) {
 	}
 
 	type args struct {
-		ctx                context.Context
-		mapping            *meta.RESTMapping
-		dr                 dynamic.NamespaceableResourceInterface
-		resource           unstructured.Unstructured
-		deleteOptions      v1.DeleteOptions
-		excludedNamespaces []string
+		ctx                     context.Context
+		mapping                 *meta.RESTMapping
+		dr                      dynamic.NamespaceableResourceInterface
+		resource                unstructured.Unstructured
+		deleteOptions           v1.DeleteOptions
+		excludedNamespaces      []string
+		skipExcludedBackupLabel bool
 	}
 	tests := []struct {
 		name        string
@@ -462,12 +463,13 @@ func Test_deleteDynamicResource(t *testing.T) {
 		{
 			name: "Delete local cluster resource",
 			args: args{
-				ctx:                context.Background(),
-				mapping:            &targetMapping,
-				dr:                 resInterface,
-				resource:           *res_local_ns,
-				deleteOptions:      delOptions,
-				excludedNamespaces: []string{"abc"},
+				ctx:                     context.Background(),
+				mapping:                 &targetMapping,
+				dr:                      resInterface,
+				resource:                *res_local_ns,
+				deleteOptions:           delOptions,
+				excludedNamespaces:      []string{"abc"},
+				skipExcludedBackupLabel: false,
 			},
 			want:        false,
 			errMsgEmpty: true,
@@ -475,12 +477,13 @@ func Test_deleteDynamicResource(t *testing.T) {
 		{
 			name: "Delete default resource",
 			args: args{
-				ctx:                context.Background(),
-				mapping:            &targetMapping,
-				dr:                 resInterface,
-				resource:           *res_default,
-				deleteOptions:      delOptions,
-				excludedNamespaces: []string{"abc"},
+				ctx:                     context.Background(),
+				mapping:                 &targetMapping,
+				dr:                      resInterface,
+				resource:                *res_default,
+				deleteOptions:           delOptions,
+				excludedNamespaces:      []string{"abc"},
+				skipExcludedBackupLabel: false,
 			},
 			want:        true,
 			errMsgEmpty: true,
@@ -488,12 +491,13 @@ func Test_deleteDynamicResource(t *testing.T) {
 		{
 			name: "Delete default resource with finalizer, should throw error since resource was deleted before finalizers patch",
 			args: args{
-				ctx:                context.Background(),
-				mapping:            &targetMapping,
-				dr:                 resInterface,
-				resource:           *res_default_with_finalizer,
-				deleteOptions:      delOptions,
-				excludedNamespaces: []string{"abc"},
+				ctx:                     context.Background(),
+				mapping:                 &targetMapping,
+				dr:                      resInterface,
+				resource:                *res_default_with_finalizer,
+				deleteOptions:           delOptions,
+				excludedNamespaces:      []string{"abc"},
+				skipExcludedBackupLabel: true,
 			},
 			want:        true,
 			errMsgEmpty: false,
@@ -501,12 +505,13 @@ func Test_deleteDynamicResource(t *testing.T) {
 		{
 			name: "Delete default resource NOT FOUND",
 			args: args{
-				ctx:                context.Background(),
-				mapping:            &targetMapping,
-				dr:                 resInterface,
-				resource:           *res_default_notfound,
-				deleteOptions:      delOptions,
-				excludedNamespaces: []string{"abc"},
+				ctx:                     context.Background(),
+				mapping:                 &targetMapping,
+				dr:                      resInterface,
+				resource:                *res_default_notfound,
+				deleteOptions:           delOptions,
+				excludedNamespaces:      []string{"abc"},
+				skipExcludedBackupLabel: true,
 			},
 			want:        true,
 			errMsgEmpty: false,
@@ -514,12 +519,13 @@ func Test_deleteDynamicResource(t *testing.T) {
 		{
 			name: "Delete default resource with ns excluded",
 			args: args{
-				ctx:                context.Background(),
-				mapping:            &targetMapping,
-				dr:                 resInterface,
-				resource:           *res_default_notfound,
-				deleteOptions:      delOptions,
-				excludedNamespaces: []string{"default"},
+				ctx:                     context.Background(),
+				mapping:                 &targetMapping,
+				dr:                      resInterface,
+				resource:                *res_default_notfound,
+				deleteOptions:           delOptions,
+				excludedNamespaces:      []string{"default"},
+				skipExcludedBackupLabel: true,
 			},
 			want:        false,
 			errMsgEmpty: true,
@@ -527,25 +533,41 @@ func Test_deleteDynamicResource(t *testing.T) {
 		{
 			name: "Delete default resource, excluded from backup",
 			args: args{
-				ctx:                context.Background(),
-				mapping:            &targetMapping,
-				dr:                 resInterface,
-				resource:           *res_exclude_from_backup,
-				deleteOptions:      delOptions,
-				excludedNamespaces: []string{"abc"},
+				ctx:                     context.Background(),
+				mapping:                 &targetMapping,
+				dr:                      resInterface,
+				resource:                *res_exclude_from_backup,
+				deleteOptions:           delOptions,
+				excludedNamespaces:      []string{"abc"},
+				skipExcludedBackupLabel: true,
 			},
 			want:        false,
 			errMsgEmpty: true,
 		},
 		{
+			name: "Delete res_default_exclude_label, ExcludedBackupLabel is set but asked not to skip",
+			args: args{
+				ctx:                     context.Background(),
+				mapping:                 &targetMapping,
+				dr:                      resInterface,
+				resource:                *res_exclude_from_backup,
+				deleteOptions:           delOptions,
+				excludedNamespaces:      []string{"abc"},
+				skipExcludedBackupLabel: false,
+			},
+			want:        true,
+			errMsgEmpty: false,
+		},
+		{
 			name: "Delete global resource",
 			args: args{
-				ctx:                context.Background(),
-				mapping:            &targetMappingGlobal,
-				dr:                 resInterface,
-				resource:           *res_global,
-				deleteOptions:      delOptions,
-				excludedNamespaces: []string{},
+				ctx:                     context.Background(),
+				mapping:                 &targetMappingGlobal,
+				dr:                      resInterface,
+				resource:                *res_global,
+				deleteOptions:           delOptions,
+				excludedNamespaces:      []string{},
+				skipExcludedBackupLabel: true,
 			},
 			want:        true,
 			errMsgEmpty: true,
@@ -553,12 +575,13 @@ func Test_deleteDynamicResource(t *testing.T) {
 		{
 			name: "Delete global resource with finalizer, throws error since res is deleted before finalizers patch",
 			args: args{
-				ctx:                context.Background(),
-				mapping:            &targetMappingGlobal,
-				dr:                 resInterface,
-				resource:           *res_global_with_finalizer,
-				deleteOptions:      delOptions,
-				excludedNamespaces: []string{},
+				ctx:                     context.Background(),
+				mapping:                 &targetMappingGlobal,
+				dr:                      resInterface,
+				resource:                *res_global_with_finalizer,
+				deleteOptions:           delOptions,
+				excludedNamespaces:      []string{},
+				skipExcludedBackupLabel: true,
 			},
 			want:        true,
 			errMsgEmpty: false,
@@ -566,12 +589,13 @@ func Test_deleteDynamicResource(t *testing.T) {
 		{
 			name: "Delete global resource NOT FOUND",
 			args: args{
-				ctx:                context.Background(),
-				mapping:            &targetMappingGlobal,
-				dr:                 resInterface,
-				resource:           *res_global_notfound,
-				deleteOptions:      delOptions,
-				excludedNamespaces: []string{},
+				ctx:                     context.Background(),
+				mapping:                 &targetMappingGlobal,
+				dr:                      resInterface,
+				resource:                *res_global_notfound,
+				deleteOptions:           delOptions,
+				excludedNamespaces:      []string{},
+				skipExcludedBackupLabel: true,
 			},
 			want:        true,
 			errMsgEmpty: false,
@@ -583,7 +607,8 @@ func Test_deleteDynamicResource(t *testing.T) {
 				tt.args.mapping,
 				tt.args.dr,
 				tt.args.resource,
-				tt.args.excludedNamespaces, true); got != tt.want ||
+				tt.args.excludedNamespaces,
+				tt.args.skipExcludedBackupLabel); got != tt.want ||
 				(tt.errMsgEmpty && len(msg) != 0) ||
 				(!tt.errMsgEmpty && len(msg) == 0) {
 				t.Errorf("deleteDynamicResource() = %v, want %v, emptyMsg=%v, msg=%v", got,
