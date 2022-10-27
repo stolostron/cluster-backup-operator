@@ -25,7 +25,6 @@ import (
 	"github.com/robfig/cron/v3"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -568,26 +567,18 @@ func deleteBackup(
 
 	// get the velero CR using the backupDeleteIdentity
 	veleroDeleteBackup := &veleroapi.DeleteBackupRequest{}
-	err := c.Get(ctx, backupDeleteIdentity, veleroDeleteBackup)
-	if err != nil {
-		// check if this is a  resource NotFound error, in which case create the resource
-		if k8serr.IsNotFound(err) {
+	if err := c.Get(ctx, backupDeleteIdentity, veleroDeleteBackup); err != nil {
 
-			veleroDeleteBackup.Spec.BackupName = backupName
-			veleroDeleteBackup.Name = backupDeleteIdentity.Name
-			veleroDeleteBackup.Namespace = backupDeleteIdentity.Namespace
+		// this is a  resource NotFound error, create the resource
+		veleroDeleteBackup.Spec.BackupName = backupName
+		veleroDeleteBackup.Name = backupDeleteIdentity.Name
+		veleroDeleteBackup.Namespace = backupDeleteIdentity.Namespace
 
-			if err := c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{}); err != nil {
-				backupLogger.Error(
-					err,
-					fmt.Sprintf("create  DeleteBackupRequest request error for %s", backupName),
-				)
-				return err
-			}
-		} else {
-			backupLogger.Error(err, fmt.Sprintf("Failed to create DeleteBackupRequest for resource %s", backupName))
-			return err
+		backupLogger.Info(fmt.Sprintf("Attempt to create DeleteBackupRequest %s", veleroDeleteBackup.Name))
+		if err := c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{}); err == nil {
+			backupLogger.Info(fmt.Sprintf("Created DeleteBackupRequest %s", veleroDeleteBackup.Name))
 		}
+
 		return nil
 	}
 	backupLogger.Info(fmt.Sprintf("DeleteBackupRequest already exists, skip request creation %s", backupName))
