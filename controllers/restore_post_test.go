@@ -2299,7 +2299,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	}
 
 	if err := k8sClient1.Create(context.Background(), createNamespace(genericBackup.GetNamespace())); err != nil {
-		panic(err.Error())
+		t.Errorf("cannot create ns %s ", err.Error())
 	}
 
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(

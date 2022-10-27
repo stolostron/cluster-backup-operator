@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
@@ -618,6 +619,18 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 
 	cfg, _ := testEnv.Start()
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: unstructuredScheme})
+	clusterv1.AddToScheme(unstructuredScheme)
+
+	backupNS := "velero-ns"
+	backupSchedule := *createBackupSchedule("acm-schedule", backupNS).object
+
+	if err := k8sClient1.Create(context.Background(), createNamespace(backupNS)); err != nil {
+		t.Errorf("cannot create ns %s ", err.Error())
+	}
+
+	if err := k8sClient1.Create(context.Background(), createManagedCluster("managed1").object); err != nil {
+		t.Errorf("cannot create %s ", err.Error())
+	}
 
 	obj1 := &unstructured.Unstructured{}
 	obj1.SetUnstructuredContent(map[string]interface{}{
@@ -678,18 +691,18 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 			},
 		},
 	}
-	for index, tt := range tests {
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cleanupMSAForImportedClusters(tt.args.ctx, k8sClient1,
 				tt.args.dr,
 				tt.args.mapping,
 			)
-		})
 
-		if index == len(tests)-1 {
-			// clean up
-			testEnv.Stop()
-		}
+			prepareImportedClusters(tt.args.ctx, k8sClient1,
+				tt.args.dr,
+				tt.args.mapping, &backupSchedule)
+		})
 	}
+	testEnv.Stop()
 
 }
