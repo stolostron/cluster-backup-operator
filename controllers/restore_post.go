@@ -25,15 +25,14 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/restmapper"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -348,10 +347,6 @@ func deleteDynamicResourcesForBackup(
 		labelSelector = fmt.Sprintf("%s, %s", labelSelector, otherLabels)
 	}
 
-	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
-		memory.NewMemCacheClient(restoreOptions.dynamicArgs.dc),
-	)
-
 	for i := range resources {
 		kind, groupName := getResourceDetails(resources[i])
 
@@ -369,7 +364,7 @@ func deleteDynamicResourcesForBackup(
 			Group: groupName,
 			Kind:  kind,
 		}
-		mapping, err := mapper.RESTMapping(groupKind, "")
+		mapping, err := restoreOptions.mapper.RESTMapping(groupKind, "")
 		if err != nil {
 			logger.Info(fmt.Sprintf("Failed to get dynamic mapper for group=%s, error : %s",
 				groupKind, err.Error()))
@@ -412,8 +407,8 @@ func invokeDynamicDelete(
 					mapping,
 					dr,
 					item,
-					restoreOptions.deleteOptions,
 					veleroBackup.Spec.ExcludedNamespaces,
+					true, // skip resource if ExcludeBackupLabel is set
 				)
 			}
 		}
@@ -589,8 +584,8 @@ func deleteDynamicResource(
 	mapping *meta.RESTMapping,
 	dr dynamic.NamespaceableResourceInterface,
 	resource unstructured.Unstructured,
-	deleteOptions v1.DeleteOptions,
 	excludedNamespaces []string,
+	skipExcludedBackupLabel bool,
 ) (bool, string) {
 	logger := log.FromContext(ctx)
 	localCluster := "local-cluster"
@@ -611,7 +606,7 @@ func deleteDynamicResource(
 	}
 
 	if resource.GetLabels() != nil &&
-		(resource.GetLabels()[ExcludeBackupLabel] == "true" ||
+		((resource.GetLabels()[ExcludeBackupLabel] == "true" && skipExcludedBackupLabel) ||
 			resource.GetLabels()["installer.name"] == "multiclusterhub") {
 		// do not cleanup resources with a velero.io/exclude-from-backup=true label, they are not backed up
 		// do not backup subscriptions created by the mch in a separate NS
@@ -640,6 +635,11 @@ func deleteDynamicResource(
 		"Removing finalizers for %s [%s]",
 		resource.GetKind(),
 		resource.GetName())
+
+	deletePolicy := metav1.DeletePropagationForeground
+	deleteOptions := metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}
 
 	errMsg := ""
 	patch := `[ { "op": "remove", "path": "/metadata/finalizers" } ]`

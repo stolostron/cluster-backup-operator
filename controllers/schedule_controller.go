@@ -31,7 +31,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -116,10 +118,14 @@ func (r *BackupScheduleReconciler) Reconcile(
 	// velero doesn't delete expired backups if they are in FailedValidation
 	// workaround and delete expired or invalid validation backups them now
 	cleanupExpiredValidationBackups(ctx, req.Namespace, r.Client)
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
+		memory.NewMemCacheClient(r.DiscoveryClient),
+	)
 
 	backupSchedule := &v1beta1.BackupSchedule{}
 
-	if result, validConfiguration, err := r.isValidateConfiguration(ctx, req,
+	if result, validConfiguration, err := r.isValidateConfiguration(ctx, mapper,
+		req,
 		backupSchedule); !validConfiguration {
 		// return if the backup configuration on this hub is not properly set
 		return result, err
@@ -189,13 +195,13 @@ func (r *BackupScheduleReconciler) Reconcile(
 			return ctrl.Result{}, errors.Wrap(err, msg)
 		} else {
 			// add any missing labels and create any resources required by the backup and restore process
-			r.prepareForBackup(ctx, backupSchedule)
+			r.prepareForBackup(ctx, mapper, backupSchedule)
 		}
 	}
 	// no velero schedules, so create them
 	if len(veleroScheduleList.Items) == 0 {
 		clusterId, _ := getHubIdentification(ctx, r.Client)
-		err := r.initVeleroSchedules(ctx, backupSchedule, clusterId)
+		err := r.initVeleroSchedules(ctx, mapper, backupSchedule, clusterId)
 		if err != nil {
 			msg := fmt.Errorf(FailedPhaseMsg+": %v", err)
 			scheduleLogger.Error(err, err.Error())
@@ -246,6 +252,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 // validate backup configuration
 func (r *BackupScheduleReconciler) isValidateConfiguration(
 	ctx context.Context,
+	mapper *restmapper.DeferredDiscoveryRESTMapper,
 	req ctrl.Request,
 	backupSchedule *v1beta1.BackupSchedule,
 ) (ctrl.Result, bool, error) {
@@ -309,13 +316,14 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	}
 
 	// check MSA status for backup schedules
-	return verifyMSAOption(ctx, r.Client, backupSchedule, r.DiscoveryClient)
+	return verifyMSAOption(ctx, r.Client, mapper, backupSchedule)
 
 }
 
 // create velero.io.Schedule resource for each resource type that needs backup
 func (r *BackupScheduleReconciler) initVeleroSchedules(
 	ctx context.Context,
+	mapper *restmapper.DeferredDiscoveryRESTMapper,
 	backupSchedule *v1beta1.BackupSchedule,
 	clusterId string,
 ) error {
@@ -337,7 +345,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 	}
 
 	// add any missing labels and create any resources required by the backup and restore process
-	r.prepareForBackup(ctx, backupSchedule)
+	r.prepareForBackup(ctx, mapper, backupSchedule)
 
 	// use this when generating the backups so all have the same timestamp
 	currentTime := time.Now().Format("20060102150405")

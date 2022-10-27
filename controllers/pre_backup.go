@@ -24,14 +24,12 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -85,6 +83,7 @@ const (
 // prepare resources before backing up
 func (r *BackupScheduleReconciler) prepareForBackup(
 	ctx context.Context,
+	mapper *restmapper.DeferredDiscoveryRESTMapper,
 	backupSchedule *v1beta1.BackupSchedule,
 ) {
 	logger := log.FromContext(ctx)
@@ -98,9 +97,6 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		Group: msa_group,
 		Kind:  msa_kind,
 	}
-	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
-		memory.NewMemCacheClient(r.DiscoveryClient),
-	)
 
 	msaMapping, err := mapper.RESTMapping(msaKind, "")
 	var dr dynamic.NamespaceableResourceInterface
@@ -136,23 +132,21 @@ func cleanupMSAForImportedClusters(
 ) {
 	logger := log.FromContext(ctx)
 
-	deletePolicy := metav1.DeletePropagationForeground
-	delOptions := metav1.DeleteOptions{
-		PropagationPolicy: &deletePolicy,
-	}
+	if msaMapping != nil {
 
-	// delete ManagedServiceAccounts with msa_service_name label
-	listOptions := v1.ListOptions{LabelSelector: fmt.Sprintf("%s in (%s)", msa_label, msa_service_name)}
-	if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
-		for i := range dynamiclist.Items {
-			deleteDynamicResource(
-				ctx,
-				msaMapping,
-				dr,
-				dynamiclist.Items[i],
-				delOptions,
-				[]string{},
-			)
+		// delete ManagedServiceAccounts with msa_service_name label
+		listOptions := v1.ListOptions{LabelSelector: fmt.Sprintf("%s in (%s)", msa_label, msa_service_name)}
+		if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
+			for i := range dynamiclist.Items {
+				deleteDynamicResource(
+					ctx,
+					msaMapping,
+					dr,
+					dynamiclist.Items[i],
+					[]string{},
+					false, // don't skip resource if ExcludeBackupLabel is set
+				)
+			}
 		}
 	}
 
@@ -189,6 +183,22 @@ func cleanupMSAForImportedClusters(
 			}
 		}
 	}
+
+	// clean up MSA secrets for clusters not accessible at this time
+	// these clusters are not being cleaned up by the MSA remote addon
+	secrets := getMSASecrets(ctx, c, "")
+	for s := range secrets {
+		secret := secrets[s]
+		logger.Info(
+			fmt.Sprintf("deleting MSA secret %s", secret.Name),
+		)
+		if err := c.Delete(ctx, &secret); err == nil {
+			logger.Info(
+				fmt.Sprintf("deleted MSA secret %s", secret.Name),
+			)
+		}
+	}
+
 }
 
 // here we go over all managed clusters and find the ones imported with the hub

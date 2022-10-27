@@ -40,13 +40,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
-	"k8s.io/client-go/discovery"
 	discoveryclient "k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	restclient "k8s.io/client-go/rest"
+	"k8s.io/client-go/restmapper"
 )
 
 func initBackupSchedule(cronString string) *v1beta1.BackupSchedule {
@@ -703,12 +704,14 @@ func Test_verifyMSAOptione(t *testing.T) {
 	fakeDiscovery := discoveryclient.NewDiscoveryClientForConfigOrDie(
 		&restclient.Config{Host: server.URL},
 	)
-
+	m := restmapper.NewDeferredDiscoveryRESTMapper(
+		memory.NewMemCacheClient(fakeDiscovery),
+	)
 	type args struct {
 		ctx            context.Context
 		c              client.Client
 		backupSchedule *v1beta1.BackupSchedule
-		dc             discovery.DiscoveryInterface
+		mapper         *restmapper.DeferredDiscoveryRESTMapper
 	}
 	tests := []struct {
 		name string
@@ -720,7 +723,7 @@ func Test_verifyMSAOptione(t *testing.T) {
 			args: args{
 				ctx:            context.Background(),
 				c:              k8sClient1,
-				dc:             fakeDiscovery,
+				mapper:         m,
 				backupSchedule: &sch,
 			},
 			want: true,
@@ -730,7 +733,7 @@ func Test_verifyMSAOptione(t *testing.T) {
 			args: args{
 				ctx:            context.Background(),
 				c:              k8sClient1,
-				dc:             fakeDiscovery,
+				mapper:         m,
 				backupSchedule: &sch_msa,
 			},
 			want: false,
@@ -740,8 +743,9 @@ func Test_verifyMSAOptione(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, got, _ := verifyMSAOption(tt.args.ctx,
 				tt.args.c,
+				tt.args.mapper,
 				tt.args.backupSchedule,
-				tt.args.dc); got != tt.want {
+			); got != tt.want {
 				t.Errorf("verifyMSAOption() = %v, want %v", got,
 					tt.want)
 			}

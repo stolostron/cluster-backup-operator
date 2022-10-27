@@ -28,8 +28,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -59,9 +61,9 @@ type DynamicStruct struct {
 }
 
 type RestoreOptions struct {
-	deleteOptions metav1.DeleteOptions
-	dynamicArgs   DynamicStruct
-	cleanupType   v1beta1.CleanupType
+	dynamicArgs DynamicStruct
+	cleanupType v1beta1.CleanupType
+	mapper      *restmapper.DeferredDiscoveryRESTMapper
 }
 
 // RestoreReconciler reconciles a Restore object
@@ -204,20 +206,14 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	} else {
 		_, cleanupOnRestore := setRestorePhase(&veleroRestoreList, restore)
 
-		deletePolicy := metav1.DeletePropagationForeground
-		delOptions := metav1.DeleteOptions{
-			PropagationPolicy: &deletePolicy,
-		}
-
 		reconcileArgs := DynamicStruct{
 			dc:  r.DiscoveryClient,
 			dyn: r.DynamicClient,
 		}
-
 		restoreOptions := RestoreOptions{
-			dynamicArgs:   reconcileArgs,
-			deleteOptions: delOptions,
-			cleanupType:   restore.Spec.CleanupBeforeRestore,
+			dynamicArgs: reconcileArgs,
+			cleanupType: restore.Spec.CleanupBeforeRestore,
+			mapper:      restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(r.DiscoveryClient)),
 		}
 		cleanupDeltaResources(ctx, r.Client, restore, cleanupOnRestore, restoreOptions)
 		executePostRestoreTasks(ctx, r.Client, restore)
