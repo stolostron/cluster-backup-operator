@@ -697,7 +697,7 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 				tt.args.dr,
 				tt.args.mapping,
 			)
-
+			// cover the path where c.List for ManagedClusterAddOnList fails
 			prepareImportedClusters(tt.args.ctx, k8sClient1,
 				tt.args.dr,
 				tt.args.mapping, &backupSchedule)
