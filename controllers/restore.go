@@ -25,7 +25,6 @@ import (
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -390,46 +389,30 @@ func isNewBackupAvailable(
 		}
 
 		latestVeleroRestore := veleroapi.Restore{}
-		err = c.Get(
+		if err = c.Get(
 			ctx,
 			types.NamespacedName{
 				Name:      latestVeleroRestoreName,
 				Namespace: restore.Namespace,
 			},
 			&latestVeleroRestore,
-		)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return true
-			}
-			logger.Error(
-				err,
-				"Failed to get Velero restore "+latestVeleroRestoreName,
-			)
-			return false
+		); err != nil {
+			return true // restore not found
 		}
 
 		// compare the backup name and timestamp of newVeleroBackupName
 		// with the backup used in the latestVeleroRestore
 		if latestVeleroRestore.Spec.BackupName != newVeleroBackupName {
 			latestVeleroBackup := veleroapi.Backup{}
-			err := c.Get(
+			if err := c.Get(
 				ctx,
 				types.NamespacedName{
 					Name:      latestVeleroRestore.Spec.BackupName,
 					Namespace: restore.Namespace,
 				},
 				&latestVeleroBackup,
-			)
-			if err != nil {
-				if errors.IsNotFound(err) {
-					return true
-				}
-				logger.Error(
-					err,
-					"Failed to get Velero backup "+latestVeleroRestore.Spec.BackupName,
-				)
-				return false
+			); err != nil {
+				return true // backup not found
 			}
 			return latestVeleroBackup.Status.StartTimestamp.Before(
 				newVeleroBackup.Status.StartTimestamp,

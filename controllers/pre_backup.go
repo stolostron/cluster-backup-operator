@@ -239,6 +239,7 @@ func prepareImportedClusters(ctx context.Context,
 			if err := c.List(ctx, addons, &client.ListOptions{Namespace: managedCluster.Name}); err != nil {
 				continue
 			}
+
 			alreadyCreated := false
 			installNamespace := ""
 			for addon := range addons.Items {
@@ -258,14 +259,10 @@ func prepareImportedClusters(ctx context.Context,
 					ExcludeBackupLabel: "true"}
 				msaAddon.SetLabels(labels)
 
-				err := c.Create(ctx, msaAddon, &client.CreateOptions{})
-				if err != nil {
-					logger.Error(
-						err,
-						"Error in creating ClusterManagementAddOn",
-						"name", msaAddon.Name,
-						"namespace", msaAddon.Namespace,
-					)
+				logger.Info(fmt.Sprintf("Attempt to create ClusterManagementAddOn %s for cluster =%s",
+					msaAddon.Name, msaAddon.Namespace))
+				if err := c.Create(ctx, msaAddon, &client.CreateOptions{}); err == nil {
+					logger.Info(fmt.Sprintf("Created ClusterManagementAddOn for cluster =%s", msaAddon.Namespace))
 				}
 			}
 
@@ -281,7 +278,6 @@ func prepareImportedClusters(ctx context.Context,
 			secretsGeneratedNow = secretsGeneratedNow ||
 				secretCreatedNowForCluster ||
 				secretCreatedNowForPairCluster
-
 		}
 	}
 
