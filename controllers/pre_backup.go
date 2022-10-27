@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
@@ -134,10 +133,6 @@ func cleanupMSAForImportedClusters(
 	logger := log.FromContext(ctx)
 
 	if msaMapping != nil {
-		deletePolicy := metav1.DeletePropagationForeground
-		delOptions := metav1.DeleteOptions{
-			PropagationPolicy: &deletePolicy,
-		}
 
 		// delete ManagedServiceAccounts with msa_service_name label
 		listOptions := v1.ListOptions{LabelSelector: fmt.Sprintf("%s in (%s)", msa_label, msa_service_name)}
@@ -148,8 +143,8 @@ func cleanupMSAForImportedClusters(
 					msaMapping,
 					dr,
 					dynamiclist.Items[i],
-					delOptions,
 					[]string{},
+					false,
 				)
 			}
 		}

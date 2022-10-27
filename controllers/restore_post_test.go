@@ -583,8 +583,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				tt.args.mapping,
 				tt.args.dr,
 				tt.args.resource,
-				tt.args.deleteOptions,
-				tt.args.excludedNamespaces); got != tt.want ||
+				tt.args.excludedNamespaces, true); got != tt.want ||
 				(tt.errMsgEmpty && len(msg) != 0) ||
 				(!tt.errMsgEmpty && len(msg) == 0) {
 				t.Errorf("deleteDynamicResource() = %v, want %v, emptyMsg=%v, msg=%v", got,
@@ -2050,11 +2049,6 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	dyn.Resource(msaGVRList).Namespace("managed1").Create(context.Background(),
 		msaObj, v1.CreateOptions{})
 
-	deletePolicy := metav1.DeletePropagationForeground
-	delOptions := metav1.DeleteOptions{
-		PropagationPolicy: &deletePolicy,
-	}
-
 	reconcileArgs := DynamicStruct{
 		dc:  fakeDiscovery,
 		dyn: dyn,
@@ -2065,17 +2059,15 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	)
 
 	resOptionsCleanupAll := RestoreOptions{
-		deleteOptions: delOptions,
-		dynamicArgs:   reconcileArgs,
-		cleanupType:   v1beta1.CleanupTypeAll,
-		mapper:        m,
+		dynamicArgs: reconcileArgs,
+		cleanupType: v1beta1.CleanupTypeAll,
+		mapper:      m,
 	}
 
 	resOptionsCleanupRestored := RestoreOptions{
-		deleteOptions: delOptions,
-		dynamicArgs:   reconcileArgs,
-		cleanupType:   v1beta1.CleanupTypeRestored,
-		mapper:        m,
+		dynamicArgs: reconcileArgs,
+		cleanupType: v1beta1.CleanupTypeRestored,
+		mapper:      m,
 	}
 
 	type args struct {
