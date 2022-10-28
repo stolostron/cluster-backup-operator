@@ -175,11 +175,7 @@ func parseCronSchedule(
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				scheduleLogger.Info(
-					"Panic parsing schedule",
-					"schedule", backupSchedule.Spec.VeleroSchedule,
-				)
-				validationErrors = append(validationErrors, fmt.Sprintf("invalid schedule: %v", r))
+				validationErrors = append(validationErrors, fmt.Sprintf("invalid schedule recover: %v", r))
 			}
 		}()
 
