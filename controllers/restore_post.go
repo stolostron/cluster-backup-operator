@@ -514,6 +514,9 @@ func postRestoreActivation(
 			activationMessages = append(activationMessages, msg)
 		}
 
+		msg := fmt.Sprintf("Attemt to create auto-import-secret for managed cluster (%s)",
+			clusterName)
+		activationMessages = append(activationMessages, msg)
 		// create an auto-import-secret for this managed cluster
 		if err := createAutoImportSecret(ctx, c, clusterName, accessToken, url); err != nil {
 			msg := fmt.Sprintf("error creating auto-import-secret for cluster (%s)",
@@ -527,6 +530,7 @@ func postRestoreActivation(
 			activationMessages = append(activationMessages, msg)
 		}
 	}
+	logger.Info("exit postRestoreActivation")
 
 	return autoImportSecretsCreated, activationMessages
 }
