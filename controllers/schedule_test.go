@@ -35,37 +35,16 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/version"
-	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
-
 	discoveryclient "k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
-	fakediscovery "k8s.io/client-go/discovery/fake"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
-	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
+	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
-
-func initBackupSchedule(cronString string) *v1beta1.BackupSchedule {
-	return &v1beta1.BackupSchedule{
-		Spec: v1beta1.BackupScheduleSpec{
-			VeleroSchedule: cronString,
-		},
-		Status: v1beta1.BackupScheduleStatus{},
-	}
-}
-
-func initBackupScheduleWithStatus(phase v1beta1.SchedulePhase) *v1beta1.BackupSchedule {
-	return &v1beta1.BackupSchedule{
-		Status: v1beta1.BackupScheduleStatus{
-			Phase: phase,
-		},
-	}
-}
 
 func initVeleroScheduleList(
 	phase veleroapi.SchedulePhase,
@@ -98,25 +77,6 @@ func initVeleroScheduleList(
 
 func Test_parseCronSchedule(t *testing.T) {
 
-	client := fakeclientset.NewSimpleClientset()
-	fakeDiscovery, ok := client.Discovery().(*fakediscovery.FakeDiscovery)
-	if !ok {
-		t.Fatalf("couldn't convert Discovery() to *FakeDiscovery")
-	}
-
-	testGitCommit := "v1.0.0"
-	fakeDiscovery.FakedServerVersion = &version.Info{
-		GitCommit: testGitCommit,
-	}
-
-	sv, err := client.Discovery().ServerVersion()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if sv.GitCommit != testGitCommit {
-		t.Fatalf("unexpected faked discovery return value: %q", sv.GitCommit)
-	}
-
 	type args struct {
 		ctx            context.Context
 		backupSchedule *v1beta1.BackupSchedule
@@ -130,7 +90,7 @@ func Test_parseCronSchedule(t *testing.T) {
 			name: "Empty cron",
 			args: args{
 				ctx:            context.TODO(),
-				backupSchedule: initBackupSchedule(""),
+				backupSchedule: createBackupSchedule("acm", "ns").schedule("").object,
 			},
 			want: []string{"Schedule must be a non-empty valid Cron expression"},
 		},
@@ -138,7 +98,7 @@ func Test_parseCronSchedule(t *testing.T) {
 			name: "Wrong cron",
 			args: args{
 				ctx:            context.TODO(),
-				backupSchedule: initBackupSchedule("WRONG"),
+				backupSchedule: createBackupSchedule("acm", "ns").schedule("WRONG").object,
 			},
 			want: []string{"invalid schedule: expected exactly 5 fields, found 1: [WRONG]"},
 		},
@@ -169,7 +129,7 @@ func Test_setSchedulePhase(t *testing.T) {
 			name: "nil schedule",
 			args: args{
 				schedules:      nil,
-				backupSchedule: initBackupSchedule("no matter"),
+				backupSchedule: createBackupSchedule("name", "ns").schedule("no matter").object,
 			},
 			want: v1beta1.SchedulePhaseNew,
 		},
@@ -177,7 +137,7 @@ func Test_setSchedulePhase(t *testing.T) {
 			name: "schedule in collision",
 			args: args{
 				schedules:      nil,
-				backupSchedule: initBackupScheduleWithStatus(v1beta1.SchedulePhaseBackupCollision),
+				backupSchedule: createBackupSchedule("name", "ns").phase(v1beta1.SchedulePhaseBackupCollision).object,
 			},
 			want: v1beta1.SchedulePhaseBackupCollision,
 		},
@@ -185,7 +145,7 @@ func Test_setSchedulePhase(t *testing.T) {
 			name: "new",
 			args: args{
 				schedules:      initVeleroScheduleList(veleroapi.SchedulePhaseNew, "0 8 * * *"),
-				backupSchedule: initBackupSchedule("0 8 * * *"),
+				backupSchedule: createBackupSchedule("name", "ns").schedule("0 8 * * *").object,
 			},
 			want: v1beta1.SchedulePhaseNew,
 		},
@@ -196,7 +156,7 @@ func Test_setSchedulePhase(t *testing.T) {
 					veleroapi.SchedulePhaseFailedValidation,
 					"0 8 * * *",
 				),
-				backupSchedule: initBackupSchedule("0 8 * * *"),
+				backupSchedule: createBackupSchedule("name", "ns").schedule("0 8 * * *").object,
 			},
 			want: v1beta1.SchedulePhaseFailedValidation,
 		},
@@ -204,7 +164,7 @@ func Test_setSchedulePhase(t *testing.T) {
 			name: "enabled",
 			args: args{
 				schedules:      initVeleroScheduleList(veleroapi.SchedulePhaseEnabled, "0 8 * * *"),
-				backupSchedule: initBackupSchedule("0 8 * * *"),
+				backupSchedule: createBackupSchedule("name", "ns").schedule("0 8 * * *").object,
 			},
 			want: v1beta1.SchedulePhaseEnabled,
 		},
@@ -240,7 +200,7 @@ func Test_isScheduleSpecUpdated(t *testing.T) {
 			name: "cron spec updated",
 			args: args{
 				schedules:      initVeleroScheduleList(veleroapi.SchedulePhaseEnabled, "0 6 * * *"),
-				backupSchedule: initBackupSchedule("0 8 * * *"),
+				backupSchedule: createBackupSchedule("name", "ns").schedule("0 8 * * *").object,
 			},
 			want: true,
 		},
@@ -765,7 +725,6 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 	}
 	cfg, _ := testEnv.Start()
 	scheme1 := runtime.NewScheme()
-	veleroapi.AddToScheme(scheme1)
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
 
 	velero_schedule := *createSchedule(veleroScheduleNames[Resources], veleroNamespaceName).
@@ -786,6 +745,16 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 		want      bool
 		resources []*veleroapi.Backup
 	}{
+		{
+			name: "no crd",
+			args: args{
+				ctx:      context.Background(),
+				c:        k8sClient1,
+				schedule: &velero_schedule,
+			},
+			want:      true,
+			resources: []*veleroapi.Backup{},
+		},
 		{
 			name: "no backups",
 			args: args{
@@ -829,8 +798,11 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 			},
 		},
 	}
-	for _, tt := range tests {
+	for index, tt := range tests {
 
+		if index == 1 {
+			veleroapi.AddToScheme(scheme1)
+		}
 		for i := range tt.resources {
 			if err := k8sClient1.Create(tt.args.ctx, tt.resources[i]); err != nil {
 				t.Errorf("failed to create %s", err.Error())
