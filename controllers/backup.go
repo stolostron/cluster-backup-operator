@@ -101,19 +101,19 @@ var (
 
 	// resources used to activate the connection between hub and managed clusters - activation resources
 	backupManagedClusterResources = []string{
+		"clusterdeployment.hive.openshift.io",               // restore these first
+		"machinepool.hive.openshift.io",                     // restore these first
 		"managedcluster.cluster.open-cluster-management.io", //global
-		"clustersync.hiveinternal.openshift.io",
 		"managedcluster.clusterview.open-cluster-management.io",
 		"klusterletaddonconfig.agent.open-cluster-management.io",
 		"managedclusteraddon.addon.open-cluster-management.io",
-		"clusterdeployment.hive.openshift.io",
-		"machinepool.hive.openshift.io",
 		"clusterpool.hive.openshift.io",
 		"clusterclaim.hive.openshift.io",
 		"clustercurator.cluster.open-cluster-management.io",
 		"baremetalhost.metal3.io",
 		"bmceventsubscription.metal3.io",
 		"hostfirmwaresettings.metal3.io",
+		"clustersync.hiveinternal.openshift.io",
 	}
 
 	// all backup resources, except secrets, configmaps and managed cluster activation resources
