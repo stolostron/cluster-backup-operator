@@ -243,6 +243,8 @@ metadata:
 ``` 
 
 Aside of these activation data resources, identified by using the `cluster.open-cluster-management.io/backup: cluster-activation` label and stored by the `acm-resources-generic-schedule` backup, the Cluster Back up and Restore Operator includes by default a few resources in the activation set. These resources are backed up by the `acm-managed-clusters-schedule`:
+  - clusterdeployment.hive.openshift.io
+  - machinepool.hive.openshift.io
   - managedcluster.cluster.open-cluster-management.io
   - managedcluster.clusterview.open-cluster-management.io
   - klusterletaddonconfig.agent.open-cluster-management.io
@@ -253,6 +255,7 @@ Aside of these activation data resources, identified by using the `cluster.open-
   - clusterpool.hive.openshift.io
   - clusterclaim.hive.openshift.io
   - clustercurator.cluster.open-cluster-management.io
+  - clustersync.hiveinternal.openshift.io
 
 ### Passive data
 
@@ -281,7 +284,7 @@ Resources are backed up in 3 separate groups:
 
 <b>Note</b>:
 
-a. The backup file created in step 2. above contains managed cluster specific resources but does not contain the subset of resources which will result in managed clusters connect to this hub. These resources, also called activation resources, are contained by the managed clusters backup, created in step 3. When you restore on a new hub just the resources from step 1 and 2 above, the new hub shows all managed clusters created with the hive api but they are in a detached state. Managed clusters imported on the primary hub using the <i>Import cluster</i> operation will show only when the activation data is restored on the passive hub. The managed clusters are still connected to the original hub that had produced the backup files.
+a. The backup file created in step 2. above contains managed cluster specific resources but does not contain the subset of resources which will result in managed clusters connect to this hub. These resources, also called activation resources, are contained by the managed clusters backup, created in step 3. When you restore on a new hub just the resources from step 1 and 2 above, the new hub does not shows any managed clusters on the Clusters page. The managed clusters are still connected to the original hub that had produced the backup files. Managed clusters will show on the restore hub only when the activation data is restored on this cluster.
 
 b. Only managed clusters created using the hive api will be automatically connected with the new hub when the `acm-managed-clusters` backup from step 3 is restored on another hub. Read more about this under the [Restoring imported managed clusters](#restoring-imported-managed-clusters) section.
 
@@ -333,7 +336,7 @@ There are also cases where you want to restore the data on the same hub where th
 
 A restore backup is executed when creating the `restore.cluster.open-cluster-management.io` resource on the hub. A few samples are available [here](https://github.com/stolostron/cluster-backup-operator/tree/main/config/samples)
 
-By passive data we mean resource that don't result in activating the connection between the new hub and managed clusters. When the passive data is restored on the new hub, the managed clusters show up but they are in detached state. The hub that produced the backup is still managing these clusters.
+By passive data we mean resource that don't result in activating the connection between the new hub and managed clusters. When the passive data is restored on the new hub, the managed clusters do not show up on the restored hub Clusters page. The hub that produced the backup is still managing these clusters.
 
 By activation data we mean resources that, when restored on the new hub, result in making the managed clusters to be managed by the new hub. The new hub is now the active hub, managing the clusters.
 

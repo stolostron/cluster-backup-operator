@@ -985,12 +985,13 @@ var _ = Describe("BackupSchedule controller", func() {
 					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
 						"placement.cluster.open-cluster-management.io")).Should(BeTrue())
 					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
-						"clusterdeployment.hive.openshift.io")).Should(BeTrue())
+						"clusterdeployment.hive.openshift.io")).Should(BeFalse())
 					Expect(findValue(
 						veleroSchedule.Spec.Template.IncludedResources, //excludedGroup
 						"managedclustermutators.admission.cluster.open-cluster-management.io",
 					)).ShouldNot(BeTrue())
-
+					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
+						"clusterpool.other.hive.openshift.io")).Should(BeFalse())
 				} else
 				// generic resources, using backup label
 				if veleroSchedule.Name == "acm-resources-generic-schedule" {
@@ -1003,6 +1004,19 @@ var _ = Describe("BackupSchedule controller", func() {
 
 					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, //already in cluster resources backup
 						"klusterletaddonconfig.agent.open-cluster-management.io")).Should(BeTrue())
+
+					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, // exclude this, part of mannged cluster
+						"clusterpool.other.hive.openshift.io")).Should(BeTrue())
+
+				} else
+				// generic resources, using backup label
+				if veleroSchedule.Name == "acm-managed-clusters-schedule" {
+
+					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
+						"clusterdeployment.hive.openshift.io")).Should(BeTrue())
+					//.other.hive.openshift.io included here
+					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
+						"clusterpool.other.hive.openshift.io")).Should(BeTrue())
 				}
 			}
 
