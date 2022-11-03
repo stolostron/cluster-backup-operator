@@ -150,6 +150,12 @@ var _ = BeforeSuite(func() {
 			{Name: "hiveconfig", Namespaced: false, Kind: "HiveConfig"},
 		},
 	}
+	hiveExtraInfo := metav1.APIResourceList{
+		GroupVersion: "other.hive.openshift.io/v1",
+		APIResources: []metav1.APIResource{
+			{Name: "clusterpools", Namespaced: true, Kind: "ClusterPool"},
+		},
+	}
 	authAlpha1 := metav1.APIResourceList{
 		GroupVersion: "authentication.open-cluster-management.io/v1alpha1",
 		APIResources: []metav1.APIResource{
@@ -175,6 +181,8 @@ var _ = BeforeSuite(func() {
 			list = &appsInfoV1
 		case "/apis/argoproj.io/v1alpha1":
 			list = &argov1alphaInfo
+		case "/apis/other.hive.openshift.io/v1":
+			list = &hiveExtraInfo
 		case "/apis/config.openshift.io/v1":
 			list = &openshiftv1Info
 
@@ -257,6 +265,12 @@ var _ = BeforeSuite(func() {
 						},
 					},
 					{
+						Name: "other.hive.openshift.io",
+						Versions: []metav1.GroupVersionForDiscovery{
+							{GroupVersion: "other.hive.openshift.io/v1", Version: "v1"},
+						},
+					},
+					{
 						Name: "addon.open-cluster-management.io",
 						Versions: []metav1.GroupVersionForDiscovery{
 							{GroupVersion: "addon.open-cluster-management.io/v1alpha1", Version: "v1alpha1"},
@@ -331,12 +345,16 @@ var _ = BeforeSuite(func() {
 			request:       "admission.cluster.open-cluster-management.io/v1beta1",
 			expectErr:     false,
 		},
+		{
+			resourcesList: &hiveExtraInfo,
+			path:          "/apis/other.hive.openshift.io/v1",
+			request:       "other.hive.openshift.io/v1",
+			expectErr:     false,
+		},
 	}
 
 	// check that these resources are backed up
 	resourcesToBackup = []string{
-		"clusterdeployment.hive.openshift.io",
-		"machinepool.hive.openshift.io",
 		"placement.cluster.open-cluster-management.io",
 	}
 	test := tests[1]
