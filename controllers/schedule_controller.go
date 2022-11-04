@@ -233,22 +233,13 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 
 	// update backup resources on velero schedules if any changes in hub resources
-	schedulesToBeUpdated := getSchedulesWithUpdatedResources(
-		ctx,
-		r.DiscoveryClient,
-		&veleroScheduleList,
-	)
+	schedulesToBeUpdated := getSchedulesWithUpdatedResources(ctx, r.DiscoveryClient, &veleroScheduleList)
 	if schedulesToBeUpdated != nil && len(schedulesToBeUpdated) > 0 {
 		for i := range schedulesToBeUpdated {
 			if err := r.Client.Update(ctx, &schedulesToBeUpdated[i], &client.UpdateOptions{}); err != nil {
 				return ctrl.Result{}, err
 			}
-			scheduleLogger.Info(
-				fmt.Sprintf(
-					"Updated backup resources on Velero schedule %s ",
-					schedulesToBeUpdated[i].Name,
-				),
-			)
+			scheduleLogger.Info(fmt.Sprintf("Updated backup resources on Velero schedule %s ", schedulesToBeUpdated[i].Name))
 		}
 		return ctrl.Result{RequeueAfter: collisionControlInterval}, nil
 	}
