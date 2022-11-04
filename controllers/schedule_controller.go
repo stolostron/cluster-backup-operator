@@ -186,9 +186,13 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 			// delete schedules, don't generate new backups
 			for i := range veleroScheduleList.Items {
-				scheduleLogger.Info("Attempt to delete schedule " + veleroScheduleList.Items[i].Name)
+				scheduleLogger.Info(
+					"Attempt to delete schedule " + veleroScheduleList.Items[i].Name,
+				)
 				if err := r.Delete(ctx, &veleroScheduleList.Items[i]); err == nil {
-					scheduleLogger.Info("Schedule deleted successfully " + veleroScheduleList.Items[i].Name)
+					scheduleLogger.Info(
+						"Schedule deleted successfully " + veleroScheduleList.Items[i].Name,
+					)
 				}
 			}
 
@@ -230,6 +234,20 @@ func (r *BackupScheduleReconciler) Reconcile(
 			r.Client.Status().Update(ctx, backupSchedule),
 			updateStatusFailedMsg,
 		)
+	}
+
+	// update backup resources on velero schedules if any changes in hub resources
+	schedulesToBeUpdated := getSchedulesWithUpdatedResources(
+		ctx,
+		r.DiscoveryClient,
+		&veleroScheduleList,
+	)
+	for _, schedule := range schedulesToBeUpdated {
+		if err := r.Client.Update(ctx, &schedule, &client.UpdateOptions{}); err == nil {
+			scheduleLogger.Info(
+				fmt.Sprintf("Updated backup resources on Velero schedule %s ", schedule.Name),
+			)
+		}
 	}
 
 	// velero schedules already exist, update schedule status with latest velero schedules
