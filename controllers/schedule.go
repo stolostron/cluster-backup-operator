@@ -178,7 +178,7 @@ func getSchedulesWithUpdatedResources(
 				resourcesToBackup,
 				Resources,
 			)
-			equal := SortCompare(newResources, veleroBackupTemplate.IncludedResources)
+			equal := sortCompare(newResources, veleroBackupTemplate.IncludedResources)
 			if !equal {
 				veleroBackupTemplate.IncludedResources = newResources
 				veleroSchedulesToUpdate = append(
@@ -191,7 +191,7 @@ func getSchedulesWithUpdatedResources(
 				resourcesToBackup,
 				ResourcesGeneric,
 			)
-			equal := SortCompare(newResources, veleroBackupTemplate.ExcludedResources)
+			equal := sortCompare(newResources, veleroBackupTemplate.ExcludedResources)
 			if !equal {
 				veleroBackupTemplate.ExcludedResources = newResources
 				veleroSchedulesToUpdate = append(
@@ -204,7 +204,7 @@ func getSchedulesWithUpdatedResources(
 				resourcesToBackup,
 				ManagedClusters,
 			)
-			equal := SortCompare(newResources, veleroBackupTemplate.IncludedResources)
+			equal := sortCompare(newResources, veleroBackupTemplate.IncludedResources)
 			if !equal {
 				veleroBackupTemplate.IncludedResources = newResources
 				veleroSchedulesToUpdate = append(

@@ -82,7 +82,7 @@ func min(x, y int) int {
 }
 
 // SortCompare checks for equality on slices without order, returns true if they contain the same members
-func SortCompare(a, b []string) bool {
+func sortCompare(a, b []string) bool {
 	if a == nil && b == nil {
 		return true
 	}
