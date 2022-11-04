@@ -242,12 +242,19 @@ func (r *BackupScheduleReconciler) Reconcile(
 		r.DiscoveryClient,
 		&veleroScheduleList,
 	)
-	for _, schedule := range schedulesToBeUpdated {
-		if err := r.Client.Update(ctx, &schedule, &client.UpdateOptions{}); err == nil {
+	if schedulesToBeUpdated != nil && len(schedulesToBeUpdated) > 0 {
+		for i := range schedulesToBeUpdated {
+			if err := r.Client.Update(ctx, &schedulesToBeUpdated[i], &client.UpdateOptions{}); err != nil {
+				return ctrl.Result{}, err
+			}
 			scheduleLogger.Info(
-				fmt.Sprintf("Updated backup resources on Velero schedule %s ", schedule.Name),
+				fmt.Sprintf(
+					"Updated backup resources on Velero schedule %s ",
+					schedulesToBeUpdated[i].Name,
+				),
 			)
 		}
+		return ctrl.Result{RequeueAfter: collisionControlInterval}, nil
 	}
 
 	// velero schedules already exist, update schedule status with latest velero schedules
