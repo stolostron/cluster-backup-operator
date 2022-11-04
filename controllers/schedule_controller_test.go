@@ -210,9 +210,12 @@ var _ = Describe("BackupSchedule controller", func() {
 		}
 
 		// create some dummy backups
-		veleroBackups = append(veleroBackups, *createBackup(veleroScheduleNames[Resources]+"-new", veleroNamespaceName).
-			phase(veleroapi.BackupPhaseCompleted).startTimestamp(oneHourAgo).errors(0).
-			object)
+		veleroBackups = append(
+			veleroBackups,
+			*createBackup(veleroScheduleNames[Resources]+"-new", veleroNamespaceName).
+				phase(veleroapi.BackupPhaseCompleted).startTimestamp(oneHourAgo).errors(0).
+				object,
+		)
 	})
 
 	AfterEach(func() {
@@ -429,7 +432,8 @@ var _ = Describe("BackupSchedule controller", func() {
 					Name:      "baremetal",
 					Namespace: clusterPoolNSName,
 				}, &baremetalSecret)
-				return err == nil && baremetalSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "baremetal"
+				return err == nil &&
+					baremetalSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "baremetal"
 			}, timeout, interval).Should(BeTrue())
 
 			// and the ones under openshift-machine-api dont
@@ -439,7 +443,8 @@ var _ = Describe("BackupSchedule controller", func() {
 					Name:      "baremetal-api-secret",
 					Namespace: "openshift-machine-api",
 				}, &baremetalSecretAPI)
-				return err == nil && baremetalSecretAPI.GetLabels()["cluster.open-cluster-management.io/backup"] == "baremetal"
+				return err == nil &&
+					baremetalSecretAPI.GetLabels()["cluster.open-cluster-management.io/backup"] == "baremetal"
 			}, timeout, interval).Should(BeFalse())
 
 			// validate auto-import secret secret has backup annotation
@@ -450,7 +455,8 @@ var _ = Describe("BackupSchedule controller", func() {
 					Name:      "auto-import",
 					Namespace: clusterPoolNSName,
 				}, &autoImportSecret)
-				return err == nil && autoImportSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "msa"
+				return err == nil &&
+					autoImportSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "msa"
 			}, timeout, interval).Should(Equal(rhacmBackupSchedule.Spec.UseManagedServiceAccount))
 
 			// validate AI secret has backup annotation
@@ -460,7 +466,8 @@ var _ = Describe("BackupSchedule controller", func() {
 					Name:      "ai-secret",
 					Namespace: clusterPoolNSName,
 				}, &secretAI)
-				return err == nil && secretAI.GetLabels()["cluster.open-cluster-management.io/backup"] == "agent-install"
+				return err == nil &&
+					secretAI.GetLabels()["cluster.open-cluster-management.io/backup"] == "agent-install"
 			}, timeout, interval).Should(BeTrue())
 
 			Expect(createdBackupSchedule.CreationTimestamp.Time).NotTo(BeNil())
@@ -563,11 +570,11 @@ var _ = Describe("BackupSchedule controller", func() {
 				}
 				return string(createdBackupSchedule.Status.Phase)
 			}, timeout, interval).Should(BeIdenticalTo(string(v1beta1.SchedulePhaseEnabled)))
-			// then sleep 7 seconds to let the schedule timestamp be older then 5 sec from now
+			// then sleep 10 seconds to let the schedule timestamp be older then 5 sec from now
 			// then update the schedule, which will try to create a new set of velero schedules
 			// when the clusterID is checked, it is going to be (unkonwn) - since we have no cluster resource on test
 			// and the previous schedules had used abcd as clusterId
-			time.Sleep(time.Second * 7)
+			time.Sleep(time.Second * 10)
 			// get the schedule again
 			k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
 			createdBackupSchedule.Spec.VeleroTTL = metav1.Duration{Duration: time.Hour * 50}
