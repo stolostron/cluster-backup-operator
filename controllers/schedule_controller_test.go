@@ -62,7 +62,7 @@ var _ = Describe("BackupSchedule controller", func() {
 
 		backupSchedule string = "0 */6 * * *"
 
-		timeout  = time.Second * 7
+		timeout  = time.Second * 9
 		interval = time.Millisecond * 250
 	)
 
@@ -570,11 +570,11 @@ var _ = Describe("BackupSchedule controller", func() {
 				}
 				return string(createdBackupSchedule.Status.Phase)
 			}, timeout, interval).Should(BeIdenticalTo(string(v1beta1.SchedulePhaseEnabled)))
-			// then sleep 10 seconds to let the schedule timestamp be older then 5 sec from now
+			// then sleep 7 seconds to let the schedule timestamp be older then 5 sec from now
 			// then update the schedule, which will try to create a new set of velero schedules
 			// when the clusterID is checked, it is going to be (unkonwn) - since we have no cluster resource on test
 			// and the previous schedules had used abcd as clusterId
-			time.Sleep(time.Second * 10)
+			time.Sleep(time.Second * 7)
 			// get the schedule again
 			k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
 			createdBackupSchedule.Spec.VeleroTTL = metav1.Duration{Duration: time.Hour * 50}
