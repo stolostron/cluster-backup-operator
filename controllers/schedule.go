@@ -26,7 +26,6 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -155,8 +154,7 @@ func isScheduleSpecUpdated(
 }
 
 func getSchedulesWithUpdatedResources(
-	ctx context.Context,
-	dc discovery.DiscoveryInterface,
+	resourcesToBackup []string,
 	schedules *veleroapi.ScheduleList,
 ) []veleroapi.Schedule {
 
@@ -165,8 +163,6 @@ func getSchedulesWithUpdatedResources(
 	if schedules == nil || len(schedules.Items) <= 0 {
 		return veleroSchedulesToUpdate
 	}
-
-	resourcesToBackup := getResourcesToBackup(ctx, dc)
 
 	for i := range schedules.Items {
 		veleroSchedule := &schedules.Items[i]

@@ -214,10 +214,8 @@ func setResourcesBackupInfo(
 
 // set credentials backup info
 func setGenericResourcesBackupInfo(
-	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
 	resourcesToBackup []string,
-	c client.Client,
 ) {
 
 	var clusterResource bool = true // check global resources
@@ -246,9 +244,7 @@ func setGenericResourcesBackupInfo(
 
 // set credentials backup info
 func setCredsBackupInfo(
-	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
-	c client.Client,
 ) {
 	var clusterResource bool = false
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
@@ -293,10 +289,8 @@ func setCredsBackupInfo(
 
 // set managed clusters backup info
 func setManagedClustersBackupInfo(
-	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
 	resourcesToBackup []string,
-	c client.Client,
 ) {
 	var clusterResource bool = true // include cluster level resources
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
@@ -326,10 +320,8 @@ func setManagedClustersBackupInfo(
 // no backups created from the acm-validation-policy-schedule schedule
 // and the policy will alert if no acm-validation-policy-schedule are found
 func setValidationBackupInfo(
-	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
 	backupSchedule *v1beta1.BackupSchedule,
-	c client.Client,
 ) *veleroapi.BackupSpec {
 
 	veleroBackupTemplate.IncludedNamespaces = appendUnique(
