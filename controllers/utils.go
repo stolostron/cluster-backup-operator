@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -62,7 +63,7 @@ func findValue(slice []string, val string) bool {
 	return ok
 }
 
-//append unique value to a list
+// append unique value to a list
 func appendUnique(slice []string, value string) []string {
 	// check if the NS exists
 	_, ok := find(slice, value)
@@ -78,6 +79,29 @@ func min(x, y int) int {
 		return x
 	}
 	return y
+}
+
+// SortCompare checks for equality on slices without order, returns true if they contain the same members
+func sortCompare(a, b []string) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	if len(a) != len(b) {
+		return false
+	}
+
+	sort.Strings(a)
+	sort.Strings(b)
+
+	for i, v := range a {
+		if v != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // returns a valid name for the velero restore kubernetes resource

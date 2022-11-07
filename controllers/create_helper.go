@@ -122,7 +122,7 @@ func (b *BackupDeleteRequest) errors(errs []string) *BackupDeleteRequest {
 	return b
 }
 
-//backup helper
+// backup helper
 type BackupHelper struct {
 	object *veleroapi.Backup
 }
@@ -186,7 +186,7 @@ func (b *BackupHelper) labels(list map[string]string) *BackupHelper {
 	return b
 }
 
-//velero schedule helper
+// velero schedule helper
 type ScheduleHelper struct {
 	object *veleroapi.Schedule
 }

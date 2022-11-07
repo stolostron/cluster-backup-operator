@@ -191,17 +191,15 @@ func (r *BackupScheduleReconciler) Reconcile(
 					scheduleLogger.Info("Schedule deleted successfully " + veleroScheduleList.Items[i].Name)
 				}
 			}
-
 			return ctrl.Result{}, errors.Wrap(err, msg)
-		} else {
-			// add any missing labels and create any resources required by the backup and restore process
-			r.prepareForBackup(ctx, mapper, backupSchedule)
 		}
+		// add any missing labels and create any resources required by the backup and restore process
+		r.prepareForBackup(ctx, mapper, backupSchedule)
 	}
 	// no velero schedules, so create them
 	if len(veleroScheduleList.Items) == 0 {
-		clusterId, _ := getHubIdentification(ctx, r.Client)
-		err := r.initVeleroSchedules(ctx, mapper, backupSchedule, clusterId)
+		clusterID, _ := getHubIdentification(ctx, r.Client)
+		err := r.initVeleroSchedules(ctx, mapper, backupSchedule, clusterID)
 		if err != nil {
 			msg := fmt.Errorf(FailedPhaseMsg+": %v", err)
 			scheduleLogger.Error(err, err.Error())
@@ -230,6 +228,19 @@ func (r *BackupScheduleReconciler) Reconcile(
 			r.Client.Status().Update(ctx, backupSchedule),
 			updateStatusFailedMsg,
 		)
+	}
+
+	// update backup resources on velero schedules if any changes in hub resources
+	resourcesToBackup := getResourcesToBackup(ctx, r.DiscoveryClient)
+	schedulesToBeUpdated := getSchedulesWithUpdatedResources(resourcesToBackup, &veleroScheduleList)
+	if schedulesToBeUpdated != nil && len(schedulesToBeUpdated) > 0 {
+		for i := range schedulesToBeUpdated {
+			if err := r.Client.Update(ctx, &schedulesToBeUpdated[i], &client.UpdateOptions{}); err != nil {
+				return ctrl.Result{}, err
+			}
+			scheduleLogger.Info(fmt.Sprintf("Updated backup resources on Velero schedule %s ", schedulesToBeUpdated[i].Name))
+		}
+		return ctrl.Result{RequeueAfter: collisionControlInterval}, nil
 	}
 
 	// velero schedules already exist, update schedule status with latest velero schedules
@@ -325,7 +336,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 	ctx context.Context,
 	mapper *restmapper.DeferredDiscoveryRESTMapper,
 	backupSchedule *v1beta1.BackupSchedule,
-	clusterId string,
+	clusterID string,
 ) error {
 	scheduleLogger := log.FromContext(ctx)
 
@@ -369,7 +380,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		labels[BackupScheduleNameLabel] = backupSchedule.Name
 		labels[BackupScheduleTypeLabel] = string(scheduleKey)
 		// set cluster uid
-		labels[BackupScheduleClusterLabel] = clusterId
+		labels[BackupScheduleClusterLabel] = clusterID
 
 		veleroSchedule.SetLabels(labels)
 
@@ -378,20 +389,18 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 
 		switch scheduleKey {
 		case ManagedClusters:
-			setManagedClustersBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
+			setManagedClustersBackupInfo(veleroBackupTemplate, resourcesToBackup)
 		case Credentials:
-			setCredsBackupInfo(ctx, veleroBackupTemplate, r.Client)
+			setCredsBackupInfo(veleroBackupTemplate)
 		case Resources:
 			setResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup,
 				backupSchedule.Namespace, r.Client)
 		case ResourcesGeneric:
-			setGenericResourcesBackupInfo(ctx, veleroBackupTemplate, resourcesToBackup, r.Client)
+			setGenericResourcesBackupInfo(veleroBackupTemplate, resourcesToBackup)
 		case ValidationSchedule:
 			veleroBackupTemplate = setValidationBackupInfo(
-				ctx,
 				veleroBackupTemplate,
 				backupSchedule,
-				r.Client,
 			)
 		}
 

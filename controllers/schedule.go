@@ -153,6 +153,67 @@ func isScheduleSpecUpdated(
 	return false
 }
 
+func getSchedulesWithUpdatedResources(
+	resourcesToBackup []string,
+	schedules *veleroapi.ScheduleList,
+) []veleroapi.Schedule {
+
+	veleroSchedulesToUpdate := make([]veleroapi.Schedule, 0)
+
+	if schedules == nil || len(schedules.Items) <= 0 {
+		return veleroSchedulesToUpdate
+	}
+
+	for i := range schedules.Items {
+		veleroSchedule := &schedules.Items[i]
+		veleroBackupTemplate := &veleroSchedule.Spec.Template
+
+		switch veleroSchedule.Name {
+		case veleroScheduleNames[Resources]:
+			newResources := getResourcesByBackupType(
+				resourcesToBackup,
+				Resources,
+			)
+			equal := sortCompare(newResources, veleroBackupTemplate.IncludedResources)
+			if !equal {
+				veleroBackupTemplate.IncludedResources = newResources
+				veleroSchedulesToUpdate = append(
+					veleroSchedulesToUpdate,
+					*veleroSchedule,
+				)
+			}
+		case veleroScheduleNames[ResourcesGeneric]:
+			newResources := getResourcesByBackupType(
+				resourcesToBackup,
+				ResourcesGeneric,
+			)
+			equal := sortCompare(newResources, veleroBackupTemplate.ExcludedResources)
+			if !equal {
+				veleroBackupTemplate.ExcludedResources = newResources
+				veleroSchedulesToUpdate = append(
+					veleroSchedulesToUpdate,
+					*veleroSchedule,
+				)
+			}
+		case veleroScheduleNames[ManagedClusters]:
+			newResources := getResourcesByBackupType(
+				resourcesToBackup,
+				ManagedClusters,
+			)
+			equal := sortCompare(newResources, veleroBackupTemplate.IncludedResources)
+			if !equal {
+				veleroBackupTemplate.IncludedResources = newResources
+				veleroSchedulesToUpdate = append(
+					veleroSchedulesToUpdate,
+					*veleroSchedule,
+				)
+			}
+		}
+	}
+
+	return veleroSchedulesToUpdate
+}
+
 func parseCronSchedule(
 	ctx context.Context,
 	backupSchedule *v1beta1.BackupSchedule,
@@ -175,7 +236,10 @@ func parseCronSchedule(
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				validationErrors = append(validationErrors, fmt.Sprintf("invalid schedule recover: %v", r))
+				validationErrors = append(
+					validationErrors,
+					fmt.Sprintf("invalid schedule recover: %v", r),
+				)
 			}
 		}()
 

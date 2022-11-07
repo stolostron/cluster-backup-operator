@@ -75,6 +75,62 @@ func initVeleroScheduleList(
 	}
 }
 
+func initVeleroScheduleTypes() *veleroapi.ScheduleList {
+	return &veleroapi.ScheduleList{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "velero.io/v1",
+			Kind:       "ScheduleList",
+		},
+		Items: []veleroapi.Schedule{
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero.io/v1",
+					Kind:       "Schedule",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "acm-credentials-schedule",
+				},
+			},
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero.io/v1",
+					Kind:       "Schedule",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "acm-resources-schedule",
+				},
+			},
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero.io/v1",
+					Kind:       "Schedule",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "acm-resources-generic-schedule",
+				},
+			},
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero.io/v1",
+					Kind:       "Schedule",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "acm-managed-clusters-schedule",
+				},
+			},
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "velero.io/v1",
+					Kind:       "Schedule",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "acm-validation-policy-schedule",
+				},
+			},
+		},
+	}
+}
+
 func Test_parseCronSchedule(t *testing.T) {
 
 	type args struct {
@@ -173,6 +229,107 @@ func Test_setSchedulePhase(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := setSchedulePhase(tt.args.schedules, tt.args.backupSchedule); got != tt.want {
 				t.Errorf("setSchedulePhase() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_getSchedulesWithUpdatedResources(t *testing.T) {
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+
+	type args struct {
+		resourcesToBackup []string
+		schedules         *veleroapi.ScheduleList
+	}
+
+	resourcesToBackup := []string{
+		"managedproxyserviceresolver.proxy.open-cluster-management.io",
+		"channel.apps.open-cluster-management.io",
+		"iampolicy.policy.open-cluster-management.io",
+		"agentclusterinstall.extensions.hive.openshift.io",
+		"application.app.k8s.io",
+		"agentserviceconfig.agent-install.openshift.io",
+		"observatorium.core.observatorium.io",
+	}
+	schedules := initVeleroScheduleTypes()
+
+	veleroSchedulesToUpdate := make([]veleroapi.Schedule, 0)
+
+	for i := range schedules.Items {
+		veleroSchedule := &schedules.Items[i]
+		veleroBackupTemplate := &veleroapi.BackupSpec{}
+
+		switch veleroSchedule.Name {
+		case veleroScheduleNames[Resources]:
+			setResourcesBackupInfo(context.Background(), veleroBackupTemplate, resourcesToBackup,
+				"open-cluster-management-backup", k8sClient1)
+			veleroSchedulesToUpdate = append(
+				veleroSchedulesToUpdate,
+				*veleroSchedule,
+			)
+		case veleroScheduleNames[ResourcesGeneric]:
+			setGenericResourcesBackupInfo(veleroBackupTemplate, resourcesToBackup)
+			veleroSchedulesToUpdate = append(
+				veleroSchedulesToUpdate,
+				*veleroSchedule,
+			)
+		case veleroScheduleNames[ManagedClusters]:
+			setManagedClustersBackupInfo(veleroBackupTemplate, resourcesToBackup)
+			veleroSchedulesToUpdate = append(
+				veleroSchedulesToUpdate,
+				*veleroSchedule,
+			)
+		}
+
+		veleroSchedule.Spec.Template = *veleroBackupTemplate
+	}
+
+	var newResourcesToBackup []string
+	newResourcesToBackup = append(newResourcesToBackup, resourcesToBackup...)
+	newResourcesToBackup = append(newResourcesToBackup, "baremetalasset.inventory.open-cluster-management.io")
+	newResourcesToBackup = append(newResourcesToBackup, "x.hive.openshift.io")
+	newResourcesToBackup = append(newResourcesToBackup, "y.hive.openshift.io")
+
+	tests := []struct {
+		name string
+		args args
+		want []veleroapi.Schedule
+	}{
+		{
+			name: "nil arguments",
+			args: args{
+				resourcesToBackup: nil,
+				schedules:         nil,
+			},
+			want: []veleroapi.Schedule{},
+		},
+		{
+			name: "unchanged hub resources",
+			args: args{
+				resourcesToBackup: resourcesToBackup,
+				schedules:         schedules,
+			},
+			want: []veleroapi.Schedule{},
+		},
+		{
+			name: "changed hub resources",
+			args: args{
+				resourcesToBackup: newResourcesToBackup,
+				schedules:         schedules,
+			},
+			want: veleroSchedulesToUpdate,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getSchedulesWithUpdatedResources(tt.args.resourcesToBackup, tt.args.schedules)
+			if len(got) != len(tt.want) {
+				t.Errorf("getSchedulesWithUpdatedResources() = %v, want %v", got, tt.want)
 			}
 		})
 	}

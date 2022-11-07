@@ -55,6 +55,83 @@ func Test_getBackupTimestamp(t *testing.T) {
 	}
 }
 
+func Test_sortCompare(t *testing.T) {
+	type args struct {
+		a []string
+		b []string
+	}
+
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "both slices are nil",
+			args: args{
+				a: nil,
+				b: nil,
+			},
+			want: true,
+		},
+		{
+			name: "one slice is nil",
+			args: args{
+				a: []string{"abc"},
+				b: nil,
+			},
+			want: false,
+		},
+		{
+			name: "different members",
+			args: args{
+				a: []string{"abc"},
+				b: []string{"def"},
+			},
+			want: false,
+		},
+		{
+			name: "b has more members",
+			args: args{
+				a: []string{"abc"},
+				b: []string{"abc", "def"},
+			},
+			want: false,
+		},
+		{
+			name: "a has more members",
+			args: args{
+				a: []string{"abc", "def", "z"},
+				b: []string{"abc", "def"},
+			},
+			want: false,
+		},
+		{
+			name: "same members, same order",
+			args: args{
+				a: []string{"abc", "def"},
+				b: []string{"abc", "def"},
+			},
+			want: true,
+		},
+		{
+			name: "same members, different order",
+			args: args{
+				a: []string{"abc", "def"},
+				b: []string{"def", "abc"},
+			},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sortCompare(tt.args.a, tt.args.b); got != tt.want {
+				t.Errorf("sortCompare() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func Test_isValidStorageLocationDefined(t *testing.T) {
 	type args struct {
 		veleroStorageLocations *veleroapi.BackupStorageLocationList
