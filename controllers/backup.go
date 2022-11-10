@@ -101,19 +101,19 @@ var (
 
 	// resources used to activate the connection between hub and managed clusters - activation resources
 	backupManagedClusterResources = []string{
+		"clusterdeployment.hive.openshift.io",               // restore these first
+		"machinepool.hive.openshift.io",                     // restore these first
 		"managedcluster.cluster.open-cluster-management.io", //global
-		"clustersync.hiveinternal.openshift.io",
 		"managedcluster.clusterview.open-cluster-management.io",
 		"klusterletaddonconfig.agent.open-cluster-management.io",
 		"managedclusteraddon.addon.open-cluster-management.io",
-		"clusterdeployment.hive.openshift.io",
-		"machinepool.hive.openshift.io",
 		"clusterpool.hive.openshift.io",
 		"clusterclaim.hive.openshift.io",
 		"clustercurator.cluster.open-cluster-management.io",
 		"baremetalhost.metal3.io",
 		"bmceventsubscription.metal3.io",
 		"hostfirmwaresettings.metal3.io",
+		"clustersync.hiveinternal.openshift.io",
 	}
 
 	// all backup resources, except secrets, configmaps and managed cluster activation resources
@@ -168,15 +168,10 @@ func setResourcesBackupInfo(
 		backupNS,
 	)
 
-	for i := range resourcesToBackup { // acm resources
-		// exclude hive resources
-		if !strings.HasSuffix(resourcesToBackup[i], hiveSuffix) {
-			veleroBackupTemplate.IncludedResources = appendUnique(
-				veleroBackupTemplate.IncludedResources,
-				resourcesToBackup[i],
-			)
-		}
-	}
+	veleroBackupTemplate.IncludedResources = getResourcesByBackupType(
+		resourcesToBackup,
+		Resources,
+	)
 
 	// exclude acm channel namespaces
 	channels := chnv1.ChannelList{}
@@ -219,45 +214,17 @@ func setResourcesBackupInfo(
 
 // set credentials backup info
 func setGenericResourcesBackupInfo(
-	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
 	resourcesToBackup []string,
-	c client.Client,
 ) {
 
 	var clusterResource bool = true // check global resources
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 
-	for i := range excludedCRDs { // exclude resources not backed up
-		veleroBackupTemplate.ExcludedResources = appendUnique(
-			veleroBackupTemplate.ExcludedResources,
-			excludedCRDs[i],
-		)
-	}
-
-	for i := range backupCredsResources { // exclude resources already backed up by creds
-		veleroBackupTemplate.ExcludedResources = appendUnique(
-			veleroBackupTemplate.ExcludedResources,
-			backupCredsResources[i],
-		)
-	}
-
-	for i := range backupManagedClusterResources { // exclude resources in managed clusters
-		veleroBackupTemplate.ExcludedResources = appendUnique(
-			veleroBackupTemplate.ExcludedResources,
-			backupManagedClusterResources[i],
-		)
-	}
-
-	for i := range resourcesToBackup {
-		// exclude hive resources here
-		if strings.HasSuffix(resourcesToBackup[i], hiveSuffix) {
-			veleroBackupTemplate.ExcludedResources = appendUnique(
-				veleroBackupTemplate.ExcludedResources,
-				resourcesToBackup[i],
-			)
-		}
-	}
+	veleroBackupTemplate.ExcludedResources = getResourcesByBackupType(
+		resourcesToBackup,
+		ResourcesGeneric,
+	)
 
 	if veleroBackupTemplate.LabelSelector == nil {
 		labels := &v1.LabelSelector{}
@@ -277,9 +244,7 @@ func setGenericResourcesBackupInfo(
 
 // set credentials backup info
 func setCredsBackupInfo(
-	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
-	c client.Client,
 ) {
 	var clusterResource bool = false
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
@@ -324,10 +289,8 @@ func setCredsBackupInfo(
 
 // set managed clusters backup info
 func setManagedClustersBackupInfo(
-	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
 	resourcesToBackup []string,
-	c client.Client,
 ) {
 	var clusterResource bool = true // include cluster level resources
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
@@ -342,23 +305,10 @@ func setManagedClustersBackupInfo(
 		"openshift-machine-api",
 	)
 
-	for i := range backupManagedClusterResources {
-		// managed clusters required resources, from namespace or cluster level
-		veleroBackupTemplate.IncludedResources = appendUnique(
-			veleroBackupTemplate.IncludedResources,
-			backupManagedClusterResources[i],
-		)
-	}
-
-	for i := range resourcesToBackup {
-		// add hive resources here
-		if strings.HasSuffix(resourcesToBackup[i], hiveSuffix) {
-			veleroBackupTemplate.IncludedResources = appendUnique(
-				veleroBackupTemplate.IncludedResources,
-				resourcesToBackup[i],
-			)
-		}
-	}
+	veleroBackupTemplate.IncludedResources = getResourcesByBackupType(
+		resourcesToBackup,
+		ManagedClusters,
+	)
 
 }
 
@@ -370,10 +320,8 @@ func setManagedClustersBackupInfo(
 // no backups created from the acm-validation-policy-schedule schedule
 // and the policy will alert if no acm-validation-policy-schedule are found
 func setValidationBackupInfo(
-	ctx context.Context,
 	veleroBackupTemplate *veleroapi.BackupSpec,
 	backupSchedule *v1beta1.BackupSchedule,
-	c client.Client,
 ) *veleroapi.BackupSpec {
 
 	veleroBackupTemplate.IncludedNamespaces = appendUnique(
@@ -403,6 +351,72 @@ func setValidationBackupInfo(
 		}
 	}
 	return veleroBackupTemplate
+}
+
+// creates the list of backup resources based on backup type
+func getResourcesByBackupType(
+	resourcesToBackup []string,
+	resourceType ResourceType,
+) []string {
+
+	filteredResourceNames := []string{}
+
+	switch resourceType {
+	case Resources:
+		for i := range resourcesToBackup { // exclude hive resources
+			if !strings.HasSuffix(resourcesToBackup[i], hiveSuffix) {
+				filteredResourceNames = appendUnique(
+					filteredResourceNames,
+					resourcesToBackup[i],
+				)
+			}
+		}
+	case ResourcesGeneric:
+		for i := range excludedCRDs { // exclude resources not backed up
+			filteredResourceNames = appendUnique(
+				filteredResourceNames,
+				excludedCRDs[i],
+			)
+		}
+		for i := range backupCredsResources { // exclude resources already backed up by creds
+			filteredResourceNames = appendUnique(
+				filteredResourceNames,
+				backupCredsResources[i],
+			)
+		}
+		for i := range backupManagedClusterResources { // exclude resources in managed clusters
+			filteredResourceNames = appendUnique(
+				filteredResourceNames,
+				backupManagedClusterResources[i],
+			)
+		}
+		for i := range resourcesToBackup { // exclude hive resources
+			if strings.HasSuffix(resourcesToBackup[i], hiveSuffix) {
+				filteredResourceNames = appendUnique(
+					filteredResourceNames,
+					resourcesToBackup[i],
+				)
+			}
+		}
+	case ManagedClusters:
+		for i := range backupManagedClusterResources {
+			// managed clusters required resources, from namespace or cluster level
+			filteredResourceNames = appendUnique(
+				filteredResourceNames,
+				backupManagedClusterResources[i],
+			)
+		}
+		for i := range resourcesToBackup { // include hive resources
+			if strings.HasSuffix(resourcesToBackup[i], hiveSuffix) {
+				filteredResourceNames = appendUnique(
+					filteredResourceNames,
+					resourcesToBackup[i],
+				)
+			}
+		}
+	}
+
+	return filteredResourceNames
 }
 
 func isBackupFinished(backups []*veleroapi.Backup) bool {
@@ -574,14 +588,20 @@ func deleteBackup(
 		veleroDeleteBackup.Name = backupDeleteIdentity.Name
 		veleroDeleteBackup.Namespace = backupDeleteIdentity.Namespace
 
-		backupLogger.Info(fmt.Sprintf("Attempt to create DeleteBackupRequest %s", veleroDeleteBackup.Name))
+		backupLogger.Info(
+			fmt.Sprintf("Attempt to create DeleteBackupRequest %s", veleroDeleteBackup.Name),
+		)
 		if err := c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{}); err == nil {
-			backupLogger.Info(fmt.Sprintf("Created DeleteBackupRequest %s", veleroDeleteBackup.Name))
+			backupLogger.Info(
+				fmt.Sprintf("Created DeleteBackupRequest %s", veleroDeleteBackup.Name),
+			)
 		}
 
 		return nil
 	}
-	backupLogger.Info(fmt.Sprintf("DeleteBackupRequest already exists, skip request creation %s", backupName))
+	backupLogger.Info(
+		fmt.Sprintf("DeleteBackupRequest already exists, skip request creation %s", backupName),
+	)
 	if veleroDeleteBackup.Status.Errors != nil {
 		// delete the backup now
 		if err := c.Delete(ctx, backup); err != nil {

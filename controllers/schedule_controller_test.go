@@ -62,7 +62,7 @@ var _ = Describe("BackupSchedule controller", func() {
 
 		backupSchedule string = "0 */6 * * *"
 
-		timeout  = time.Second * 7
+		timeout  = time.Second * 9
 		interval = time.Millisecond * 250
 	)
 
@@ -210,9 +210,12 @@ var _ = Describe("BackupSchedule controller", func() {
 		}
 
 		// create some dummy backups
-		veleroBackups = append(veleroBackups, *createBackup(veleroScheduleNames[Resources]+"-new", veleroNamespaceName).
-			phase(veleroapi.BackupPhaseCompleted).startTimestamp(oneHourAgo).errors(0).
-			object)
+		veleroBackups = append(
+			veleroBackups,
+			*createBackup(veleroScheduleNames[Resources]+"-new", veleroNamespaceName).
+				phase(veleroapi.BackupPhaseCompleted).startTimestamp(oneHourAgo).errors(0).
+				object,
+		)
 	})
 
 	AfterEach(func() {
@@ -429,7 +432,8 @@ var _ = Describe("BackupSchedule controller", func() {
 					Name:      "baremetal",
 					Namespace: clusterPoolNSName,
 				}, &baremetalSecret)
-				return err == nil && baremetalSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "baremetal"
+				return err == nil &&
+					baremetalSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "baremetal"
 			}, timeout, interval).Should(BeTrue())
 
 			// and the ones under openshift-machine-api dont
@@ -439,7 +443,8 @@ var _ = Describe("BackupSchedule controller", func() {
 					Name:      "baremetal-api-secret",
 					Namespace: "openshift-machine-api",
 				}, &baremetalSecretAPI)
-				return err == nil && baremetalSecretAPI.GetLabels()["cluster.open-cluster-management.io/backup"] == "baremetal"
+				return err == nil &&
+					baremetalSecretAPI.GetLabels()["cluster.open-cluster-management.io/backup"] == "baremetal"
 			}, timeout, interval).Should(BeFalse())
 
 			// validate auto-import secret secret has backup annotation
@@ -450,7 +455,8 @@ var _ = Describe("BackupSchedule controller", func() {
 					Name:      "auto-import",
 					Namespace: clusterPoolNSName,
 				}, &autoImportSecret)
-				return err == nil && autoImportSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "msa"
+				return err == nil &&
+					autoImportSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "msa"
 			}, timeout, interval).Should(Equal(rhacmBackupSchedule.Spec.UseManagedServiceAccount))
 
 			// validate AI secret has backup annotation
@@ -460,7 +466,8 @@ var _ = Describe("BackupSchedule controller", func() {
 					Name:      "ai-secret",
 					Namespace: clusterPoolNSName,
 				}, &secretAI)
-				return err == nil && secretAI.GetLabels()["cluster.open-cluster-management.io/backup"] == "agent-install"
+				return err == nil &&
+					secretAI.GetLabels()["cluster.open-cluster-management.io/backup"] == "agent-install"
 			}, timeout, interval).Should(BeTrue())
 
 			Expect(createdBackupSchedule.CreationTimestamp.Time).NotTo(BeNil())
