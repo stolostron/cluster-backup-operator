@@ -132,25 +132,32 @@ func isScheduleSpecUpdated(
 	backupSchedule *v1beta1.BackupSchedule,
 ) bool {
 
+	updated := false
+
 	if schedules == nil || len(schedules.Items) <= 0 {
-		return false
+		return updated
 	}
 
 	for i := range schedules.Items {
 		veleroSchedule := &schedules.Items[i]
 
+		// validation backup TTL should be ignored here
+		// since that one is using the schedule's cron job interval
 		if veleroSchedule.Name != veleroScheduleNames[ValidationSchedule] &&
 			veleroSchedule.Spec.Template.TTL.Duration != backupSchedule.Spec.VeleroTTL.Duration {
-			// validation backup TTL should be ignored here
-			// since that one is using the schedule's cron job interval
-			return true
+			veleroSchedule.Spec.Template.TTL = backupSchedule.Spec.VeleroTTL
+			updated = true
 		}
 		if veleroSchedule.Spec.Schedule != backupSchedule.Spec.VeleroSchedule {
-			return true
+			veleroSchedule.Spec.Schedule = backupSchedule.Spec.VeleroSchedule
+			if veleroSchedule.Name == veleroScheduleNames[ValidationSchedule] {
+				veleroSchedule.Spec.Template.TTL = getValidationBackupTTL(backupSchedule.Spec.VeleroSchedule)
+			}
+			updated = true
 		}
 	}
 
-	return false
+	return updated
 }
 
 func getSchedulesWithUpdatedResources(

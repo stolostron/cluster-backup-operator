@@ -334,23 +334,30 @@ func setValidationBackupInfo(
 		backupSchedule.Kind,
 	)
 
+	veleroBackupTemplate.TTL = getValidationBackupTTL(backupSchedule.Spec.VeleroSchedule)
+
+	return veleroBackupTemplate
+}
+
+func getValidationBackupTTL(VeleroSchedule string) v1.Duration {
+	validationTTL := v1.Duration{Duration: time.Hour * 1}
+
 	// the backup should be deleted after ttl = schedule cron job time passed
 	// adding extra 5min so that an old validation backup overlaps for a few minutes
 	// with the new validation backup; doing that so that policy doesn't report an error
 	// in this short interval when the old validation backup is deleted
 	// and the old one is recreated by the cron job validation schedule
-	veleroBackupTemplate.TTL = v1.Duration{Duration: time.Hour * 1}
-	if cronSchedule, err := cron.ParseStandard(backupSchedule.Spec.VeleroSchedule); err == nil {
+	if cronSchedule, err := cron.ParseStandard(VeleroSchedule); err == nil {
 		currentTime := v1.Now().Time
 		nextRunTime := cronSchedule.Next(currentTime)
 		// add extra 5 minutes to the cron job time before deleting this backup
 		secondNextRunTime := cronSchedule.Next(nextRunTime).Add(time.Minute * 5)
 
-		veleroBackupTemplate.TTL = v1.Duration{
+		validationTTL = v1.Duration{
 			Duration: secondNextRunTime.Sub(nextRunTime),
 		}
 	}
-	return veleroBackupTemplate
+	return validationTTL
 }
 
 // creates the list of backup resources based on backup type

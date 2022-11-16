@@ -215,19 +215,25 @@ func (r *BackupScheduleReconciler) Reconcile(
 		)
 	}
 
-	// Velero doesn't watch modifications to its schedules
-	// delete velero schedules if their spec needs to be updated or any of them is missing
-	// New velero schedules will be created in the next reconcile triggerd by the deletion
-	if isScheduleSpecUpdated(&veleroScheduleList, backupSchedule) ||
-		len(veleroScheduleList.Items) < len(veleroScheduleNames) {
+	if len(veleroScheduleList.Items) < len(veleroScheduleNames) {
 		if err := deleteVeleroSchedules(ctx, r.Client, backupSchedule, &veleroScheduleList); err != nil {
 			return ctrl.Result{}, err
 		}
-
 		return ctrl.Result{RequeueAfter: collisionControlInterval}, errors.Wrap(
 			r.Client.Status().Update(ctx, backupSchedule),
 			updateStatusFailedMsg,
 		)
+	}
+
+	if isScheduleSpecUpdated(&veleroScheduleList, backupSchedule) {
+		for i := range veleroScheduleList.Items {
+			veleroSchedule := &veleroScheduleList.Items[i]
+			if err := r.Client.Update(ctx, veleroSchedule, &client.UpdateOptions{}); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		scheduleLogger.Info(fmt.Sprintf("Updated Velero schedules spec based on %s spec ", backupSchedule.Name))
+		return ctrl.Result{RequeueAfter: collisionControlInterval}, nil
 	}
 
 	// update backup resources on velero schedules if any changes in hub resources
