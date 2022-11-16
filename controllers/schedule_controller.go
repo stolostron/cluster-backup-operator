@@ -186,9 +186,13 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 			// delete schedules, don't generate new backups
 			for i := range veleroScheduleList.Items {
-				scheduleLogger.Info("Attempt to delete schedule " + veleroScheduleList.Items[i].Name)
+				scheduleLogger.Info(
+					"Attempt to delete schedule " + veleroScheduleList.Items[i].Name,
+				)
 				if err := r.Delete(ctx, &veleroScheduleList.Items[i]); err == nil {
-					scheduleLogger.Info("Schedule deleted successfully " + veleroScheduleList.Items[i].Name)
+					scheduleLogger.Info(
+						"Schedule deleted successfully " + veleroScheduleList.Items[i].Name,
+					)
 				}
 			}
 			return ctrl.Result{}, errors.Wrap(err, msg)
@@ -215,6 +219,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 		)
 	}
 
+	// if any velero schedule is deleted manually, recreate them all to have the same backup due time
 	if len(veleroScheduleList.Items) < len(veleroScheduleNames) {
 		if err := deleteVeleroSchedules(ctx, r.Client, backupSchedule, &veleroScheduleList); err != nil {
 			return ctrl.Result{}, err
@@ -225,28 +230,9 @@ func (r *BackupScheduleReconciler) Reconcile(
 		)
 	}
 
-	if isScheduleSpecUpdated(&veleroScheduleList, backupSchedule) {
-		for i := range veleroScheduleList.Items {
-			veleroSchedule := &veleroScheduleList.Items[i]
-			if err := r.Client.Update(ctx, veleroSchedule, &client.UpdateOptions{}); err != nil {
-				return ctrl.Result{}, err
-			}
-		}
-		scheduleLogger.Info(fmt.Sprintf("Updated Velero schedules spec based on %s spec ", backupSchedule.Name))
-		return ctrl.Result{RequeueAfter: collisionControlInterval}, nil
-	}
-
-	// update backup resources on velero schedules if any changes in hub resources
-	resourcesToBackup := getResourcesToBackup(ctx, r.DiscoveryClient)
-	schedulesToBeUpdated := getSchedulesWithUpdatedResources(resourcesToBackup, &veleroScheduleList)
-	if schedulesToBeUpdated != nil && len(schedulesToBeUpdated) > 0 {
-		for i := range schedulesToBeUpdated {
-			if err := r.Client.Update(ctx, &schedulesToBeUpdated[i], &client.UpdateOptions{}); err != nil {
-				return ctrl.Result{}, err
-			}
-			scheduleLogger.Info(fmt.Sprintf("Updated backup resources on Velero schedule %s ", schedulesToBeUpdated[i].Name))
-		}
-		return ctrl.Result{RequeueAfter: collisionControlInterval}, nil
+	// check for any updates that are required for velero schedules based on backupSchedule and hub resources
+	if result, updated, err := r.isVeleroSchedulesUpdateRequired(ctx, veleroScheduleList, backupSchedule); updated {
+		return result, err
 	}
 
 	// velero schedules already exist, update schedule status with latest velero schedules
@@ -264,6 +250,49 @@ func (r *BackupScheduleReconciler) Reconcile(
 			backupSchedule.Name,
 		),
 	)
+}
+
+// check if Velero schedules need to be updated and update them if required
+func (r *BackupScheduleReconciler) isVeleroSchedulesUpdateRequired(
+	ctx context.Context,
+	veleroScheduleList veleroapi.ScheduleList,
+	backupSchedule *v1beta1.BackupSchedule,
+) (ctrl.Result, bool, error) {
+	scheduleLogger := log.FromContext(ctx)
+
+	// update velero schedules if cron schedule or ttl is changed on the backupSchedule
+	if isScheduleSpecUpdated(&veleroScheduleList, backupSchedule) {
+		for i := range veleroScheduleList.Items {
+			veleroSchedule := &veleroScheduleList.Items[i]
+			if err := r.Client.Update(ctx, veleroSchedule, &client.UpdateOptions{}); err != nil {
+				return ctrl.Result{}, true, err
+			}
+		}
+		scheduleLogger.Info(
+			fmt.Sprintf("Updated Velero schedules spec based on %s spec ", backupSchedule.Name),
+		)
+		return ctrl.Result{RequeueAfter: collisionControlInterval}, true, nil
+	}
+
+	// update backup resources on velero schedules if any changes in hub resources
+	resourcesToBackup := getResourcesToBackup(ctx, r.DiscoveryClient)
+	schedulesToBeUpdated := getSchedulesWithUpdatedResources(resourcesToBackup, &veleroScheduleList)
+	if schedulesToBeUpdated != nil && len(schedulesToBeUpdated) > 0 {
+		for i := range schedulesToBeUpdated {
+			if err := r.Client.Update(ctx, &schedulesToBeUpdated[i], &client.UpdateOptions{}); err != nil {
+				return ctrl.Result{}, true, err
+			}
+			scheduleLogger.Info(
+				fmt.Sprintf(
+					"Updated backup resources on Velero schedule %s ",
+					schedulesToBeUpdated[i].Name,
+				),
+			)
+		}
+		return ctrl.Result{RequeueAfter: collisionControlInterval}, true, nil
+	}
+
+	return ctrl.Result{}, false, nil
 }
 
 // validate backup configuration
