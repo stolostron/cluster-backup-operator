@@ -75,6 +75,18 @@ func initVeleroScheduleList(
 	}
 }
 
+func initVeleroSchedulesWithSpecs(
+	cronSpec string,
+	ttl metav1.Duration) *veleroapi.ScheduleList {
+	veleroScheduleList := initVeleroScheduleTypes()
+	for i := range veleroScheduleList.Items {
+		veleroSchedule := &veleroScheduleList.Items[i]
+		veleroSchedule.Spec.Schedule = cronSpec
+		veleroSchedule.Spec.Template.TTL = ttl
+	}
+	return veleroScheduleList
+}
+
 func initVeleroScheduleTypes() *veleroapi.ScheduleList {
 	return &veleroapi.ScheduleList{
 		TypeMeta: metav1.TypeMeta{
@@ -192,8 +204,12 @@ func Test_setSchedulePhase(t *testing.T) {
 		{
 			name: "schedule in collision",
 			args: args{
-				schedules:      nil,
-				backupSchedule: createBackupSchedule("name", "ns").phase(v1beta1.SchedulePhaseBackupCollision).object,
+				schedules: nil,
+				backupSchedule: createBackupSchedule(
+					"name",
+					"ns",
+				).phase(v1beta1.SchedulePhaseBackupCollision).
+					object,
 			},
 			want: v1beta1.SchedulePhaseBackupCollision,
 		},
@@ -291,7 +307,10 @@ func Test_getSchedulesWithUpdatedResources(t *testing.T) {
 
 	var newResourcesToBackup []string
 	newResourcesToBackup = append(newResourcesToBackup, resourcesToBackup...)
-	newResourcesToBackup = append(newResourcesToBackup, "baremetalasset.inventory.open-cluster-management.io")
+	newResourcesToBackup = append(
+		newResourcesToBackup,
+		"baremetalasset.inventory.open-cluster-management.io",
+	)
 	newResourcesToBackup = append(newResourcesToBackup, "x.hive.openshift.io")
 	newResourcesToBackup = append(newResourcesToBackup, "y.hive.openshift.io")
 
@@ -345,7 +364,6 @@ func Test_isScheduleSpecUpdated(t *testing.T) {
 		args args
 		want bool
 	}{
-		// TODO: Add test cases.
 		{
 			name: "no schedules",
 			args: args{
@@ -354,10 +372,50 @@ func Test_isScheduleSpecUpdated(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "cron spec updated",
+			name: "same schedule and ttl",
 			args: args{
-				schedules:      initVeleroScheduleList(veleroapi.SchedulePhaseEnabled, "0 6 * * *"),
-				backupSchedule: createBackupSchedule("name", "ns").schedule("0 8 * * *").object,
+				schedules: initVeleroSchedulesWithSpecs(
+					"0 6 * * *",
+					metav1.Duration{Duration: time.Hour * 1},
+				),
+				backupSchedule: createBackupSchedule(
+					"name",
+					"ns",
+				).schedule("0 6 * * *").
+					veleroTTL(metav1.Duration{Duration: time.Hour * 1}).
+					object,
+			},
+			want: false,
+		},
+		{
+			name: "schedule updated",
+			args: args{
+				schedules: initVeleroSchedulesWithSpecs(
+					"0 6 * * *",
+					metav1.Duration{Duration: time.Hour * 1},
+				),
+				backupSchedule: createBackupSchedule(
+					"name",
+					"ns",
+				).schedule("0 8 * * *").
+					veleroTTL(metav1.Duration{Duration: time.Hour * 1}).
+					object,
+			},
+			want: true,
+		},
+		{
+			name: "ttl updated",
+			args: args{
+				schedules: initVeleroSchedulesWithSpecs(
+					"0 6 * * *",
+					metav1.Duration{Duration: time.Hour * 1},
+				),
+				backupSchedule: createBackupSchedule(
+					"name",
+					"ns",
+				).schedule("0 6 * * *").
+					veleroTTL(metav1.Duration{Duration: time.Hour * 2}).
+					object,
 			},
 			want: true,
 		},
@@ -388,6 +446,13 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 		schedule("backup-schedule").
 		veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
 		object
+
+	veleroSchedules := initVeleroScheduleList(veleroapi.SchedulePhaseNew, "0 8 * * *")
+	for i := range veleroSchedules.Items {
+		veleroSchedule := &veleroSchedules.Items[i]
+		veleroSchedule.Namespace = veleroNamespaceName
+		k8sClient1.Create(context.Background(), veleroSchedule)
+	}
 
 	type args struct {
 		ctx            context.Context
@@ -443,13 +508,27 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name: "successfully delete the schedule, returns no error",
+			args: args{
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				backupSchedule: &rhacmBackupSchedule,
+				schedules:      veleroSchedules,
+			},
+			want: false,
+		},
 	}
 	for _, tt := range tests {
 
 		t.Run(tt.name, func(t *testing.T) {
 			if got := deleteVeleroSchedules(tt.args.ctx, tt.args.c,
 				tt.args.backupSchedule, tt.args.schedules); (got != nil) != tt.want {
-				t.Errorf("deleteVeleroSchedules() = %v, want len of string is empty %v", got, tt.want)
+				t.Errorf(
+					"deleteVeleroSchedules() = %v, want len of string is empty %v",
+					got,
+					tt.want,
+				)
 			}
 		})
 	}
@@ -763,7 +842,10 @@ func Test_verifyMSAOptione(t *testing.T) {
 					{
 						Name: "apps.open-cluster-management.io",
 						Versions: []metav1.GroupVersionForDiscovery{
-							{GroupVersion: "apps.open-cluster-management.io/v1beta1", Version: "v1beta1"},
+							{
+								GroupVersion: "apps.open-cluster-management.io/v1beta1",
+								Version:      "v1beta1",
+							},
 							{GroupVersion: "apps.open-cluster-management.io/v1", Version: "v1"},
 						},
 					},
@@ -803,7 +885,11 @@ func Test_verifyMSAOptione(t *testing.T) {
 
 	dynClient := dynamicfake.NewSimpleDynamicClient(unstructuredScheme, res_local_ns)
 
-	targetGVK := schema.GroupVersionKind{Group: "apps.open-cluster-management.io", Version: "v1", Kind: "Channel"}
+	targetGVK := schema.GroupVersionKind{
+		Group:   "apps.open-cluster-management.io",
+		Version: "v1",
+		Kind:    "Channel",
+	}
 	targetGVR := targetGVK.GroupVersion().WithResource("channel")
 
 	resInterface := dynClient.Resource(targetGVR)
