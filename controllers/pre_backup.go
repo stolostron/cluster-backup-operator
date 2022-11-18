@@ -255,8 +255,8 @@ func prepareImportedClusters(ctx context.Context,
 				msaAddon.Namespace = managedCluster.Name
 				msaAddon.Spec.InstallNamespace = installNamespace
 				labels := map[string]string{
-					msa_label:          msa_service_name,
-					ExcludeBackupLabel: "true"}
+					msa_label: msa_service_name,
+				}
 				msaAddon.SetLabels(labels)
 
 				logger.Info(fmt.Sprintf("Attempt to create ClusterManagementAddOn %s for cluster =%s",
@@ -392,8 +392,7 @@ func createMSA(
 				"name":      name,
 				"namespace": managedClusterName,
 				"labels": map[string]interface{}{
-					msa_label:          name,
-					ExcludeBackupLabel: "true",
+					msa_label: name,
 				},
 			},
 			"spec": map[string]interface{}{
