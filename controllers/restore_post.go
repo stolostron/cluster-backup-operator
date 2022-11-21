@@ -549,10 +549,6 @@ func createAutoImportSecret(
 	autoImportSecret.Name = autoImportSecretName
 	autoImportSecret.Namespace = namespace
 	autoImportSecret.Type = corev1.SecretTypeOpaque
-	// set annotations
-	annotations := make(map[string]string)
-	annotations[keepAutoImportSecret] = ""
-	autoImportSecret.SetAnnotations(annotations)
 	// set labels
 	labels := make(map[string]string)
 	labels[activateLabel] = "true"
