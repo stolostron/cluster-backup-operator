@@ -735,15 +735,8 @@ func setOptionalProperties(
 	acmRestore *v1beta1.Restore,
 	veleroRestore *veleroapi.Restore,
 ) {
-
 	// update existing resources if part of the new backup
 	veleroRestore.Spec.ExistingResourcePolicy = veleroapi.PolicyTypeUpdate
-
-	//
-	if key == CredentialsHive || key == CredentialsCluster || key == Credentials {
-		// ignore credentials restore
-		return
-	}
 
 	// pass on velero optional properties
 	if acmRestore.Spec.RestoreStatus != nil {
