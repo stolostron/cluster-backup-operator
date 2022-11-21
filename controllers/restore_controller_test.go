@@ -194,6 +194,14 @@ var _ = Describe("Basic Restore controller", func() {
 			restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 			veleroManagedClustersBackupName(veleroManagedClustersBackupName).
 			veleroCredentialsBackupName(veleroCredentialsBackupName).
+			restorePVs(true).
+			preserveNodePorts(true).
+			restoreStatus(&veleroapi.RestoreStatusSpec{
+				IncludedResources: []string{"webhook"},
+			}).
+			hookResources([]veleroapi.RestoreResourceHookSpec{
+				veleroapi.RestoreResourceHookSpec{Name: "hookName"},
+			}).
 			veleroResourcesBackupName(veleroResourcesBackupName).object
 	})
 
@@ -233,6 +241,14 @@ var _ = Describe("Basic Restore controller", func() {
 				veleroCredentialsHiveBackupName,
 				veleroCredentialsClusterBackupName,
 			}
+			// look for velero optional properties
+			Expect(*veleroRestores.Items[0].Spec.RestorePVs).Should(BeTrue())
+			Expect(*veleroRestores.Items[0].Spec.PreserveNodePorts).Should(BeTrue())
+			Expect(veleroRestores.Items[0].Spec.RestoreStatus.IncludedResources[0]).
+				Should(BeIdenticalTo("webhook"))
+			Expect(veleroRestores.Items[0].Spec.Hooks.Resources[0].Name).Should(
+				BeIdenticalTo("hookName"))
+			//
 			_, found := find(backupNames, veleroRestores.Items[0].Spec.BackupName)
 			Expect(found).Should(BeTrue())
 			_, found = find(backupNames, veleroRestores.Items[1].Spec.BackupName)

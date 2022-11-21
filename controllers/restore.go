@@ -715,7 +715,23 @@ func processRetrieveRestoreDetails(
 				veleroRestore.Spec.BackupName = veleroBackupName
 				// update existing resources if part of the new backup
 				veleroRestore.Spec.ExistingResourcePolicy = veleroapi.PolicyTypeUpdate
+				// pass on velero optional properties
+				if acmRestore.Spec.RestoreStatus != nil {
+					veleroRestore.Spec.RestoreStatus = acmRestore.Spec.RestoreStatus
+				}
+				if acmRestore.Spec.PreserveNodePorts != nil {
+					veleroRestore.Spec.PreserveNodePorts = acmRestore.Spec.PreserveNodePorts
+				}
+				if acmRestore.Spec.RestorePVs != nil {
+					veleroRestore.Spec.RestorePVs = acmRestore.Spec.RestorePVs
+				}
+				if len(acmRestore.Spec.Hooks.Resources) > 0 {
 
+					veleroRestore.Spec.Hooks.Resources = append(veleroRestore.Spec.Hooks.Resources,
+						acmRestore.Spec.Hooks.Resources...,
+					)
+				}
+				//
 				if err := ctrl.SetControllerReference(acmRestore, veleroRestore, s); err != nil {
 					acmRestore.Status.LastMessage = fmt.Sprintf(
 						"Could not set controller reference for resource type: %s",

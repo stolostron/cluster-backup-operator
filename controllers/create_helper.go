@@ -301,6 +301,27 @@ func (b *ACMRestoreHelper) veleroCredentialsRestoreName(name string) *ACMRestore
 	return b
 }
 
+func (b *ACMRestoreHelper) preserveNodePorts(preserve bool) *ACMRestoreHelper {
+	b.object.Spec.PreserveNodePorts = &preserve
+	return b
+}
+
+func (b *ACMRestoreHelper) restorePVs(restorePV bool) *ACMRestoreHelper {
+	b.object.Spec.RestorePVs = &restorePV
+	return b
+}
+
+func (b *ACMRestoreHelper) restoreStatus(stat *veleroapi.RestoreStatusSpec) *ACMRestoreHelper {
+	b.object.Spec.RestoreStatus = stat
+	return b
+}
+
+func (b *ACMRestoreHelper) hookResources(res []veleroapi.RestoreResourceHookSpec) *ACMRestoreHelper {
+	b.object.Spec.Hooks.Resources = append(b.object.Spec.Hooks.Resources,
+		res...)
+	return b
+}
+
 // backup schedule
 type BackupScheduleHelper struct {
 	object *v1beta1.BackupSchedule
