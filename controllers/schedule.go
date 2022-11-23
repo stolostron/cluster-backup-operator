@@ -516,15 +516,16 @@ func isVeleroSchedulesUpdateRequired(
 
 	// update velero schedules if cron schedule or ttl is changed on the backupSchedule
 	if isScheduleSpecUpdated(&veleroScheduleList, backupSchedule) {
+		scheduleLogger.Info(
+			fmt.Sprintf("Updating Velero schedules spec based on %s spec ", backupSchedule.Name),
+		)
+
 		for i := range veleroScheduleList.Items {
 			veleroSchedule := &veleroScheduleList.Items[i]
 			if err := c.Update(ctx, veleroSchedule, &client.UpdateOptions{}); err != nil {
 				return ctrl.Result{}, true, err
 			}
 		}
-		scheduleLogger.Info(
-			fmt.Sprintf("Updated Velero schedules spec based on %s spec ", backupSchedule.Name),
-		)
 		return ctrl.Result{RequeueAfter: collisionControlInterval}, true, nil
 	}
 
@@ -532,15 +533,15 @@ func isVeleroSchedulesUpdateRequired(
 	schedulesToBeUpdated := getSchedulesWithUpdatedResources(resourcesToBackup, &veleroScheduleList)
 	if schedulesToBeUpdated != nil && len(schedulesToBeUpdated) > 0 {
 		for i := range schedulesToBeUpdated {
-			if err := c.Update(ctx, &schedulesToBeUpdated[i], &client.UpdateOptions{}); err != nil {
-				return ctrl.Result{}, true, err
-			}
 			scheduleLogger.Info(
 				fmt.Sprintf(
-					"Updated backup resources on Velero schedule %s ",
+					"Updating backup resources on Velero schedule %s ",
 					schedulesToBeUpdated[i].Name,
 				),
 			)
+			if err := c.Update(ctx, &schedulesToBeUpdated[i], &client.UpdateOptions{}); err != nil {
+				return ctrl.Result{}, true, err
+			}
 		}
 		return ctrl.Result{RequeueAfter: collisionControlInterval}, true, nil
 	}

@@ -47,31 +47,27 @@ import (
 )
 
 func initVeleroScheduleList(
+	veleroNamespaceName string,
 	phase veleroapi.SchedulePhase,
 	cronSpec string,
+	ttl metav1.Duration,
 ) *veleroapi.ScheduleList {
+
+	veleroSchedules := []veleroapi.Schedule{}
+	for _, value := range veleroScheduleNames {
+		schedule := *createSchedule(value, veleroNamespaceName).
+			schedule(cronSpec).phase(phase).ttl(ttl).
+			object
+
+		veleroSchedules = append(veleroSchedules, schedule)
+	}
+
 	return &veleroapi.ScheduleList{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "velero.io/v1",
 			Kind:       "ScheduleList",
 		},
-		Items: []veleroapi.Schedule{
-			{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "velero.io/v1",
-					Kind:       "Schedule",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "the-brand-new-schedule",
-				},
-				Spec: veleroapi.ScheduleSpec{
-					Schedule: cronSpec,
-				},
-				Status: veleroapi.ScheduleStatus{
-					Phase: phase,
-				},
-			},
-		},
+		Items: veleroSchedules,
 	}
 }
 
@@ -216,7 +212,8 @@ func Test_setSchedulePhase(t *testing.T) {
 		{
 			name: "new",
 			args: args{
-				schedules:      initVeleroScheduleList(veleroapi.SchedulePhaseNew, "0 8 * * *"),
+				schedules: initVeleroScheduleList("ns", veleroapi.SchedulePhaseNew, "0 8 * * *",
+					metav1.Duration{Duration: time.Second * 5}),
 				backupSchedule: createBackupSchedule("name", "ns").schedule("0 8 * * *").object,
 			},
 			want: v1beta1.SchedulePhaseNew,
@@ -224,9 +221,10 @@ func Test_setSchedulePhase(t *testing.T) {
 		{
 			name: "failed validation",
 			args: args{
-				schedules: initVeleroScheduleList(
+				schedules: initVeleroScheduleList("ns",
 					veleroapi.SchedulePhaseFailedValidation,
 					"0 8 * * *",
+					metav1.Duration{Duration: time.Second * 5},
 				),
 				backupSchedule: createBackupSchedule("name", "ns").schedule("0 8 * * *").object,
 			},
@@ -235,7 +233,7 @@ func Test_setSchedulePhase(t *testing.T) {
 		{
 			name: "enabled",
 			args: args{
-				schedules:      initVeleroScheduleList(veleroapi.SchedulePhaseEnabled, "0 8 * * *"),
+				schedules:      initVeleroScheduleList("ns", veleroapi.SchedulePhaseEnabled, "0 8 * * *", metav1.Duration{Duration: time.Second * 5}),
 				backupSchedule: createBackupSchedule("name", "ns").schedule("0 8 * * *").object,
 			},
 			want: v1beta1.SchedulePhaseEnabled,
@@ -441,35 +439,46 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
-	k8sClient1.Create(context.Background(), &veleroNamespace)
+	unstructuredScheme := runtime.NewScheme()
+
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: unstructuredScheme})
+	veleroapi.AddToScheme(unstructuredScheme)
+	corev1.AddToScheme(unstructuredScheme)
+
+	if err := k8sClient1.Create(context.Background(), &veleroNamespace); err != nil {
+		t.Errorf("cannot create ns %s ", err.Error())
+	}
 
 	rhacmBackupSchedule := *createBackupSchedule("backup-sch-to-error-restore", veleroNamespaceName).
-		schedule("backup-schedule").
+		schedule("0 8 * * *").
 		veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
 		object
 
-	veleroSchedules := initVeleroScheduleList(veleroapi.SchedulePhaseNew, "0 8 * * *")
+	veleroSchedules := initVeleroScheduleList(veleroNamespace.Name, veleroapi.SchedulePhaseNew, "0 8 * * *",
+		metav1.Duration{Duration: time.Second * 5})
 	for i := range veleroSchedules.Items {
 		veleroSchedule := &veleroSchedules.Items[i]
 		veleroSchedule.Namespace = veleroNamespaceName
-		k8sClient1.Create(context.Background(), veleroSchedule)
+		if err := k8sClient1.Create(context.Background(), veleroSchedule); err != nil {
+			t.Errorf("cannot create veleroSchedule %s ", err.Error())
+		}
 	}
 
-	type args struct {
+	type argsDelete struct {
 		ctx            context.Context
 		c              client.Client
 		backupSchedule *v1beta1.BackupSchedule
 		schedules      *veleroapi.ScheduleList
 	}
-	tests := []struct {
+
+	testsForDelete := []struct {
 		name string
-		args args
+		args argsDelete
 		want bool
 	}{
 		{
 			name: "velero schedules is nil",
-			args: args{
+			args: argsDelete{
 				ctx:            context.Background(),
 				c:              k8sClient1,
 				backupSchedule: &rhacmBackupSchedule,
@@ -479,7 +488,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 		},
 		{
 			name: "no velero schedules Items",
-			args: args{
+			args: argsDelete{
 				ctx:            context.Background(),
 				c:              k8sClient1,
 				backupSchedule: &rhacmBackupSchedule,
@@ -489,7 +498,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 		},
 		{
 			name: "failed to delete the schedule, returns error",
-			args: args{
+			args: argsDelete{
 				ctx:            context.Background(),
 				c:              k8sClient1,
 				backupSchedule: &rhacmBackupSchedule,
@@ -512,7 +521,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 		},
 		{
 			name: "successfully delete the schedule, returns no error",
-			args: args{
+			args: argsDelete{
 				ctx:            context.Background(),
 				c:              k8sClient1,
 				backupSchedule: &rhacmBackupSchedule,
@@ -521,7 +530,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 			want: false,
 		},
 	}
-	for _, tt := range tests {
+	for _, tt := range testsForDelete {
 
 		t.Run(tt.name, func(t *testing.T) {
 			if got := deleteVeleroSchedules(tt.args.ctx, tt.args.c,
@@ -533,6 +542,113 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 				)
 			}
 		})
+	}
+
+	veleroSchedulesUpdate := initVeleroScheduleList(veleroNamespaceName, veleroapi.SchedulePhaseNew, "0 8 * * *",
+		metav1.Duration{Duration: time.Second * 5})
+
+	type argsUpdate struct {
+		ctx               context.Context
+		c                 client.Client
+		backupSchedule    *v1beta1.BackupSchedule
+		schedules         *veleroapi.ScheduleList
+		resourcesToBackup []string
+	}
+
+	testsForSchedulesUpdateRequired := []struct {
+		name string
+		args argsUpdate
+		want bool
+	}{
+		{
+			name: "velero schedules is empty",
+			args: argsUpdate{
+				ctx:               context.Background(),
+				c:                 k8sClient1,
+				backupSchedule:    &rhacmBackupSchedule,
+				schedules:         &veleroapi.ScheduleList{},
+				resourcesToBackup: []string{},
+			},
+			want: false,
+		},
+		{
+			name: "velero schedules is not empty, but schedules cannot be updated, not found",
+			args: argsUpdate{
+				ctx:               context.Background(),
+				c:                 k8sClient1,
+				backupSchedule:    &rhacmBackupSchedule,
+				schedules:         veleroSchedulesUpdate,
+				resourcesToBackup: []string{},
+			},
+			want: true,
+		},
+		{
+			name: "velero schedules is not empty, schedules are updated",
+			args: argsUpdate{
+				ctx: context.Background(),
+				c:   k8sClient1,
+				backupSchedule: createBackupSchedule("acm", veleroNamespaceName).
+					schedule("0 6 * * *").
+					veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
+					object,
+				schedules:         veleroSchedulesUpdate,
+				resourcesToBackup: []string{},
+			},
+			want: true,
+		},
+		{
+			name: "velero schedules is not empty, schedules are updated and NO CRDs found",
+			args: argsUpdate{
+				ctx: context.Background(),
+				c:   k8sClient1,
+				backupSchedule: createBackupSchedule("acm", veleroNamespaceName).
+					schedule("0 8 * * *").
+					veleroTTL(metav1.Duration{Duration: time.Second * 5}).
+					object,
+				schedules:         veleroSchedulesUpdate,
+				resourcesToBackup: []string{},
+			},
+			want: true,
+		},
+		{
+			name: "velero schedules is not empty, schedules are NOT updated but new CRDs found",
+			args: argsUpdate{
+				ctx: context.Background(),
+				c:   k8sClient1,
+				backupSchedule: createBackupSchedule("acm", veleroNamespaceName).
+					schedule("0 8 * * *").
+					veleroTTL(metav1.Duration{Duration: time.Second * 5}).
+					object,
+				schedules:         veleroSchedulesUpdate,
+				resourcesToBackup: []string{"policy123.open-cluster-management.io"},
+			},
+			want: true,
+		},
+	}
+	for idx, tt := range testsForSchedulesUpdateRequired {
+
+		if idx == 2 {
+			// create schedules, they don't have the same ttl as the backupSchedule
+			for i := range veleroSchedulesUpdate.Items {
+				veleroSchedule := &veleroSchedulesUpdate.Items[i]
+				veleroSchedule.Namespace = veleroNamespaceName
+				if err := k8sClient1.Create(context.Background(), veleroSchedule); err != nil {
+					t.Errorf("cannot create veleroSchedule %s ", err.Error())
+				}
+			}
+		}
+
+		t.Run(tt.name, func(t *testing.T) {
+			if _, got, _ := isVeleroSchedulesUpdateRequired(tt.args.ctx, tt.args.c, tt.args.resourcesToBackup,
+				*tt.args.schedules, tt.args.backupSchedule); got != tt.want {
+				t.Errorf(
+					"isVeleroSchedulesUpdateRequired() = %v, want  %v",
+					got,
+					tt.want,
+				)
+			}
+		})
+
 	}
 	testEnv.Stop()
 }
