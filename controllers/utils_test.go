@@ -560,10 +560,8 @@ func Test_getHubIdentification(t *testing.T) {
 				t.Errorf("getHubIdentification() returns no error = %v, want %v and version=%v want=%v", err == nil, tt.err_nil, version, tt.want_msg)
 			}
 		})
-		if index == len(tests)-1 {
-			// clean up
-			testEnv.Stop()
-		}
 	}
+	// clean up
+	testEnv.Stop()
 
 }

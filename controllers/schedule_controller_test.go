@@ -510,7 +510,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				createdBackupSchedule.Status.VeleroScheduleResources.Spec.Template.TTL,
 			).Should(Equal(metav1.Duration{Duration: time.Hour * 72}))
 
-			// update schedule, it should trigger velero schedules deletion
+			// update schedule, it should NOT trigger velero schedules deletion
 			createdBackupSchedule.Spec.VeleroTTL = metav1.Duration{Duration: time.Hour * 150}
 			Expect(
 				k8sClient.
@@ -525,7 +525,22 @@ var _ = Describe("BackupSchedule controller", func() {
 				return createdBackupSchedule.Spec.VeleroTTL
 			}, timeout, interval).Should(BeIdenticalTo(metav1.Duration{Duration: time.Hour * 150}))
 
-			// check that the velero schedules are new - have now 150h for ttl
+			// delete one schedule, it should trigger velero schedules recreation
+			veleroSchedulesList := veleroapi.ScheduleList{}
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, &veleroSchedulesList, &client.ListOptions{})
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
+			k8sClient.Delete(ctx, &veleroSchedulesList.Items[1])
+			// count velero schedules, should be still len(veleroScheduleNames)
+			Eventually(func() int {
+				if err := k8sClient.List(ctx, &veleroSchedulesList, &client.ListOptions{}); err == nil {
+					return len(veleroSchedulesList.Items)
+				}
+				return 0
+			}, time.Second*65, interval).Should(BeNumerically("==", len(veleroScheduleNames)))
+
+			// check that the velero schedules have now 150h for ttl
 			Eventually(func() metav1.Duration {
 				err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
 				if err != nil {
@@ -538,7 +553,7 @@ var _ = Describe("BackupSchedule controller", func() {
 			}, timeout, interval).Should(BeIdenticalTo(metav1.Duration{Duration: time.Hour * 150}))
 
 			// count velero schedules, should be still len(veleroScheduleNames)
-			veleroSchedulesList := veleroapi.ScheduleList{}
+			//veleroSchedulesList := veleroapi.ScheduleList{}
 			Eventually(func() bool {
 				err := k8sClient.List(ctx, &veleroSchedulesList, &client.ListOptions{})
 				return err == nil
@@ -594,7 +609,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					return "unknown"
 				}
 				return string(createdBackupSchedule.Status.Phase)
-			}, timeout, interval).Should(BeIdenticalTo(string(v1beta1.SchedulePhaseBackupCollision)))
+			}, time.Second*65, interval).Should(BeIdenticalTo(string(v1beta1.SchedulePhaseBackupCollision)))
 
 			// new schedule backup
 			backupScheduleName3 := backupScheduleName + "-3"

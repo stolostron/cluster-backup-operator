@@ -151,12 +151,6 @@ func (r *BackupScheduleReconciler) Reconcile(
 		client.InNamespace(req.Namespace),
 		client.MatchingFields{scheduleOwnerKey: req.Name},
 	); err != nil {
-		scheduleLogger.Error(
-			err,
-			"unable to list velero schedules for schedule",
-			"namespace", req.Namespace,
-			"name", req.Name,
-		)
 		return ctrl.Result{}, err
 	}
 

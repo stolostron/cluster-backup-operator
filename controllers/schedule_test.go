@@ -352,6 +352,8 @@ func Test_getSchedulesWithUpdatedResources(t *testing.T) {
 			}
 		})
 	}
+	// clean up
+	testEnv.Stop()
 }
 
 func Test_isScheduleSpecUpdated(t *testing.T) {
