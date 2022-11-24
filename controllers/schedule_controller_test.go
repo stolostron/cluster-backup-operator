@@ -553,7 +553,6 @@ var _ = Describe("BackupSchedule controller", func() {
 			}, timeout, interval).Should(BeIdenticalTo(metav1.Duration{Duration: time.Hour * 150}))
 
 			// count velero schedules, should be still len(veleroScheduleNames)
-			//veleroSchedulesList := veleroapi.ScheduleList{}
 			Eventually(func() bool {
 				err := k8sClient.List(ctx, &veleroSchedulesList, &client.ListOptions{})
 				return err == nil

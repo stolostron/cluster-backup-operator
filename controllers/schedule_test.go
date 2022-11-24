@@ -559,6 +559,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 		name string
 		args argsUpdate
 		want bool
+		err  string
 	}{
 		{
 			name: "velero schedules is empty",
@@ -570,6 +571,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 				resourcesToBackup: []string{},
 			},
 			want: false,
+			err:  "",
 		},
 		{
 			name: "velero schedules is not empty, but schedules cannot be updated, not found",
@@ -581,6 +583,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 				resourcesToBackup: []string{},
 			},
 			want: true,
+			err:  `schedules.velero.io "acm-credentials-schedule" not found`,
 		},
 		{
 			name: "velero schedules is not empty, schedules are updated",
@@ -595,6 +598,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 				resourcesToBackup: []string{},
 			},
 			want: true,
+			err:  "",
 		},
 		{
 			name: "velero schedules is not empty, schedules are updated and NO CRDs found",
@@ -609,6 +613,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 				resourcesToBackup: []string{},
 			},
 			want: true,
+			err:  "",
 		},
 		{
 			name: "velero schedules is not empty, schedules are NOT updated but new CRDs found",
@@ -623,6 +628,22 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 				resourcesToBackup: []string{"policy123.open-cluster-management.io"},
 			},
 			want: true,
+			err:  "",
+		},
+		{
+			name: "velero schedules is not empty, schedules are NOT updated but new CRDs found error on update",
+			args: argsUpdate{
+				ctx: context.Background(),
+				c:   k8sClient1,
+				backupSchedule: createBackupSchedule("acm", veleroNamespaceName).
+					schedule("0 8 * * *").
+					veleroTTL(metav1.Duration{Duration: time.Second * 5}).
+					object,
+				schedules:         veleroSchedulesUpdate,
+				resourcesToBackup: []string{"policy456.open-cluster-management.io"},
+			},
+			want: true,
+			err:  `Operation cannot be fulfilled on schedules.velero.io "acm-resources-schedule": the object has been modified; please apply your changes to the latest version and try again`,
 		},
 	}
 	for idx, tt := range testsForSchedulesUpdateRequired {
@@ -638,13 +659,35 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 			}
 		}
 
+		if idx == len(testsForSchedulesUpdateRequired)-1 {
+			// update one schedule now so the code fails when it tries to update it with the new CRD
+			veleroSchedulesUpdate.Items[0].Spec.Template.IncludedResources = append(veleroSchedulesUpdate.Items[0].Spec.Template.IncludedResources,
+				"new-res")
+			if err := k8sClient1.Update(context.Background(), &veleroSchedulesUpdate.Items[0]); err != nil {
+				t.Errorf("cannot update veleroSchedule %s ", err.Error())
+			}
+		}
+
 		t.Run(tt.name, func(t *testing.T) {
-			if _, got, _ := isVeleroSchedulesUpdateRequired(tt.args.ctx, tt.args.c, tt.args.resourcesToBackup,
-				*tt.args.schedules, tt.args.backupSchedule); got != tt.want {
+			_, got, err := isVeleroSchedulesUpdateRequired(tt.args.ctx, tt.args.c, tt.args.resourcesToBackup,
+				*tt.args.schedules, tt.args.backupSchedule)
+			if got != tt.want {
 				t.Errorf(
 					"isVeleroSchedulesUpdateRequired() = %v, want  %v",
 					got,
 					tt.want,
+				)
+			}
+			if err == nil && tt.err != "" {
+				t.Errorf(
+					"isVeleroSchedulesUpdateRequired() = error is nil, want %v",
+					got,
+				)
+			}
+			if err != nil && tt.err == "" {
+				t.Errorf(
+					"isVeleroSchedulesUpdateRequired() error is %v, want no error",
+					err.Error(),
 				)
 			}
 		})
