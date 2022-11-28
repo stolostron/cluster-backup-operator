@@ -663,6 +663,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 			// update one schedule now so the code fails when it tries to update it with the new CRD
 			veleroSchedulesUpdate.Items[0].Spec.Template.IncludedResources = append(veleroSchedulesUpdate.Items[0].Spec.Template.IncludedResources,
 				"new-res")
+			// don't throw error if the update fails
 			k8sClient1.Update(context.Background(), &veleroSchedulesUpdate.Items[0])
 		}
 
