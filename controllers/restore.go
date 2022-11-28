@@ -36,6 +36,8 @@ const (
 	/* #nosec G101 -- This is a false positive */
 	activateLabel = "cluster.open-cluster-management.io/restore-auto-import-secret"
 	/* #nosec G101 -- This is a false positive */
+	keepAutoImportSecret = "managedcluster-import-controller.open-cluster-management.io/keeping-auto-import-secret"
+	/* #nosec G101 -- This is a false positive */
 	autoImportSecretName = "auto-import-secret"
 )
 
