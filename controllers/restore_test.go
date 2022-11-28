@@ -624,12 +624,9 @@ func Test_getVeleroBackupName(t *testing.T) {
 				t.Errorf("getVeleroBackupName() returns = %v, want %v", name, tt.want)
 			}
 		})
-		if index == len(tests)-1 {
-			// clean up
-			testEnv.Stop()
-		}
 	}
-
+	// clean up
+	testEnv.Stop()
 }
 
 func Test_isNewBackupAvailable(t *testing.T) {

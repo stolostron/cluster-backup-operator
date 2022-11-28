@@ -211,6 +211,21 @@ func (b *ScheduleHelper) scheduleLabels(labels map[string]string) *ScheduleHelpe
 	return b
 }
 
+func (b *ScheduleHelper) schedule(cronjob string) *ScheduleHelper {
+	b.object.Spec.Schedule = cronjob
+	return b
+}
+
+func (b *ScheduleHelper) phase(ph veleroapi.SchedulePhase) *ScheduleHelper {
+	b.object.Status.Phase = ph
+	return b
+}
+
+func (b *ScheduleHelper) ttl(duration metav1.Duration) *ScheduleHelper {
+	b.object.Spec.Template.TTL = duration
+	return b
+}
+
 // velero restore
 type RestoreHelper struct {
 	object *veleroapi.Restore
