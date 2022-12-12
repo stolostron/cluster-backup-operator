@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -703,6 +705,105 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 				tt.args.dr,
 				tt.args.mapping, &backupSchedule)
 		})
+	}
+	testEnv.Stop()
+
+}
+
+func Test_updateSecretsLabels(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	scheme1 := runtime.NewScheme()
+
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	clusterv1.AddToScheme(scheme1)
+	corev1.AddToScheme(scheme1)
+
+	labelName := backupCredsClusterLabel
+	labelValue := "clusterpool"
+	clsName := "managed1"
+
+	if err := k8sClient1.Create(context.Background(), createNamespace(clsName)); err != nil {
+		t.Errorf("cannot create ns %s ", err.Error())
+	}
+
+	hiveSecrets := corev1.SecretList{
+		Items: []corev1.Secret{
+			*createSecret(clsName+"-import", clsName, map[string]string{
+				labelName: labelValue,
+			}, nil, nil), // do not back up, name is cls-import
+			*createSecret(clsName+"-import-1", clsName, map[string]string{
+				labelName: labelValue,
+			}, nil, nil), // back it up
+			*createSecret(clsName+"-import-2", clsName, nil, nil, nil),               // back it up
+			*createSecret(clsName+"-bootstrap-test", clsName, nil, nil, nil),         // do not backup
+			*createSecret(clsName+"-some-other-secret-test", clsName, nil, nil, nil), // backup
+		},
+	}
+
+	type args struct {
+		ctx     context.Context
+		c       client.Client
+		secrets corev1.SecretList
+		prefix  string
+		lName   string
+		lValue  string
+	}
+	tests := []struct {
+		name          string
+		args          args
+		backupSecrets []string // what should be backed up
+	}{
+		{
+			name: "hive secrets 1",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				secrets: hiveSecrets,
+				lName:   labelName,
+				lValue:  labelValue,
+				prefix:  clsName,
+			},
+			backupSecrets: []string{"managed1-import-1", "managed1-import-2", "managed1-some-other-secret-test"},
+		},
+	}
+	for _, tt := range tests {
+		for index := range hiveSecrets.Items {
+			if err := k8sClient1.Create(context.Background(), &hiveSecrets.Items[index]); err != nil {
+				t.Errorf("cannot create %s ", err.Error())
+			}
+		}
+
+		t.Run(tt.name, func(t *testing.T) {
+			updateSecretsLabels(tt.args.ctx, k8sClient1,
+				tt.args.secrets,
+				tt.args.prefix,
+				tt.args.lName,
+				tt.args.lValue,
+			)
+		})
+
+		result := []string{}
+		for index := range hiveSecrets.Items {
+			secret := hiveSecrets.Items[index]
+			if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: secret.Name,
+				Namespace: secret.Namespace}, &secret); err != nil {
+				t.Errorf("cannot get secret %s ", err.Error())
+			}
+			if secret.GetLabels()[labelName] == labelValue {
+				// it was backed up
+				result = append(result, secret.Name)
+			}
+		}
+
+		if !reflect.DeepEqual(result, tt.backupSecrets) {
+			t.Errorf("updateSecretsLabels() = %v want %v", result, tt.backupSecrets)
+		}
 	}
 	testEnv.Stop()
 
