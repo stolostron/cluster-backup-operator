@@ -75,6 +75,8 @@ const (
             }
         ]
     }`
+
+	update_msg = "Updated secret %s in ns %s"
 )
 
 // the prepareForBackup task is executed before each run of a backup schedule
@@ -557,7 +559,7 @@ func updateMSAResources(
 			logger.Info(fmt.Sprintf("Attempt to update secret %s in ns %s", secret.Name, secret.Namespace))
 
 			if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err == nil {
-				logger.Info(fmt.Sprintf("Updated secret %s in ns %s", secret.Name, secret.Namespace))
+				logger.Info(fmt.Sprintf(update_msg, secret.Name, secret.Namespace))
 			}
 		}
 	}
@@ -743,7 +745,7 @@ func updateSecretsLabels(ctx context.Context,
 				msg := fmt.Sprintf("Updating secret %s in ns %s, removing label %s", secret.Name, secret.Namespace, labelName)
 				logger.Info(msg)
 				if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err == nil {
-					logger.Info(fmt.Sprintf("Updated secret %s in ns %s", secret.Name, secret.Namespace))
+					logger.Info(fmt.Sprintf(update_msg, secret.Name, secret.Namespace))
 				}
 			}
 			continue
@@ -784,7 +786,7 @@ func updateSecret(ctx context.Context,
 			return true
 		}
 		if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err == nil {
-			logger.Info(fmt.Sprintf("Updated secret %s in ns %s", secret.Name, secret.Namespace))
+			logger.Info(fmt.Sprintf(update_msg, secret.Name, secret.Namespace))
 		}
 		// secret needs refresh
 		return true
