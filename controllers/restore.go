@@ -756,4 +756,22 @@ func setOptionalProperties(
 			acmRestore.Spec.Hooks.Resources...,
 		)
 	}
+	// allow excluding namespaces
+	if acmRestore.Spec.ExcludedNamespaces != nil {
+
+		for i := range acmRestore.Spec.ExcludedNamespaces {
+			veleroRestore.Spec.ExcludedNamespaces = appendUnique(veleroRestore.Spec.ExcludedNamespaces,
+				acmRestore.Spec.ExcludedNamespaces[i])
+		}
+
+	}
+	// allow excluding resources
+	if acmRestore.Spec.ExcludedResources != nil {
+
+		for i := range acmRestore.Spec.ExcludedResources {
+			veleroRestore.Spec.ExcludedResources = appendUnique(veleroRestore.Spec.ExcludedResources,
+				acmRestore.Spec.ExcludedResources[i])
+		}
+
+	}
 }

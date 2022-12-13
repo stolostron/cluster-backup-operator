@@ -337,6 +337,16 @@ func (b *ACMRestoreHelper) hookResources(res []veleroapi.RestoreResourceHookSpec
 	return b
 }
 
+func (b *ACMRestoreHelper) excludedResources(resources []string) *ACMRestoreHelper {
+	b.object.Spec.ExcludedResources = resources
+	return b
+}
+
+func (b *ACMRestoreHelper) excludedNamespaces(nspaces []string) *ACMRestoreHelper {
+	b.object.Spec.ExcludedNamespaces = nspaces
+	return b
+}
+
 // backup schedule
 type BackupScheduleHelper struct {
 	object *v1beta1.BackupSchedule

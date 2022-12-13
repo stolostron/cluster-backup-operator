@@ -116,6 +116,18 @@ type RestoreSpec struct {
 	// velero option -  Hooks represent custom behaviors that should be executed during or post restore.
 	// +optional
 	Hooks veleroapi.RestoreHooks `json:"hooks,omitempty"`
+
+	// ExcludedNamespaces contains a list of namespaces that are not
+	// included in the restore.
+	// +optional
+	// +nullable
+	ExcludedNamespaces []string `json:"excludedNamespaces,omitempty"`
+
+	// ExcludedResources is a slice of resource names that are not
+	// included in the restore.
+	// +optional
+	// +nullable
+	ExcludedResources []string `json:"excludedResources,omitempty"`
 }
 
 // RestoreStatus defines the observed state of Restore

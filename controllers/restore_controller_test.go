@@ -202,6 +202,8 @@ var _ = Describe("Basic Restore controller", func() {
 			hookResources([]veleroapi.RestoreResourceHookSpec{
 				veleroapi.RestoreResourceHookSpec{Name: "hookName"},
 			}).
+			excludedResources([]string{"res1", "res2"}).
+			excludedNamespaces([]string{"ns1", "ns2"}).
 			veleroResourcesBackupName(veleroResourcesBackupName).object
 	})
 
@@ -248,6 +250,10 @@ var _ = Describe("Basic Restore controller", func() {
 				Should(BeIdenticalTo("webhook"))
 			Expect(veleroRestores.Items[0].Spec.Hooks.Resources[0].Name).Should(
 				BeIdenticalTo("hookName"))
+			Expect(veleroRestores.Items[0].Spec.ExcludedNamespaces).Should(
+				ContainElement("ns1"))
+			Expect(veleroRestores.Items[0].Spec.ExcludedResources).Should(
+				ContainElement("res1"))
 			//
 			_, found := find(backupNames, veleroRestores.Items[0].Spec.BackupName)
 			Expect(found).Should(BeTrue())
