@@ -737,6 +737,12 @@ func setOptionalProperties(
 	acmRestore *v1beta1.Restore,
 	veleroRestore *veleroapi.Restore,
 ) {
+	// set includeClusterResources for all restores except credentials
+	if key == Resources || key == ManagedClusters || key == ResourcesGeneric {
+		var clusterResource bool = true
+		veleroRestore.Spec.IncludeClusterResources = &clusterResource
+	}
+
 	// update existing resources if part of the new backup
 	veleroRestore.Spec.ExistingResourcePolicy = veleroapi.PolicyTypeUpdate
 
