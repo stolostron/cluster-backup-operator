@@ -344,6 +344,10 @@ func createMSA(
 ) (bool, bool, error) {
 
 	logger := log.FromContext(ctx)
+
+	// attempt to create ManifestWork to push the role binding, if not created already
+	createManifestWork(ctx, c, managedClusterName)
+
 	secretsGeneratedNow := false
 
 	//check if MSA exists
@@ -409,8 +413,7 @@ func createMSA(
 		if _, err := dr.Namespace(managedClusterName).Create(ctx, msaRC, v1.CreateOptions{}); err == nil {
 			logger.Info(fmt.Sprintf("Created ManagedServiceAccount for cluster =%s", managedClusterName))
 		}
-		// create ManifestWork to push the role binding
-		createManifestWork(ctx, c, managedClusterName)
+
 	}
 
 	return secretsGeneratedNow, false, nil
