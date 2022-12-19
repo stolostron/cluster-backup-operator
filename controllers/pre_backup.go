@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/labels"
@@ -29,6 +30,8 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 )
+
+const update_msg = "Updated secret %s in ns %s"
 
 // the prepareForBackup task is executed before each run of a backup schedule
 // any settings that need to be applied to the resources before the backup starts, are being called here
@@ -158,8 +161,28 @@ func updateSecretsLabels(ctx context.Context,
 	labelName string,
 	labelValue string,
 ) {
+	logger := log.FromContext(ctx)
+
 	for s := range secrets.Items {
 		secret := secrets.Items[s]
+
+		//exclude import secrets
+		if secret.Name == secret.Namespace+"-import" {
+			// remove backup label if set by previus code
+			// we don't want hive import secrets to be backed up
+			if secret.GetLabels()[labelName] == labelValue {
+				// remove this label
+				delete(secret.GetLabels(), labelName)
+
+				msg := fmt.Sprintf("Updating secret %s in ns %s, removing label %s", secret.Name, secret.Namespace, labelName)
+				logger.Info(msg)
+				if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err == nil {
+					logger.Info(fmt.Sprintf(update_msg, secret.Name, secret.Namespace))
+				}
+			}
+			continue
+		}
+
 		if strings.HasPrefix(secret.Name, prefix) &&
 			!strings.Contains(secret.Name, "-bootstrap-") {
 			updateSecret(ctx, c, secret, labelName, labelValue, true)
@@ -194,8 +217,9 @@ func updateSecret(ctx context.Context,
 			// secret needs refresh
 			return true
 		}
-		if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err != nil {
-			logger.Error(err, "failed to update secret")
+		logger.Info(fmt.Sprintf("Attempt to update secret %s in ns %s", secret.Name, secret.Namespace))
+		if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err == nil {
+			logger.Info(fmt.Sprintf(update_msg, secret.Name, secret.Namespace))
 		}
 		// secret needs refresh
 		return true
