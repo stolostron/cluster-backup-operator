@@ -49,6 +49,7 @@ const (
 		" This is a backup collision with current cluster [%s] backup." +
 		" Review and resolve the collision then create a new BackupSchedule resource to " +
 		" resume backups from this cluster."
+	update_msg = "Updated secret %s in ns %s"
 )
 
 func updateScheduleStatus(
@@ -349,8 +350,28 @@ func updateSecretsLabels(ctx context.Context,
 	labelName string,
 	labelValue string,
 ) {
+	logger := log.FromContext(ctx)
+
 	for s := range secrets.Items {
 		secret := secrets.Items[s]
+
+		//exclude import secrets
+		if secret.Name == secret.Namespace+"-import" {
+			// remove backup label if set by previus code
+			// we don't want hive import secrets to be backed up
+			if secret.GetLabels()[labelName] == labelValue {
+				// remove this label
+				delete(secret.GetLabels(), labelName)
+
+				msg := fmt.Sprintf("Updating secret %s in ns %s, removing label %s", secret.Name, secret.Namespace, labelName)
+				logger.Info(msg)
+				if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err == nil {
+					logger.Info(fmt.Sprintf(update_msg, secret.Name, secret.Namespace))
+				}
+			}
+			continue
+		}
+
 		if strings.HasPrefix(secret.Name, prefix) &&
 			!strings.Contains(secret.Name, "-bootstrap-") {
 			updateSecret(ctx, c, secret, labelName, labelValue)
