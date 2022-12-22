@@ -686,7 +686,7 @@ var _ = Describe("BackupSchedule controller", func() {
 			}, timeout, interval).Should(BeTrue())
 			Expect(
 				createdBackupScheduleACM.Status.LastMessage,
-			).Should(ContainSubstring("must be created in the velero namespace"))
+			).Should(ContainSubstring("location is not available"))
 
 			// backup with invalid cron job schedule, should fail validation
 			invalidCronExpBackupName := backupScheduleName + "-invalid-cron-exp"

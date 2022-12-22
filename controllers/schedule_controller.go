@@ -288,8 +288,9 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 
 	// look for available VeleroStorageLocation
 	// and keep track of the velero oadp namespace
-	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(
-		*veleroStorageLocations,
+	isValidStorageLocation := isValidStorageLocationDefined(
+		veleroStorageLocations.Items,
+		req.Namespace,
 	)
 
 	// if no valid storage location found wait for valid value
@@ -298,18 +299,6 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 			"Check velero.io.BackupStorageLocation and validate storage credentials."
 		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
 			msg, true)
-	}
-
-	// return error if the backup resource is not in the same namespace with velero
-	if veleroNamespace != req.Namespace {
-		msg := fmt.Sprintf(
-			"Schedule resource [%s/%s] must be created in the velero namespace [%s]",
-			req.Namespace,
-			req.Name,
-			veleroNamespace,
-		)
-		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
-			msg, false)
 	}
 
 	// check MSA status for backup schedules

@@ -864,8 +864,7 @@ var _ = Describe("Basic Restore controller", func() {
 				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
 				Expect(
 					createdRestore.Status.LastMessage,
-				).Should(BeIdenticalTo("Restore resource [acm-ns-1/rhacm-restore-1-new] " +
-					"must be created in the velero namespace [velero-restore-ns-5]"))
+				).Should(BeIdenticalTo("Backup storage location not available in namespace acm-ns-1. Check velero.io.BackupStorageLocation and validate storage credentials."))
 			},
 		)
 	})

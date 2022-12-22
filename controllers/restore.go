@@ -449,26 +449,14 @@ func validateStorageSettings(
 
 	// look for available VeleroStorageLocation
 	// and keep track of the velero oadp namespace
-	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(
-		*veleroStorageLocations,
+	isValidStorageLocation := isValidStorageLocationDefined(
+		veleroStorageLocations.Items,
+		namespace,
 	)
 
 	if !isValidStorageLocation {
 		msg = "Backup storage location not available in namespace " + namespace +
 			". Check velero.io.BackupStorageLocation and validate storage credentials."
-
-		return msg, retry
-	}
-
-	// return error if the cluster restore file is not in the same namespace with velero
-	if veleroNamespace != namespace {
-		msg = fmt.Sprintf(
-			"Restore resource [%s/%s] must be created in the velero namespace [%s]",
-			namespace,
-			name,
-			veleroNamespace,
-		)
-		retry = false
 
 		return msg, retry
 	}
