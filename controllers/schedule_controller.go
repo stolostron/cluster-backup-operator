@@ -289,7 +289,8 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	// look for available VeleroStorageLocation
 	// and keep track of the velero oadp namespace
 	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(
-		*veleroStorageLocations,
+		veleroStorageLocations.Items,
+		req.Namespace,
 	)
 
 	// if no valid storage location found wait for valid value

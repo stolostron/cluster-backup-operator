@@ -138,17 +138,19 @@ func (a SortResourceType) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 
 // check if we have a valid storage location object
 func isValidStorageLocationDefined(
-	veleroStorageLocations veleroapi.BackupStorageLocationList,
+	veleroStorageLocations []veleroapi.BackupStorageLocation,
+	preferredNs string,
 ) (bool, string) {
 	isValidStorageLocation := false
 	veleroNamespace := ""
-	for i := range veleroStorageLocations.Items {
-		if veleroStorageLocations.Items[i].OwnerReferences != nil &&
-			veleroStorageLocations.Items[i].Status.Phase == veleroapi.BackupStorageLocationPhaseAvailable {
-			for _, ref := range veleroStorageLocations.Items[i].OwnerReferences {
+	for i := range veleroStorageLocations {
+		if veleroStorageLocations[i].Namespace == preferredNs &&
+			veleroStorageLocations[i].OwnerReferences != nil &&
+			veleroStorageLocations[i].Status.Phase == veleroapi.BackupStorageLocationPhaseAvailable {
+			for _, ref := range veleroStorageLocations[i].OwnerReferences {
 				if ref.Kind != "" {
 					isValidStorageLocation = true
-					veleroNamespace = veleroStorageLocations.Items[i].Namespace
+					veleroNamespace = veleroStorageLocations[i].Namespace
 					break
 				}
 			}

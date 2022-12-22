@@ -450,7 +450,8 @@ func validateStorageSettings(
 	// look for available VeleroStorageLocation
 	// and keep track of the velero oadp namespace
 	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(
-		*veleroStorageLocations,
+		veleroStorageLocations.Items,
+		namespace,
 	)
 
 	if !isValidStorageLocation {
