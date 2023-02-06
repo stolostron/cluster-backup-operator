@@ -1,0 +1,84 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: backup-oadp-hdr-app
+  namespace: default
+  annotations:
+    policy.open-cluster-management.io/categories: CA Security Assessment and Authorization
+    policy.open-cluster-management.io/controls: CA-2 Security Assessments, CA-7 Continuous Monitoring
+    policy.open-cluster-management.io/standards: NIST SP 800-53
+spec:
+  disabled: false
+  remediationAction: inform
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: check-backup-resource-ns
+        spec:
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: Namespace
+                metadata:
+                  name: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
+          remediationAction: inform
+          severity: high
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: check-schedule-resource
+        spec:
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: velero.io/v1
+                kind: Schedule
+                metadata:
+                  name: 'app-backup-schedule'
+                  namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
+                spec:
+                  schedule: '{{hub fromConfigMap "" "hdr-app-configmap" "backup.schedule" hub}}' 
+                  template:
+                    includedNamespaces:
+                    - pacman-ns
+                    - helloworld-pv-ns
+                    ttl: '{{hub fromConfigMap "" "hdr-app-configmap" "backup.ttl" hub}}' 
+                status:
+                  phase: Enabled                
+          remediationAction: enforce
+          severity: high
+---
+apiVersion: apps.open-cluster-management.io/v1
+kind: PlacementRule
+metadata:
+  name: backup-oadp-hdr-app-placement
+  namespace: default
+spec:
+  clusterSelector:
+    matchExpressions:
+      - key: acm-backup
+        operator: In
+        values:
+          - acm-hdr-app
+      - key: vendor
+        operator: In
+        values:
+          - OpenShift
+---
+apiVersion: policy.open-cluster-management.io/v1
+kind: PlacementBinding
+metadata:
+  name: backup-oadp-hdr-app-placement-binding
+  namespace: default
+placementRef:
+  name: backup-oadp-hdr-app-placement
+  apiGroup: apps.open-cluster-management.io
+  kind: PlacementRule
+subjects:
+  - name: backup-oadp-hdr-app
+    apiGroup: policy.open-cluster-management.io
+    kind: Policy

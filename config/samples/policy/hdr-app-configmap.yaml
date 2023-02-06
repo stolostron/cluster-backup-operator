@@ -38,5 +38,11 @@ data:
   dpa.aws.backup.config.region: <us-east-1>
   dpa.aws.snapshot.config.region: <us-east-1>
 # end AWS
+###### backup schedule resource ###
+  backup.schedule: 0 */1 * * *
+  backup.ttl: 240h0m0s
+###### end backup schedule resource ###
+
+
 
 
