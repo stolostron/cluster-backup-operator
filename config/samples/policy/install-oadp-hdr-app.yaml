@@ -160,7 +160,7 @@ metadata:
 spec:
   clusterSelector:
     matchExpressions:
-      - key: protected-by
+      - key: acm-backup
         operator: In
         values:
           - acm-hdr-app
