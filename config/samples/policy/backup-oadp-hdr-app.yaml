@@ -15,7 +15,7 @@ spec:
         apiVersion: policy.open-cluster-management.io/v1
         kind: ConfigurationPolicy
         metadata:
-          name: check-backup-resource-ns
+          name: check-ns-backup
         spec:
           object-templates:
             - complianceType: musthave
