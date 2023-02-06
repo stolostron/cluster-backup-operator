@@ -1,0 +1,184 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: install-oadp-hdr-app
+  namespace: default
+  annotations:
+    policy.open-cluster-management.io/categories: CA Security Assessment and Authorization
+    policy.open-cluster-management.io/controls: CA-2 Security Assessments, CA-7 Continuous Monitoring
+    policy.open-cluster-management.io/standards: NIST SP 800-53
+spec:
+  disabled: false
+  remediationAction: inform
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: check-ns-oadp-operators
+        spec:
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: Namespace
+                metadata:
+                  name: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
+          remediationAction: inform
+          severity: high
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: check-oadp-operator-group
+        spec:
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: operators.coreos.com/v1
+                kind: OperatorGroup
+                metadata:
+                  name: redhat-oadp-operator-group
+                  namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
+                spec:
+                  targetNamespaces:
+                    - '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
+          remediationAction: enforce
+          severity: high
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: check-oadp-operator-subscription
+        spec:
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: operators.coreos.com/v1alpha1
+                kind: Subscription
+                metadata:
+                  name: redhat-oadp-operator-subscription
+                  namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
+                spec:
+                  name: '{{hub fromConfigMap "" "hdr-app-configmap" "subscriptionName" hub}}'
+                  channel: '{{hub fromConfigMap "" "hdr-app-configmap" "channel" hub}}'
+                  installPlanApproval: Automatic
+                  source: redhat-operators
+                  sourceNamespace: openshift-marketplace
+          remediationAction: enforce
+          severity: high
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: check-backup-storage-credentials-secret
+        spec:
+          object-templates:
+          - complianceType: musthave
+            objectDefinition:
+              apiVersion: v1
+              data:
+                cloud: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.aws.backup.cloud.credentials" | base64enc hub}}'
+              kind: Secret
+              metadata:
+                name: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.backup.cloud.credentials.name" hub}}'
+                namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
+              type: Opaque
+          remediationAction: enforce
+          severity: high
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: check-oadp-dpa-resource
+        spec:
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: oadp.openshift.io/v1alpha1
+                kind: DataProtectionApplication
+                metadata:
+                  name: '{{hub fromConfigMap "" "hdr-app-configmap" "dpaName" hub}}'
+                  namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
+                spec:
+                  backupLocations:
+                    - velero:
+                        default: true
+                        credential:
+                          key: cloud
+                          name: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.backup.cloud.credentials.name" hub}}'
+                        config: 
+                          profile: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.aws.backup.profile.name" hub}}'
+                          region: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.aws.backup.config.region" hub}}'
+                        objectStorage:
+                          bucket: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.objectStorage.bucket" hub}}'
+                          prefix: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.objectStorage.prefix" hub}}'
+                        provider: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.provider" hub}}'
+                  configuration:
+                    restic:
+                      enable: false
+                    velero:
+                      defaultPlugins:
+                        - openshift
+                        - '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.provider" hub}}'
+                  snapshotLocations:
+                    - velero:
+                        config: 
+                          profile: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.aws.snapshot.profile.name" hub}}'
+                          region: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.aws.snapshot.config.region" hub}}'
+                        provider: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.provider" hub}}'
+                status:
+                  conditions:
+                    - reason: Complete
+                      type: Reconciled
+          remediationAction: enforce
+          severity: high
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: check-backup-storage-location-resource
+        spec:
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: velero.io/v1
+                kind: BackupStorageLocation
+                metadata:
+                  name: '{{hub fromConfigMap "" "hdr-app-configmap" "dpaName" hub}}-1'
+                  namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
+                status:
+                  phase: Available                
+          remediationAction: enforce
+          severity: high
+---
+apiVersion: apps.open-cluster-management.io/v1
+kind: PlacementRule
+metadata:
+  name: install-oadp-hdr-app-placement
+  namespace: default
+spec:
+  clusterSelector:
+    matchExpressions:
+      - key: protected-by
+        operator: In
+        values:
+          - acm-hdr-app
+      - key: vendor
+        operator: In
+        values:
+          - OpenShift
+---
+apiVersion: policy.open-cluster-management.io/v1
+kind: PlacementBinding
+metadata:
+  name: install-oadp-hdr-app-placement-binding
+  namespace: default
+placementRef:
+  name: install-oadp-hdr-app-placement
+  apiGroup: apps.open-cluster-management.io
+  kind: PlacementRule
+subjects:
+  - name: install-oadp-hdr-app
+    apiGroup: policy.open-cluster-management.io
+    kind: Policy
