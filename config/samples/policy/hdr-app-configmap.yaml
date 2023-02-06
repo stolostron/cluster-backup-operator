@@ -10,8 +10,8 @@ data:
   dpaName: dpa-app #DPA resource name
   dpa.provider: aws
   dpa.backup.cloud.credentials.name: cloud-credentials
-  dpa.objectStorage.bucket: <bucket_name>
-  dpa.objectStorage.prefix: <folder_in_bucket>
+  dpa.objectStorage.bucket: velero-backup-acm-vb
+  dpa.objectStorage.prefix: test
 ## AZURE
   dpa.azure.backup.cloud.credentials: |
     [backupStorage]
@@ -25,18 +25,15 @@ data:
   dpa.azure.backupLocation.storageAccountKeyEnvVar: AZURE_STORAGE_ACCOUNT_ACCESS_KEY
 ## end AZURE
 ##AWS
-  dpa.aws.backup.profile.name: backupStorage
-  dpa.aws.snapshot.profile.name: volumeSnapshot
+  dpa.aws.backup.profile.name: default
+  dpa.aws.snapshot.profile.name: default
   # should use above dpa.aws.backup.profile.name and dpa.aws.storage.profile.name
   dpa.aws.backup.cloud.credentials: |
-    [backupStorage]
-    aws_access_key_id=<aws_access_key_id>
-    aws_secret_access_key=<aws_secret_access_key>
-    [volumeSnapshot]
-    aws_access_key_id=<aws_access_key_id>
-    aws_secret_access_key=<aws_secret_access_key>
-  dpa.aws.backup.config.region: <us-east-1>
-  dpa.aws.snapshot.config.region: <us-east-1>
+    [default]
+    aws_access_key_id=id
+    aws_secret_access_key=key
+  dpa.aws.backup.config.region: us-east-1
+  dpa.aws.snapshot.config.region: us-east-1
 # end AWS
 ###### backup schedule resource ###
   backup.schedule: 0 */1 * * *
