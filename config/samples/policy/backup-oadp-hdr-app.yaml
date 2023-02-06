@@ -43,6 +43,7 @@ spec:
                 spec:
                   schedule: '{{hub fromConfigMap "" "hdr-app-configmap" "backup.schedule" hub}}' 
                   template:
+                    snapshotVolumes: true
                     includedNamespaces:
                     - pacman-ns
                     - helloworld-pv-ns
