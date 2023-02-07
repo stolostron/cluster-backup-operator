@@ -7,7 +7,7 @@ metadata:
   name: hdr-app-configmap
   namespace: default
 data:
-  backupNS: acm-app-backup #should not use open-cluster-managemenet-backup
+  backupNS: acm-app-backup # backupNS should NOT be open-cluster-managemenet-backup
   channel: stable-1.1
   subscriptionName: redhat-oadp-operator
 
@@ -30,7 +30,7 @@ data:
     [default]
     aws_access_key_id=<id>
     aws_secret_access_key=<key>
-  dpa.aws.backup.config.region: <us-east-1> # change this if you want to backup resources in a different region
+  dpa.aws.backup.config.region: <region> # for example us-east-1
 # end AWS
 
 ## AZURE
