@@ -108,7 +108,7 @@ spec:
                           key: cloud
                           name: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.backup.cloud.credentials.name" hub}}'
                         config: 
-                          profile: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.aws.backup.profile.name" hub}}'
+                          profile: default
                           region: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.aws.backup.config.region" hub}}'
                         objectStorage:
                           bucket: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.objectStorage.bucket" hub}}'
@@ -124,8 +124,8 @@ spec:
                   snapshotLocations:
                     - velero:
                         config: 
-                          profile: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.aws.snapshot.profile.name" hub}}'
-                          region: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.aws.snapshot.config.region" hub}}'
+                          profile: default
+                          region: '{{ fromClusterClaim "region.open-cluster-management.io" }}'
                         provider: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.provider" hub}}'
                 status:
                   conditions:

@@ -38,15 +38,17 @@ spec:
                 apiVersion: velero.io/v1
                 kind: Schedule
                 metadata:
-                  name: 'app-backup-schedule'
+                  name: 'acm-app-schedule-{{ fromClusterClaim "name" }}'
                   namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
+                  labels:
+                    cluster-id: '{{ fromClusterClaim "id.openshift.io" }}'
+                    cluster-name: '{{ fromClusterClaim "name" }}'
                 spec:
                   schedule: '{{hub fromConfigMap "" "hdr-app-configmap" "backup.schedule" hub}}' 
                   template:
                     snapshotVolumes: true
-                    includedNamespaces:
-                    - pacman-ns
-                    - helloworld-pv-ns
+                    includedNamespaces: 
+                    - '{{hub fromConfigMap "" "hdr-app-configmap" "includedNamespaces" hub}}' 
                     ttl: '{{hub fromConfigMap "" "hdr-app-configmap" "backup.ttl" hub}}' 
                 status:
                   phase: Enabled                

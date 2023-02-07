@@ -25,19 +25,18 @@ data:
   dpa.azure.backupLocation.storageAccountKeyEnvVar: AZURE_STORAGE_ACCOUNT_ACCESS_KEY
 ## end AZURE
 ##AWS
-  dpa.aws.backup.profile.name: default
-  dpa.aws.snapshot.profile.name: default
-  # should use above dpa.aws.backup.profile.name and dpa.aws.storage.profile.name
   dpa.aws.backup.cloud.credentials: |
     [default]
     aws_access_key_id=id
     aws_secret_access_key=key
   dpa.aws.backup.config.region: us-east-1
-  dpa.aws.snapshot.config.region: us-east-1
 # end AWS
 ###### backup schedule resource ###
+####################################
   backup.schedule: 0 */1 * * *
   backup.ttl: 240h0m0s
+  includedNamespaces: pacman-ns
+######################################
 ###### end backup schedule resource ###
 
 
