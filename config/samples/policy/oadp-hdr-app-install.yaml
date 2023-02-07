@@ -123,6 +123,14 @@ spec:
                     restic:
                       enable: false
                     velero:
+                      podConfig:
+                        resourceAllocations:
+                          limits:
+                            cpu: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.velero.limits.cpu" hub}}'
+                            memory: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.velero.limits.memory" hub}}'
+                          requests:
+                            cpu: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.velero.requests.cpu" hub}}'
+                            memory: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.velero.requests.memory" hub}}'                   
                       defaultPlugins:
                         - openshift
                         - '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.provider" hub}}'

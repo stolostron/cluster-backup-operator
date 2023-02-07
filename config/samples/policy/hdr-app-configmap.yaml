@@ -10,11 +10,20 @@ data:
   backupNS: acm-app-backup #should not use open-cluster-managemenet-backup
   channel: stable-1.1
   subscriptionName: redhat-oadp-operator
+
+## DPA resource configuration
+#
   dpaName: dpa-app #DPA resource name
   dpa.provider: aws
   dpa.backup.cloud.credentials.name: cloud-credentials
   dpa.objectStorage.bucket: <bucket>
   dpa.objectStorage.prefix: <folder>
+  ## velero resource limits
+  dpa.velero.limits.cpu: "2"
+  dpa.velero.limits.memory: 1Gi
+  dpa.velero.requests.cpu: 500m
+  dpa.velero.requests.memory: 256Mi
+##
 
 ##AWS
   dpa.aws.backup.cloud.credentials: |
