@@ -149,7 +149,7 @@ spec:
                   namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
                 status:
                   phase: Available                
-          remediationAction: enforce
+          remediationAction: inform
           severity: high
 ---
 apiVersion: apps.open-cluster-management.io/v1
