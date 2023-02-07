@@ -47,8 +47,7 @@ spec:
                   schedule: '{{hub fromConfigMap "" "hdr-app-configmap" "backup.schedule" hub}}' 
                   template:
                     snapshotVolumes: true
-                    includedNamespaces: 
-                    - '{{hub fromConfigMap "" "hdr-app-configmap" "includedNamespaces" hub}}' 
+                    includedNamespaces: '{{hub fromConfigMap "" "hdr-app-configmap" "includedNamespaces" | toLiteral hub}}' 
                     ttl: '{{hub fromConfigMap "" "hdr-app-configmap" "backup.ttl" hub}}' 
                 status:
                   phase: Enabled                

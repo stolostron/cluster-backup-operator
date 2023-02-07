@@ -29,13 +29,13 @@ data:
     [default]
     aws_access_key_id=id
     aws_secret_access_key=key
-  dpa.aws.backup.config.region: us-east-1
+  dpa.aws.backup.config.region: us-east-1 # change this if you want to backup resources in a different region
 # end AWS
 ###### backup schedule resource ###
 ####################################
   backup.schedule: 0 */1 * * *
   backup.ttl: 240h0m0s
-  includedNamespaces: pacman-ns
+  includedNamespaces: "[\"pacman-ns\", \"helloworld-pv-ns\"]" # list here all apps ns you want to backup
 ######################################
 ###### end backup schedule resource ###
 
