@@ -1,3 +1,9 @@
+# This policy creates a velero schedule to all OpenShift managed clusters 
+# with a label "acm-backup=acm-hdr-app". The schedule is used to backup applications resources and PVs
+# The schedule uses the includedNamespaces property to specify the namespaces for the applications to backup 
+#
+# Note that it is set to enforce by default.
+#
 apiVersion: policy.open-cluster-management.io/v1
 kind: Policy
 metadata:
@@ -9,7 +15,7 @@ metadata:
     policy.open-cluster-management.io/standards: NIST SP 800-53
 spec:
   disabled: false
-  remediationAction: inform
+  remediationAction: enforce
   policy-templates:
     - objectDefinition:
         apiVersion: policy.open-cluster-management.io/v1
