@@ -10,8 +10,17 @@ data:
   dpaName: dpa-app #DPA resource name
   dpa.provider: aws
   dpa.backup.cloud.credentials.name: cloud-credentials
-  dpa.objectStorage.bucket: velero-backup-acm-vb
-  dpa.objectStorage.prefix: test
+  dpa.objectStorage.bucket: <bucket>
+  dpa.objectStorage.prefix: <folder>
+
+##AWS
+  dpa.aws.backup.cloud.credentials: |
+    [default]
+    aws_access_key_id=<id>
+    aws_secret_access_key=<key>
+  dpa.aws.backup.config.region: <us-east-1> # change this if you want to backup resources in a different region
+# end AWS
+
 ## AZURE
   dpa.azure.backup.cloud.credentials: |
     [backupStorage]
@@ -24,13 +33,7 @@ data:
   dpa.azure.backupLocation.subscriptionId: <azure_subscription_id>
   dpa.azure.backupLocation.storageAccountKeyEnvVar: AZURE_STORAGE_ACCOUNT_ACCESS_KEY
 ## end AZURE
-##AWS
-  dpa.aws.backup.cloud.credentials: |
-    [default]
-    aws_access_key_id=id
-    aws_secret_access_key=key
-  dpa.aws.backup.config.region: us-east-1 # change this if you want to backup resources in a different region
-# end AWS
+
 ###### backup schedule resource ###
 ####################################
   backup.schedule: 0 */1 * * *
