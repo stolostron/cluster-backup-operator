@@ -1,7 +1,7 @@
 apiVersion: policy.open-cluster-management.io/v1
 kind: Policy
 metadata:
-  name: backup-oadp-hdr-app
+  name: oadp-hdr-app-backup
   namespace: default
   annotations:
     policy.open-cluster-management.io/categories: CA Security Assessment and Authorization
@@ -58,7 +58,7 @@ spec:
 apiVersion: apps.open-cluster-management.io/v1
 kind: PlacementRule
 metadata:
-  name: backup-oadp-hdr-app-placement
+  name: oadp-hdr-app-backup-placement
   namespace: default
 spec:
   clusterSelector:
@@ -75,13 +75,13 @@ spec:
 apiVersion: policy.open-cluster-management.io/v1
 kind: PlacementBinding
 metadata:
-  name: backup-oadp-hdr-app-placement-binding
+  name: oadp-hdr-app-backup-placement-binding
   namespace: default
 placementRef:
-  name: backup-oadp-hdr-app-placement
+  name: oadp-hdr-app-backup-placement
   apiGroup: apps.open-cluster-management.io
   kind: PlacementRule
 subjects:
-  - name: backup-oadp-hdr-app
+  - name: oadp-hdr-app-backup
     apiGroup: policy.open-cluster-management.io
     kind: Policy

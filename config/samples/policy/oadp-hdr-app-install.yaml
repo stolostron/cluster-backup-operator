@@ -1,7 +1,7 @@
 apiVersion: policy.open-cluster-management.io/v1
 kind: Policy
 metadata:
-  name: install-oadp-hdr-app
+  name: oadp-hdr-app-install
   namespace: default
   annotations:
     policy.open-cluster-management.io/categories: CA Security Assessment and Authorization
@@ -155,7 +155,7 @@ spec:
 apiVersion: apps.open-cluster-management.io/v1
 kind: PlacementRule
 metadata:
-  name: install-oadp-hdr-app-placement
+  name: oadp-hdr-app-install-placement
   namespace: default
 spec:
   clusterSelector:
@@ -172,13 +172,13 @@ spec:
 apiVersion: policy.open-cluster-management.io/v1
 kind: PlacementBinding
 metadata:
-  name: install-oadp-hdr-app-placement-binding
+  name: oadp-hdr-app-install-placement-binding
   namespace: default
 placementRef:
-  name: install-oadp-hdr-app-placement
+  name: oadp-hdr-app-install-placement
   apiGroup: apps.open-cluster-management.io
   kind: PlacementRule
 subjects:
-  - name: install-oadp-hdr-app
+  - name: oadp-hdr-app-install
     apiGroup: policy.open-cluster-management.io
     kind: Policy
