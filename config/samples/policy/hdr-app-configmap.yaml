@@ -7,7 +7,10 @@ metadata:
   name: hdr-app-configmap
   namespace: default
 data:
-  backupNS: acm-app-backup # backupNS should NOT be open-cluster-managemenet-backup
+  # backupNS is the ns where velero/oadp is installed on the cluster
+  # if you change the default value acm-app-backup , make sure you don't use open-cluster-managemenet-backup ns
+  # which is reserved by the acm backup and restore operator running on the hub 
+  backupNS: acm-app-backup 
   channel: stable-1.1
   subscriptionName: redhat-oadp-operator
 
@@ -30,7 +33,9 @@ data:
     [default]
     aws_access_key_id=<id>
     aws_secret_access_key=<key>
-  dpa.aws.backup.config.region: <region> # for example us-east-1
+   # define the region where the backup resources ( not PVs, they are stored under the cluster node's region ) should be stored
+   # for example dpa.aws.backup.config.region: us-east-1
+  dpa.aws.backup.config.region: <region>
 # end AWS
 
 ## AZURE
@@ -50,15 +55,21 @@ data:
 ####################################
   backup.schedule: 0 */1 * * *
   backup.ttl: 240h0m0s
-  nsToBackup: "[\"app1-ns\", \"app2-ns\", \"app3-ns\"]" # list here all apps ns you want to backup
+  # list here all applications namespaces you want to backup
+  # for example nsToBackup: "[\"pacman-ns\", \"helloworld-pv-ns\"]"
+  nsToBackup: "[\"app1-ns\", \"app2-ns\", \"app3-ns\"]" 
 ######################################
 ###### end backup schedule resource ###
 
 ###### restore resource ###
 ####################################
   restorePVs: "true"
-  backupName: <acm-apps-clustername-id> # the name of the backup to restore from
-  nsToRestore: "[\"app1-ns\", \"app2-ns\"]" # list here all apps ns you want to restore from the specified backup
+  # the name of the backup to restore from
+  # for example backupName: acm-app-schedule-vb-managed-cls-1-20230208150010
+  backupName: <backup-name>
+  # list here all apps ns you want to restore from the specified backup
+  # for example nsToBackup: "[\"pacman-ns\"]"
+  nsToRestore: "[\"app1-ns\", \"app2-ns\"]"
 ######################################
 ###### end backup schedule resource ###
 
