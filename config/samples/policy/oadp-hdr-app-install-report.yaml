@@ -1,12 +1,13 @@
-# This policy on any configuration errors for app backup or restore scenarios.
-# Install this policy after you install the oadp-hdr-app-install policy
 #
-# Note that it is set to inform as it only validates the configuration
+# This policy reports on any configuration errors for the application backup or restore scenarios.
+# Install this policy on the hub, after you install the oadp-hdr-app-install policy
+#
+# Note that it is set to inform as it only validates the installed configuration
 #
 apiVersion: policy.open-cluster-management.io/v1
 kind: Policy
 metadata:
-  name: oadp-hdr-app-install-setup
+  name: oadp-hdr-app-install-report
   namespace: default
   annotations:
     policy.open-cluster-management.io/categories: PR.IP Information Protection Processes and Procedures
@@ -204,7 +205,7 @@ spec:
 apiVersion: apps.open-cluster-management.io/v1
 kind: PlacementRule
 metadata:
-  name: oadp-hdr-app-install-setup-placement
+  name: oadp-hdr-app-install-report-placement
   namespace: default
 spec:
   clusterSelector:
@@ -218,13 +219,13 @@ spec:
 apiVersion: policy.open-cluster-management.io/v1
 kind: PlacementBinding
 metadata:
-  name: oadp-hdr-app-install-setup-placement-binding
+  name: oadp-hdr-app-install-report-placement-binding
   namespace: default
 placementRef:
-  name: oadp-hdr-app-install-setup-placement
+  name: oadp-hdr-app-install-report-placement
   apiGroup: apps.open-cluster-management.io
   kind: PlacementRule
 subjects:
-  - name: oadp-hdr-app-install-setup
+  - name: oadp-hdr-app-install-report
     apiGroup: policy.open-cluster-management.io
     kind: Policy
