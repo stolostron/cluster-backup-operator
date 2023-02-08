@@ -1,7 +1,7 @@
 #
 # This policy creates a velero schedule to all managed clusters with a label "acm-app-hdr=backup".
 # The schedule is used to backup applications resources and PVs.
-# The schedule uses the includedNamespaces property to specify the namespaces for the applications to backup. 
+# The schedule uses the `nsToBackup` hdr-app-configmap property to specify the namespaces for the applications to backup. 
 # 
 # Create this policy on the hub managing clusters where you want to create stateful applications backups, 
 # and after you create the oadp-hdr-app-install and oadp-hdr-app-validation policies.
