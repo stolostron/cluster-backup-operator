@@ -53,9 +53,7 @@ spec:
                 spec:
                   includedNamespaces: '{{hub fromConfigMap "" "hdr-app-configmap" "nsToRestore" | toLiteral hub}}'
                   backupName: '{{hub fromConfigMap "" "hdr-app-configmap" "backupName" hub}}'
-                  restorePVs: '{{hub fromConfigMap "" "hdr-app-configmap" "restorePVs" | toBool hub}}' 
-                status:
-                  phase: Completed            
+                  restorePVs: '{{hub fromConfigMap "" "hdr-app-configmap" "restorePVs" | toBool hub}}'            
           remediationAction: enforce
           severity: high
 ---

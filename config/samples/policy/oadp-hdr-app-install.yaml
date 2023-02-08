@@ -140,67 +140,7 @@ spec:
                           profile: default
                           region: '{{ fromClusterClaim "region.open-cluster-management.io" }}'
                         provider: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.provider" hub}}'
-                status:
-                  conditions:
-                    - reason: Complete
-                      type: Reconciled
           remediationAction: enforce
-          severity: high
-    - objectDefinition:
-        apiVersion: policy.open-cluster-management.io/v1
-        kind: ConfigurationPolicy
-        metadata:
-          name: check-backup-storage-location-resource
-        spec:
-          object-templates:
-            - complianceType: musthave
-              objectDefinition:
-                apiVersion: velero.io/v1
-                kind: BackupStorageLocation
-                metadata:
-                  name: '{{hub fromConfigMap "" "hdr-app-configmap" "dpaName" hub}}-1'
-                  namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
-                status:
-                  phase: Available                
-          remediationAction: inform
-          severity: high
-    - objectDefinition:
-        apiVersion: policy.open-cluster-management.io/v1
-        kind: ConfigurationPolicy
-        metadata:
-          name: check-oadp-pod-running
-        spec:
-          object-templates:
-            - complianceType: musthave
-              objectDefinition:
-                apiVersion: v1
-                kind: Pod
-                metadata:
-                  annotations:
-                    repository: https://github.com/openshift/oadp-operator
-                  namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
-                status:
-                  phase: Running
-          remediationAction: inform
-          severity: high 
-    - objectDefinition:
-        apiVersion: policy.open-cluster-management.io/v1
-        kind: ConfigurationPolicy
-        metadata:
-          name: check-velero-pod-running
-        spec:
-          object-templates:
-            - complianceType: musthave
-              objectDefinition:
-                apiVersion: v1
-                kind: Pod
-                metadata:
-                  labels:
-                    app.kubernetes.io/name: velero
-                  namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
-                status:
-                  phase: Running
-          remediationAction: inform
           severity: high
 ---
 apiVersion: apps.open-cluster-management.io/v1
