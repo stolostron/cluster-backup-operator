@@ -1,5 +1,5 @@
-# This policy deploys velero using the OADP operator to all OpenShift managed clusters 
-# with a label "acm-backup=acm-hdr-app".
+# This policy deploys velero using the OADP operator to all managed clusters 
+# with a label "acm-app-hdr in [backup, restore]".
 #
 # Note that it is set to enforce by default.
 #
@@ -9,9 +9,9 @@ metadata:
   name: oadp-hdr-app-install
   namespace: default
   annotations:
-    policy.open-cluster-management.io/categories: CA Security Assessment and Authorization
-    policy.open-cluster-management.io/controls: CA-2 Security Assessments, CA-7 Continuous Monitoring
-    policy.open-cluster-management.io/standards: NIST SP 800-53
+    policy.open-cluster-management.io/categories: PR.IP Information Protection Processes and Procedures
+    policy.open-cluster-management.io/controls: PR.IP-4 Backups of information are conducted maintained and tested
+    policy.open-cluster-management.io/standards: NIST-CSF
 spec:
   disabled: false
   remediationAction: enforce
@@ -164,6 +164,44 @@ spec:
                   phase: Available                
           remediationAction: inform
           severity: high
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: check-oadp-pod-running
+        spec:
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: Pod
+                metadata:
+                  annotations:
+                    repository: https://github.com/openshift/oadp-operator
+                  namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
+                status:
+                  phase: Running
+          remediationAction: inform
+          severity: high 
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: check-velero-pod-running
+        spec:
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: Pod
+                metadata:
+                  labels:
+                    app.kubernetes.io/name: velero
+                  namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
+                status:
+                  phase: Running
+          remediationAction: inform
+          severity: high
 ---
 apiVersion: apps.open-cluster-management.io/v1
 kind: PlacementRule
@@ -173,14 +211,11 @@ metadata:
 spec:
   clusterSelector:
     matchExpressions:
-      - key: acm-backup
+      - key: acm-app-hdr
         operator: In
         values:
-          - acm-hdr-app
-      - key: vendor
-        operator: In
-        values:
-          - OpenShift
+          - backup
+          - restore
 ---
 apiVersion: policy.open-cluster-management.io/v1
 kind: PlacementBinding

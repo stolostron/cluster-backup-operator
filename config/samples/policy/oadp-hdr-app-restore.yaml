@@ -1,18 +1,19 @@
-# This policy creates a velero schedule to all managed clusters 
-# with a label "acm-app-hdr=backup". The schedule is used to backup applications resources and PVs
-# The schedule uses the includedNamespaces property to specify the namespaces for the applications to backup 
+# This policy creates a velero restore resource to all managed clusters 
+# with a label "acm-app-hdr=restore". The restore resource is used to restore applications resources and PVs
+# from a selected backup.
+# The restore uses the includedNamespaces property to specify the namespaces for the applications to restore 
 #
 # Note that it is set to enforce by default.
 #
 apiVersion: policy.open-cluster-management.io/v1
 kind: Policy
 metadata:
-  name: oadp-hdr-app-backup
+  name: oadp-hdr-app-restore
   namespace: default
   annotations:
-    policy.open-cluster-management.io/categories: CA Security Assessment and Authorization
-    policy.open-cluster-management.io/controls: CA-2 Security Assessments, CA-7 Continuous Monitoring
-    policy.open-cluster-management.io/standards: NIST SP 800-53
+    policy.open-cluster-management.io/categories: PR.IP Information Protection Processes and Procedures
+    policy.open-cluster-management.io/controls: PR.IP-4 Backups of information are conducted maintained and tested
+    policy.open-cluster-management.io/standards: NIST-CSF
 spec:
   disabled: false
   remediationAction: enforce
@@ -36,34 +37,32 @@ spec:
         apiVersion: policy.open-cluster-management.io/v1
         kind: ConfigurationPolicy
         metadata:
-          name: check-schedule-resource
+          name: check-restore-resource
         spec:
           object-templates:
             - complianceType: musthave
               objectDefinition:
                 apiVersion: velero.io/v1
-                kind: Schedule
+                kind: Restore
                 metadata:
-                  name: 'acm-app-{{ fromClusterClaim "name" }}'
+                  name: 'restore-{{hub fromConfigMap "" "hdr-app-configmap" "backupName" hub}}'
                   namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
                   labels:
                     cluster-id: '{{ fromClusterClaim "id.openshift.io" }}'
                     cluster-name: '{{ fromClusterClaim "name" }}'
                 spec:
-                  schedule: '{{hub fromConfigMap "" "hdr-app-configmap" "backup.schedule" hub}}' 
-                  template:
-                    snapshotVolumes: true
-                    includedNamespaces: '{{hub fromConfigMap "" "hdr-app-configmap" "nsToBackup" | toLiteral hub}}' 
-                    ttl: '{{hub fromConfigMap "" "hdr-app-configmap" "backup.ttl" hub}}' 
+                  includedNamespaces: '{{hub fromConfigMap "" "hdr-app-configmap" "nsToRestore" | toLiteral hub}}'
+                  backupName: '{{hub fromConfigMap "" "hdr-app-configmap" "backupName" hub}}'
+                  restorePVs: '{{hub fromConfigMap "" "hdr-app-configmap" "restorePVs" | toBool hub}}' 
                 status:
-                  phase: Enabled                
+                  phase: Completed            
           remediationAction: enforce
           severity: high
 ---
 apiVersion: apps.open-cluster-management.io/v1
 kind: PlacementRule
 metadata:
-  name: oadp-hdr-app-backup-placement
+  name: oadp-hdr-app-restore-placement
   namespace: default
 spec:
   clusterSelector:
@@ -71,18 +70,18 @@ spec:
       - key: acm-app-hdr
         operator: In
         values:
-          - backup
+          - restore
 ---
 apiVersion: policy.open-cluster-management.io/v1
 kind: PlacementBinding
 metadata:
-  name: oadp-hdr-app-backup-placement-binding
+  name: oadp-hdr-app-restore-placement-binding
   namespace: default
 placementRef:
-  name: oadp-hdr-app-backup-placement
+  name: oadp-hdr-app-restore-placement
   apiGroup: apps.open-cluster-management.io
   kind: PlacementRule
 subjects:
-  - name: oadp-hdr-app-backup
+  - name: oadp-hdr-app-restore
     apiGroup: policy.open-cluster-management.io
     kind: Policy

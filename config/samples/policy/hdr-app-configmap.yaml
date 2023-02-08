@@ -50,9 +50,18 @@ data:
 ####################################
   backup.schedule: 0 */1 * * *
   backup.ttl: 240h0m0s
-  includedNamespaces: "[\"pacman-ns\", \"helloworld-pv-ns\"]" # list here all apps ns you want to backup
+  nsToBackup: "[\"app1-ns\", \"app2-ns\", \"app3-ns\"]" # list here all apps ns you want to backup
 ######################################
 ###### end backup schedule resource ###
+
+###### restore resource ###
+####################################
+  restorePVs: "true"
+  backupName: <acm-apps-clustername-id> # the name of the backup to restore from
+  nsToRestore: "[\"app1-ns\", \"app2-ns\"]" # list here all apps ns you want to restore from the specified backup
+######################################
+###### end backup schedule resource ###
+
 
 
 
