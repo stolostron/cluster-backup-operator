@@ -24,7 +24,7 @@ Both backup and restore policies can be installed on the same hub, if this hub m
 
 ## Prerequisites
 
-### ConfigMap
+### Apply ConfigMap
 
 Before you install the policies you have to apply the `hdr-app-configmap` ConfigMap available here. 
 
@@ -32,13 +32,13 @@ Before you install the policies you have to apply the `hdr-app-configmap` Config
 
 You create the configmap on the hub, the same hub where the policies will be installed.
 
-These configmap sets configuration options for the backup storage location and for the backup schedule backing up applications, and restore resource when restoring applications.
+The configmap sets configuration options for the backup storage location, for the backup schedule backing up applications, and for the restore resource used to restore applications backups.
 
-Make sure you <b>update all settings with valid values</b> before applying the resource to the hub.
+Make sure you <b>update all settings with valid values</b> before applying the `hdr-app-configmap` resource on the hub.
 
 
 
-### Install policy
+### Apply the Install policy
 
 Create the `oadp-hdr-app-install` :
 
@@ -62,7 +62,7 @@ The  `oadp-hdr-app-install` installs velero and configures the connection to the
 The  `oadp-hdr-app-install-report` reports on any runtime or configuration error.
 
 
-### Install report policy
+### Apply the Install report policy
 
 Create the `oadp-hdr-app-install-report` :
 

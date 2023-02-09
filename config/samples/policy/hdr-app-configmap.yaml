@@ -17,7 +17,10 @@ data:
 
 ## DPA resource configuration
 #
-  dpaName: dpa-app #DPA resource name
+  #DPA resource name; use the same name for all hubs, the PV cannot be restored if 
+  # the BackupStorageLocation resource doesn't have the same name
+  # on both backup and restore cluster 
+  dpaName: dpa-app
   dpa.provider: aws
   dpa.backup.cloud.credentials.name: cloud-credentials
   dpa.objectStorage.bucket: <bucket>
