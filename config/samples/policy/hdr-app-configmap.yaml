@@ -9,9 +9,7 @@ metadata:
   namespace: default
 data:
   # backupNS is the ns where velero/oadp is installed on the cluster
-  # if you change the default value acm-app-backup , make sure you don't use open-cluster-managemenet-backup ns
-  # which is reserved by the acm backup and restore operator running on the hub 
-  backupNS: acm-app-backup 
+  backupNS: open-cluster-management-backup 
   channel: stable-1.1
   subscriptionName: redhat-oadp-operator
 
@@ -20,7 +18,7 @@ data:
   #DPA resource name; use the same name for all hubs, the PV cannot be restored if 
   # the BackupStorageLocation resource doesn't have the same name
   # on both backup and restore cluster 
-  dpaName: dpa-app
+  dpaName: dpa
   dpa.provider: aws
   dpa.backup.cloud.credentials.name: cloud-credentials
   dpa.objectStorage.bucket: <bucket>
@@ -40,6 +38,8 @@ data:
    # define the region where the backup resources ( not PVs, they are stored under the cluster node's region ) should be stored
    # for example dpa.aws.backup.config.region: us-east-1
   dpa.aws.backup.config.region: <region>
+   # define the region where the PVs are stored 
+  dpa.aws.storage.config.region: <region>
 # end AWS
 
 ## AZURE

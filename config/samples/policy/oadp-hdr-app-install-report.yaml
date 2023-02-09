@@ -171,6 +171,23 @@ spec:
         apiVersion: policy.open-cluster-management.io/v1
         kind: ConfigurationPolicy
         metadata:
+          name: check-restore-failed
+        spec:
+          object-templates:
+            - complianceType: mustnothave
+              objectDefinition:
+                apiVersion: velero.io/v1
+                kind: Restore
+                metadata:
+                  namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
+                status:
+                  phase: PartiallyFailed                                                            
+          remediationAction: inform
+          severity: high
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
           name: check-restore-in-progress
         spec:
           object-templates:

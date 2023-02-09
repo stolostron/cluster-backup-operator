@@ -8,6 +8,12 @@
 #
 # Make sure the hdr-app-configmap's storage settings are properly set before applying this policy.
 #
+# IMPORTANT: 
+# If the hub is one of the clusters where this policy will be placed, and the backupNS=open-cluster-management-backup
+# then first enable cluster-backup on MultiClusterHub. 
+# MCH looks for the cluster-backup option and if set to false, it uninstalls OADP from the
+# open-cluster-management-backup and deletes the namespace.
+#
 # Note that it is set to enforce by default.
 #
 apiVersion: policy.open-cluster-management.io/v1
@@ -145,7 +151,7 @@ spec:
                     - velero:
                         config: 
                           profile: default
-                          region: '{{ fromClusterClaim "region.open-cluster-management.io" }}'
+                          region: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.aws.storage.config.region" hub}}'
                         provider: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.provider" hub}}'
           remediationAction: enforce
           severity: high

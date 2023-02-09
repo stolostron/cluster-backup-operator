@@ -6,6 +6,7 @@ Application DR using ACM policies
 - [Prerequisites](#prerequisites)
   - [ConfigMap](#configmap)
   - [Install policy](#install-policy)
+    - [Prereq for placing this policy on the hub](#prereq-for-placing-this-policy-on-the-hub)
   - [Install report policy](#install-report-policy)
 - [Backup applications](#backup-applications)
 - [Restore applications](#restore-applications)
@@ -60,6 +61,15 @@ Before creating the backup or restore policy, create the `oadp-hdr-app-install` 
 The  `oadp-hdr-app-install` installs velero and configures the connection to the storage.
 
 The  `oadp-hdr-app-install-report` reports on any runtime or configuration error.
+
+#### Prereq for placing this policy on the hub
+
+
+<b>Important:</b>
+
+If the hub is one of the clusters where this policy will be placed, and the `backupNS=open-cluster-management-backup` then first enable cluster-backup on `MultiClusterHub`. 
+
+The MultiClusterHub resource looks for the cluster-backup option and if set to false, it uninstalls OADP from the `open-cluster-management-backup` and deletes the namespace.
 
 
 ### Apply the Install report policy
