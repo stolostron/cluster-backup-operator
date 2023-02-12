@@ -13,67 +13,120 @@ data:
   channel: stable-1.1
   subscriptionName: redhat-oadp-operator
 
+# define cloud-credential used to connect to the storage location, base64 encoded string
+# for example, for an aws storage location, the credential is in this format
+#
+# [default]
+# aws_access_key_id=<id>
+# aws_secret_access_key=<key>
+#
+  dpa.aws.backup.cloud.credentials: W2RlZmF1bHRdCmF3c19hY2Nlc3Nfa2V5X2lkPTxpZD4KYXdzX3NlY3JldF9hY2Nlc3Nfa2V5PTxrZXk+
+
+
 ## DPA resource configuration
 #
   #DPA resource name; use the same name for all hubs, the PV cannot be restored if 
   # the BackupStorageLocation resource doesn't have the same name
   # on both backup and restore cluster 
   dpaName: dpa
-  dpa.provider: aws
   dpa.backup.cloud.credentials.name: cloud-credentials
-  dpa.objectStorage.bucket: <bucket>
-  dpa.objectStorage.prefix: <folder>
-  ## velero resource limits
-  dpa.velero.limits.cpu: "2"
-  dpa.velero.limits.memory: 1Gi
-  dpa.velero.requests.cpu: 500m
-  dpa.velero.requests.memory: 256Mi
-##
+#######
+# DPA spec
+# below is the spec format for an aws storage
+# update this with the DPA format for the type of storage you are using
+# values specified with brackets <> should be updated before appliying this configmap
+  dpa.spec: "{
+  \"backupLocations\": [
+    {
+      \"velero\": {
+        \"config\": {
+          \"profile\": \"default\",
+          \"region\": \"<us-east-1>\"
+        },
+        \"credential\": {
+          \"key\": \"cloud\",
+          \"name\": \"<dpa.backup.cloud.credentials.name>\"
+        },
+        \"default\": true,
+        \"objectStorage\": {
+          \"bucket\": \"<bucket-name>\",
+          \"prefix\": \"<in-bucket-folder-name>\"
+        },
+        \"provider\": \"<aws>\"
+      }
+    }
+  ],
+  \"configuration\": {
+    \"restic\": {
+      \"enable\": false
+    },
+    \"velero\": {
+      \"defaultPlugins\": [
+        \"openshift\",
+        \"aws\"
+      ],
+      \"podConfig\": {
+        \"resourceAllocations\": {
+          \"limits\": {
+            \"cpu\": \"2\",
+            \"memory\": \"1Gi\"
+          },
+          \"requests\": {
+            \"cpu\": \"500m\",
+            \"memory\": \"256Mi\"
+          }
+        }
+      }
+    }
+  },
+  \"snapshotLocations\": [
+    {
+      \"velero\": {
+        \"config\": {
+          \"profile\": \"default\",
+          \"region\": \"<use here ClusterClaim region.open-cluster-management.io value>\"
+        },
+        \"provider\": \"<aws>\"
+      }
+    },
+    {
+      \"velero\": {
+        \"config\": {
+          \"profile\": \"<east1>\",
+          \"region\": \"<us-east-1>\"
+        },
+        \"provider\": \"<aws>\"
+      }
+    },
+  ]
+}"
+## END DPA ##
 
-##AWS
-  dpa.aws.backup.cloud.credentials: |
-    [default]
-    aws_access_key_id=<id>
-    aws_secret_access_key=<key>
-   # define the region where the backup resources ( not PVs, they are stored under the cluster node's region ) should be stored
-   # for example dpa.aws.backup.config.region: us-east-1
-  dpa.aws.backup.config.region: <region>
-   # define the region where the PVs are stored 
-  dpa.aws.storage.config.region: <region>
-# end AWS
 
-## AZURE
-  dpa.azure.backup.cloud.credentials: |
-    [backupStorage]
-    dpa.azure.backupLocation.storageAccountKeyEnvVar: AZURE_STORAGE_ACCOUNT_ACCESS_KEY
-  dpa.azure.storage.cloud.credentials: |
-    [volumeSnapshot]
-    dpa.azure.backupLocation.storageAccountKeyEnvVar: AZURE_STORAGE_ACCOUNT_ACCESS_KEY
-  dpa.azure.backupLocation.resourceGroup: <azure_resource_group>
-  dpa.azure.backupLocation.storageAccount: <azure_storage_account_id>
-  dpa.azure.backupLocation.subscriptionId: <azure_subscription_id>
-  dpa.azure.backupLocation.storageAccountKeyEnvVar: AZURE_STORAGE_ACCOUNT_ACCESS_KEY
-## end AZURE
 
 ###### backup schedule resource ###
 ####################################
   backup.schedule: 0 */1 * * *
   backup.ttl: 240h0m0s
+
+  # change this to dpa-2 if you want to use a snapshot location other than the one matching the cluster node region
+  # dpa-1 matches the  cluster nodes region
+  backup.volumeSnapshotLocation: dpa-1
   # list here all applications namespaces you want to backup
-  # for example nsToBackup: "[\"pacman-ns\", \"helloworld-pv-ns\"]"
-  nsToBackup: "[\"app1-ns\", \"app2-ns\", \"app3-ns\"]" 
+  # for example backup.nsToBackup: "[\"pacman-ns\", \"helloworld-pv-ns\"]"
+  backup.nsToBackup: "[\"app1-ns\", \"app2-ns\", \"app3-ns\"]" 
 ######################################
 ###### end backup schedule resource ###
 
 ###### restore resource ###
 ####################################
-  restorePVs: "true"
+  restore.restorePVs: "true"
   # the name of the backup to restore from
   # for example backupName: acm-app-schedule-vb-managed-cls-1-20230208150010
-  backupName: <backup-name>
+  restore.backupName: <backup-name>
   # list here all apps ns you want to restore from the specified backup
-  # for example nsToBackup: "[\"pacman-ns\"]"
-  nsToRestore: "[\"app1-ns\", \"app2-ns\"]"
+  # for example backup.nsToBackup: "[\"pacman-ns\"]"
+  restore.nsToRestore: "[\"app1-ns\", \"app2-ns\"]"
 ######################################
 ###### end backup schedule resource ###
 

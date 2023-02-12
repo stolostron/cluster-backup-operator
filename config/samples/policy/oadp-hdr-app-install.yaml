@@ -96,7 +96,7 @@ spec:
             objectDefinition:
               apiVersion: v1
               data:
-                cloud: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.aws.backup.cloud.credentials" | base64enc hub}}'
+                cloud: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.aws.backup.cloud.credentials" hub}}'
               kind: Secret
               metadata:
                 name: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.backup.cloud.credentials.name" hub}}'
@@ -118,41 +118,7 @@ spec:
                 metadata:
                   name: '{{hub fromConfigMap "" "hdr-app-configmap" "dpaName" hub}}'
                   namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
-                spec:
-                  backupLocations:
-                    - velero:
-                        default: true
-                        credential:
-                          key: cloud
-                          name: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.backup.cloud.credentials.name" hub}}'
-                        config: 
-                          profile: default
-                          region: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.aws.backup.config.region" hub}}'
-                        objectStorage:
-                          bucket: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.objectStorage.bucket" hub}}'
-                          prefix: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.objectStorage.prefix" hub}}'
-                        provider: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.provider" hub}}'
-                  configuration:
-                    restic:
-                      enable: false
-                    velero:
-                      podConfig:
-                        resourceAllocations:
-                          limits:
-                            cpu: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.velero.limits.cpu" hub}}'
-                            memory: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.velero.limits.memory" hub}}'
-                          requests:
-                            cpu: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.velero.requests.cpu" hub}}'
-                            memory: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.velero.requests.memory" hub}}'                   
-                      defaultPlugins:
-                        - openshift
-                        - '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.provider" hub}}'
-                  snapshotLocations:
-                    - velero:
-                        config: 
-                          profile: default
-                          region: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.aws.storage.config.region" hub}}'
-                        provider: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.provider" hub}}'
+                spec: '{{hub fromConfigMap "" "hdr-app-configmap" "dpa.spec" | toLiteral hub}}'
           remediationAction: enforce
           severity: high
 ---

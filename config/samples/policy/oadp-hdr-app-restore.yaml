@@ -2,7 +2,7 @@
 # This policy creates a velero restore resource to all managed clusters 
 # with a label "acm-app-hdr=restore". The restore resource is used to restore applications resources and PVs
 # from a selected backup.
-# The restore uses the `nsToRestore` hdr-app-configmap property to specify the namespaces for the applications to restore 
+# The restore uses the `restore.nsToRestore` hdr-app-configmap property to specify the namespaces for the applications to restore 
 #
 # Create this policy on the hub managing clusters where you plan to restore a backup created with the oadp-hdr-app-backup policy, 
 # and after you create the oadp-hdr-app-install and oadp-hdr-app-validation policies.
@@ -62,16 +62,16 @@ spec:
                 apiVersion: velero.io/v1
                 kind: Restore
                 metadata:
-                  name: 'restore-{{hub fromConfigMap "" "hdr-app-configmap" "backupName" hub}}'
+                  name: 'restore-{{hub fromConfigMap "" "hdr-app-configmap" "restore.backupName" hub}}'
                   namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
                   labels:
                     cluster-id: '{{ fromClusterClaim "id.openshift.io" }}'
                     cluster-name: '{{ fromClusterClaim "name" }}'
                 spec:
                   existingResourcePolicy: update
-                  includedNamespaces: '{{hub fromConfigMap "" "hdr-app-configmap" "nsToRestore" | toLiteral hub}}'
-                  backupName: '{{hub fromConfigMap "" "hdr-app-configmap" "backupName" hub}}'
-                  restorePVs: '{{hub fromConfigMap "" "hdr-app-configmap" "restorePVs" | toBool hub}}'            
+                  includedNamespaces: '{{hub fromConfigMap "" "hdr-app-configmap" "restore.nsToRestore" | toLiteral hub}}'
+                  backupName: '{{hub fromConfigMap "" "hdr-app-configmap" "restore.backupName" hub}}'
+                  restorePVs: '{{hub fromConfigMap "" "hdr-app-configmap" "restore.restorePVs" | toBool hub}}'            
           remediationAction: enforce
           severity: high
 ---

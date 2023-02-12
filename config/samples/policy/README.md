@@ -25,6 +25,8 @@ Both backup and restore policies can be installed on the same hub, if this hub m
 
 ## Prerequisites
 
+You can run `oc apply -k .` to apply all resources at the same time on the hub.
+
 ### Apply ConfigMap
 
 Before you install the policies you have to apply the `hdr-app-configmap` ConfigMap available here. 
@@ -97,7 +99,7 @@ This policy is enforced by default.
 
 This policy creates a velero schedule to all managed clusters with a label `acm-app-hdr=backup`.
 The schedule is used to backup applications resources and PVs.
-The schedule uses the `nsToBackup` `hdr-app-configmap` property to specify the namespaces for the applications to backup. 
+The schedule uses the `backup.nsToBackup` `hdr-app-configmap` property to specify the namespaces for the applications to backup. 
 
 
 ## Restore applications
