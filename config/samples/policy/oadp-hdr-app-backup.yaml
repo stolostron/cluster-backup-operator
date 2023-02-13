@@ -61,7 +61,7 @@ spec:
                 apiVersion: velero.io/v1
                 kind: Schedule
                 metadata:
-                  name: 'acm-app-{{ fromClusterClaim "name" }}'
+                  name: 'acm-app-{{hub fromConfigMap "" "hdr-app-configmap" "backup.volumeSnapshotLocation" hub}}-{{ fromClusterClaim "name" }}'
                   namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
                   labels:
                     cluster-id: '{{ fromClusterClaim "id.openshift.io" }}'
