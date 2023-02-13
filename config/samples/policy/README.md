@@ -25,7 +25,8 @@ Both backup and restore policies can be installed on the same hub, if this hub m
 
 ## Prerequisites
 
-You can run `oc apply -k .` to apply all resources at the same time on the hub.
+You can run `oc apply -k ./` to apply all resources at the same time on the hub. 
+You can also apply them one at the time :
 
 ### Apply ConfigMap
 
@@ -91,13 +92,13 @@ If the hub manages clusters where stateful applications are running, and you wan
 
 `oc apply -f ./oadp-hdr-app-backup`
 
-If the managed cluster (or hub) has the label `acm-app-hdr=backup` then the oadp-hdr-app-backup policy 
+If the managed cluster (or hub) has the label `acm-pv-dr=backup` then the oadp-hdr-app-backup policy 
 is propagated to this cluster for an application backup schedule. This cluster produces applications backups.
 Make sure the `hdr-app-configmap`'s backup schedule resource settings are properly set before applying this policy.
 
 This policy is enforced by default.
 
-This policy creates a velero schedule to all managed clusters with a label `acm-app-hdr=backup`.
+This policy creates a velero schedule to all managed clusters with a label `acm-pv-dr=backup`.
 The schedule is used to backup applications resources and PVs.
 The schedule uses the `backup.nsToBackup` `hdr-app-configmap` property to specify the namespaces for the applications to backup. 
 
@@ -109,14 +110,14 @@ If the hub manages clusters where stateful applications backups must be restored
 `oc apply -f ./oadp-hdr-app-restore`
 
 
-If the managed cluster (or hub) has the label `acm-app-hdr=restore` then the oadp-hdr-app-restore policy 
+If the managed cluster (or hub) has the label `acm-pv-dr=restore` then the oadp-hdr-app-restore policy 
 is propagated to this cluster for backup restore operation. This cluster restores applications backup.
 Make sure the `hdr-app-configmap`'s restore resource settings are properly set before applying this policy.
 
 This policy is enforced by default.
 
 This policy creates a velero restore resource to all managed clusters 
-with a label `acm-app-hdr=restore`. The restore resource is used to restore applications resources and PVs
+with a label `acm-pv-dr=restore`. The restore resource is used to restore applications resources and PVs
 from a selected backup.
 The restore uses the `nsToRestore` hdr-app-configmap property to specify the namespaces for the applications to restore 
 

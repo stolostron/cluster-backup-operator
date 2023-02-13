@@ -107,7 +107,7 @@ spec:
                 metadata:
                   namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
                   labels:
-                    velero.io/schedule-name: acm-app-{{hub fromConfigMap "" "hdr-app-configmap" "backup.volumeSnapshotLocation" hub}}-{{ fromClusterClaim "name" }}
+                    velero.io/schedule-name: acm-pv-{{hub fromConfigMap "" "hdr-app-configmap" "backup.volumeSnapshotLocation" hub}}-{{ fromClusterClaim "name" }}
                 status:
                   phase: Error                
           remediationAction: inform
@@ -126,7 +126,7 @@ spec:
                 metadata:
                   namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
                   labels:
-                    velero.io/schedule-name: acm-app-{{hub fromConfigMap "" "hdr-app-configmap" "backup.volumeSnapshotLocation" hub}}-{{ fromClusterClaim "name" }}
+                    velero.io/schedule-name: acm-pv-{{hub fromConfigMap "" "hdr-app-configmap" "backup.volumeSnapshotLocation" hub}}-{{ fromClusterClaim "name" }}
                 status:
                   phase: FailedValidation                
           remediationAction: inform
@@ -145,7 +145,7 @@ spec:
                 metadata:
                   namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
                   labels:
-                    velero.io/schedule-name: acm-app-{{hub fromConfigMap "" "hdr-app-configmap" "backup.volumeSnapshotLocation" hub}}-{{ fromClusterClaim "name" }}
+                    velero.io/schedule-name: acm-pv-{{hub fromConfigMap "" "hdr-app-configmap" "backup.volumeSnapshotLocation" hub}}-{{ fromClusterClaim "name" }}
                 status:
                   phase: PartiallyFailed                
           remediationAction: inform
@@ -164,7 +164,7 @@ spec:
                 metadata:
                   namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
                 labels:
-                  velero.io/schedule-name: acm-app-{{hub fromConfigMap "" "hdr-app-configmap" "backup.volumeSnapshotLocation" hub}}-{{ fromClusterClaim "name" }}
+                  velero.io/schedule-name: acm-pv-{{hub fromConfigMap "" "hdr-app-configmap" "backup.volumeSnapshotLocation" hub}}-{{ fromClusterClaim "name" }}
                 status:
                   phase: InProgress                
           remediationAction: inform
@@ -183,7 +183,7 @@ spec:
                 metadata:
                   namespace: '{{hub fromConfigMap "" "hdr-app-configmap" "backupNS" hub}}'
                 labels:
-                  velero.io/schedule-name: acm-app-{{hub fromConfigMap "" "hdr-app-configmap" "backup.volumeSnapshotLocation" hub}}-{{ fromClusterClaim "name" }}
+                  velero.io/schedule-name: acm-pv-{{hub fromConfigMap "" "hdr-app-configmap" "backup.volumeSnapshotLocation" hub}}-{{ fromClusterClaim "name" }}
                 status:
                   phase: ''                                                            
           remediationAction: inform
@@ -265,7 +265,7 @@ metadata:
 spec:
   clusterSelector:
     matchExpressions:
-      - key: acm-app-hdr
+      - key: acm-pv-dr
         operator: In
         values:
           - backup

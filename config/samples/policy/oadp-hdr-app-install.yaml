@@ -1,6 +1,6 @@
 #
 # This policy deploys velero using the OADP operator to all managed clusters 
-# with a label "acm-app-hdr in [backup, restore]".
+# with a label "acm-pv-dr in [backup, restore]".
 #
 # Create this policy on the hub managing clusters where you want to create stateful applications backups,
 # or where you restore these backup.  
@@ -130,7 +130,7 @@ metadata:
 spec:
   clusterSelector:
     matchExpressions:
-      - key: acm-app-hdr
+      - key: acm-pv-dr
         operator: In
         values:
           - backup

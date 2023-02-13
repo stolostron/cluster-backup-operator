@@ -122,7 +122,7 @@ data:
 ####################################
   restore.restorePVs: "true"
   # the name of the backup to restore from
-  # for example backupName: acm-app-schedule-vb-managed-cls-1-20230208150010
+  # for example backupName: acm-pv-schedule-vb-managed-cls-1-20230208150010
   restore.backupName: <backup-name>
   # list here all apps ns you want to restore from the specified backup
   # for example backup.nsToBackup: "[\"pacman-ns\"]"

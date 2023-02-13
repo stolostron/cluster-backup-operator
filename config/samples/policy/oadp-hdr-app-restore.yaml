@@ -1,6 +1,6 @@
 #
 # This policy creates a velero restore resource to all managed clusters 
-# with a label "acm-app-hdr=restore". The restore resource is used to restore applications resources and PVs
+# with a label "acm-pv-dr=restore". The restore resource is used to restore applications resources and PVs
 # from a selected backup.
 # The restore uses the `restore.nsToRestore` hdr-app-configmap property to specify the namespaces for the applications to restore 
 #
@@ -12,11 +12,11 @@
 #
 # Note that a managed cluster can either be a backup target or a restore target, not both at the same time.
 #
-# - If the managed cluster (or hub) has the label "acm-app-hdr=backup" then the oadp-hdr-app-backup policy 
+# - If the managed cluster (or hub) has the label "acm-pv-dr=backup" then the oadp-hdr-app-backup policy 
 # is propagated to this cluster for an application backup schedule. This cluster produces applications backups.
 # Make sure the hdr-app-configmap's backup schedule resource settings are properly set before applying this policy.
 #
-# - If the managed cluster (or hub) has the label "acm-app-hdr=restore" then the oadp-hdr-app-restore policy 
+# - If the managed cluster (or hub) has the label "acm-pv-dr=restore" then the oadp-hdr-app-restore policy 
 # is propagated to this cluster for backup restore operation. This cluster restores applications backup.
 # Make sure the hdr-app-configmap's restore resource settings are properly set before applying this policy.
 #
@@ -83,7 +83,7 @@ metadata:
 spec:
   clusterSelector:
     matchExpressions:
-      - key: acm-app-hdr
+      - key: acm-pv-dr
         operator: In
         values:
           - restore
