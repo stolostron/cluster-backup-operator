@@ -25,7 +25,17 @@ Both backup and restore policies can be installed on the same hub, if this hub m
 
 ## Prerequisites
 
-You can run `oc apply -k ./` to apply all resources at the same time on the hub. 
+1. You can run `oc apply -k ./` to apply all resources at the same time on the hub. 
+
+2. On the cluster you want to backup or restore apps set this label : acm-pv-dr-install="true". 
+This places the the oadp-hdr-app-install policy on this cluster, which installs velero and configure the connections to the storage.
+
+3.a On the cluster you want to backup the apps set this label : acm-pv-dr="backup". 
+This places the the oadp-hdr-app-backup policy on this cluster, which schedules the backups.
+
+3.b On the cluster you want to restore the apps set this label : acm-pv-dr="restore". 
+This places the the oadp-hdr-app-restore policy on this cluster, which creates a restore operation.
+
 You can also apply them one at the time :
 
 ### Apply ConfigMap
@@ -39,7 +49,6 @@ You create the configmap on the hub, the same hub where the policies will be ins
 The configmap sets configuration options for the backup storage location, for the backup schedule backing up applications, and for the restore resource used to restore applications backups.
 
 Make sure you <b>update all settings with valid values</b> before applying the `hdr-app-configmap` resource on the hub.
-
 
 
 ### Apply the Install policy

@@ -265,11 +265,10 @@ metadata:
 spec:
   clusterSelector:
     matchExpressions:
-      - key: acm-pv-dr
+      - key: acm-pv-dr-install
         operator: In
         values:
-          - backup
-          - restore
+          - "true"
 ---
 apiVersion: policy.open-cluster-management.io/v1
 kind: PlacementBinding

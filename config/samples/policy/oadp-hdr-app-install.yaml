@@ -1,6 +1,8 @@
 #
 # This policy deploys velero using the OADP operator to all managed clusters 
-# with a label "acm-pv-dr in [backup, restore]".
+# with a label "acm-pv-dr-install="true".
+#
+# This policy must be installed first; set on the cluster you want to backup or restore apps this label : acm-pv-dr-install="true".
 #
 # Create this policy on the hub managing clusters where you want to create stateful applications backups,
 # or where you restore these backup.  
@@ -135,11 +137,10 @@ metadata:
 spec:
   clusterSelector:
     matchExpressions:
-      - key: acm-pv-dr
+      - key: acm-pv-dr-install
         operator: In
         values:
-          - backup
-          - restore
+          - "true"
 ---
 apiVersion: policy.open-cluster-management.io/v1
 kind: PlacementBinding
