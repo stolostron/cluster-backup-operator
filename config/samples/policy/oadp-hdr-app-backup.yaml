@@ -69,9 +69,6 @@ spec:
                 spec:
                   schedule: '{{hub fromConfigMap "" "hdr-app-configmap" "backup.schedule" hub}}' 
                   template:
-                    includedResources:
-                      - persistentvolumeclaims
-                      - persistentvolumes
                     volumeSnapshotLocations:
                       - '{{hub fromConfigMap "" "hdr-app-configmap" "backup.volumeSnapshotLocation" hub}}' 
                     snapshotVolumes: true
