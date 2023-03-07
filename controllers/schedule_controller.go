@@ -379,6 +379,12 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 			)
 		}
 
+		snapshot := false
+		veleroBackupTemplate.SnapshotVolumes = &snapshot
+		if len(backupSchedule.Spec.VolumeSnapshotLocations) > 0 {
+			veleroBackupTemplate.VolumeSnapshotLocations = backupSchedule.Spec.VolumeSnapshotLocations
+		}
+
 		veleroSchedule.Spec.Template = *veleroBackupTemplate
 		veleroSchedule.Spec.Schedule = backupSchedule.Spec.VeleroSchedule
 		if backupSchedule.Spec.VeleroTTL.Duration != 0 && scheduleKey != ValidationSchedule {
