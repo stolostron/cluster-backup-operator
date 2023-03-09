@@ -412,6 +412,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				schedule(backupSchedule).veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
 				useManagedServiceAccount(true).
 				managedServiceAccountTTL(metav1.Duration{Duration: time.Hour * 90}).
+				setVolumeSnapshotLocation([]string{"dpa-1"}).
 				object
 			Expect(k8sClient.Create(ctx, &rhacmBackupSchedule)).Should(Succeed())
 
@@ -531,6 +532,11 @@ var _ = Describe("BackupSchedule controller", func() {
 				err := k8sClient.List(ctx, &veleroSchedulesList, &client.ListOptions{})
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
+			// check the volumeSnapshotLocation property
+			Expect(
+				veleroSchedulesList.Items[1].Spec.Template.VolumeSnapshotLocations,
+			).Should(Equal([]string{"dpa-1"}))
+
 			k8sClient.Delete(ctx, &veleroSchedulesList.Items[1])
 			// count velero schedules, should be still len(veleroScheduleNames)
 			Eventually(func() int {

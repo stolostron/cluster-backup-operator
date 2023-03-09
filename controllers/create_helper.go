@@ -397,6 +397,11 @@ func (b *BackupScheduleHelper) noBackupOnStart(stopBackupOnStart bool) *BackupSc
 	return b
 }
 
+func (b *BackupScheduleHelper) setVolumeSnapshotLocation(locations []string) *BackupScheduleHelper {
+	b.object.Spec.VolumeSnapshotLocations = locations
+	return b
+}
+
 // storage location
 type StorageLocationHelper struct {
 	object *veleroapi.BackupStorageLocation
