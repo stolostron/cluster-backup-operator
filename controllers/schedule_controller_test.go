@@ -536,7 +536,7 @@ var _ = Describe("BackupSchedule controller", func() {
 			Expect(
 				veleroSchedulesList.Items[1].Spec.Template.VolumeSnapshotLocations,
 			).Should(Equal([]string{"dpa-1"}))
-			// check clusterpool.other.hive.openshift.io be be in the managed cluster schedule and not in resources
+			// verify clusterpool.other.hive.openshift.io to be in the managed cluster schedule and not in resources backup
 			// because the includedActivationAPIGroupsByName contains other.hive.openshift.io
 			for i := range veleroSchedulesList.Items {
 				if veleroSchedulesList.Items[i].Name == veleroScheduleNames[Resources] {
