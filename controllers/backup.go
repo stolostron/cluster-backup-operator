@@ -515,7 +515,6 @@ func processResourcesToBackup(
 					// and this is an activation group
 					// add the reqource to the activation list and return
 					backupManagedClusterResources = appendUnique(backupManagedClusterResources, resourceName)
-					continue
 				}
 
 				// if resource kind is not ignored
