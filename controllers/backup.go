@@ -66,6 +66,7 @@ var (
 	}
 	includedActivationAPIGroupsByName = []string{
 		"hypershift.openshift.io",
+		"machine.openshift.io",
 		"infrastructure.cluster.x-k8s.io",
 		"agent-install.openshift.io",
 	}
