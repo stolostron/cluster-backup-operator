@@ -63,6 +63,8 @@ var (
 		"argoproj.io",
 		"app.k8s.io",
 		"core.observatorium.io",
+	}
+	includedActivationAPIGroupsByName = []string{
 		"agent-install.openshift.io",
 	}
 
@@ -502,11 +504,21 @@ func processResourcesToBackup(
 			for _, resource := range resourceList.APIResources {
 				resourceKind := strings.ToLower(resource.Kind)
 				resourceName := resourceKind + "." + group.Name
+
+				if findValue(includedActivationAPIGroupsByName, group.Name) &&
+					!findValue(ignoreCRDs, resourceKind) &&
+					!findValue(ignoreCRDs, resourceName) {
+					// if resource kind is not ignored
+					// and this is an activation group
+					// then add the resource to the activation list
+					backupManagedClusterResources = appendUnique(backupManagedClusterResources, resourceName)
+				}
+
 				// if resource kind is not ignored
-				// and kind.group is not used to identify resource to ignore
-				// the resource is not in cluster activation backup group
-				// add it to the generic backup resources
-				if !findValue(ignoreCRDs, resourceKind) &&
+				// and the resource is not in cluster activation backup group
+				// then add it to the backup resources
+				if !findValue(includedActivationAPIGroupsByName, group.Name) &&
+					!findValue(ignoreCRDs, resourceKind) &&
 					!findValue(ignoreCRDs, resourceName) &&
 					!findValue(backupManagedClusterResources, resourceKind) &&
 					!findValue(backupManagedClusterResources, resourceName) {
@@ -529,6 +541,12 @@ func shouldBackupAPIGroup(groupStr string) bool {
 
 	_, ok = find(includedAPIGroupsByName, groupStr)
 	// if not in the included api groups
+	if !ok {
+		// check if is in the activation api groups list
+		_, ok = find(includedActivationAPIGroupsByName, groupStr)
+
+	}
+	// if not in the activation api groups
 	if !ok {
 		// check if is in the included api groups by suffix
 		_, ok = findSuffix(includedAPIGroupsSuffix, groupStr)

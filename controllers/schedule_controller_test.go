@@ -536,6 +536,20 @@ var _ = Describe("BackupSchedule controller", func() {
 			Expect(
 				veleroSchedulesList.Items[1].Spec.Template.VolumeSnapshotLocations,
 			).Should(Equal([]string{"dpa-1"}))
+			// verify clusterpool.other.hive.openshift.io to be in the managed cluster schedule and not in resources backup
+			// because the includedActivationAPIGroupsByName contains other.hive.openshift.io
+			for i := range veleroSchedulesList.Items {
+				if veleroSchedulesList.Items[i].Name == veleroScheduleNames[Resources] {
+					Expect(findValue(veleroSchedulesList.Items[i].Spec.Template.IncludedResources,
+						"clusterpool.other.hive.openshift.io")).Should(BeFalse())
+
+				}
+				if veleroSchedulesList.Items[i].Name == veleroScheduleNames[ManagedClusters] {
+					Expect(findValue(veleroSchedulesList.Items[i].Spec.Template.IncludedResources,
+						"clusterpool.other.hive.openshift.io")).Should(BeTrue())
+
+				}
+			}
 
 			k8sClient.Delete(ctx, &veleroSchedulesList.Items[1])
 			// count velero schedules, should be still len(veleroScheduleNames)
