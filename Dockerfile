@@ -4,6 +4,8 @@ FROM registry.ci.openshift.org/stolostron/builder:go1.19-linux AS builder
 WORKDIR /workspace
 # Copy the source files
 COPY main.go main.go
+COPY go.mod go.mod
+COPY go.sum go.sum
 COPY api/ api/
 COPY config/ config/
 COPY controllers/ controllers/
