@@ -3,7 +3,10 @@ FROM registry.ci.openshift.org/stolostron/builder:go1.19-linux as builder
 
 WORKDIR /workspace
 # Copy the source files
-COPY . .
+COPY main.go main.go
+COPY api/ api/
+COPY config/ config/
+COPY controllers/ controllers/
 
 # Copy the go source
 RUN  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go mod vendor
