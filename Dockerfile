@@ -7,7 +7,9 @@ COPY main.go main.go
 COPY go.mod go.mod
 COPY go.sum go.sum
 COPY api/ api/
-COPY config/ config/
+COPY config/crd/ config/crd/
+COPY config/crd/bases/ config/crd/bases/
+COPY config/crd/patches/ config/crd/patches/
 COPY controllers/ controllers/
 
 # Copy the go source
