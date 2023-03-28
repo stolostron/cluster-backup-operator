@@ -351,7 +351,8 @@ func createMSA(
 
 	if name == msa_service_name {
 		// attempt to create ManifestWork to push the role binding, if not created already
-		createManifestWork(ctx, c, managedClusterName, name)
+		createManifestWork(ctx, c, managedClusterName, name,
+			manifest_work_name_binding_name, msa_service_name, manifest_work_name)
 	}
 
 	secretsGeneratedNow := false
@@ -382,7 +383,8 @@ func createMSA(
 
 	if generateMSA {
 		// attempt to create ManifestWork to push the role binding, if not created already
-		createManifestWork(ctx, c, managedClusterName, name)
+		createManifestWork(ctx, c, managedClusterName, name,
+			manifest_work_name_binding_name_pair, msa_service_name_pair, manifest_work_name_pair)
 
 		// delete any secret with the same name as the MSA
 		msaSecret := corev1.Secret{}
@@ -471,18 +473,11 @@ func createManifestWork(
 	c client.Client,
 	namespace string,
 	name string,
+	mworkbindingName string,
+	msaserviceName string,
+	mworkName string,
 ) {
 	logger := log.FromContext(ctx)
-
-	mworkbinding_name := manifest_work_name_binding_name
-	msaservice_name := msa_service_name
-	mwork_name := manifest_work_name
-
-	if name == msa_service_name_pair {
-		mwork_name = manifest_work_name_pair
-		mworkbinding_name = manifest_work_name_binding_name_pair
-		msaservice_name = msa_service_name_pair
-	}
 
 	manifestWorkList := &workv1.ManifestWorkList{}
 	if msaLabel, err := labels.NewRequirement(addon_work_label,
@@ -497,7 +492,7 @@ func createManifestWork(
 
 			alreadyExists := false
 			for i := range manifestWorkList.Items {
-				if manifestWorkList.Items[i].Name == mwork_name {
+				if manifestWorkList.Items[i].Name == mworkName {
 					alreadyExists = true
 					break
 				}
@@ -505,22 +500,22 @@ func createManifestWork(
 			if !alreadyExists {
 				// create the manifest work now
 				manifestWork := &workv1.ManifestWork{}
-				manifestWork.Name = mwork_name
+				manifestWork.Name = mworkName
 				manifestWork.Namespace = namespace
 				manifestWork.Labels = map[string]string{
 					addon_work_label:        msa_addon,
 					backupCredsClusterLabel: "msa"}
 
 				manifest := &workv1.Manifest{}
-				manifest.Raw = []byte(fmt.Sprintf(manifestwork, mworkbinding_name, role_name, msaservice_name)) //msa_service_name))
+				manifest.Raw = []byte(fmt.Sprintf(manifestwork, mworkbindingName, role_name, msaserviceName)) //msa_service_name))
 
 				manifestWork.Spec.Workload.Manifests = []workv1.Manifest{
 					*manifest,
 				}
 
-				logger.Info(fmt.Sprintf("Attempt to create ManifestWork %s in ns %s", mwork_name, namespace))
+				logger.Info(fmt.Sprintf("Attempt to create ManifestWork %s in ns %s", mworkName, namespace))
 				if err := c.Create(ctx, manifestWork, &client.CreateOptions{}); err == nil {
-					logger.Info(fmt.Sprintf("Created ManifestWork %s in ns %s ", mwork_name, namespace))
+					logger.Info(fmt.Sprintf("Created ManifestWork %s in ns %s ", mworkName, namespace))
 				}
 			}
 		}
