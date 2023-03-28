@@ -507,7 +507,7 @@ func createManifestWork(
 					backupCredsClusterLabel: "msa"}
 
 				manifest := &workv1.Manifest{}
-				manifest.Raw = []byte(fmt.Sprintf(manifestwork, mworkbindingName, role_name, msaserviceName)) //msa_service_name))
+				manifest.Raw = []byte(fmt.Sprintf(manifestwork, mworkbindingName, role_name, msaserviceName))
 
 				manifestWork.Spec.Workload.Manifests = []workv1.Manifest{
 					*manifest,
