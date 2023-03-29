@@ -273,13 +273,13 @@ func prepareImportedClusters(ctx context.Context,
 			}
 
 			secretCreatedNowForCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
-				msa_service_name, managedCluster.Name)
+				msa_service_name, managedCluster.Name, time.Now())
 			// create ManagedServiceAccount pair if needed
 			// the pair MSA is used to generate a token at half
 			// the interval of the initial MSA so that any backup will contain
 			// a valid token, either from the initial MSA or pair
 			secretCreatedNowForPairCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
-				msa_service_name_pair, managedCluster.Name)
+				msa_service_name_pair, managedCluster.Name, time.Now())
 
 			secretsGeneratedNow = secretsGeneratedNow ||
 				secretCreatedNowForCluster ||
@@ -345,6 +345,7 @@ func createMSA(
 	tokenValidity string,
 	name string,
 	managedClusterName string,
+	currentTime time.Time,
 ) (bool, bool, error) {
 
 	logger := log.FromContext(ctx)
@@ -378,13 +379,17 @@ func createMSA(
 	if name == msa_service_name_pair {
 		// for the MSA pair, generate one only when the initial MSA token exists and
 		// current time is half between creation and expiration time for that token
-		generateMSA = shouldGeneratePairToken(getMSASecrets(ctx, c, managedClusterName), time.Now())
+		generateMSA = shouldGeneratePairToken(getMSASecrets(ctx, c, managedClusterName), currentTime)
+
+		if generateMSA {
+			// attempt to create ManifestWork for the pair, if not created already
+			createManifestWork(ctx, c, managedClusterName, name,
+				manifest_work_name_binding_name_pair, msa_service_name_pair, manifest_work_name_pair)
+
+		}
 	}
 
 	if generateMSA {
-		// attempt to create ManifestWork to push the role binding, if not created already
-		createManifestWork(ctx, c, managedClusterName, name,
-			manifest_work_name_binding_name_pair, msa_service_name_pair, manifest_work_name_pair)
 
 		// delete any secret with the same name as the MSA
 		msaSecret := corev1.Secret{}
@@ -409,7 +414,7 @@ func createMSA(
 				"name":      name,
 				"namespace": managedClusterName,
 				"labels": map[string]interface{}{
-					msa_label: name,
+					msa_label: msa_service_name,
 				},
 			},
 			"spec": map[string]interface{}{

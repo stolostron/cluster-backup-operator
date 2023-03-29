@@ -25,6 +25,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -83,6 +84,7 @@ func Test_createMSA(t *testing.T) {
 		Resource: "ManagedServiceAccount"}
 
 	resInterface := dynClient.Resource(res)
+	current, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
 
 	type args struct {
 		ctx            context.Context
@@ -90,12 +92,16 @@ func Test_createMSA(t *testing.T) {
 		validity       string
 		managedCluster string
 		name           string
+		secrets        []corev1.Secret
+		currentTime    time.Time
 	}
 	tests := []struct {
 		name                string
 		args                args
 		secretsGeneratedNow bool
 		secretsUpdated      bool
+		pairMSAGeneratedNow bool
+		mainMSAGeneratedNow bool
 	}{
 		{
 			name: "msa generated now",
@@ -105,7 +111,11 @@ func Test_createMSA(t *testing.T) {
 				managedCluster: namespace,
 				name:           msa_service_name,
 				validity:       "20h",
+				secrets:        []corev1.Secret{},
+				currentTime:    current,
 			},
+			pairMSAGeneratedNow: false,
+			mainMSAGeneratedNow: true,
 			secretsGeneratedNow: true,
 			secretsUpdated:      false,
 		},
@@ -117,7 +127,11 @@ func Test_createMSA(t *testing.T) {
 				managedCluster: namespace,
 				name:           msa_service_name,
 				validity:       "50h",
+				secrets:        []corev1.Secret{},
+				currentTime:    current,
 			},
+			pairMSAGeneratedNow: false,
+			mainMSAGeneratedNow: true,
 			secretsGeneratedNow: false,
 			secretsUpdated:      true,
 		},
@@ -129,7 +143,11 @@ func Test_createMSA(t *testing.T) {
 				managedCluster: namespace,
 				name:           msa_service_name_pair,
 				validity:       "50h",
+				secrets:        []corev1.Secret{},
+				currentTime:    current,
 			},
+			pairMSAGeneratedNow: false,
+			mainMSAGeneratedNow: true,
 			secretsGeneratedNow: false,
 			secretsUpdated:      false,
 		},
@@ -141,19 +159,74 @@ func Test_createMSA(t *testing.T) {
 				managedCluster: namespace,
 				name:           msa_service_name,
 				validity:       "\"invalid-token",
+				secrets:        []corev1.Secret{},
+				currentTime:    current,
 			},
+			pairMSAGeneratedNow: false,
+			mainMSAGeneratedNow: true,
 			secretsGeneratedNow: false,
 			secretsUpdated:      true,
+		},
+		{
+			name: "MSA pair generated now",
+			args: args{
+				ctx:            context.Background(),
+				dr:             resInterface,
+				managedCluster: namespace,
+				name:           msa_service_name_pair,
+				validity:       "2m",
+				secrets: []corev1.Secret{
+					*createSecret("auto-import-account-2", namespace,
+						map[string]string{
+							msa_label: "true",
+						}, map[string]string{
+							"expirationTimestamp":  "2022-07-26T15:26:36Z",
+							"lastRefreshTimestamp": "2022-07-26T15:22:34Z",
+						}, nil),
+				},
+				currentTime: current,
+			},
+			pairMSAGeneratedNow: true,
+			mainMSAGeneratedNow: true,
+			secretsGeneratedNow: true,
+			secretsUpdated:      false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+
+			for i := range tt.args.secrets {
+				if err := k8sClient1.Create(context.Background(), &tt.args.secrets[i]); err != nil {
+					t.Errorf("secret creation failed: err(%s) ", err.Error())
+				}
+			}
+
 			secretsGeneratedNow, secretsUpdated, _ := createMSA(tt.args.ctx, k8sClient1,
 				tt.args.dr,
 				tt.args.validity,
 				tt.args.name,
 				tt.args.managedCluster,
+				current,
 			)
+
+			_, err := tt.args.dr.Namespace(tt.args.managedCluster).
+				Get(context.Background(), msa_service_name, v1.GetOptions{})
+			if err != nil && tt.mainMSAGeneratedNow {
+				t.Errorf("MSA %s should exist: err(%s) ", msa_service_name, err.Error())
+			}
+			if err == nil && !tt.mainMSAGeneratedNow {
+				t.Errorf("MSA %s should NOT exist", msa_service_name)
+			}
+
+			_, errPair := tt.args.dr.Namespace(tt.args.managedCluster).
+				Get(context.Background(), msa_service_name_pair, v1.GetOptions{})
+			if errPair != nil && tt.pairMSAGeneratedNow {
+				t.Errorf("MSA %s should exist: err(%s) ", msa_service_name_pair, errPair.Error())
+			}
+			if errPair == nil && !tt.pairMSAGeneratedNow {
+				t.Errorf("MSA %s should NOT exist", msa_service_name_pair)
+			}
+
 			if secretsGeneratedNow != tt.secretsGeneratedNow {
 				t.Errorf("createMSA() returns secretsGeneratedNow = %v, want %v", secretsGeneratedNow, tt.secretsGeneratedNow)
 			}
