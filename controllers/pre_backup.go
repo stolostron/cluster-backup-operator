@@ -379,12 +379,16 @@ func createMSA(
 		// for the MSA pair, generate one only when the initial MSA token exists and
 		// current time is half between creation and expiration time for that token
 		generateMSA = shouldGeneratePairToken(getMSASecrets(ctx, c, managedClusterName), time.Now())
+
+		if generateMSA {
+			// attempt to create ManifestWork for the pair, if not created already
+			createManifestWork(ctx, c, managedClusterName, name,
+				manifest_work_name_binding_name_pair, msa_service_name_pair, manifest_work_name_pair)
+
+		}
 	}
 
 	if generateMSA {
-		// attempt to create ManifestWork to push the role binding, if not created already
-		createManifestWork(ctx, c, managedClusterName, name,
-			manifest_work_name_binding_name_pair, msa_service_name_pair, manifest_work_name_pair)
 
 		// delete any secret with the same name as the MSA
 		msaSecret := corev1.Secret{}
@@ -409,7 +413,7 @@ func createMSA(
 				"name":      name,
 				"namespace": managedClusterName,
 				"labels": map[string]interface{}{
-					msa_label: name,
+					msa_label: msa_service_name,
 				},
 			},
 			"spec": map[string]interface{}{
