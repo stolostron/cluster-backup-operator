@@ -368,6 +368,11 @@ var _ = BeforeSuite(func() {
 	resourcesToBackup = []string{
 		"placement.cluster.open-cluster-management.io",
 	}
+
+	//clusterpool.other.hive.openshift.io should go under managed cluster backup
+	includedActivationAPIGroupsByName = []string{
+		"other.hive.openshift.io",
+	}
 	test := tests[1]
 	_, err := fakeDiscovery.ServerResourcesForGroupVersion(test.request)
 

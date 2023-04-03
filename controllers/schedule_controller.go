@@ -123,7 +123,6 @@ func (r *BackupScheduleReconciler) Reconcile(
 	)
 
 	backupSchedule := &v1beta1.BackupSchedule{}
-
 	if result, validConfiguration, err := r.isValidateConfiguration(ctx, mapper,
 		req,
 		backupSchedule); !validConfiguration {
@@ -151,12 +150,6 @@ func (r *BackupScheduleReconciler) Reconcile(
 		client.InNamespace(req.Namespace),
 		client.MatchingFields{scheduleOwnerKey: req.Name},
 	); err != nil {
-		scheduleLogger.Error(
-			err,
-			"unable to list velero schedules for schedule",
-			"namespace", req.Namespace,
-			"name", req.Name,
-		)
 		return ctrl.Result{}, err
 	}
 
@@ -231,7 +224,8 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 
 	// check for any updates that are required for velero schedules based on backupSchedule and hub resources
-	if result, updated, err := r.isVeleroSchedulesUpdateRequired(ctx, veleroScheduleList, backupSchedule); updated {
+	if result, updated, err := isVeleroSchedulesUpdateRequired(ctx, r.Client,
+		getResourcesToBackup(ctx, r.DiscoveryClient), veleroScheduleList, backupSchedule); updated {
 		return result, err
 	}
 
@@ -250,49 +244,6 @@ func (r *BackupScheduleReconciler) Reconcile(
 			backupSchedule.Name,
 		),
 	)
-}
-
-// check if Velero schedules need to be updated and update them if required
-func (r *BackupScheduleReconciler) isVeleroSchedulesUpdateRequired(
-	ctx context.Context,
-	veleroScheduleList veleroapi.ScheduleList,
-	backupSchedule *v1beta1.BackupSchedule,
-) (ctrl.Result, bool, error) {
-	scheduleLogger := log.FromContext(ctx)
-
-	// update velero schedules if cron schedule or ttl is changed on the backupSchedule
-	if isScheduleSpecUpdated(&veleroScheduleList, backupSchedule) {
-		for i := range veleroScheduleList.Items {
-			veleroSchedule := &veleroScheduleList.Items[i]
-			if err := r.Client.Update(ctx, veleroSchedule, &client.UpdateOptions{}); err != nil {
-				return ctrl.Result{}, true, err
-			}
-		}
-		scheduleLogger.Info(
-			fmt.Sprintf("Updated Velero schedules spec based on %s spec ", backupSchedule.Name),
-		)
-		return ctrl.Result{RequeueAfter: collisionControlInterval}, true, nil
-	}
-
-	// update backup resources on velero schedules if any changes in hub resources
-	resourcesToBackup := getResourcesToBackup(ctx, r.DiscoveryClient)
-	schedulesToBeUpdated := getSchedulesWithUpdatedResources(resourcesToBackup, &veleroScheduleList)
-	if schedulesToBeUpdated != nil && len(schedulesToBeUpdated) > 0 {
-		for i := range schedulesToBeUpdated {
-			if err := r.Client.Update(ctx, &schedulesToBeUpdated[i], &client.UpdateOptions{}); err != nil {
-				return ctrl.Result{}, true, err
-			}
-			scheduleLogger.Info(
-				fmt.Sprintf(
-					"Updated backup resources on Velero schedule %s ",
-					schedulesToBeUpdated[i].Name,
-				),
-			)
-		}
-		return ctrl.Result{RequeueAfter: collisionControlInterval}, true, nil
-	}
-
-	return ctrl.Result{}, false, nil
 }
 
 // validate backup configuration
@@ -337,8 +288,9 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 
 	// look for available VeleroStorageLocation
 	// and keep track of the velero oadp namespace
-	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(
-		*veleroStorageLocations,
+	isValidStorageLocation := isValidStorageLocationDefined(
+		veleroStorageLocations.Items,
+		req.Namespace,
 	)
 
 	// if no valid storage location found wait for valid value
@@ -347,18 +299,6 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 			"Check velero.io.BackupStorageLocation and validate storage credentials."
 		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
 			msg, true)
-	}
-
-	// return error if the backup resource is not in the same namespace with velero
-	if veleroNamespace != req.Namespace {
-		msg := fmt.Sprintf(
-			"Schedule resource [%s/%s] must be created in the velero namespace [%s]",
-			req.Namespace,
-			req.Name,
-			veleroNamespace,
-		)
-		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
-			msg, false)
 	}
 
 	// check MSA status for backup schedules
@@ -437,6 +377,10 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 				veleroBackupTemplate,
 				backupSchedule,
 			)
+		}
+
+		if len(backupSchedule.Spec.VolumeSnapshotLocations) > 0 {
+			veleroBackupTemplate.VolumeSnapshotLocations = backupSchedule.Spec.VolumeSnapshotLocations
 		}
 
 		veleroSchedule.Spec.Template = *veleroBackupTemplate

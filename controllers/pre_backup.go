@@ -54,13 +54,17 @@ const (
 	role_name             = "klusterlet-bootstrap-kubeconfig"
 	msa_api               = "authentication.open-cluster-management.io/v1alpha1"
 
-	manifest_work_name = "addon-" + msa_addon + "-import"
-	defaultTTL         = 720
-	manifestwork       = `{
+	manifest_work_name                   = "addon-" + msa_addon + "-import"
+	manifest_work_name_pair              = "addon-" + msa_addon + "-import-pair"
+	manifest_work_name_binding_name      = "managedserviceaccount-import"
+	manifest_work_name_binding_name_pair = "managedserviceaccount-import-pair"
+
+	defaultTTL   = 720
+	manifestwork = `{
         "apiVersion": "rbac.authorization.k8s.io/v1",
         "kind": "ClusterRoleBinding",
         "metadata": {
-            "name": "managedserviceaccount-import"
+            "name": "%s"
         },
         "roleRef": {
             "apiGroup": "rbac.authorization.k8s.io",
@@ -75,6 +79,8 @@ const (
             }
         ]
     }`
+
+	update_msg = "Updated secret %s in ns %s"
 )
 
 // the prepareForBackup task is executed before each run of a backup schedule
@@ -267,13 +273,13 @@ func prepareImportedClusters(ctx context.Context,
 			}
 
 			secretCreatedNowForCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
-				msa_service_name, managedCluster.Name)
+				msa_service_name, managedCluster.Name, time.Now())
 			// create ManagedServiceAccount pair if needed
 			// the pair MSA is used to generate a token at half
 			// the interval of the initial MSA so that any backup will contain
 			// a valid token, either from the initial MSA or pair
 			secretCreatedNowForPairCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
-				msa_service_name_pair, managedCluster.Name)
+				msa_service_name_pair, managedCluster.Name, time.Now())
 
 			secretsGeneratedNow = secretsGeneratedNow ||
 				secretCreatedNowForCluster ||
@@ -339,9 +345,17 @@ func createMSA(
 	tokenValidity string,
 	name string,
 	managedClusterName string,
+	currentTime time.Time,
 ) (bool, bool, error) {
 
 	logger := log.FromContext(ctx)
+
+	if name == msa_service_name {
+		// attempt to create ManifestWork to push the role binding, if not created already
+		createManifestWork(ctx, c, managedClusterName, name,
+			manifest_work_name_binding_name, msa_service_name, manifest_work_name)
+	}
+
 	secretsGeneratedNow := false
 
 	//check if MSA exists
@@ -365,10 +379,18 @@ func createMSA(
 	if name == msa_service_name_pair {
 		// for the MSA pair, generate one only when the initial MSA token exists and
 		// current time is half between creation and expiration time for that token
-		generateMSA = shouldGeneratePairToken(getMSASecrets(ctx, c, managedClusterName), time.Now())
+		generateMSA = shouldGeneratePairToken(getMSASecrets(ctx, c, managedClusterName), currentTime)
+
+		if generateMSA {
+			// attempt to create ManifestWork for the pair, if not created already
+			createManifestWork(ctx, c, managedClusterName, name,
+				manifest_work_name_binding_name_pair, msa_service_name_pair, manifest_work_name_pair)
+
+		}
 	}
 
 	if generateMSA {
+
 		// delete any secret with the same name as the MSA
 		msaSecret := corev1.Secret{}
 		if err := c.Get(ctx, types.NamespacedName{
@@ -392,7 +414,7 @@ func createMSA(
 				"name":      name,
 				"namespace": managedClusterName,
 				"labels": map[string]interface{}{
-					msa_label: name,
+					msa_label: msa_service_name,
 				},
 			},
 			"spec": map[string]interface{}{
@@ -407,8 +429,7 @@ func createMSA(
 		if _, err := dr.Namespace(managedClusterName).Create(ctx, msaRC, v1.CreateOptions{}); err == nil {
 			logger.Info(fmt.Sprintf("Created ManagedServiceAccount for cluster =%s", managedClusterName))
 		}
-		// create ManifestWork to push the role binding
-		createManifestWork(ctx, c, managedClusterName)
+
 	}
 
 	return secretsGeneratedNow, false, nil
@@ -456,6 +477,10 @@ func createManifestWork(
 	ctx context.Context,
 	c client.Client,
 	namespace string,
+	name string,
+	mworkbindingName string,
+	msaserviceName string,
+	mworkName string,
 ) {
 	logger := log.FromContext(ctx)
 
@@ -470,25 +495,32 @@ func createManifestWork(
 			LabelSelector: selector},
 		); err == nil {
 
-			if len(manifestWorkList.Items) == 0 {
+			alreadyExists := false
+			for i := range manifestWorkList.Items {
+				if manifestWorkList.Items[i].Name == mworkName {
+					alreadyExists = true
+					break
+				}
+			}
+			if !alreadyExists {
 				// create the manifest work now
 				manifestWork := &workv1.ManifestWork{}
-				manifestWork.Name = manifest_work_name
+				manifestWork.Name = mworkName
 				manifestWork.Namespace = namespace
 				manifestWork.Labels = map[string]string{
-					addon_work_label:   msa_addon,
-					ExcludeBackupLabel: "true"}
+					addon_work_label:        msa_addon,
+					backupCredsClusterLabel: "msa"}
 
 				manifest := &workv1.Manifest{}
-				manifest.Raw = []byte(fmt.Sprintf(manifestwork, role_name, msa_service_name))
+				manifest.Raw = []byte(fmt.Sprintf(manifestwork, mworkbindingName, role_name, msaserviceName))
 
 				manifestWork.Spec.Workload.Manifests = []workv1.Manifest{
 					*manifest,
 				}
 
-				logger.Info(fmt.Sprintf("Attempt to create ManifestWork %s in ns %s", manifest_work_name, namespace))
+				logger.Info(fmt.Sprintf("Attempt to create ManifestWork %s in ns %s", mworkName, namespace))
 				if err := c.Create(ctx, manifestWork, &client.CreateOptions{}); err == nil {
-					logger.Info(fmt.Sprintf("Created ManifestWork %s in ns %s ", manifest_work_name, namespace))
+					logger.Info(fmt.Sprintf("Created ManifestWork %s in ns %s ", mworkName, namespace))
 				}
 			}
 		}
@@ -557,7 +589,7 @@ func updateMSAResources(
 			logger.Info(fmt.Sprintf("Attempt to update secret %s in ns %s", secret.Name, secret.Namespace))
 
 			if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err == nil {
-				logger.Info(fmt.Sprintf("Updated secret %s in ns %s", secret.Name, secret.Namespace))
+				logger.Info(fmt.Sprintf(update_msg, secret.Name, secret.Namespace))
 			}
 		}
 	}
@@ -728,8 +760,27 @@ func updateSecretsLabels(ctx context.Context,
 	labelName string,
 	labelValue string,
 ) {
+	logger := log.FromContext(ctx)
+
 	for s := range secrets.Items {
 		secret := secrets.Items[s]
+		//exclude import secrets
+		if secret.Name == secret.Namespace+"-import" {
+			// remove backup label if set by previus code
+			// we don't want hive import secrets to be backed up
+			if secret.GetLabels()[labelName] == labelValue {
+				// remove this label
+				delete(secret.GetLabels(), labelName)
+
+				msg := fmt.Sprintf("Updating secret %s in ns %s, removing label %s", secret.Name, secret.Namespace, labelName)
+				logger.Info(msg)
+				if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err == nil {
+					logger.Info(fmt.Sprintf(update_msg, secret.Name, secret.Namespace))
+				}
+			}
+			continue
+		}
+
 		if strings.HasPrefix(secret.Name, prefix) &&
 			!strings.Contains(secret.Name, "-bootstrap-") {
 			updateSecret(ctx, c, secret, labelName, labelValue, true)
@@ -765,7 +816,7 @@ func updateSecret(ctx context.Context,
 			return true
 		}
 		if err := c.Update(ctx, &secret, &client.UpdateOptions{}); err == nil {
-			logger.Info(fmt.Sprintf("Updated secret %s in ns %s", secret.Name, secret.Namespace))
+			logger.Info(fmt.Sprintf(update_msg, secret.Name, secret.Namespace))
 		}
 		// secret needs refresh
 		return true

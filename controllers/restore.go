@@ -36,6 +36,8 @@ const (
 	/* #nosec G101 -- This is a false positive */
 	activateLabel = "cluster.open-cluster-management.io/restore-auto-import-secret"
 	/* #nosec G101 -- This is a false positive */
+	keepAutoImportSecret = "managedcluster-import-controller.open-cluster-management.io/keeping-auto-import-secret"
+	/* #nosec G101 -- This is a false positive */
 	autoImportSecretName = "auto-import-secret"
 )
 
@@ -447,26 +449,14 @@ func validateStorageSettings(
 
 	// look for available VeleroStorageLocation
 	// and keep track of the velero oadp namespace
-	isValidStorageLocation, veleroNamespace := isValidStorageLocationDefined(
-		*veleroStorageLocations,
+	isValidStorageLocation := isValidStorageLocationDefined(
+		veleroStorageLocations.Items,
+		namespace,
 	)
 
 	if !isValidStorageLocation {
 		msg = "Backup storage location not available in namespace " + namespace +
 			". Check velero.io.BackupStorageLocation and validate storage credentials."
-
-		return msg, retry
-	}
-
-	// return error if the cluster restore file is not in the same namespace with velero
-	if veleroNamespace != namespace {
-		msg = fmt.Sprintf(
-			"Restore resource [%s/%s] must be created in the velero namespace [%s]",
-			namespace,
-			name,
-			veleroNamespace,
-		)
-		retry = false
 
 		return msg, retry
 	}
@@ -713,8 +703,8 @@ func processRetrieveRestoreDetails(
 
 				veleroRestore.Namespace = acmRestore.Namespace
 				veleroRestore.Spec.BackupName = veleroBackupName
-				// update existing resources if part of the new backup
-				veleroRestore.Spec.ExistingResourcePolicy = veleroapi.PolicyTypeUpdate
+
+				setOptionalProperties(key, acmRestore, veleroRestore)
 
 				if err := ctrl.SetControllerReference(acmRestore, veleroRestore, s); err != nil {
 					acmRestore.Status.LastMessage = fmt.Sprintf(
@@ -728,4 +718,54 @@ func processRetrieveRestoreDetails(
 		}
 	}
 	return veleroRestoresToCreate, nil
+}
+
+func setOptionalProperties(
+	key ResourceType,
+	acmRestore *v1beta1.Restore,
+	veleroRestore *veleroapi.Restore,
+) {
+	// set includeClusterResources for all restores except credentials
+	if key == Resources || key == ManagedClusters || key == ResourcesGeneric {
+		var clusterResource bool = true
+		veleroRestore.Spec.IncludeClusterResources = &clusterResource
+	}
+
+	// update existing resources if part of the new backup
+	veleroRestore.Spec.ExistingResourcePolicy = veleroapi.PolicyTypeUpdate
+
+	// pass on velero optional properties
+	if acmRestore.Spec.RestoreStatus != nil {
+		veleroRestore.Spec.RestoreStatus = acmRestore.Spec.RestoreStatus
+	}
+	if acmRestore.Spec.PreserveNodePorts != nil {
+		veleroRestore.Spec.PreserveNodePorts = acmRestore.Spec.PreserveNodePorts
+	}
+	if acmRestore.Spec.RestorePVs != nil {
+		veleroRestore.Spec.RestorePVs = acmRestore.Spec.RestorePVs
+	}
+	if len(acmRestore.Spec.Hooks.Resources) > 0 {
+
+		veleroRestore.Spec.Hooks.Resources = append(veleroRestore.Spec.Hooks.Resources,
+			acmRestore.Spec.Hooks.Resources...,
+		)
+	}
+	// allow excluding namespaces
+	if acmRestore.Spec.ExcludedNamespaces != nil {
+
+		for i := range acmRestore.Spec.ExcludedNamespaces {
+			veleroRestore.Spec.ExcludedNamespaces = appendUnique(veleroRestore.Spec.ExcludedNamespaces,
+				acmRestore.Spec.ExcludedNamespaces[i])
+		}
+
+	}
+	// allow excluding resources
+	if acmRestore.Spec.ExcludedResources != nil {
+
+		for i := range acmRestore.Spec.ExcludedResources {
+			veleroRestore.Spec.ExcludedResources = appendUnique(veleroRestore.Spec.ExcludedResources,
+				acmRestore.Spec.ExcludedResources[i])
+		}
+
+	}
 }

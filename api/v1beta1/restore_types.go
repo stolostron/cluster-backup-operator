@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -94,6 +95,39 @@ type RestoreSpec struct {
 	// When SyncRestoreWithNewBackups is set to true, defines the duration for checking on new backups
 	// If not defined and SyncRestoreWithNewBackups is set to true, it defaults to 30minutes
 	RestoreSyncInterval metav1.Duration `json:"restoreSyncInterval,omitempty"`
+
+	// velero option -  RestorePVs specifies whether to restore all included
+	// PVs from snapshot (via the cloudprovider).
+	// +optional
+	// +nullable
+	RestorePVs *bool `json:"restorePVs,omitempty"`
+
+	// velero option -  RestoreStatus specifies which resources we should restore the status
+	// field. If nil, no objects are included. Optional.
+	// +optional
+	// +nullable
+	RestoreStatus *veleroapi.RestoreStatusSpec `json:"restoreStatus,omitempty"`
+
+	// velero option - PreserveNodePorts specifies whether to restore old nodePorts from backup.
+	// +optional
+	// +nullable
+	PreserveNodePorts *bool `json:"preserveNodePorts,omitempty"`
+
+	// velero option -  Hooks represent custom behaviors that should be executed during or post restore.
+	// +optional
+	Hooks veleroapi.RestoreHooks `json:"hooks,omitempty"`
+
+	// ExcludedNamespaces contains a list of namespaces that are not
+	// included in the restore.
+	// +optional
+	// +nullable
+	ExcludedNamespaces []string `json:"excludedNamespaces,omitempty"`
+
+	// ExcludedResources is a slice of resource names that are not
+	// included in the restore.
+	// +optional
+	// +nullable
+	ExcludedResources []string `json:"excludedResources,omitempty"`
 }
 
 // RestoreStatus defines the observed state of Restore

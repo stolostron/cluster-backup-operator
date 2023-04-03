@@ -486,8 +486,12 @@ func postRestoreActivation(
 		if !reimport {
 			// no need to reimport this managed cluster
 			// the cluster is already active or the url is not set
-			logger.Info(fmt.Sprintf("Will not reimport cluster (%s) the cluster is already active or the server url is not set",
-				clusterName))
+			logger.Info(
+				fmt.Sprintf(
+					"Will not reimport cluster (%s) the cluster is already active or the server url is not set",
+					clusterName,
+				),
+			)
 			continue
 		}
 
@@ -549,6 +553,10 @@ func createAutoImportSecret(
 	labels := make(map[string]string)
 	labels[activateLabel] = "true"
 	autoImportSecret.SetLabels(labels)
+	// add annotation to keep secret
+	annotations := make(map[string]string)
+	annotations[keepAutoImportSecret] = ""
+	autoImportSecret.SetAnnotations(annotations)
 	// set data
 	stringData := make(map[string]string)
 	stringData["autoImportRetry"] = "5"

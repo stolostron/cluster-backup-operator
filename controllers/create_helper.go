@@ -211,6 +211,21 @@ func (b *ScheduleHelper) scheduleLabels(labels map[string]string) *ScheduleHelpe
 	return b
 }
 
+func (b *ScheduleHelper) schedule(cronjob string) *ScheduleHelper {
+	b.object.Spec.Schedule = cronjob
+	return b
+}
+
+func (b *ScheduleHelper) phase(ph veleroapi.SchedulePhase) *ScheduleHelper {
+	b.object.Status.Phase = ph
+	return b
+}
+
+func (b *ScheduleHelper) ttl(duration metav1.Duration) *ScheduleHelper {
+	b.object.Spec.Template.TTL = duration
+	return b
+}
+
 // velero restore
 type RestoreHelper struct {
 	object *veleroapi.Restore
@@ -301,6 +316,37 @@ func (b *ACMRestoreHelper) veleroCredentialsRestoreName(name string) *ACMRestore
 	return b
 }
 
+func (b *ACMRestoreHelper) preserveNodePorts(preserve bool) *ACMRestoreHelper {
+	b.object.Spec.PreserveNodePorts = &preserve
+	return b
+}
+
+func (b *ACMRestoreHelper) restorePVs(restorePV bool) *ACMRestoreHelper {
+	b.object.Spec.RestorePVs = &restorePV
+	return b
+}
+
+func (b *ACMRestoreHelper) restoreStatus(stat *veleroapi.RestoreStatusSpec) *ACMRestoreHelper {
+	b.object.Spec.RestoreStatus = stat
+	return b
+}
+
+func (b *ACMRestoreHelper) hookResources(res []veleroapi.RestoreResourceHookSpec) *ACMRestoreHelper {
+	b.object.Spec.Hooks.Resources = append(b.object.Spec.Hooks.Resources,
+		res...)
+	return b
+}
+
+func (b *ACMRestoreHelper) excludedResources(resources []string) *ACMRestoreHelper {
+	b.object.Spec.ExcludedResources = resources
+	return b
+}
+
+func (b *ACMRestoreHelper) excludedNamespaces(nspaces []string) *ACMRestoreHelper {
+	b.object.Spec.ExcludedNamespaces = nspaces
+	return b
+}
+
 // backup schedule
 type BackupScheduleHelper struct {
 	object *v1beta1.BackupSchedule
@@ -348,6 +394,11 @@ func (b *BackupScheduleHelper) phase(ph v1beta1.SchedulePhase) *BackupScheduleHe
 
 func (b *BackupScheduleHelper) noBackupOnStart(stopBackupOnStart bool) *BackupScheduleHelper {
 	b.object.Spec.NoBackupOnStart = stopBackupOnStart
+	return b
+}
+
+func (b *BackupScheduleHelper) setVolumeSnapshotLocation(locations []string) *BackupScheduleHelper {
+	b.object.Spec.VolumeSnapshotLocations = locations
 	return b
 }
 

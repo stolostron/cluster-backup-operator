@@ -194,6 +194,16 @@ var _ = Describe("Basic Restore controller", func() {
 			restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 			veleroManagedClustersBackupName(veleroManagedClustersBackupName).
 			veleroCredentialsBackupName(veleroCredentialsBackupName).
+			restorePVs(true).
+			preserveNodePorts(true).
+			restoreStatus(&veleroapi.RestoreStatusSpec{
+				IncludedResources: []string{"webhook"},
+			}).
+			hookResources([]veleroapi.RestoreResourceHookSpec{
+				veleroapi.RestoreResourceHookSpec{Name: "hookName"},
+			}).
+			excludedResources([]string{"res1", "res2"}).
+			excludedNamespaces([]string{"ns1", "ns2"}).
 			veleroResourcesBackupName(veleroResourcesBackupName).object
 	})
 
@@ -233,6 +243,18 @@ var _ = Describe("Basic Restore controller", func() {
 				veleroCredentialsHiveBackupName,
 				veleroCredentialsClusterBackupName,
 			}
+			// look for velero optional properties
+			Expect(*veleroRestores.Items[0].Spec.RestorePVs).Should(BeTrue())
+			Expect(*veleroRestores.Items[0].Spec.PreserveNodePorts).Should(BeTrue())
+			Expect(veleroRestores.Items[0].Spec.RestoreStatus.IncludedResources[0]).
+				Should(BeIdenticalTo("webhook"))
+			Expect(veleroRestores.Items[0].Spec.Hooks.Resources[0].Name).Should(
+				BeIdenticalTo("hookName"))
+			Expect(veleroRestores.Items[0].Spec.ExcludedNamespaces).Should(
+				ContainElement("ns1"))
+			Expect(veleroRestores.Items[0].Spec.ExcludedResources).Should(
+				ContainElement("res1"))
+			//
 			_, found := find(backupNames, veleroRestores.Items[0].Spec.BackupName)
 			Expect(found).Should(BeTrue())
 			_, found = find(backupNames, veleroRestores.Items[1].Spec.BackupName)
@@ -842,8 +864,7 @@ var _ = Describe("Basic Restore controller", func() {
 				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
 				Expect(
 					createdRestore.Status.LastMessage,
-				).Should(BeIdenticalTo("Restore resource [acm-ns-1/rhacm-restore-1-new] " +
-					"must be created in the velero namespace [velero-restore-ns-5]"))
+				).Should(BeIdenticalTo("Backup storage location not available in namespace acm-ns-1. Check velero.io.BackupStorageLocation and validate storage credentials."))
 			},
 		)
 	})

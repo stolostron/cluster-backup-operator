@@ -503,3 +503,48 @@ func createFailedValidationResponse(
 		)
 
 }
+
+// check if Velero schedules need to be updated and update them if required
+func isVeleroSchedulesUpdateRequired(
+	ctx context.Context,
+	c client.Client,
+	resourcesToBackup []string,
+	veleroScheduleList veleroapi.ScheduleList,
+	backupSchedule *v1beta1.BackupSchedule,
+) (ctrl.Result, bool, error) {
+	scheduleLogger := log.FromContext(ctx)
+
+	// update velero schedules if cron schedule or ttl is changed on the backupSchedule
+	if isScheduleSpecUpdated(&veleroScheduleList, backupSchedule) {
+		scheduleLogger.Info(
+			fmt.Sprintf("Updating Velero schedules spec based on %s spec ", backupSchedule.Name),
+		)
+
+		for i := range veleroScheduleList.Items {
+			veleroSchedule := &veleroScheduleList.Items[i]
+			if err := c.Update(ctx, veleroSchedule, &client.UpdateOptions{}); err != nil {
+				return ctrl.Result{}, true, err
+			}
+		}
+		return ctrl.Result{RequeueAfter: collisionControlInterval}, true, nil
+	}
+
+	// update backup resources on velero schedules if any changes in hub resources
+	schedulesToBeUpdated := getSchedulesWithUpdatedResources(resourcesToBackup, &veleroScheduleList)
+	if schedulesToBeUpdated != nil && len(schedulesToBeUpdated) > 0 {
+		for i := range schedulesToBeUpdated {
+			scheduleLogger.Info(
+				fmt.Sprintf(
+					"Updating backup resources on Velero schedule %s ",
+					schedulesToBeUpdated[i].Name,
+				),
+			)
+			if err := c.Update(ctx, &schedulesToBeUpdated[i], &client.UpdateOptions{}); err != nil {
+				return ctrl.Result{}, true, err
+			}
+		}
+		return ctrl.Result{RequeueAfter: collisionControlInterval}, true, nil
+	}
+
+	return ctrl.Result{}, false, nil
+}

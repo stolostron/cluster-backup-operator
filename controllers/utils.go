@@ -138,17 +138,17 @@ func (a SortResourceType) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 
 // check if we have a valid storage location object
 func isValidStorageLocationDefined(
-	veleroStorageLocations veleroapi.BackupStorageLocationList,
-) (bool, string) {
+	veleroStorageLocations []veleroapi.BackupStorageLocation,
+	preferredNs string,
+) bool {
 	isValidStorageLocation := false
-	veleroNamespace := ""
-	for i := range veleroStorageLocations.Items {
-		if veleroStorageLocations.Items[i].OwnerReferences != nil &&
-			veleroStorageLocations.Items[i].Status.Phase == veleroapi.BackupStorageLocationPhaseAvailable {
-			for _, ref := range veleroStorageLocations.Items[i].OwnerReferences {
+	for i := range veleroStorageLocations {
+		if veleroStorageLocations[i].Namespace == preferredNs &&
+			veleroStorageLocations[i].OwnerReferences != nil &&
+			veleroStorageLocations[i].Status.Phase == veleroapi.BackupStorageLocationPhaseAvailable {
+			for _, ref := range veleroStorageLocations[i].OwnerReferences {
 				if ref.Kind != "" {
 					isValidStorageLocation = true
-					veleroNamespace = veleroStorageLocations.Items[i].Namespace
 					break
 				}
 			}
@@ -157,7 +157,7 @@ func isValidStorageLocationDefined(
 			break
 		}
 	}
-	return isValidStorageLocation, veleroNamespace
+	return isValidStorageLocation
 }
 
 // having a resourceKind.resourceGroup string, return (resourceKind, resourceGroup)

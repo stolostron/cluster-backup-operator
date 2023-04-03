@@ -135,6 +135,7 @@ func Test_sortCompare(t *testing.T) {
 func Test_isValidStorageLocationDefined(t *testing.T) {
 	type args struct {
 		veleroStorageLocations *veleroapi.BackupStorageLocationList
+		preferredNS            string
 	}
 	tests := []struct {
 		name string
@@ -147,6 +148,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 				veleroStorageLocations: &veleroapi.BackupStorageLocationList{
 					Items: make([]veleroapi.BackupStorageLocation, 0),
 				},
+				preferredNS: "",
 			},
 			want: false,
 		},
@@ -170,6 +172,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 						},
 					},
 				},
+				preferredNS: "default",
 			},
 			want: false,
 		},
@@ -198,13 +201,60 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 						},
 					},
 				},
+				preferredNS: "default",
 			},
 			want: true,
+		},
+		{
+			name: "Storage location valid but not using the preferred ns",
+			args: args{
+				veleroStorageLocations: &veleroapi.BackupStorageLocationList{
+					Items: []veleroapi.BackupStorageLocation{
+						veleroapi.BackupStorageLocation{
+							TypeMeta: metav1.TypeMeta{
+								APIVersion: "velero/v1",
+								Kind:       "BackupStorageLocation",
+							},
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "valid-storage",
+								Namespace: "default1",
+								OwnerReferences: []v1.OwnerReference{
+									v1.OwnerReference{
+										Kind: "DataProtectionApplication",
+									},
+								},
+							},
+							Status: veleroapi.BackupStorageLocationStatus{
+								Phase: veleroapi.BackupStorageLocationPhaseAvailable,
+							},
+						},
+						veleroapi.BackupStorageLocation{
+							TypeMeta: metav1.TypeMeta{
+								APIVersion: "velero/v1",
+								Kind:       "BackupStorageLocation",
+							},
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "valid-storage",
+								Namespace: "default",
+								OwnerReferences: []v1.OwnerReference{
+									v1.OwnerReference{
+										Kind: "DataProtectionApplication",
+									},
+								},
+							},
+							Status: veleroapi.BackupStorageLocationStatus{},
+						},
+					},
+				},
+				preferredNS: "default",
+			},
+			want: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got, _ := isValidStorageLocationDefined(*tt.args.veleroStorageLocations); got != tt.want {
+			if got := isValidStorageLocationDefined(*&tt.args.veleroStorageLocations.Items,
+				tt.args.preferredNS); got != tt.want {
 				t.Errorf("isValidStorageLocationDefined() = %v, want %v", got, tt.want)
 			}
 		})
@@ -560,10 +610,8 @@ func Test_getHubIdentification(t *testing.T) {
 				t.Errorf("getHubIdentification() returns no error = %v, want %v and version=%v want=%v", err == nil, tt.err_nil, version, tt.want_msg)
 			}
 		})
-		if index == len(tests)-1 {
-			// clean up
-			testEnv.Stop()
-		}
 	}
+	// clean up
+	testEnv.Stop()
 
 }

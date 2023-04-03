@@ -19,14 +19,17 @@ package controllers
 import (
 	"context"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -81,6 +84,7 @@ func Test_createMSA(t *testing.T) {
 		Resource: "ManagedServiceAccount"}
 
 	resInterface := dynClient.Resource(res)
+	current, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
 
 	type args struct {
 		ctx            context.Context
@@ -88,12 +92,16 @@ func Test_createMSA(t *testing.T) {
 		validity       string
 		managedCluster string
 		name           string
+		secrets        []corev1.Secret
+		currentTime    time.Time
 	}
 	tests := []struct {
 		name                string
 		args                args
 		secretsGeneratedNow bool
 		secretsUpdated      bool
+		pairMSAGeneratedNow bool
+		mainMSAGeneratedNow bool
 	}{
 		{
 			name: "msa generated now",
@@ -103,7 +111,11 @@ func Test_createMSA(t *testing.T) {
 				managedCluster: namespace,
 				name:           msa_service_name,
 				validity:       "20h",
+				secrets:        []corev1.Secret{},
+				currentTime:    current,
 			},
+			pairMSAGeneratedNow: false,
+			mainMSAGeneratedNow: true,
 			secretsGeneratedNow: true,
 			secretsUpdated:      false,
 		},
@@ -115,7 +127,11 @@ func Test_createMSA(t *testing.T) {
 				managedCluster: namespace,
 				name:           msa_service_name,
 				validity:       "50h",
+				secrets:        []corev1.Secret{},
+				currentTime:    current,
 			},
+			pairMSAGeneratedNow: false,
+			mainMSAGeneratedNow: true,
 			secretsGeneratedNow: false,
 			secretsUpdated:      true,
 		},
@@ -127,7 +143,11 @@ func Test_createMSA(t *testing.T) {
 				managedCluster: namespace,
 				name:           msa_service_name_pair,
 				validity:       "50h",
+				secrets:        []corev1.Secret{},
+				currentTime:    current,
 			},
+			pairMSAGeneratedNow: false,
+			mainMSAGeneratedNow: true,
 			secretsGeneratedNow: false,
 			secretsUpdated:      false,
 		},
@@ -139,19 +159,74 @@ func Test_createMSA(t *testing.T) {
 				managedCluster: namespace,
 				name:           msa_service_name,
 				validity:       "\"invalid-token",
+				secrets:        []corev1.Secret{},
+				currentTime:    current,
 			},
+			pairMSAGeneratedNow: false,
+			mainMSAGeneratedNow: true,
 			secretsGeneratedNow: false,
 			secretsUpdated:      true,
+		},
+		{
+			name: "MSA pair generated now",
+			args: args{
+				ctx:            context.Background(),
+				dr:             resInterface,
+				managedCluster: namespace,
+				name:           msa_service_name_pair,
+				validity:       "2m",
+				secrets: []corev1.Secret{
+					*createSecret("auto-import-account-2", namespace,
+						map[string]string{
+							msa_label: "true",
+						}, map[string]string{
+							"expirationTimestamp":  "2022-07-26T15:26:36Z",
+							"lastRefreshTimestamp": "2022-07-26T15:22:34Z",
+						}, nil),
+				},
+				currentTime: current,
+			},
+			pairMSAGeneratedNow: true,
+			mainMSAGeneratedNow: true,
+			secretsGeneratedNow: true,
+			secretsUpdated:      false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+
+			for i := range tt.args.secrets {
+				if err := k8sClient1.Create(context.Background(), &tt.args.secrets[i]); err != nil {
+					t.Errorf("secret creation failed: err(%s) ", err.Error())
+				}
+			}
+
 			secretsGeneratedNow, secretsUpdated, _ := createMSA(tt.args.ctx, k8sClient1,
 				tt.args.dr,
 				tt.args.validity,
 				tt.args.name,
 				tt.args.managedCluster,
+				current,
 			)
+
+			_, err := tt.args.dr.Namespace(tt.args.managedCluster).
+				Get(context.Background(), msa_service_name, v1.GetOptions{})
+			if err != nil && tt.mainMSAGeneratedNow {
+				t.Errorf("MSA %s should exist: err(%s) ", msa_service_name, err.Error())
+			}
+			if err == nil && !tt.mainMSAGeneratedNow {
+				t.Errorf("MSA %s should NOT exist", msa_service_name)
+			}
+
+			_, errPair := tt.args.dr.Namespace(tt.args.managedCluster).
+				Get(context.Background(), msa_service_name_pair, v1.GetOptions{})
+			if errPair != nil && tt.pairMSAGeneratedNow {
+				t.Errorf("MSA %s should exist: err(%s) ", msa_service_name_pair, errPair.Error())
+			}
+			if errPair == nil && !tt.pairMSAGeneratedNow {
+				t.Errorf("MSA %s should NOT exist", msa_service_name_pair)
+			}
+
 			if secretsGeneratedNow != tt.secretsGeneratedNow {
 				t.Errorf("createMSA() returns secretsGeneratedNow = %v, want %v", secretsGeneratedNow, tt.secretsGeneratedNow)
 			}
@@ -703,6 +778,105 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 				tt.args.dr,
 				tt.args.mapping, &backupSchedule)
 		})
+	}
+	testEnv.Stop()
+
+}
+
+func Test_updateSecretsLabels(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	scheme1 := runtime.NewScheme()
+
+	cfg, _ := testEnv.Start()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	clusterv1.AddToScheme(scheme1)
+	corev1.AddToScheme(scheme1)
+
+	labelName := backupCredsClusterLabel
+	labelValue := "clusterpool"
+	clsName := "managed1"
+
+	if err := k8sClient1.Create(context.Background(), createNamespace(clsName)); err != nil {
+		t.Errorf("cannot create ns %s ", err.Error())
+	}
+
+	hiveSecrets := corev1.SecretList{
+		Items: []corev1.Secret{
+			*createSecret(clsName+"-import", clsName, map[string]string{
+				labelName: labelValue,
+			}, nil, nil), // do not back up, name is cls-import
+			*createSecret(clsName+"-import-1", clsName, map[string]string{
+				labelName: labelValue,
+			}, nil, nil), // back it up
+			*createSecret(clsName+"-import-2", clsName, nil, nil, nil),               // back it up
+			*createSecret(clsName+"-bootstrap-test", clsName, nil, nil, nil),         // do not backup
+			*createSecret(clsName+"-some-other-secret-test", clsName, nil, nil, nil), // backup
+		},
+	}
+
+	type args struct {
+		ctx     context.Context
+		c       client.Client
+		secrets corev1.SecretList
+		prefix  string
+		lName   string
+		lValue  string
+	}
+	tests := []struct {
+		name          string
+		args          args
+		backupSecrets []string // what should be backed up
+	}{
+		{
+			name: "hive secrets 1",
+			args: args{
+				ctx:     context.Background(),
+				c:       k8sClient1,
+				secrets: hiveSecrets,
+				lName:   labelName,
+				lValue:  labelValue,
+				prefix:  clsName,
+			},
+			backupSecrets: []string{"managed1-import-1", "managed1-import-2", "managed1-some-other-secret-test"},
+		},
+	}
+	for _, tt := range tests {
+		for index := range hiveSecrets.Items {
+			if err := k8sClient1.Create(context.Background(), &hiveSecrets.Items[index]); err != nil {
+				t.Errorf("cannot create %s ", err.Error())
+			}
+		}
+
+		t.Run(tt.name, func(t *testing.T) {
+			updateSecretsLabels(tt.args.ctx, k8sClient1,
+				tt.args.secrets,
+				tt.args.prefix,
+				tt.args.lName,
+				tt.args.lValue,
+			)
+		})
+
+		result := []string{}
+		for index := range hiveSecrets.Items {
+			secret := hiveSecrets.Items[index]
+			if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: secret.Name,
+				Namespace: secret.Namespace}, &secret); err != nil {
+				t.Errorf("cannot get secret %s ", err.Error())
+			}
+			if secret.GetLabels()[labelName] == labelValue {
+				// it was backed up
+				result = append(result, secret.Name)
+			}
+		}
+
+		if !reflect.DeepEqual(result, tt.backupSecrets) {
+			t.Errorf("updateSecretsLabels() = %v want %v", result, tt.backupSecrets)
+		}
 	}
 	testEnv.Stop()
 
