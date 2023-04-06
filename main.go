@@ -77,8 +77,12 @@ func init() {
 
 func main() {
 	var metricsAddr string
-	var enableLeaderElection bool
 	var probeAddr string
+	var enableLeaderElection bool
+	var leaseDurationSeconds int
+	var renewDeadlineSeconds int
+	var retryPeriodSeconds int
+
 	flag.StringVar(
 		&metricsAddr,
 		"metrics-bind-address",
@@ -94,6 +98,13 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.IntVar(&leaseDurationSeconds, "lease-duration", 137,
+		"controller leader lease duration in seconds")
+	flag.IntVar(&renewDeadlineSeconds, "renew-deadline", 107,
+		"controller leader renew deadline in seconds")
+	flag.IntVar(&retryPeriodSeconds, "retry-period", 26,
+		"controller leader retry period in seconds")
+
 	opts := zap.Options{
 		Development: true,
 		TimeEncoder: zapcore.ISO8601TimeEncoder,
@@ -103,9 +114,9 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	leaseDuration := 137 * time.Second
-	renewDeadline := 107 * time.Second
-	retryPeriod := 26 * time.Second
+	leaseDuration := time.Duration(leaseDurationSeconds) * time.Second
+	renewDeadline := time.Duration(renewDeadlineSeconds) * time.Second
+	retryPeriod := time.Duration(retryPeriodSeconds) * time.Second
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
