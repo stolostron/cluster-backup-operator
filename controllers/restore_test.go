@@ -698,7 +698,7 @@ func Test_isNewBackupAvailable(t *testing.T) {
 		veleroManagedClustersBackupName(skipRestore).
 		veleroCredentialsBackupName(latestBackup).
 		veleroResourcesBackupName(latestBackup).
-		veleroStatusCredentialsName(veleroRestore.Name + "11").object
+		veleroCredentialsRestoreName(veleroRestore.Name + "11").object
 
 	type args struct {
 		ctx          context.Context

@@ -311,7 +311,7 @@ func (b *ACMRestoreHelper) phase(phase v1beta1.RestorePhase) *ACMRestoreHelper {
 	return b
 }
 
-func (b *ACMRestoreHelper) veleroStatusCredentialsName(name string) *ACMRestoreHelper {
+func (b *ACMRestoreHelper) veleroCredentialsRestoreName(name string) *ACMRestoreHelper {
 	b.object.Status.VeleroCredentialsRestoreName = name
 	return b
 }
