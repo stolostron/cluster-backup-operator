@@ -2092,12 +2092,12 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	}
 
 	type args struct {
-		ctx                    context.Context
-		c                      client.Client
-		restoreOptions         RestoreOptions
-		veleroBackup           *veleroapi.Backup
-		backupName             string
-		managedClustersSkipped bool
+		ctx            context.Context
+		c              client.Client
+		restoreOptions RestoreOptions
+		acmRestore     *v1beta1.Restore
+		veleroBackup   *veleroapi.Backup
+		backupName     string
 	}
 	testsResources := []struct {
 		name                 string
@@ -2110,12 +2110,19 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		{
 			name: "cleanup resources backup, no generic backup found",
 			args: args{
-				ctx:                    context.Background(),
-				c:                      k8sClient1,
-				restoreOptions:         resOptionsCleanupRestored,
-				veleroBackup:           &resourcesBackup,
-				backupName:             veleroResourcesBackupName,
-				managedClustersSkipped: true,
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				restoreOptions: resOptionsCleanupRestored,
+				veleroBackup:   &resourcesBackup,
+				backupName:     veleroResourcesBackupName,
+				acmRestore: createACMRestore("restore-acm", namespaceName).
+					veleroManagedClustersBackupName(skipRestoreStr).
+					restoreACMStatus(v1beta1.RestoreStatus{
+						VeleroResourcesRestoreName:        veleroResourcesBackupName,
+						VeleroGenericResourcesRestoreName: veleroResourcesBackupName,
+					}).
+					phase(v1beta1.RestorePhaseEnabled).
+					object,
 			},
 			resourcesToBeDeleted: []unstructured.Unstructured{*channel_with_backup_label_diff},
 			resourcesToKeep: []unstructured.Unstructured{
@@ -2130,12 +2137,18 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		{
 			name: "cleanup resources backup, with generic backup NOT found, old one available",
 			args: args{
-				ctx:                    context.Background(),
-				c:                      k8sClient1,
-				restoreOptions:         resOptionsCleanupRestored,
-				veleroBackup:           &resourcesBackup,
-				backupName:             veleroResourcesBackupName,
-				managedClustersSkipped: true,
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				restoreOptions: resOptionsCleanupRestored,
+				veleroBackup:   &resourcesBackup,
+				backupName:     veleroResourcesBackupName,
+				acmRestore: createACMRestore("restore-"+veleroResourcesBackupName, namespaceName).
+					veleroManagedClustersBackupName(skipRestoreStr).
+					restoreACMStatus(v1beta1.RestoreStatus{
+						VeleroResourcesRestoreName:        veleroResourcesBackupName,
+						VeleroGenericResourcesRestoreName: veleroGenericBackupNameOlder,
+					}).
+					object,
 			},
 			resourcesToBeDeleted: []unstructured.Unstructured{*channel_with_backup_label_diff},
 			resourcesToKeep: []unstructured.Unstructured{
@@ -2152,12 +2165,18 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		{
 			name: "cleanup resources backup, with generic backup NOT found and clusters backup not skipped",
 			args: args{
-				ctx:                    context.Background(),
-				c:                      k8sClient1,
-				restoreOptions:         resOptionsCleanupRestored,
-				veleroBackup:           &resourcesBackup,
-				backupName:             veleroResourcesBackupName,
-				managedClustersSkipped: false,
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				restoreOptions: resOptionsCleanupRestored,
+				veleroBackup:   &resourcesBackup,
+				backupName:     veleroResourcesBackupName,
+				acmRestore: createACMRestore("restore-"+veleroResourcesBackupName, namespaceName).
+					veleroManagedClustersBackupName(veleroClustersBackupName).
+					restoreACMStatus(v1beta1.RestoreStatus{
+						VeleroResourcesRestoreName:        veleroResourcesBackupName,
+						VeleroGenericResourcesRestoreName: "invalid-generic-name",
+					}).
+					object,
 			},
 			resourcesToBeDeleted: []unstructured.Unstructured{
 				*channel_with_backup_label_diff,
@@ -2180,12 +2199,18 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		{
 			name: "cleanup resources backup, with generic backup found",
 			args: args{
-				ctx:                    context.Background(),
-				c:                      k8sClient1,
-				restoreOptions:         resOptionsCleanupRestored,
-				veleroBackup:           &resourcesBackup,
-				backupName:             veleroResourcesBackupName,
-				managedClustersSkipped: true,
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				restoreOptions: resOptionsCleanupRestored,
+				veleroBackup:   &resourcesBackup,
+				backupName:     veleroResourcesBackupName,
+				acmRestore: createACMRestore("restore-"+veleroResourcesBackupName, namespaceName).
+					veleroManagedClustersBackupName(skipRestoreStr).
+					restoreACMStatus(v1beta1.RestoreStatus{
+						VeleroResourcesRestoreName:        veleroResourcesBackupName,
+						VeleroGenericResourcesRestoreName: veleroGenericBackupName,
+					}).
+					object,
 			},
 			resourcesToBeDeleted: []unstructured.Unstructured{
 				*channel_with_backup_label_diff,
@@ -2208,12 +2233,18 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		{
 			name: "cleanup resources backup, with generic backup found and clusters backup not skipped",
 			args: args{
-				ctx:                    context.Background(),
-				c:                      k8sClient1,
-				restoreOptions:         resOptionsCleanupRestored,
-				veleroBackup:           &resourcesBackup,
-				backupName:             veleroResourcesBackupName,
-				managedClustersSkipped: false,
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				restoreOptions: resOptionsCleanupRestored,
+				veleroBackup:   &resourcesBackup,
+				backupName:     veleroResourcesBackupName,
+				acmRestore: createACMRestore("restore-"+veleroResourcesBackupName, namespaceName).
+					veleroManagedClustersBackupName(veleroClustersBackupName).
+					restoreACMStatus(v1beta1.RestoreStatus{
+						VeleroResourcesRestoreName:        veleroResourcesBackupName,
+						VeleroGenericResourcesRestoreName: veleroGenericBackupName,
+					}).
+					object,
 			},
 			resourcesToBeDeleted: []unstructured.Unstructured{
 				*channel_with_backup_label_diff,
@@ -2236,12 +2267,18 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		{
 			name: "cleanup resources backup, with generic backup found and clusters backup not skipped, cleanup all",
 			args: args{
-				ctx:                    context.Background(),
-				c:                      k8sClient1,
-				restoreOptions:         resOptionsCleanupAll,
-				veleroBackup:           &resourcesBackup,
-				backupName:             veleroResourcesBackupName,
-				managedClustersSkipped: false,
+				ctx:            context.Background(),
+				c:              k8sClient1,
+				restoreOptions: resOptionsCleanupAll,
+				veleroBackup:   &resourcesBackup,
+				backupName:     veleroResourcesBackupName,
+				acmRestore: createACMRestore("restore-"+veleroResourcesBackupName, namespaceName).
+					veleroManagedClustersBackupName(veleroClustersBackupName).
+					restoreACMStatus(v1beta1.RestoreStatus{
+						VeleroResourcesRestoreName:        veleroResourcesBackupName,
+						VeleroGenericResourcesRestoreName: veleroGenericBackupName,
+					}).
+					object,
 			},
 			resourcesToBeDeleted: []unstructured.Unstructured{
 				*channel_with_backup_label_diff,
@@ -2282,6 +2319,12 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 				restoreOptions: resOptionsCleanupRestored,
 				veleroBackup:   &clustersBackup,
 				backupName:     veleroClustersBackupName,
+				acmRestore: createACMRestore("acm-restore", namespaceName).
+					veleroManagedClustersBackupName(veleroClustersBackupName).
+					restoreACMStatus(v1beta1.RestoreStatus{
+						VeleroResourcesRestoreName: veleroClustersBackupName,
+					}).
+					object,
 			},
 			resourcesToBeDeleted: []unstructured.Unstructured{*cls_with_backup_label_diff},
 			resourcesToKeep: []unstructured.Unstructured{
@@ -2301,6 +2344,27 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
 		memory.NewMemCacheClient(resOptionsCleanupRestored.dynamicArgs.dc),
 	)
+
+	// create restore resources
+	////////
+	createRestores := []veleroapi.Restore{
+		*createRestore(veleroResourcesBackupName, namespaceName).
+			backupName(veleroResourcesBackupName).object,
+		*createRestore(veleroClustersBackupNameOlder, namespaceName).
+			backupName(veleroClustersBackupNameOlder).object,
+		*createRestore(veleroClustersBackupName, namespaceName).
+			backupName(veleroClustersBackupName).object,
+		*createRestore(veleroGenericBackupName, namespaceName).
+			backupName(veleroGenericBackupName).object,
+		*createRestore(veleroResourcesBackupNameOlder, namespaceName).
+			backupName(veleroResourcesBackupNameOlder).object,
+	}
+	for i := range createRestores {
+		if err := k8sClient1.Create(context.Background(), &createRestores[i]); err != nil {
+			t.Errorf("cannot create restore %s ", err.Error())
+		}
+	}
+	////////
 
 	for _, tt := range testsResources {
 
@@ -2325,9 +2389,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			cleanupDeltaForResourcesBackup(tt.args.ctx,
 				tt.args.c,
 				tt.args.restoreOptions,
-				tt.args.backupName,
-				tt.args.veleroBackup,
-				tt.args.managedClustersSkipped)
+				tt.args.acmRestore)
 		})
 
 		groupKind := schema.GroupKind{

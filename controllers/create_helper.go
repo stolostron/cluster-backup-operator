@@ -311,7 +311,7 @@ func (b *ACMRestoreHelper) phase(phase v1beta1.RestorePhase) *ACMRestoreHelper {
 	return b
 }
 
-func (b *ACMRestoreHelper) veleroCredentialsRestoreName(name string) *ACMRestoreHelper {
+func (b *ACMRestoreHelper) veleroStatusCredentialsName(name string) *ACMRestoreHelper {
 	b.object.Status.VeleroCredentialsRestoreName = name
 	return b
 }
@@ -328,6 +328,11 @@ func (b *ACMRestoreHelper) restorePVs(restorePV bool) *ACMRestoreHelper {
 
 func (b *ACMRestoreHelper) restoreStatus(stat *veleroapi.RestoreStatusSpec) *ACMRestoreHelper {
 	b.object.Spec.RestoreStatus = stat
+	return b
+}
+
+func (b *ACMRestoreHelper) restoreACMStatus(stat v1beta1.RestoreStatus) *ACMRestoreHelper {
+	b.object.Status = stat
 	return b
 }
 
