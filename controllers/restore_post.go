@@ -96,11 +96,7 @@ func cleanupDeltaResources(
 			backupName, veleroBackup, acmRestore.Spec.CleanupBeforeRestore)
 
 		// clean up resources and generic resources
-		backupName, veleroBackup = getBackupInfoFromRestore(ctx, c,
-			acmRestore.Status.VeleroResourcesRestoreName, acmRestore.Namespace)
-		cleanupDeltaForResourcesBackup(ctx, c, restoreOptions,
-			backupName, veleroBackup,
-			*acmRestore.Spec.VeleroManagedClustersBackupName == skipRestoreStr)
+		cleanupDeltaForResourcesBackup(ctx, c, restoreOptions, acmRestore)
 
 		// clean up managed cluster resources
 		backupName, veleroBackup = getBackupInfoFromRestore(ctx, c,
@@ -260,10 +256,11 @@ func cleanupDeltaForResourcesBackup(
 	ctx context.Context,
 	c client.Client,
 	restoreOptions RestoreOptions,
-	backupName string,
-	veleroBackup *veleroapi.Backup,
-	managedClustersSkipped bool,
+	acmRestore *v1beta1.Restore,
 ) {
+	backupName, veleroBackup := getBackupInfoFromRestore(ctx, c,
+		acmRestore.Status.VeleroResourcesRestoreName, acmRestore.Namespace)
+
 	if backupName == "" {
 		// nothing to clean up
 		return
@@ -277,22 +274,19 @@ func cleanupDeltaForResourcesBackup(
 	backupSelector = backupSelector.Add(*backupLabel)
 
 	// delete generic resources
-	veleroBackups := &veleroapi.BackupList{}
-	if err := c.List(ctx, veleroBackups, client.InNamespace(veleroBackup.Namespace),
-		&client.ListOptions{LabelSelector: backupSelector}); err == nil {
-
-		if genericBackupName, genericBackup, _ := getVeleroBackupName(ctx, c, veleroBackup.Namespace,
-			ResourcesGeneric,
-			veleroBackup.Name,
-			veleroBackups); genericBackupName != "" {
-			otherLabels := ""
-			if managedClustersSkipped {
-				// don't clean up activation resources
-				otherLabels = fmt.Sprintf("%s notin (cluster-activation)", backupCredsClusterLabel)
-			}
-			deleteDynamicResourcesForBackup(ctx, c, restoreOptions, genericBackup, otherLabels)
-		}
+	genericBackupName, genericBackup := getBackupInfoFromRestore(ctx, c,
+		acmRestore.Status.VeleroGenericResourcesRestoreName, acmRestore.Namespace)
+	if genericBackupName == "" {
+		// nothing to clean up
+		return
 	}
+
+	otherLabels := ""
+	if *acmRestore.Spec.VeleroManagedClustersBackupName == skipRestoreStr {
+		// don't clean up activation resources if managed clusters are not restored
+		otherLabels = fmt.Sprintf("%s notin (cluster-activation)", backupCredsClusterLabel)
+	}
+	deleteDynamicResourcesForBackup(ctx, c, restoreOptions, genericBackup, otherLabels)
 
 }
 

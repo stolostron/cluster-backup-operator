@@ -137,6 +137,8 @@ type RestoreStatus struct {
 	// +kubebuilder:validation:Optional
 	VeleroResourcesRestoreName string `json:"veleroResourcesRestoreName,omitempty"`
 	// +kubebuilder:validation:Optional
+	VeleroGenericResourcesRestoreName string `json:"veleroGenericResourcesRestoreName,omitempty"`
+	// +kubebuilder:validation:Optional
 	VeleroCredentialsRestoreName string `json:"veleroCredentialsRestoreName,omitempty"`
 	// Phase is the current phase of the restore
 	// +kubebuilder:validation:Optional

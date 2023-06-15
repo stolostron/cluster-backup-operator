@@ -1807,6 +1807,8 @@ spec:
                 type: string
               veleroCredentialsRestoreName:
                 type: string
+              veleroGenericResourcesRestoreName:
+                type: string
               veleroManagedClustersRestoreName:
                 type: string
               veleroResourcesRestoreName:
