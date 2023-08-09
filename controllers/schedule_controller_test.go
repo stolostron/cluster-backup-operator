@@ -374,7 +374,7 @@ var _ = Describe("BackupSchedule controller", func() {
 			}
 			if err := k8sClient.Get(ctx, storageLookupKey, backupStorageLocation); err == nil {
 				backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-				k8sClient.Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
+				k8sClient.Status().Update(ctx, backupStorageLocation)
 			}
 
 			managedClusterList := clusterv1.ManagedClusterList{}
@@ -633,7 +633,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				createdBackupSchedule.Status.Phase = v1beta1.SchedulePhaseEnabled
 				Eventually(func() bool {
 					err := k8sClient.
-						Status().Update(context.Background(), &createdBackupSchedule, &client.UpdateOptions{})
+						Status().Update(context.Background(), &createdBackupSchedule)
 					return err == nil
 				}, timeout, interval).Should(BeTrue())
 			}
@@ -975,7 +975,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				}
 				if err := k8sClient.Get(ctx, storageLookupKey, backupStorageLocation); err == nil {
 					backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-					k8sClient.Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
+					k8sClient.Status().Update(ctx, backupStorageLocation)
 
 				}
 
