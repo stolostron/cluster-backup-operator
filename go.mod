@@ -12,8 +12,8 @@ require (
 	github.com/vmware-tanzu/velero v1.9.0
 	k8s.io/api v0.26.4
 	k8s.io/apimachinery v0.26.4
-	k8s.io/client-go v12.0.0+incompatible
-	open-cluster-management.io/api v0.7.0
+	k8s.io/client-go v0.26.4
+	open-cluster-management.io/api v0.10.1
 	sigs.k8s.io/controller-runtime v0.14.6
 )
 
@@ -21,7 +21,7 @@ require (
 	github.com/go-logr/logr v1.2.3
 	go.uber.org/zap v1.24.0
 	gopkg.in/yaml.v2 v2.4.0
-	open-cluster-management.io/multicloud-operators-channel v0.7.0
+	open-cluster-management.io/multicloud-operators-channel v0.11.0
 )
 
 require (
@@ -47,7 +47,7 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/matttproud/golang_protobuf_extensions v1.0.2 // indirect
+	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
@@ -59,7 +59,7 @@ require (
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
 	golang.org/x/net v0.7.0 // indirect
-	golang.org/x/oauth2 v0.0.0-20220630143837-2104d58473e0 // indirect
+	golang.org/x/oauth2 v0.0.0-20220722155238-128564f6959c // indirect
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/term v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
@@ -79,7 +79,4 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-replace (
-	github.com/ulikunitz/xz => github.com/ulikunitz/xz v0.5.10
-	k8s.io/client-go => k8s.io/client-go v0.26.4
-)
+replace github.com/ulikunitz/xz => github.com/ulikunitz/xz v0.5.10
