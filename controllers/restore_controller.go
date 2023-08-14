@@ -390,6 +390,9 @@ func (r *RestoreReconciler) initVeleroRestores(
 			if k8serr.IsAlreadyExists(err) && key == Credentials {
 				restore.Status.VeleroCredentialsRestoreName = veleroRestoresToCreate[key].Name
 			}
+			if k8serr.IsAlreadyExists(err) && key == ResourcesGeneric {
+				restore.Status.VeleroGenericResourcesRestoreName = veleroRestoresToCreate[key].Name
+			}
 		} else {
 			newVeleroRestoreCreated = true
 			r.Recorder.Event(
@@ -405,6 +408,9 @@ func (r *RestoreReconciler) initVeleroRestores(
 				restore.Status.VeleroCredentialsRestoreName = veleroRestoresToCreate[key].Name
 			case Resources:
 				restore.Status.VeleroResourcesRestoreName = veleroRestoresToCreate[key].Name
+			case ResourcesGeneric:
+				restore.Status.VeleroGenericResourcesRestoreName = veleroRestoresToCreate[key].Name
+
 			}
 		}
 	}

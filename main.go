@@ -77,8 +77,12 @@ func init() {
 
 func main() {
 	var metricsAddr string
-	var enableLeaderElection bool
 	var probeAddr string
+	var enableLeaderElection bool
+	var leaseDuration time.Duration
+	var renewDeadline time.Duration
+	var retryPeriod time.Duration
+
 	flag.StringVar(
 		&metricsAddr,
 		"metrics-bind-address",
@@ -94,6 +98,20 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.DurationVar(&leaseDuration, "leader-election-lease-duration", 137*time.Second, ""+
+		"The duration that non-leader candidates will wait after observing a leadership "+
+		"renewal until attempting to acquire leadership of a led but unrenewed leader "+
+		"slot. This is effectively the maximum duration that a leader can be stopped "+
+		"before it is replaced by another candidate. This is only applicable if leader "+
+		"election is enabled.")
+	flag.DurationVar(&renewDeadline, "leader-election-renew-deadline", 107*time.Second, ""+
+		"The interval between attempts by the acting master to renew a leadership slot "+
+		"before it stops leading. This must be less than or equal to the lease duration. "+
+		"This is only applicable if leader election is enabled.")
+	flag.DurationVar(&retryPeriod, "leader-election-retry-period", 26*time.Second, ""+
+		"The duration the clients should wait between attempting acquisition and renewal "+
+		"of a leadership. This is only applicable if leader election is enabled.")
+
 	opts := zap.Options{
 		Development: true,
 		TimeEncoder: zapcore.ISO8601TimeEncoder,
@@ -103,9 +121,10 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	leaseDuration := 137 * time.Second
-	renewDeadline := 107 * time.Second
-	retryPeriod := 26 * time.Second
+	setupLog.Info("Leader election settings", "enableLeaderElection", enableLeaderElection,
+		"leaseDuration", leaseDuration,
+		"renewDeadline", renewDeadline,
+		"retryPeriod", retryPeriod)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,

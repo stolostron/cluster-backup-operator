@@ -331,6 +331,11 @@ func (b *ACMRestoreHelper) restoreStatus(stat *veleroapi.RestoreStatusSpec) *ACM
 	return b
 }
 
+func (b *ACMRestoreHelper) restoreACMStatus(stat v1beta1.RestoreStatus) *ACMRestoreHelper {
+	b.object.Status = stat
+	return b
+}
+
 func (b *ACMRestoreHelper) hookResources(res []veleroapi.RestoreResourceHookSpec) *ACMRestoreHelper {
 	b.object.Spec.Hooks.Resources = append(b.object.Spec.Hooks.Resources,
 		res...)
