@@ -542,7 +542,16 @@ var _ = Describe("BackupSchedule controller", func() {
 			).Should(Equal(metav1.Duration{Duration: time.Hour * 72}))
 
 			// update schedule, it should NOT trigger velero schedules deletion
-			createdBackupSchedule.Spec.VeleroTTL = metav1.Duration{Duration: time.Hour * 150}
+			Eventually(func() error {
+				// Re-load createdBackupSchedule to avoid timing issues with the schedule controller updating it
+				// at the same time as this test
+				err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
+				if err != nil {
+					return err
+				}
+				createdBackupSchedule.Spec.VeleroTTL = metav1.Duration{Duration: time.Hour * 150}
+				return k8sClient.Update(context.Background(), &createdBackupSchedule, &client.UpdateOptions{})
+			}, timeout, interval).Should(Succeed())
 			Expect(
 				k8sClient.
 					Update(context.Background(), &createdBackupSchedule, &client.UpdateOptions{}),
