@@ -460,6 +460,37 @@ var _ = Describe("BackupSchedule controller", func() {
 					autoImportSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "msa"
 			}, timeout, interval).Should(Equal(rhacmBackupSchedule.Spec.UseManagedServiceAccount))
 
+			// validate that the managedserviceaccount ManagedClusterAddOn is created for managed clusters since
+			// useManagedServiceAccount is true
+			var managedSvcAccountMCAOs []addonv1alpha1.ManagedClusterAddOn
+			for i := range managedClusters {
+				// managed-serviceaccount ManagedClusterAddOn should not be created for local-cluster
+				if managedClusters[i].GetName() != "local-cluster" {
+					managedSvcAccountMCAOs = append(managedSvcAccountMCAOs, addonv1alpha1.ManagedClusterAddOn{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      msa_addon,
+							Namespace: managedClusters[i].GetName(),
+						},
+					})
+				}
+			}
+			Eventually(func() error {
+				for i := range managedSvcAccountMCAOs {
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(&managedSvcAccountMCAOs[i]),
+						&managedSvcAccountMCAOs[i])
+					if err != nil {
+						return err
+					}
+				}
+				return nil
+			}, timeout, interval).Should(Succeed())
+			for i := range managedSvcAccountMCAOs {
+				mgdSvcAccountMCAO := managedSvcAccountMCAOs[i]
+				Expect(mgdSvcAccountMCAO.GetName()).To(Equal(msa_addon))
+				Expect(mgdSvcAccountMCAO.GetLabels()).To(Equal(map[string]string{msa_label: msa_service_name}))
+				Expect(mgdSvcAccountMCAO.Spec.InstallNamespace).To(Equal("")) // Should not be set
+			}
+
 			// validate AI secret has backup annotation
 			secretAI := corev1.Secret{}
 			Eventually(func() bool {
