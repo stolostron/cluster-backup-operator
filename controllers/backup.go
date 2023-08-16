@@ -115,6 +115,7 @@ var (
 		"hostfirmwaresettings.metal3.io",
 		"clustersync.hiveinternal.openshift.io",
 		"clusterimageset.hive.openshift.io",
+		"multiclusterobservability.observability.open-cluster-management.io",
 	}
 
 	// all backup resources, except secrets, configmaps and managed cluster activation resources
