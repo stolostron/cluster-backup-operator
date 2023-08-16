@@ -247,9 +247,7 @@ func prepareImportedClusters(ctx context.Context,
 			}
 
 			alreadyCreated := false
-			installNamespace := ""
 			for addon := range addons.Items {
-				installNamespace = addons.Items[addon].Spec.InstallNamespace
 				if addons.Items[addon].Name == msa_addon {
 					alreadyCreated = true
 					break
@@ -259,7 +257,7 @@ func prepareImportedClusters(ctx context.Context,
 				msaAddon := &addonv1alpha1.ManagedClusterAddOn{}
 				msaAddon.Name = msa_addon
 				msaAddon.Namespace = managedCluster.Name
-				msaAddon.Spec.InstallNamespace = installNamespace
+				// Not setting msaAddon.Spec.InstallNamespace - will leave default
 				labels := map[string]string{
 					msa_label: msa_service_name,
 				}
