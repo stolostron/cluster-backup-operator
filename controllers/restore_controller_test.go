@@ -84,7 +84,7 @@ var _ = Describe("Basic Restore controller", func() {
 			}
 			if err := k8sClient.Get(ctx, storageLookupKey, backupStorageLocation); err == nil {
 				backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-				k8sClient.Status().Update(ctx, backupStorageLocation, &client.UpdateOptions{})
+				k8sClient.Status().Update(ctx, backupStorageLocation)
 			}
 			Expect(backupStorageLocation.Status.Phase).Should(BeIdenticalTo(veleroapi.BackupStorageLocationPhaseAvailable))
 		}
