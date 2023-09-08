@@ -6,7 +6,7 @@ require (
 	github.com/go-logr/logr v1.2.4
 	github.com/onsi/ginkgo/v2 v2.12.0
 	github.com/onsi/gomega v1.27.10
-	github.com/openshift/api v0.0.0-20220531073726-6c4f186339a7
+	github.com/openshift/api v0.0.0-20230414143018-3367bc7e6ac7 // release 4.13
 	github.com/openshift/hive/apis v0.0.0-20220707224401-0c5e2fb547fe
 	github.com/pkg/errors v0.9.1
 	github.com/robfig/cron/v3 v3.0.1
