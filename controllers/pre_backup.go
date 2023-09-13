@@ -426,6 +426,8 @@ func createMSA(
 		logger.Info(fmt.Sprintf("Attempt to create ManagedServiceAccount for cluster =%s", managedClusterName))
 		if _, err := dr.Namespace(managedClusterName).Create(ctx, msaRC, v1.CreateOptions{}); err == nil {
 			logger.Info(fmt.Sprintf("Created ManagedServiceAccount for cluster =%s", managedClusterName))
+		} else {
+			logger.Error(err, "Cannot create MSA")
 		}
 
 	}
