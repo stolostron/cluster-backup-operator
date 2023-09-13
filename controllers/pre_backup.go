@@ -52,7 +52,7 @@ const (
 	addon_work_label      = "open-cluster-management.io/addon-name-work"
 	addon_label           = "open-cluster-management.io/addon-name-work"
 	role_name             = "klusterlet-bootstrap-kubeconfig"
-	msa_api               = "authentication.open-cluster-management.io/v1alpha1"
+	msa_api               = "authentication.open-cluster-management.io/v1beta1"
 
 	manifest_work_name                   = "addon-" + msa_addon + "-import"
 	manifest_work_name_pair              = "addon-" + msa_addon + "-import-pair"
