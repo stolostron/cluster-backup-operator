@@ -506,7 +506,11 @@ spec:
                                                         properties:
                                                           name:
                                                             description: The header
-                                                              field name
+                                                              field name. This will
+                                                              be canonicalized upon
+                                                              output, so case-variant
+                                                              names will be understood
+                                                              as the same header.
                                                             type: string
                                                           value:
                                                             description: The header
@@ -630,7 +634,11 @@ spec:
                                                         properties:
                                                           name:
                                                             description: The header
-                                                              field name
+                                                              field name. This will
+                                                              be canonicalized upon
+                                                              output, so case-variant
+                                                              names will be understood
+                                                              as the same header.
                                                             type: string
                                                           value:
                                                             description: The header
@@ -729,9 +737,7 @@ spec:
                                               type: integer
                                             grpc:
                                               description: GRPC specifies an action
-                                                involving a GRPC port. This is a beta
-                                                field and requires enabling GRPCContainerProbe
-                                                feature gate.
+                                                involving a GRPC port.
                                               properties:
                                                 port:
                                                   description: Port number of the
@@ -771,7 +777,10 @@ spec:
                                                     properties:
                                                       name:
                                                         description: The header field
-                                                          name
+                                                          name. This will be canonicalized
+                                                          upon output, so case-variant
+                                                          names will be understood
+                                                          as the same header.
                                                         type: string
                                                       value:
                                                         description: The header field
@@ -975,9 +984,7 @@ spec:
                                               type: integer
                                             grpc:
                                               description: GRPC specifies an action
-                                                involving a GRPC port. This is a beta
-                                                field and requires enabling GRPCContainerProbe
-                                                feature gate.
+                                                involving a GRPC port.
                                               properties:
                                                 port:
                                                   description: Port number of the
@@ -1017,7 +1024,10 @@ spec:
                                                     properties:
                                                       name:
                                                         description: The header field
-                                                          name
+                                                          name. This will be canonicalized
+                                                          upon output, so case-variant
+                                                          names will be understood
+                                                          as the same header.
                                                         type: string
                                                       value:
                                                         description: The header field
@@ -1121,6 +1131,31 @@ spec:
                                               format: int32
                                               type: integer
                                           type: object
+                                        resizePolicy:
+                                          description: Resources resize policy for
+                                            the container.
+                                          items:
+                                            description: ContainerResizePolicy represents
+                                              resource resize policy for the container.
+                                            properties:
+                                              resourceName:
+                                                description: 'Name of the resource
+                                                  to which this resource resize policy
+                                                  applies. Supported values: cpu,
+                                                  memory.'
+                                                type: string
+                                              restartPolicy:
+                                                description: Restart policy to apply
+                                                  when specified resource is resized.
+                                                  If not specified, it defaults to
+                                                  NotRequired.
+                                                type: string
+                                            required:
+                                            - resourceName
+                                            - restartPolicy
+                                            type: object
+                                          type: array
+                                          x-kubernetes-list-type: atomic
                                         resources:
                                           description: 'Compute Resources required
                                             by this container. Cannot be updated.
@@ -1176,7 +1211,8 @@ spec:
                                                 a container, it defaults to Limits
                                                 if that is explicitly specified, otherwise
                                                 to an implementation-defined value.
-                                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                                                Requests cannot exceed Limits. More
+                                                info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
                                               type: object
                                           type: object
                                         securityContext:
@@ -1447,9 +1483,7 @@ spec:
                                               type: integer
                                             grpc:
                                               description: GRPC specifies an action
-                                                involving a GRPC port. This is a beta
-                                                field and requires enabling GRPCContainerProbe
-                                                feature gate.
+                                                involving a GRPC port.
                                               properties:
                                                 port:
                                                   description: Port number of the
@@ -1489,7 +1523,10 @@ spec:
                                                     properties:
                                                       name:
                                                         description: The header field
-                                                          name
+                                                          name. This will be canonicalized
+                                                          upon output, so case-variant
+                                                          names will be understood
+                                                          as the same header.
                                                         type: string
                                                       value:
                                                         description: The header field
