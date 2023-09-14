@@ -1588,7 +1588,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 	msaObj := &unstructured.Unstructured{}
 	msaObj.SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
 			"name":      "auto-import",
@@ -1691,9 +1691,9 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	})
 
 	msaGVK := schema.GroupVersionKind{Group: "authentication.open-cluster-management.io",
-		Version: "v1alpha1", Kind: "ManagedServiceAccount"}
+		Version: "v1beta1", Kind: "ManagedServiceAccount"}
 	msaGVRList := schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
-		Version: "v1alpha1", Resource: "managedserviceaccounts"}
+		Version: "v1beta1", Resource: "managedserviceaccounts"}
 
 	// cluster deployments
 	clsDGVK := schema.GroupVersionKind{Group: "hive.openshift.io",
@@ -1906,7 +1906,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		},
 	}
 	authAlpha1 := metav1.APIResourceList{
-		GroupVersion: "authentication.open-cluster-management.io/v1alpha1",
+		GroupVersion: "authentication.open-cluster-management.io/v1beta1",
 		APIResources: []metav1.APIResource{
 			{Name: "managedserviceaccounts", Namespaced: true, Kind: "ManagedServiceAccount"},
 		},
@@ -1923,7 +1923,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			list = &excluded
 		case "/apis/hive.openshift.io/v1":
 			list = &hiveInfo
-		case "/apis/authentication.open-cluster-management.io/v1alpha1":
+		case "/apis/authentication.open-cluster-management.io/v1beta1":
 			list = authAlpha1
 		case "/apis/apps.open-cluster-management.io/v1beta1":
 			list = &appsInfo
@@ -2011,7 +2011,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 					{
 						Name: "authentication.open-cluster-management.io",
 						Versions: []metav1.GroupVersionForDiscovery{
-							{GroupVersion: "authentication.open-cluster-management.io/v1alpha1", Version: "v1alpha1"},
+							{GroupVersion: "authentication.open-cluster-management.io/v1beta1", Version: "v1beta1"},
 						},
 					},
 					{
@@ -2041,7 +2041,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		&restclient.Config{Host: server1.URL},
 	)
 
-	testRequest := "authentication.open-cluster-management.io/v1alpha1"
+	testRequest := "authentication.open-cluster-management.io/v1beta1"
 	fakeDiscovery.ServerResourcesForGroupVersion(testRequest)
 
 	//create some channel resources

@@ -454,7 +454,7 @@ func verifyMSAOption(
 	}
 
 	scheduleLogger := log.FromContext(ctx)
-	msg := "UseManagedServiceAccount option cannot be used, managedserviceaccount-preview component is not enabled"
+	msg := "UseManagedServiceAccount option cannot be used, managedserviceaccount component is not enabled"
 	if useMSA := backupSchedule.Spec.UseManagedServiceAccount; useMSA {
 
 		if _, err := mapper.RESTMapping(msaKind, ""); err != nil {

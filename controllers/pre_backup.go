@@ -52,7 +52,7 @@ const (
 	addon_work_label      = "open-cluster-management.io/addon-name-work"
 	addon_label           = "open-cluster-management.io/addon-name-work"
 	role_name             = "klusterlet-bootstrap-kubeconfig"
-	msa_api               = "authentication.open-cluster-management.io/v1alpha1"
+	msa_api               = "authentication.open-cluster-management.io/v1beta1"
 
 	manifest_work_name                   = "addon-" + msa_addon + "-import"
 	manifest_work_name_pair              = "addon-" + msa_addon + "-import-pair"
@@ -426,6 +426,8 @@ func createMSA(
 		logger.Info(fmt.Sprintf("Attempt to create ManagedServiceAccount for cluster =%s", managedClusterName))
 		if _, err := dr.Namespace(managedClusterName).Create(ctx, msaRC, v1.CreateOptions{}); err == nil {
 			logger.Info(fmt.Sprintf("Created ManagedServiceAccount for cluster =%s", managedClusterName))
+		} else {
+			logger.Error(err, "Cannot create MSA")
 		}
 
 	}

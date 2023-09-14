@@ -164,7 +164,7 @@ var _ = BeforeSuite(func() {
 		},
 	}
 	authAlpha1 := metav1.APIResourceList{
-		GroupVersion: "authentication.open-cluster-management.io/v1alpha1",
+		GroupVersion: "authentication.open-cluster-management.io/v1beta1",
 		APIResources: []metav1.APIResource{
 			{Name: "managedserviceaccounts", Namespaced: true, Kind: "ManagedServiceAccount"},
 		},
@@ -184,7 +184,7 @@ var _ = BeforeSuite(func() {
 			list = &hiveExtraInfo
 		case "/apis/hive.openshift.io/v1beta1":
 			list = &hiveInfo
-		case "/apis/authentication.open-cluster-management.io/v1alpha1":
+		case "/apis/authentication.open-cluster-management.io/v1beta1":
 			list = authAlpha1
 		case "/apis/apps.open-cluster-management.io/v1beta1":
 			list = &appsInfo
@@ -278,7 +278,7 @@ var _ = BeforeSuite(func() {
 					{
 						Name: "authentication.open-cluster-management.io",
 						Versions: []metav1.GroupVersionForDiscovery{
-							{GroupVersion: "authentication.open-cluster-management.io/v1alpha1", Version: "v1alpha1"},
+							{GroupVersion: "authentication.open-cluster-management.io/v1beta1", Version: "v1beta1"},
 						},
 					},
 					{
@@ -316,8 +316,8 @@ var _ = BeforeSuite(func() {
 	}{
 		{
 			resourcesList: &authAlpha1,
-			path:          "/apis/authentication.open-cluster-management.io/v1alpha1",
-			request:       "authentication.open-cluster-management.io/v1alpha1",
+			path:          "/apis/authentication.open-cluster-management.io/v1beta1",
+			request:       "authentication.open-cluster-management.io/v1beta1",
 			expectErr:     false,
 		},
 		{
@@ -475,7 +475,7 @@ var _ = BeforeSuite(func() {
 
 	msaObj := &unstructured.Unstructured{}
 	msaObj.SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
 			"name":      "auto-import",
@@ -496,7 +496,7 @@ var _ = BeforeSuite(func() {
 	// this is used by the auto-import updateMSAResources()
 	msaObj2 := &unstructured.Unstructured{}
 	msaObj2.SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
 			"name":      "auto-import",
@@ -515,9 +515,9 @@ var _ = BeforeSuite(func() {
 	})
 
 	msaGVK := schema.GroupVersionKind{Group: "authentication.open-cluster-management.io",
-		Version: "v1alpha1", Kind: "ManagedServiceAccount"}
+		Version: "v1beta1", Kind: "ManagedServiceAccount"}
 	msaGVRList := schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
-		Version: "v1alpha1", Resource: "managedserviceaccounts"}
+		Version: "v1beta1", Resource: "managedserviceaccounts"}
 
 	//cluster version
 	clsVGVK := schema.GroupVersionKind{Group: "config.openshift.io",
