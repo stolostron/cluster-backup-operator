@@ -59,8 +59,9 @@ const (
 	manifest_work_name_binding_name      = "managedserviceaccount-import"
 	manifest_work_name_binding_name_pair = "managedserviceaccount-import-pair"
 
-	defaultTTL   = 720
-	manifestwork = `{
+	defaultTTL     = 720
+	defaultAddonNS = "open-cluster-management-agent-addon"
+	manifestwork   = `{
         "apiVersion": "rbac.authorization.k8s.io/v1",
         "kind": "ClusterRoleBinding",
         "metadata": {
@@ -75,7 +76,7 @@ const (
             {
                 "kind": "ServiceAccount",
                 "name": "%s",
-                "namespace": "open-cluster-management-agent-addon"
+                "namespace": "%s"
             }
         ]
     }`
@@ -246,13 +247,20 @@ func prepareImportedClusters(ctx context.Context,
 				continue
 			}
 
+			installNamespace := ""
 			alreadyCreated := false
 			for addon := range addons.Items {
 				if addons.Items[addon].Name == msa_addon {
 					alreadyCreated = true
+					installNamespace = addons.Items[addon].Spec.InstallNamespace
 					break
 				}
 			}
+			// use default addon ns when the ManagedClusterAddOn installNamespace is not set
+			if installNamespace == "" {
+				installNamespace = defaultAddonNS
+			}
+
 			if !alreadyCreated {
 				msaAddon := &addonv1alpha1.ManagedClusterAddOn{}
 				msaAddon.Name = msa_addon
@@ -271,13 +279,13 @@ func prepareImportedClusters(ctx context.Context,
 			}
 
 			secretCreatedNowForCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
-				msa_service_name, managedCluster.Name, time.Now())
+				msa_service_name, managedCluster.Name, time.Now(), installNamespace)
 			// create ManagedServiceAccount pair if needed
 			// the pair MSA is used to generate a token at half
 			// the interval of the initial MSA so that any backup will contain
 			// a valid token, either from the initial MSA or pair
 			secretCreatedNowForPairCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
-				msa_service_name_pair, managedCluster.Name, time.Now())
+				msa_service_name_pair, managedCluster.Name, time.Now(), installNamespace)
 
 			secretsGeneratedNow = secretsGeneratedNow ||
 				secretCreatedNowForCluster ||
@@ -344,6 +352,7 @@ func createMSA(
 	name string,
 	managedClusterName string,
 	currentTime time.Time,
+	installNamespace string,
 ) (bool, bool, error) {
 
 	logger := log.FromContext(ctx)
@@ -351,7 +360,7 @@ func createMSA(
 	if name == msa_service_name {
 		// attempt to create ManifestWork to push the role binding, if not created already
 		createManifestWork(ctx, c, managedClusterName, name,
-			manifest_work_name_binding_name, msa_service_name, manifest_work_name)
+			manifest_work_name_binding_name, msa_service_name, manifest_work_name, installNamespace)
 	}
 
 	secretsGeneratedNow := false
@@ -382,7 +391,7 @@ func createMSA(
 		if generateMSA {
 			// attempt to create ManifestWork for the pair, if not created already
 			createManifestWork(ctx, c, managedClusterName, name,
-				manifest_work_name_binding_name_pair, msa_service_name_pair, manifest_work_name_pair)
+				manifest_work_name_binding_name_pair, msa_service_name_pair, manifest_work_name_pair, installNamespace)
 
 		}
 	}
@@ -481,8 +490,16 @@ func createManifestWork(
 	mworkbindingName string,
 	msaserviceName string,
 	mworkName string,
+	installNamespace string,
 ) {
 	logger := log.FromContext(ctx)
+
+	mwork := mworkName
+	if installNamespace != defaultAddonNS {
+		// use this to create a custom manifest work name
+		// to be used for the case when the MSA uses a custom ns
+		mwork = mworkName + "-custom"
+	}
 
 	manifestWorkList := &workv1.ManifestWorkList{}
 	if msaLabel, err := labels.NewRequirement(addon_work_label,
@@ -497,7 +514,7 @@ func createManifestWork(
 
 			alreadyExists := false
 			for i := range manifestWorkList.Items {
-				if manifestWorkList.Items[i].Name == mworkName {
+				if manifestWorkList.Items[i].Name == mwork {
 					alreadyExists = true
 					break
 				}
@@ -505,14 +522,14 @@ func createManifestWork(
 			if !alreadyExists {
 				// create the manifest work now
 				manifestWork := &workv1.ManifestWork{}
-				manifestWork.Name = mworkName
+				manifestWork.Name = mwork
 				manifestWork.Namespace = namespace
 				manifestWork.Labels = map[string]string{
 					addon_work_label:        msa_addon,
 					backupCredsClusterLabel: "msa"}
 
 				manifest := &workv1.Manifest{}
-				manifest.Raw = []byte(fmt.Sprintf(manifestwork, mworkbindingName, role_name, msaserviceName))
+				manifest.Raw = []byte(fmt.Sprintf(manifestwork, mworkbindingName, role_name, msaserviceName, installNamespace))
 
 				manifestWork.Spec.Workload.Manifests = []workv1.Manifest{
 					*manifest,
