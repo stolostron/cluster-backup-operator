@@ -92,6 +92,17 @@ var _ = Describe("BackupSchedule controller", func() {
 					InstallNamespace: "managed1",
 				},
 			},
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "addon.open-cluster-management.io/v1alpha1",
+					Kind:       "ManagedClusterAddOn",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "managed2-addon",
+					Namespace: managedClusterNSName,
+				},
+				Spec: addonv1alpha1.ManagedClusterAddOnSpec{},
+			},
 		}
 
 		managedClusters = []clusterv1.ManagedCluster{
