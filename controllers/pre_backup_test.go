@@ -207,6 +207,7 @@ func Test_createMSA(t *testing.T) {
 				tt.args.name,
 				tt.args.managedCluster,
 				current,
+				namespace,
 			)
 
 			_, err := tt.args.dr.Namespace(tt.args.managedCluster).
