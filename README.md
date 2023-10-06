@@ -528,7 +528,14 @@ spec:
   useManagedServiceAccount: true  <<
 ```
 
-The token validity duration is set automatically to 2*`veleroTtl`, to maximize the chance of the token being valid for all backups storing the token for their entire lifecycle. You can choose to change this value if you want to control how long a token should be valid but keep in mind that this could result in producing backups with tokens set to expire during the lifecycle of the backup. Use the `managedServiceAccountTTL` property to change the token TTL.
+The default token validity duration is set to twice the value of `veleroTtl` to increase the chance of the token being valid for all backups storing the token for their entire life cycle. In some cases, you might need to control how long a token is valid by setting a value for the *optional* `managedServiceAccountTTL` property.
+
+Use `managedServiceAccountTTL` with caution if you need to update the default TTL for the generated tokens. Changing the token TTL from the default value might result in producing backups with tokens set to expire during the life cycle of the backup. As a result, the import feature does not work for the managed clusters.
+
+*Important*: Do not use `managedServiceAccountTTL` unless you need to control how long the token is valid.
+
+See the following example for using the `managedServiceAccountTTL` property:
+
 ```yaml
 apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: BackupSchedule
@@ -538,7 +545,7 @@ spec:
   veleroSchedule: 0 */2 * * *
   veleroTtl: 120h
   useManagedServiceAccount: true 
-  managedServiceAccountTTL: 2h << optional 
+  managedServiceAccountTTL: 300h 
 ```
 
 Once the `useManagedServiceAccount` is set to `true`, the backup controller will start processing imported managed clusters and for each of them:
