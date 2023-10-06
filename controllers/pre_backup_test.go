@@ -62,7 +62,7 @@ func Test_createMSA(t *testing.T) {
 
 	obj1 := &unstructured.Unstructured{}
 	obj1.SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
 			"name":      msa_service_name,
@@ -80,7 +80,7 @@ func Test_createMSA(t *testing.T) {
 	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), obj1)
 
 	var res = schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
-		Version:  "v1alpha1",
+		Version:  "v1beta1",
 		Resource: "ManagedServiceAccount"}
 
 	resInterface := dynClient.Resource(res)
@@ -207,6 +207,7 @@ func Test_createMSA(t *testing.T) {
 				tt.args.name,
 				tt.args.managedCluster,
 				current,
+				namespace,
 			)
 
 			_, err := tt.args.dr.Namespace(tt.args.managedCluster).
@@ -243,7 +244,7 @@ func Test_updateMSAToken(t *testing.T) {
 
 	obj1 := &unstructured.Unstructured{}
 	obj1.SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
 			"name":      "auto-import-account",
@@ -259,7 +260,7 @@ func Test_updateMSAToken(t *testing.T) {
 	})
 	obj2 := &unstructured.Unstructured{}
 	obj2.SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
 			"name":      "auto-import-account",
@@ -269,7 +270,7 @@ func Test_updateMSAToken(t *testing.T) {
 
 	obj3 := &unstructured.Unstructured{}
 	obj3.SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
 			"name":      "auto-import-account",
@@ -285,7 +286,7 @@ func Test_updateMSAToken(t *testing.T) {
 	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), obj1)
 
 	targetGVK := schema.GroupVersionKind{Group: "authentication.open-cluster-management.io",
-		Version: "v1alpha1",
+		Version: "v1beta1",
 		Kind:    "ManagedServiceAccount"}
 
 	targetGVR := targetGVK.GroupVersion().WithResource("somecrs")
@@ -293,7 +294,7 @@ func Test_updateMSAToken(t *testing.T) {
 		Scope: meta.RESTScopeNamespace}
 
 	var res = schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
-		Version:  "v1alpha1",
+		Version:  "v1beta1",
 		Resource: "ManagedServiceAccount"}
 
 	resInterface := dynClient.Resource(res)
@@ -397,7 +398,7 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 
 	objNoStatus := &unstructured.Unstructured{}
 	objNoStatus.SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
 			"name":      "auto-import-account",
@@ -414,7 +415,7 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 
 	objNoExp := &unstructured.Unstructured{}
 	objNoExp.SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
 			"name":      "auto-import-account",
@@ -438,7 +439,7 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 
 	obj3 := &unstructured.Unstructured{}
 	obj3.SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
 			"name":      "auto-import-account",
@@ -464,7 +465,7 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), objNoStatus)
 
 	var res = schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
-		Version:  "v1alpha1",
+		Version:  "v1beta1",
 		Resource: "ManagedServiceAccount"}
 
 	resInterface := dynClient.Resource(res)
@@ -710,7 +711,7 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 
 	obj1 := &unstructured.Unstructured{}
 	obj1.SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
+		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
 			"name":      msa_service_name,
@@ -729,12 +730,12 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 	})
 
 	targetGVK := schema.GroupVersionKind{Group: "authentication.open-cluster-management.io",
-		Version: "v1alpha1", Kind: "ManagedServiceAccount"}
+		Version: "v1beta1", Kind: "ManagedServiceAccount"}
 	targetGVR := targetGVK.GroupVersion().WithResource("managedserviceaccount")
 	targetMapping := meta.RESTMapping{Resource: targetGVR, GroupVersionKind: targetGVK,
 		Scope: meta.RESTScopeNamespace}
 	targetGVRList := schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
-		Version: "v1alpha1", Resource: "managedserviceaccounts"}
+		Version: "v1beta1", Resource: "managedserviceaccounts"}
 
 	gvrToListKind := map[schema.GroupVersionResource]string{
 		targetGVRList: "ManagedServiceAccountList",
