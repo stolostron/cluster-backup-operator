@@ -46,7 +46,7 @@ import (
 const (
 	msa_addon             = "managed-serviceaccount"
 	msa_service_name      = "auto-import-account"
-	msa_service_name_pair = "auto-import-account-pair"
+	msa_service_name_pair = "auto-import-account-pair" // #nosec G101 -- This is a false positive
 	msa_label             = "authentication.open-cluster-management.io/is-managed-serviceaccount"
 	backup_label          = "msa"
 	addon_work_label      = "open-cluster-management.io/addon-name-work"
