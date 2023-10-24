@@ -119,7 +119,12 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		}
 	}
 
-	updateHiveResources(ctx, r.Client)
+	hiveDeploymentMapping, _ := mapper.RESTMapping(schema.GroupKind{
+		Group: "hive.openshift.io",
+		Kind:  "ClusterDeployment",
+	}, "")
+
+	updateHiveResources(ctx, r.Client, r.DynamicClient.Resource(hiveDeploymentMapping.Resource))
 	updateAISecrets(ctx, r.Client)
 	updateMetalSecrets(ctx, r.Client)
 
@@ -663,6 +668,7 @@ func updateMSASecretTimestamp(
 // prepare hive cluster claim and cluster pool
 func updateHiveResources(ctx context.Context,
 	c client.Client,
+	dr dynamic.NamespaceableResourceInterface,
 ) {
 	logger := log.FromContext(ctx)
 	// update secrets for clusterDeployments created by cluster claims
@@ -688,12 +694,14 @@ func updateHiveResources(ctx context.Context,
 				if labels == nil {
 					labels = make(map[string]string)
 				}
-				labels["hive.openshift.io/disable-creation-webhook-for-dr"] = "true"
-				clusterDeployment.SetLabels(labels)
-				msg := "update clusterDeployment " + clusterDeployment.Name
-				logger.Info(msg)
-				if err := c.Update(ctx, &clusterDeployment, &client.UpdateOptions{}); err == nil {
-					logger.Info("Updated clusterDeployment " + clusterDeployment.Name)
+				if labels["hive.openshift.io/disable-creation-webhook-for-dr"] == "" {
+					patch := `[ { "op": "add", "path": "/metadata/labels/hive.openshift.io~1disable-creation-webhook-for-dr", "value": "true" } ]`
+					if _, err := dr.Namespace(clusterDeployment.GetNamespace()).Patch(ctx, clusterDeployment.GetName(),
+						types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
+						logger.Error(err, "cannot patch with hive label hive.openshift.io~1disable-creation-webhook-for-dr")
+					} else {
+						logger.Info("deployment patched with disable-creation-webhook-for-dr label " + clusterDeployment.Name)
+					}
 				}
 			}
 		}
