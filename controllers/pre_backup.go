@@ -702,12 +702,12 @@ func updateHiveResources(ctx context.Context,
 					// label already set
 					continue
 				}
+				logger.Info("Patching disable-creation-webhook-for-dr label on deployment " + clusterDeployment.Name)
+
 				patch := `[ { "op": "add", "path": "` + hive_label_path + `", "value": "true" } ]`
 				if _, err := dr.Namespace(clusterDeployment.GetNamespace()).Patch(ctx, clusterDeployment.GetName(),
 					types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
 					logger.Error(err, "cannot patch with hive label hive.openshift.io~1disable-creation-webhook-for-dr")
-				} else {
-					logger.Info("deployment patched with disable-creation-webhook-for-dr label " + clusterDeployment.Name)
 				}
 			}
 		}
