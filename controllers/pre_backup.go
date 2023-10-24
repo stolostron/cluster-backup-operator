@@ -44,6 +44,8 @@ import (
 )
 
 const (
+	hive_label            = "hive.openshift.io/disable-creation-webhook-for-dr"
+	hive_label_path       = "/metadata/labels/hive.openshift.io~1disable-creation-webhook-for-dr"
 	msa_addon             = "managed-serviceaccount"
 	msa_service_name      = "auto-import-account"
 	msa_service_name_pair = "auto-import-account-pair" // #nosec G101 -- This is a false positive
@@ -696,14 +698,16 @@ func updateHiveResources(ctx context.Context,
 				if labels == nil {
 					labels = make(map[string]string)
 				}
-				if labels["hive.openshift.io/disable-creation-webhook-for-dr"] == "" {
-					patch := `[ { "op": "add", "path": "/metadata/labels/hive.openshift.io~1disable-creation-webhook-for-dr", "value": "true" } ]`
-					if _, err := dr.Namespace(clusterDeployment.GetNamespace()).Patch(ctx, clusterDeployment.GetName(),
-						types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
-						logger.Error(err, "cannot patch with hive label hive.openshift.io~1disable-creation-webhook-for-dr")
-					} else {
-						logger.Info("deployment patched with disable-creation-webhook-for-dr label " + clusterDeployment.Name)
-					}
+				if labels[hive_label] != "" {
+					// label already set
+					continue
+				}
+				patch := `[ { "op": "add", "path": "` + hive_label_path + `", "value": "true" } ]`
+				if _, err := dr.Namespace(clusterDeployment.GetNamespace()).Patch(ctx, clusterDeployment.GetName(),
+					types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
+					logger.Error(err, "cannot patch with hive label hive.openshift.io~1disable-creation-webhook-for-dr")
+				} else {
+					logger.Info("deployment patched with disable-creation-webhook-for-dr label " + clusterDeployment.Name)
 				}
 			}
 		}
