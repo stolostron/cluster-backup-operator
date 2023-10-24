@@ -161,7 +161,7 @@ var _ = Describe("BackupSchedule controller", func() {
 						},
 					},
 					Size:       4,
-					BaseDomain: "dev06.red-chesterfield.com",
+					BaseDomain: "d.red-c.com",
 				},
 			},
 		}
@@ -180,7 +180,27 @@ var _ = Describe("BackupSchedule controller", func() {
 						Namespace: clusterPoolNSName,
 						PoolName:  clusterPoolNSName,
 					},
-					BaseDomain: "dev06.red-chesterfield.com",
+					BaseDomain: "d.red-c.com",
+				},
+			},
+			{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "hive.openshift.io/v1",
+					Kind:       "ClusterDeployment",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      veleroNamespaceName,
+					Namespace: veleroNamespaceName,
+					Labels: map[string]string{
+						"hive.openshift.io/disable-creation-webhook-for-dr": "true",
+					},
+				},
+				Spec: hivev1.ClusterDeploymentSpec{
+					ClusterPoolRef: &hivev1.ClusterPoolReference{
+						Namespace: clusterPoolNSName + "1",
+						PoolName:  clusterPoolNSName + "1",
+					},
+					BaseDomain: "d.red-c.com",
 				},
 			},
 		}
