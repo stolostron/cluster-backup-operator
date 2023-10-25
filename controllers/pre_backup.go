@@ -368,6 +368,12 @@ func createMSA(
 		// attempt to create ManifestWork to push the role binding, if not created already
 		createManifestWork(ctx, c, managedClusterName, name,
 			manifest_work_name_binding_name, msa_service_name, manifest_work_name, installNamespace)
+
+		if installNamespace != defaultAddonNS {
+			// attempt to create the ManifestWork in the default NS
+			createManifestWork(ctx, c, managedClusterName, name,
+				manifest_work_name_binding_name, msa_service_name, manifest_work_name, defaultAddonNS)
+		}
 	}
 
 	secretsGeneratedNow := false
@@ -400,6 +406,11 @@ func createMSA(
 			createManifestWork(ctx, c, managedClusterName, name,
 				manifest_work_name_binding_name_pair, msa_service_name_pair, manifest_work_name_pair, installNamespace)
 
+			if installNamespace != defaultAddonNS {
+				// attempt to create the ManifestWork in the default NS
+				createManifestWork(ctx, c, managedClusterName, name,
+					manifest_work_name_binding_name_pair, msa_service_name_pair, manifest_work_name_pair, defaultAddonNS)
+			}
 		}
 	}
 
@@ -502,10 +513,13 @@ func createManifestWork(
 	logger := log.FromContext(ctx)
 
 	mwork := mworkName
+	mworkBinding := mworkbindingName
 	if installNamespace != defaultAddonNS {
 		// use this to create a custom manifest work name
 		// to be used for the case when the MSA uses a custom ns
 		mwork = mworkName + "-custom"
+		// use a different role binding name for the custom ns
+		mworkBinding = mworkbindingName + "-custom"
 	}
 
 	manifestWorkList := &workv1.ManifestWorkList{}
@@ -536,15 +550,17 @@ func createManifestWork(
 					backupCredsClusterLabel: "msa"}
 
 				manifest := &workv1.Manifest{}
-				manifest.Raw = []byte(fmt.Sprintf(manifestwork, mworkbindingName, role_name, msaserviceName, installNamespace))
+				manifest.Raw = []byte(fmt.Sprintf(manifestwork, mworkBinding, role_name, msaserviceName, installNamespace))
 
 				manifestWork.Spec.Workload.Manifests = []workv1.Manifest{
 					*manifest,
 				}
 
-				logger.Info(fmt.Sprintf("Attempt to create ManifestWork %s in ns %s", mworkName, namespace))
+				logger.Info(fmt.Sprintf("Attempt to create ManifestWork %s in ns %s, for ns=%s", mwork, namespace, installNamespace))
 				if err := c.Create(ctx, manifestWork, &client.CreateOptions{}); err == nil {
-					logger.Info(fmt.Sprintf("Created ManifestWork %s in ns %s ", mworkName, namespace))
+					logger.Info(fmt.Sprintf("Created ManifestWork %s in ns %s for ns=%s", mwork, namespace, installNamespace))
+				} else {
+					logger.Error(err, "Failed to create ManifestWork")
 				}
 			}
 		}
