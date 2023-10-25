@@ -556,9 +556,11 @@ func createManifestWork(
 					*manifest,
 				}
 
-				logger.Info(fmt.Sprintf("Attempt to create ManifestWork %s in ns %s, for ns=%s", mwork, namespace, installNamespace))
+				logger.Info(fmt.Sprintf("Attempt to create ManifestWork %s in ns %s, for ns=%s",
+					mwork, namespace, installNamespace))
 				if err := c.Create(ctx, manifestWork, &client.CreateOptions{}); err == nil {
-					logger.Info(fmt.Sprintf("Created ManifestWork %s in ns %s for ns=%s", mwork, namespace, installNamespace))
+					logger.Info(fmt.Sprintf("Created ManifestWork %s in ns %s for ns=%s",
+						mwork, namespace, installNamespace))
 				} else {
 					logger.Error(err, "Failed to create ManifestWork")
 				}
