@@ -20,6 +20,7 @@ import (
 	"context"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	workv1 "open-cluster-management.io/api/work/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
@@ -48,6 +50,7 @@ func Test_createMSA(t *testing.T) {
 	cfg, _ := testEnv.Start()
 	scheme1 := runtime.NewScheme()
 	corev1.AddToScheme(scheme1)
+	workv1.AddToScheme(scheme1)
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
 
 	namespace := "managed1"
@@ -234,6 +237,44 @@ func Test_createMSA(t *testing.T) {
 			if secretsUpdated != tt.secretsUpdated {
 				t.Errorf("createMSA() returns secretsUpdated = %v, want %v", secretsUpdated, tt.secretsUpdated)
 			}
+
+			work := &workv1.ManifestWork{}
+			if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: manifest_work_name,
+				Namespace: tt.args.managedCluster}, work); err != nil {
+				t.Errorf("cannot get manifestwork %s ", err.Error())
+			} else {
+				rawData := string(work.Spec.Workload.Manifests[0].Raw[:])
+
+				str := `"kind":"ClusterRoleBinding","metadata":{"name":"managedserviceaccount-import"}`
+				if !strings.Contains(rawData, str) {
+					t.Errorf("Cluster role binding should be %v for manifest %v but is %v", "managedserviceaccount-import", work.Name, rawData)
+				}
+
+				strserviceaccount := `{"kind":"ServiceAccount","name":"auto-import-account","namespace":"open-cluster-management-agent-addon"}`
+				if !strings.Contains(rawData, strserviceaccount) {
+					t.Errorf("ServiceAccount should be %v for manifest %v, but is %v", strserviceaccount, work.Name, rawData)
+				}
+
+			}
+
+			if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: manifest_work_name + "-custom",
+				Namespace: tt.args.managedCluster}, work); err != nil {
+				t.Errorf("cannot get manifestwork %s ", err.Error())
+			} else {
+				str := `"kind":"ClusterRoleBinding","metadata":{"name":"managedserviceaccount-import-custom"}`
+				rawData := string(work.Spec.Workload.Manifests[0].Raw[:])
+
+				if !strings.Contains(rawData, str) {
+					t.Errorf("Cluster role binding should be %v for manifest %v but is %v", "managedserviceaccount-import-custom", work.Name, rawData)
+				}
+
+				strserviceaccount := `{"kind":"ServiceAccount","name":"auto-import-account","namespace":"managed1"}`
+				if !strings.Contains(rawData, strserviceaccount) {
+					t.Errorf("ServiceAccount should be %v for manifest %v, but is %v", strserviceaccount, work.Name, rawData)
+				}
+
+			}
+
 		})
 	}
 	testEnv.Stop()
