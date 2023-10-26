@@ -372,6 +372,7 @@ func createMSA(
 	// they are created in 2.8.2 and have a rolebinding overlapping with the default ns
 	// get rid of them; will be relaced by the -custom-2 manifest works
 	deleteCustomManifestWork(ctx, c, managedClusterName, manifest_work_name)
+	deleteCustomManifestWork(ctx, c, managedClusterName, manifest_work_name_pair)
 
 	if name == msa_service_name {
 		// attempt to create ManifestWork to push the role binding, if not created already
