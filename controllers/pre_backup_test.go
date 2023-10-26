@@ -257,15 +257,15 @@ func Test_createMSA(t *testing.T) {
 
 			}
 
-			if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: manifest_work_name + "-custom",
+			if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: manifest_work_name + "-custom-2",
 				Namespace: tt.args.managedCluster}, work); err != nil {
 				t.Errorf("cannot get manifestwork %s ", err.Error())
 			} else {
-				str := `"kind":"ClusterRoleBinding","metadata":{"name":"managedserviceaccount-import-custom"}`
+				str := `"kind":"ClusterRoleBinding","metadata":{"name":"managedserviceaccount-import-custom-2"}`
 				rawData := string(work.Spec.Workload.Manifests[0].Raw[:])
 
 				if !strings.Contains(rawData, str) {
-					t.Errorf("Cluster role binding should be %v for manifest %v but is %v", "managedserviceaccount-import-custom", work.Name, rawData)
+					t.Errorf("Cluster role binding should be %v for manifest %v but is %v", "managedserviceaccount-import-custom-2", work.Name, rawData)
 				}
 
 				strserviceaccount := `{"kind":"ServiceAccount","name":"auto-import-account","namespace":"managed1"}`
@@ -273,6 +273,12 @@ func Test_createMSA(t *testing.T) {
 					t.Errorf("ServiceAccount should be %v for manifest %v, but is %v", strserviceaccount, work.Name, rawData)
 				}
 
+			}
+
+			// this should be deleted
+			if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: manifest_work_name + mwork_custom_282,
+				Namespace: tt.args.managedCluster}, work); err == nil {
+				t.Errorf("this manifest should no longer exist ! %s ", err.Error())
 			}
 
 		})
