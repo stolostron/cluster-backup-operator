@@ -44,9 +44,9 @@ import (
 )
 
 const (
-	// manifest work prefix used and created in 2.8.2
+	// manifest work suffix used and created in 2.8.2
 	mwork_custom_282 = "-custom"
-	// manifest work prefix used and created 2.8.3 and onward
+	// manifest work suffix used and created 2.8.3 and onward
 	mwork_custom_283      = "-custom-2"
 	hive_label            = "hive.openshift.io/disable-creation-webhook-for-dr"
 	hive_label_path       = "/metadata/labels/hive.openshift.io~1disable-creation-webhook-for-dr"
