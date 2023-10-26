@@ -521,13 +521,13 @@ func deleteCustomManifestWork(
 ) {
 	logger := log.FromContext(ctx)
 
-	custom_mwork := &workv1.ManifestWork{}
+	custommwork := &workv1.ManifestWork{}
 	if err := c.Get(ctx, types.NamespacedName{Name: mworkName + mwork_custom_282,
-		Namespace: namespace}, custom_mwork); err == nil {
+		Namespace: namespace}, custommwork); err == nil {
 
 		// delete the resource
 		logger.Info("Deleting manifest work %s in ns %s", mwork_custom_282, namespace)
-		if err := c.Delete(ctx, custom_mwork); err != nil {
+		if err := c.Delete(ctx, custommwork); err != nil {
 			logger.Error(err, "Failed to delete manifest work")
 		}
 	}
