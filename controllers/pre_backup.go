@@ -44,6 +44,10 @@ import (
 )
 
 const (
+	// manifest work prefix used and created in 2.8.2
+	mwork_custom_282 = "-custom"
+	// manifest work prefix used and created 2.8.3 and onward
+	mwork_custom_283      = "-custom-2"
 	hive_label            = "hive.openshift.io/disable-creation-webhook-for-dr"
 	hive_label_path       = "/metadata/labels/hive.openshift.io~1disable-creation-webhook-for-dr"
 	msa_addon             = "managed-serviceaccount"
@@ -364,13 +368,20 @@ func createMSA(
 
 	logger := log.FromContext(ctx)
 
+	// delete manifest works prefixed with -custom
+	// they are created in 2.8.2 and have a rolebinding overlapping with the default ns
+	// get rid of them; will be relaced by the -custom-2 manifest works
+	deleteCustomManifestWork(ctx, c, managedClusterName, manifest_work_name)
+
 	if name == msa_service_name {
 		// attempt to create ManifestWork to push the role binding, if not created already
 		createManifestWork(ctx, c, managedClusterName, name,
 			manifest_work_name_binding_name, msa_service_name, manifest_work_name, installNamespace)
 
 		if installNamespace != defaultAddonNS {
-			// attempt to create the ManifestWork in the default NS
+			// attempt to create the ManifestWork in the default NS even if the installNamespace is set to custom ns
+			// this is to cover the case in 2.9 and onward when the user manually sets the installNamespace to a custom value
+			// in this version, the MSA framework ignores the custom value and creates the MSA in the addon default NS
 			createManifestWork(ctx, c, managedClusterName, name,
 				manifest_work_name_binding_name, msa_service_name, manifest_work_name, defaultAddonNS)
 		}
@@ -407,7 +418,9 @@ func createMSA(
 				manifest_work_name_binding_name_pair, msa_service_name_pair, manifest_work_name_pair, installNamespace)
 
 			if installNamespace != defaultAddonNS {
-				// attempt to create the ManifestWork in the default NS
+				// attempt to create the ManifestWork in the default NS even if the installNamespace is set to custom ns
+				// this is to cover the case in 2.9 and onward when the user manually sets the installNamespace to a custom value
+				// in this version, the MSA framework ignores the custom value and creates the MSA in the addon default NS
 				createManifestWork(ctx, c, managedClusterName, name,
 					manifest_work_name_binding_name_pair, msa_service_name_pair, manifest_work_name_pair, defaultAddonNS)
 			}
@@ -498,6 +511,27 @@ func updateMSAToken(
 }
 
 // create manifest work to push the import user role binding to the managed cluster
+func deleteCustomManifestWork(
+	ctx context.Context,
+	c client.Client,
+	namespace string,
+	mworkName string,
+) {
+	logger := log.FromContext(ctx)
+
+	custom_mwork := &workv1.ManifestWork{}
+	if err := c.Get(ctx, types.NamespacedName{Name: mworkName + mwork_custom_282,
+		Namespace: namespace}, custom_mwork); err == nil {
+
+		// delete the resource
+		logger.Info("Deleting manifest work %s in ns %s", mwork_custom_282, namespace)
+		if err := c.Delete(ctx, custom_mwork); err != nil {
+			logger.Error(err, "Failed to delete manifest work")
+		}
+	}
+}
+
+// create manifest work to push the import user role binding to the managed cluster
 func createManifestWork(
 	ctx context.Context,
 	c client.Client,
@@ -513,11 +547,14 @@ func createManifestWork(
 	mwork := mworkName
 	mworkBinding := mworkbindingName
 	if installNamespace != defaultAddonNS {
+		// to be used for the case when the MSA uses a custom ns, in 2.8 and 2.7
+		// starting with 2.9 and onwards the installNamespace for the MSA is ignored
+		// so in this cases the custom manifest work is not going to be used
+
 		// use this to create a custom manifest work name
-		// to be used for the case when the MSA uses a custom ns
-		mwork = mworkName + "-custom"
+		mwork = mworkName + mwork_custom_283
 		// use a different role binding name for the custom ns
-		mworkBinding = mworkbindingName + "-custom"
+		mworkBinding = mworkbindingName + mwork_custom_283
 	}
 
 	manifestWorkList := &workv1.ManifestWorkList{}
