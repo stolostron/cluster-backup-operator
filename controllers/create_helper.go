@@ -8,6 +8,7 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	workv1 "open-cluster-management.io/api/work/v1"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 )
 
@@ -51,6 +52,22 @@ func createSecret(name string, ns string,
 	}
 
 	return secret
+
+}
+
+func createMWork(name string, ns string) *workv1.ManifestWork {
+	mwork := &workv1.ManifestWork{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "work.open-cluster-management.io",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+	}
+
+	return mwork
 
 }
 
