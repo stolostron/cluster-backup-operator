@@ -68,6 +68,11 @@ func Test_createMSA(t *testing.T) {
 		t.Errorf("cannot create mwork %s", err.Error())
 	}
 
+	if err := k8sClient1.Create(context.Background(),
+		createMWork(manifest_work_name_pair+mwork_custom_282, namespace)); err != nil {
+		t.Errorf("cannot create mwork %s", err.Error())
+	}
+
 	obj1 := &unstructured.Unstructured{}
 	obj1.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
@@ -283,7 +288,12 @@ func Test_createMSA(t *testing.T) {
 			// this should be deleted
 			if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: manifest_work_name + mwork_custom_282,
 				Namespace: tt.args.managedCluster}, work); err == nil {
-				t.Errorf("this manifest should no longer exist ! %s ", err.Error())
+				t.Errorf("this manifest should no longer exist ! %v ", manifest_work_name+mwork_custom_282)
+			}
+
+			if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: manifest_work_name_pair + mwork_custom_282,
+				Namespace: tt.args.managedCluster}, work); err == nil {
+				t.Errorf("this manifest should no longer exist ! %v ", manifest_work_name_pair+mwork_custom_282)
 			}
 
 		})
