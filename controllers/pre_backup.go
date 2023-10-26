@@ -44,6 +44,8 @@ import (
 )
 
 const (
+	hive_label            = "hive.openshift.io/disable-creation-webhook-for-dr"
+	hive_label_path       = "/metadata/labels/hive.openshift.io~1disable-creation-webhook-for-dr"
 	msa_addon             = "managed-serviceaccount"
 	msa_service_name      = "auto-import-account"
 	msa_service_name_pair = "auto-import-account-pair" // #nosec G101 -- This is a false positive
@@ -119,7 +121,12 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		}
 	}
 
-	updateHiveResources(ctx, r.Client)
+	hiveDeploymentMapping, _ := mapper.RESTMapping(schema.GroupKind{
+		Group: "hive.openshift.io",
+		Kind:  "ClusterDeployment",
+	}, "")
+
+	updateHiveResources(ctx, r.Client, r.DynamicClient.Resource(hiveDeploymentMapping.Resource))
 	updateAISecrets(ctx, r.Client)
 	updateMetalSecrets(ctx, r.Client)
 
@@ -663,6 +670,7 @@ func updateMSASecretTimestamp(
 // prepare hive cluster claim and cluster pool
 func updateHiveResources(ctx context.Context,
 	c client.Client,
+	dr dynamic.NamespaceableResourceInterface,
 ) {
 	logger := log.FromContext(ctx)
 	// update secrets for clusterDeployments created by cluster claims
@@ -688,12 +696,16 @@ func updateHiveResources(ctx context.Context,
 				if labels == nil {
 					labels = make(map[string]string)
 				}
-				labels["hive.openshift.io/disable-creation-webhook-for-dr"] = "true"
-				clusterDeployment.SetLabels(labels)
-				msg := "update clusterDeployment " + clusterDeployment.Name
-				logger.Info(msg)
-				if err := c.Update(ctx, &clusterDeployment, &client.UpdateOptions{}); err == nil {
-					logger.Info("Updated clusterDeployment " + clusterDeployment.Name)
+				if labels[hive_label] != "" {
+					// label already set
+					continue
+				}
+				logger.Info("Patching disable-creation-webhook-for-dr label on deployment " + clusterDeployment.Name)
+
+				patch := `[ { "op": "add", "path": "` + hive_label_path + `", "value": "true" } ]`
+				if _, err := dr.Namespace(clusterDeployment.GetNamespace()).Patch(ctx, clusterDeployment.GetName(),
+					types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
+					logger.Error(err, "cannot patch with hive label hive.openshift.io~1disable-creation-webhook-for-dr")
 				}
 			}
 		}
