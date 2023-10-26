@@ -63,6 +63,11 @@ func Test_createMSA(t *testing.T) {
 		t.Errorf("cannot create secret %s", err.Error())
 	}
 
+	if err := k8sClient1.Create(context.Background(),
+		createMWork(manifest_work_name+mwork_custom_282, namespace)); err != nil {
+		t.Errorf("cannot create mwork %s", err.Error())
+	}
+
 	obj1 := &unstructured.Unstructured{}
 	obj1.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
