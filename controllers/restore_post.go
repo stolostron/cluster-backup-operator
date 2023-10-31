@@ -39,7 +39,8 @@ import (
 )
 
 const (
-	obs_addon_ns    = "open-cluster-management-addon-observability"
+	obs_addon_ns = "open-cluster-management-addon-observability"
+	/* #nosec G101 -- This is a false positive */
 	obs_secret_name = "observability-controller-open-cluster-management.io-observability-signer-client-cert"
 )
 
