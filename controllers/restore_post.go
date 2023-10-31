@@ -38,6 +38,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+const (
+	obs_addon_ns    = "open-cluster-management-addon-observability"
+	obs_secret_name = "observability-controller-open-cluster-management.io-observability-signer-client-cert"
+)
+
 // execute any tasks after restore is done
 func executePostRestoreTasks(
 	ctx context.Context,
@@ -51,6 +56,8 @@ func executePostRestoreTasks(
 		acmRestore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors) &&
 		*acmRestore.Spec.VeleroManagedClustersBackupName != skipRestoreStr {
 
+		// workaround for ACM-8406
+		deleteObsClientCert(ctx, c)
 		// get all managed clusters and run the auto import for imported clusters
 		managedClusters := &clusterv1.ManagedClusterList{}
 		if err := c.List(ctx, managedClusters, &client.ListOptions{}); err == nil {
@@ -62,6 +69,25 @@ func executePostRestoreTasks(
 		}
 	}
 	return processed
+}
+
+// workaround for ACM-8406
+func deleteObsClientCert(
+	ctx context.Context,
+	c client.Client,
+) {
+
+	logger := log.FromContext(ctx)
+
+	secret := corev1.Secret{}
+	if err := c.Get(ctx, types.NamespacedName{Name: obs_secret_name,
+		Namespace: obs_addon_ns}, &secret); err == nil {
+		logger.Info("Attempt to delete secret " + obs_secret_name + " in ns " + obs_addon_ns)
+		err := c.Delete(ctx, &secret, &client.DeleteOptions{})
+		if err == nil {
+			logger.Info("Secret deleted " + secret.Name)
+		}
+	}
 }
 
 // clean up resources with a restore label
