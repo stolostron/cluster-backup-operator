@@ -112,7 +112,6 @@ var (
 		"clusterpool.hive.openshift.io",
 		"clusterclaim.hive.openshift.io",
 		"clustercurator.cluster.open-cluster-management.io",
-		"baremetalhost.metal3.io",
 		"bmceventsubscription.metal3.io",
 		"hostfirmwaresettings.metal3.io",
 		"clustersync.hiveinternal.openshift.io",
