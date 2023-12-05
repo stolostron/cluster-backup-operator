@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -580,7 +581,7 @@ func retrieveRestoreDetails(
 	s *runtime.Scheme,
 	acmRestore *v1beta1.Restore,
 	restoreOnlyManagedClusters bool,
-) (map[ResourceType]*veleroapi.Restore,
+) ([]ResourceType, map[ResourceType]*veleroapi.Restore,
 	error) {
 
 	restoreLength := len(veleroBackupNames) - 1 // ignore validation backup
@@ -598,13 +599,19 @@ func retrieveRestoreDetails(
 		}
 		restoreKeys = append(restoreKeys, key)
 	}
-	// sort restores to restore last credentials, first resources
-	// credentials could have owners in the resources path
+	// sort restores to restore first credentials, last resources
 	sort.Slice(restoreKeys, func(i, j int) bool {
-		return restoreKeys[i] > restoreKeys[j]
+		return restoreKeys[i] < restoreKeys[j]
 	})
+	if len(restoreKeys) > 3 {
+		swapF := reflect.Swapper(restoreKeys)
+		// restore managed clusters last
+		// move managedClusters from the 4th position to last
+		swapF(len(restoreKeys)-3, len(restoreKeys)-1)
+	}
 
-	return processRetrieveRestoreDetails(ctx, c, s, acmRestore, restoreKeys)
+	restoreMap, err := processRetrieveRestoreDetails(ctx, c, s, acmRestore, restoreKeys)
+	return restoreKeys, restoreMap, err
 
 }
 
