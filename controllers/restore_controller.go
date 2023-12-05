@@ -318,7 +318,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 	}
 
 	// loop through resourceTypes to create a Velero restore per type
-	veleroRestoresToCreate, err := retrieveRestoreDetails(
+	resKeys, veleroRestoresToCreate, err := retrieveRestoreDetails(
 		ctx,
 		r.Client,
 		r.Scheme,
@@ -337,9 +337,15 @@ func (r *RestoreReconciler) initVeleroRestores(
 	newVeleroRestoreCreated := false
 
 	// now create the restore resources and start the actual restore
-	for key := range veleroRestoresToCreate {
+	for resKey := range resKeys {
+
+		key := resKeys[resKey]
 
 		restoreObj := veleroRestoresToCreate[key]
+		if veleroRestoresToCreate[key] == nil {
+			// this type of backup is not restored now
+			continue
+		}
 		if key == ResourcesGeneric &&
 			veleroRestoresToCreate[ManagedClusters] == nil {
 			// if restoring the resources but not the managed clusters,

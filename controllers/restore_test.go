@@ -989,9 +989,16 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 
 	for index, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, got := retrieveRestoreDetails(tt.args.ctx, tt.args.c,
-				tt.args.s, tt.args.restore, tt.args.restoreOnlyManagedClusters); (got == nil) != tt.want {
+			keys, _, got := retrieveRestoreDetails(tt.args.ctx, tt.args.c,
+				tt.args.s, tt.args.restore, tt.args.restoreOnlyManagedClusters)
+			if (got == nil) != tt.want {
 				t.Errorf("retrieveRestoreDetails() returns = %v, want %v", got == nil, tt.want)
+			}
+			if keys[0] != Credentials {
+				t.Errorf("retrieveRestoreDetails() error, Credentials should be first key to restore ")
+			}
+			if keys[len(keys)-1] != ManagedClusters {
+				t.Errorf("retrieveRestoreDetails() error, ManagedClusters should be last key for restore ")
 			}
 		})
 		if index == len(tests)-1 {
