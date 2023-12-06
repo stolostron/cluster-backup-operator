@@ -41,6 +41,16 @@ const (
 	autoImportSecretName = "auto-import-secret"
 )
 
+// resources should be restored in this order, higher priority starting from 0
+var ResourceTypePriority map[ResourceType]int = map[ResourceType]int{
+	Credentials:        0,
+	CredentialsHive:    1,
+	CredentialsCluster: 2,
+	Resources:          3,
+	ResourcesGeneric:   4,
+	ManagedClusters:    5,
+}
+
 var (
 	// used for restore purposes; it differs from the
 	// veleroScheduleNames by having the hive and cluster credentials backups
@@ -580,7 +590,7 @@ func retrieveRestoreDetails(
 	s *runtime.Scheme,
 	acmRestore *v1beta1.Restore,
 	restoreOnlyManagedClusters bool,
-) (map[ResourceType]*veleroapi.Restore,
+) ([]ResourceType, map[ResourceType]*veleroapi.Restore,
 	error) {
 
 	restoreLength := len(veleroBackupNames) - 1 // ignore validation backup
@@ -598,13 +608,13 @@ func retrieveRestoreDetails(
 		}
 		restoreKeys = append(restoreKeys, key)
 	}
-	// sort restores to restore last credentials, first resources
-	// credentials could have owners in the resources path
+	// sort restores to restore first credentials, last resources
 	sort.Slice(restoreKeys, func(i, j int) bool {
-		return restoreKeys[i] > restoreKeys[j]
+		return ResourceTypePriority[restoreKeys[i]] < ResourceTypePriority[restoreKeys[j]]
 	})
 
-	return processRetrieveRestoreDetails(ctx, c, s, acmRestore, restoreKeys)
+	restoreMap, err := processRetrieveRestoreDetails(ctx, c, s, acmRestore, restoreKeys)
+	return restoreKeys, restoreMap, err
 
 }
 
