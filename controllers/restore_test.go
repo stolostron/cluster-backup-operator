@@ -911,6 +911,43 @@ func Test_isOtherRestoresRunning(t *testing.T) {
 	}
 }
 
+func Test_setOptionalProperties(t *testing.T) {
+	type args struct {
+		restype       ResourceType
+		acmRestore    *v1beta1.Restore
+		veleroRestore *veleroapi.Restore
+	}
+
+	tests := []struct {
+		name string
+		args args
+	}{
+		{
+			name: "verify that CRDs are excluded from restore",
+			args: args{
+				restype: Credentials,
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName("skip").
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
+				veleroRestore: createRestore("credentials-restore", "ns").object,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setOptionalProperties(tt.args.restype, tt.args.acmRestore, tt.args.veleroRestore)
+			if !findValue(tt.args.veleroRestore.Spec.ExcludedResources, "CustomResourceDefinition") {
+				t.Errorf("CustomResourceDefinition should be excluded from restore and be part of veleroRestore.Spec.ExcludedResources")
+			}
+
+		})
+	}
+}
+
 func Test_retrieveRestoreDetails(t *testing.T) {
 
 	testEnv := &envtest.Environment{
