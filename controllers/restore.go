@@ -19,7 +19,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 
@@ -41,6 +40,16 @@ const (
 	/* #nosec G101 -- This is a false positive */
 	autoImportSecretName = "auto-import-secret"
 )
+
+// resources should be restored in this order, higher priority starting from 0
+var ResourceTypePriority map[ResourceType]int = map[ResourceType]int{
+	Credentials:        0,
+	CredentialsHive:    1,
+	CredentialsCluster: 2,
+	Resources:          3,
+	ResourcesGeneric:   4,
+	ManagedClusters:    5,
+}
 
 var (
 	// used for restore purposes; it differs from the
@@ -601,14 +610,8 @@ func retrieveRestoreDetails(
 	}
 	// sort restores to restore first credentials, last resources
 	sort.Slice(restoreKeys, func(i, j int) bool {
-		return restoreKeys[i] < restoreKeys[j]
+		return ResourceTypePriority[restoreKeys[i]] < ResourceTypePriority[restoreKeys[j]]
 	})
-	if len(restoreKeys) > 3 {
-		swapF := reflect.Swapper(restoreKeys)
-		// restore managed clusters last
-		// move managedClusters from the 4th position to last
-		swapF(len(restoreKeys)-3, len(restoreKeys)-1)
-	}
 
 	restoreMap, err := processRetrieveRestoreDetails(ctx, c, s, acmRestore, restoreKeys)
 	return restoreKeys, restoreMap, err
