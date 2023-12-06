@@ -741,6 +741,8 @@ func setOptionalProperties(
 		veleroRestore.Spec.IncludeClusterResources = &clusterResource
 	}
 
+	veleroRestore.Spec.ExcludedResources = append(veleroRestore.Spec.ExcludedResources, "CustomResourceDefinition")
+
 	// update existing resources if part of the new backup
 	veleroRestore.Spec.ExistingResourcePolicy = veleroapi.PolicyTypeUpdate
 
