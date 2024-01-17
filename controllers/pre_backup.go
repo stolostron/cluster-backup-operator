@@ -44,9 +44,15 @@ import (
 )
 
 const (
+	// manifest work suffix used and created in 2.8.2
+	mwork_custom_282 = "-custom"
+	// manifest work suffix used and created 2.8.3 and onward
+	mwork_custom_283      = "-custom-2"
+	hive_label            = "hive.openshift.io/disable-creation-webhook-for-dr"
+	hive_label_path       = "/metadata/labels/hive.openshift.io~1disable-creation-webhook-for-dr"
 	msa_addon             = "managed-serviceaccount"
 	msa_service_name      = "auto-import-account"
-	msa_service_name_pair = "auto-import-account-pair"
+	msa_service_name_pair = "auto-import-account-pair" // #nosec G101 -- This is a false positive
 	msa_label             = "authentication.open-cluster-management.io/is-managed-serviceaccount"
 	backup_label          = "msa"
 	addon_work_label      = "open-cluster-management.io/addon-name-work"
@@ -119,7 +125,12 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		}
 	}
 
-	updateHiveResources(ctx, r.Client)
+	hiveDeploymentMapping, _ := mapper.RESTMapping(schema.GroupKind{
+		Group: "hive.openshift.io",
+		Kind:  "ClusterDeployment",
+	}, "")
+
+	updateHiveResources(ctx, r.Client, r.DynamicClient.Resource(hiveDeploymentMapping.Resource))
 	updateAISecrets(ctx, r.Client)
 	updateMetalSecrets(ctx, r.Client)
 
@@ -357,10 +368,24 @@ func createMSA(
 
 	logger := log.FromContext(ctx)
 
+	// delete manifest works prefixed with -custom
+	// they are created in 2.8.2 and have a rolebinding overlapping with the default ns
+	// get rid of them; will be relaced by the -custom-2 manifest works
+	deleteCustomManifestWork(ctx, c, managedClusterName, manifest_work_name)
+	deleteCustomManifestWork(ctx, c, managedClusterName, manifest_work_name_pair)
+
 	if name == msa_service_name {
 		// attempt to create ManifestWork to push the role binding, if not created already
 		createManifestWork(ctx, c, managedClusterName, name,
 			manifest_work_name_binding_name, msa_service_name, manifest_work_name, installNamespace)
+
+		if installNamespace != defaultAddonNS {
+			// attempt to create the ManifestWork in the default NS even if the installNamespace is set to custom ns
+			// this is to cover the case in 2.9 and onward when the user manually sets the installNamespace to a custom value
+			// in this version, the MSA framework ignores the custom value and creates the MSA in the addon default NS
+			createManifestWork(ctx, c, managedClusterName, name,
+				manifest_work_name_binding_name, msa_service_name, manifest_work_name, defaultAddonNS)
+		}
 	}
 
 	secretsGeneratedNow := false
@@ -393,6 +418,13 @@ func createMSA(
 			createManifestWork(ctx, c, managedClusterName, name,
 				manifest_work_name_binding_name_pair, msa_service_name_pair, manifest_work_name_pair, installNamespace)
 
+			if installNamespace != defaultAddonNS {
+				// attempt to create the ManifestWork in the default NS even if the installNamespace is set to custom ns
+				// this is to cover the case in 2.9 and onward when the user manually sets the installNamespace to a custom value
+				// in this version, the MSA framework ignores the custom value and creates the MSA in the addon default NS
+				createManifestWork(ctx, c, managedClusterName, name,
+					manifest_work_name_binding_name_pair, msa_service_name_pair, manifest_work_name_pair, defaultAddonNS)
+			}
 		}
 	}
 
@@ -482,6 +514,27 @@ func updateMSAToken(
 }
 
 // create manifest work to push the import user role binding to the managed cluster
+func deleteCustomManifestWork(
+	ctx context.Context,
+	c client.Client,
+	namespace string,
+	mworkName string,
+) {
+	logger := log.FromContext(ctx)
+
+	custommwork := &workv1.ManifestWork{}
+	if err := c.Get(ctx, types.NamespacedName{Name: mworkName + mwork_custom_282,
+		Namespace: namespace}, custommwork); err == nil {
+
+		// delete the resource
+		logger.Info("Deleting manifest work %s in ns %s", mwork_custom_282, namespace)
+		if err := c.Delete(ctx, custommwork); err != nil {
+			logger.Error(err, "Failed to delete manifest work")
+		}
+	}
+}
+
+// create manifest work to push the import user role binding to the managed cluster
 func createManifestWork(
 	ctx context.Context,
 	c client.Client,
@@ -495,10 +548,16 @@ func createManifestWork(
 	logger := log.FromContext(ctx)
 
 	mwork := mworkName
+	mworkBinding := mworkbindingName
 	if installNamespace != defaultAddonNS {
+		// to be used for the case when the MSA uses a custom ns, in 2.8 and 2.7
+		// starting with 2.9 and onwards the installNamespace for the MSA is ignored
+		// so in this cases the custom manifest work is not going to be used
+
 		// use this to create a custom manifest work name
-		// to be used for the case when the MSA uses a custom ns
-		mwork = mworkName + "-custom"
+		mwork = mworkName + mwork_custom_283
+		// use a different role binding name for the custom ns
+		mworkBinding = mworkbindingName + mwork_custom_283
 	}
 
 	manifestWorkList := &workv1.ManifestWorkList{}
@@ -529,15 +588,19 @@ func createManifestWork(
 					backupCredsClusterLabel: "msa"}
 
 				manifest := &workv1.Manifest{}
-				manifest.Raw = []byte(fmt.Sprintf(manifestwork, mworkbindingName, role_name, msaserviceName, installNamespace))
+				manifest.Raw = []byte(fmt.Sprintf(manifestwork, mworkBinding, role_name, msaserviceName, installNamespace))
 
 				manifestWork.Spec.Workload.Manifests = []workv1.Manifest{
 					*manifest,
 				}
 
-				logger.Info(fmt.Sprintf("Attempt to create ManifestWork %s in ns %s", mworkName, namespace))
+				logger.Info(fmt.Sprintf("Attempt to create ManifestWork %s in ns %s, for ns=%s",
+					mwork, namespace, installNamespace))
 				if err := c.Create(ctx, manifestWork, &client.CreateOptions{}); err == nil {
-					logger.Info(fmt.Sprintf("Created ManifestWork %s in ns %s ", mworkName, namespace))
+					logger.Info(fmt.Sprintf("Created ManifestWork %s in ns %s for ns=%s",
+						mwork, namespace, installNamespace))
+				} else {
+					logger.Error(err, "Failed to create ManifestWork")
 				}
 			}
 		}
@@ -665,6 +728,7 @@ func updateMSASecretTimestamp(
 // prepare hive cluster claim and cluster pool
 func updateHiveResources(ctx context.Context,
 	c client.Client,
+	dr dynamic.NamespaceableResourceInterface,
 ) {
 	logger := log.FromContext(ctx)
 	// update secrets for clusterDeployments created by cluster claims
@@ -690,12 +754,16 @@ func updateHiveResources(ctx context.Context,
 				if labels == nil {
 					labels = make(map[string]string)
 				}
-				labels["hive.openshift.io/disable-creation-webhook-for-dr"] = "true"
-				clusterDeployment.SetLabels(labels)
-				msg := "update clusterDeployment " + clusterDeployment.Name
-				logger.Info(msg)
-				if err := c.Update(ctx, &clusterDeployment, &client.UpdateOptions{}); err == nil {
-					logger.Info("Updated clusterDeployment " + clusterDeployment.Name)
+				if labels[hive_label] != "" {
+					// label already set
+					continue
+				}
+				logger.Info("Patching disable-creation-webhook-for-dr label on deployment " + clusterDeployment.Name)
+
+				patch := `[ { "op": "add", "path": "` + hive_label_path + `", "value": "true" } ]`
+				if _, err := dr.Namespace(clusterDeployment.GetNamespace()).Patch(ctx, clusterDeployment.GetName(),
+					types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
+					logger.Error(err, "cannot patch with hive label hive.openshift.io~1disable-creation-webhook-for-dr")
 				}
 			}
 		}

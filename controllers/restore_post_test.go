@@ -240,7 +240,19 @@ func Test_executePostRestoreTasks(t *testing.T) {
 	scheme1 := runtime.NewScheme()
 	veleroapi.AddToScheme(scheme1)
 	clusterv1.AddToScheme(scheme1)
+	corev1.AddToScheme(scheme1)
+
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	if err := k8sClient1.Create(context.Background(), createNamespace(obs_addon_ns)); err != nil {
+		t.Errorf("failed to create secret %s ", err.Error())
+
+	}
+	if err := k8sClient1.Create(context.Background(), createSecret(obs_secret_name,
+		obs_addon_ns, map[string]string{}, nil, nil)); err != nil {
+		t.Errorf("failed to create secret %s ", err.Error())
+
+	}
 
 	type args struct {
 		ctx     context.Context
@@ -289,6 +301,14 @@ func Test_executePostRestoreTasks(t *testing.T) {
 		})
 
 	}
+
+	// this should be deleted
+	secret := corev1.Secret{}
+	if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: obs_secret_name,
+		Namespace: obs_addon_ns}, &secret); err == nil {
+		t.Errorf("this secret should no longer exist ! %v ", obs_secret_name)
+	}
+
 	testEnv.Stop()
 
 }

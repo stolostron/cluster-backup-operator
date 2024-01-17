@@ -911,6 +911,43 @@ func Test_isOtherRestoresRunning(t *testing.T) {
 	}
 }
 
+func Test_setOptionalProperties(t *testing.T) {
+	type args struct {
+		restype       ResourceType
+		acmRestore    *v1beta1.Restore
+		veleroRestore *veleroapi.Restore
+	}
+
+	tests := []struct {
+		name string
+		args args
+	}{
+		{
+			name: "verify that CRDs are excluded from restore",
+			args: args{
+				restype: Credentials,
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName("skip").
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
+				veleroRestore: createRestore("credentials-restore", "ns").object,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setOptionalProperties(tt.args.restype, tt.args.acmRestore, tt.args.veleroRestore)
+			if !findValue(tt.args.veleroRestore.Spec.ExcludedResources, "CustomResourceDefinition") {
+				t.Errorf("CustomResourceDefinition should be excluded from restore and be part of veleroRestore.Spec.ExcludedResources")
+			}
+
+		})
+	}
+}
+
 func Test_retrieveRestoreDetails(t *testing.T) {
 
 	testEnv := &envtest.Environment{
@@ -989,9 +1026,16 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 
 	for index, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, got := retrieveRestoreDetails(tt.args.ctx, tt.args.c,
-				tt.args.s, tt.args.restore, tt.args.restoreOnlyManagedClusters); (got == nil) != tt.want {
+			keys, _, got := retrieveRestoreDetails(tt.args.ctx, tt.args.c,
+				tt.args.s, tt.args.restore, tt.args.restoreOnlyManagedClusters)
+			if (got == nil) != tt.want {
 				t.Errorf("retrieveRestoreDetails() returns = %v, want %v", got == nil, tt.want)
+			}
+			if keys[0] != Credentials {
+				t.Errorf("retrieveRestoreDetails() error, Credentials should be first key to restore ")
+			}
+			if keys[len(keys)-1] != ManagedClusters {
+				t.Errorf("retrieveRestoreDetails() error, ManagedClusters should be last key for restore ")
 			}
 		})
 		if index == len(tests)-1 {
