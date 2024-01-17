@@ -120,7 +120,8 @@ func cleanupDeltaResources(
 		backupName, veleroBackup := getBackupInfoFromRestore(ctx, c,
 			acmRestore.Status.VeleroCredentialsRestoreName, acmRestore.Namespace)
 		cleanupDeltaForCredentials(ctx, c,
-			backupName, veleroBackup, acmRestore.Spec.CleanupBeforeRestore, *acmRestore.Spec.VeleroManagedClustersBackupName != skipRestoreStr)
+			backupName, veleroBackup, acmRestore.Spec.CleanupBeforeRestore,
+			*acmRestore.Spec.VeleroManagedClustersBackupName != skipRestoreStr)
 
 		// clean up resources and generic resources
 		cleanupDeltaForResourcesBackup(ctx, c, restoreOptions, acmRestore)
