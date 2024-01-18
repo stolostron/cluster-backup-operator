@@ -407,8 +407,7 @@ func getResourcesByBackupType(
 				)
 			}
 		}
-		// a temporary workaround for OADP 1.3 which includes all namespace resources
-		// in the backup content without filtering them by the label selector
+		// a temporary workaround for NS not filtered by the label selector in OADP 1.3
 		filteredResourceNames = appendUnique(
 			filteredResourceNames,
 			"namespace",
