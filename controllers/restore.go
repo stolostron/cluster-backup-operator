@@ -646,21 +646,19 @@ func processRetrieveRestoreDetails(
 				if acmRestore.Spec.VeleroCredentialsBackupName != nil {
 					backupName = *acmRestore.Spec.VeleroCredentialsBackupName
 				}
-			case Resources:
+			case ResourcesGeneric, Resources:
 				if acmRestore.Spec.VeleroResourcesBackupName != nil {
 					backupName = *acmRestore.Spec.VeleroResourcesBackupName
 				}
-			case ResourcesGeneric:
-				if acmRestore.Spec.VeleroResourcesBackupName != nil {
-					backupName = *acmRestore.Spec.VeleroResourcesBackupName
-				}
-				if backupName == skipRestoreStr &&
-					acmRestore.Spec.VeleroManagedClustersBackupName != nil {
-					// if resources is set to skip but managed clusters are restored
-					// we still need the generic resources
-					// for the resources with the label value 'cluster-activation'
-					backupName = *acmRestore.Spec.VeleroManagedClustersBackupName
-				}
+
+			}
+
+			if (key == Credentials || key == ResourcesGeneric) && backupName == skipRestoreStr &&
+				acmRestore.Spec.VeleroManagedClustersBackupName != nil {
+				// if this is set to skip but managed clusters are restored
+				// we still need the generic resources and credentials
+				// for the resources with the label value 'cluster-activation'
+				backupName = *acmRestore.Spec.VeleroManagedClustersBackupName
 			}
 
 			backupName = strings.ToLower(strings.TrimSpace(backupName))
