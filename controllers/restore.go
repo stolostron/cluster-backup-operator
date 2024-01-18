@@ -646,6 +646,13 @@ func processRetrieveRestoreDetails(
 				if acmRestore.Spec.VeleroCredentialsBackupName != nil {
 					backupName = *acmRestore.Spec.VeleroCredentialsBackupName
 				}
+				if key == Credentials && backupName == skipRestoreStr &&
+					acmRestore.Spec.VeleroManagedClustersBackupName != nil {
+					// if resources is set to skip but managed clusters are restored
+					// we still need the credential resources
+					// for the resources with the label value 'cluster-activation'
+					backupName = *acmRestore.Spec.VeleroManagedClustersBackupName
+				}
 			case Resources:
 				if acmRestore.Spec.VeleroResourcesBackupName != nil {
 					backupName = *acmRestore.Spec.VeleroResourcesBackupName
