@@ -214,7 +214,7 @@ func setResourcesBackupInfo(
 
 }
 
-// set credentials backup info
+// set generic backup info
 func setGenericResourcesBackupInfo(
 	veleroBackupTemplate *veleroapi.BackupSpec,
 	resourcesToBackup []string,
@@ -407,6 +407,8 @@ func getResourcesByBackupType(
 				)
 			}
 		}
+		// a temporary workaround for NS not filtered by the label selector in OADP 1.3
+		filteredResourceNames = appendUnique(filteredResourceNames, "namespace")
 	case ManagedClusters:
 		for i := range backupManagedClusterResources {
 			// managed clusters required resources, from namespace or cluster level
