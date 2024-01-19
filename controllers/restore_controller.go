@@ -401,13 +401,6 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 		waitForPVC := updateLabelsForActiveResources(restore, key, veleroRestoresToCreate)
 		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
-		// check if needed to wait for pvcs to be created before the app data is restored
-		if shouldWait, waitMsg := r.waitForPVCHooksOnRestore(ctx,
-			waitForPVC,
-			veleroRestoresToCreate[key].Name, restore); shouldWait {
-			// some PVCs were not created yet, wait for them
-			return true, waitMsg, nil
-		}
 
 		if err != nil {
 			restoreLogger.Info(
@@ -439,6 +432,14 @@ func (r *RestoreReconciler) initVeleroRestores(
 			case ResourcesGeneric:
 				restore.Status.VeleroGenericResourcesRestoreName = veleroRestoresToCreate[key].Name
 
+			}
+		}
+		// check if needed to wait for pvcs to be created before the app data is restored
+		if waitForPVC {
+			if shouldWait, waitMsg := r.waitForPVCHooksOnRestore(ctx,
+				veleroRestoresToCreate[key].Name, restore); shouldWait {
+				// some PVCs were not created yet, wait for them
+				return true, waitMsg, nil
 			}
 		}
 	}
@@ -508,7 +509,6 @@ func updateLabelsForActiveResources(
 // the PVC should be created by the volsync policy
 func (r *RestoreReconciler) waitForPVCHooksOnRestore(
 	ctx context.Context,
-	waitForPVC bool,
 	restoreName string,
 	acmRestore *v1beta1.Restore,
 ) (bool, string) {
@@ -516,54 +516,51 @@ func (r *RestoreReconciler) waitForPVCHooksOnRestore(
 	restoreLogger := log.FromContext(ctx)
 	restoreLogger.Info("Enter waitForPVCHooksOnRestore " + restoreName)
 
-	if waitForPVC {
-
-		restore := &veleroapi.Restore{}
-		lookupKey := types.NamespacedName{
-			Name:      restoreName,
-			Namespace: acmRestore.Namespace,
-		}
-		if err := r.Client.Get(ctx, lookupKey, restore); err != nil {
-			return true, "Waiting on restore"
-		}
-
-		if restore.Status.Phase == "" ||
-			restore.Status.Phase == veleroapi.RestorePhaseNew ||
-			restore.Status.Phase == veleroapi.RestorePhaseInProgress {
-			// look for the list of PVCs, wait firt for the backup to complete
-			restoreLogger.Info("Exit waitForPVCHooksOnRestore wait, restore not completed")
-			return true, "waiting for restore to complete " + restoreName
-		}
-
-		// look for all PVC configmaps with  label and verify the PVC was created
-		configMaps := &v1.ConfigMapList{}
-		vLabel, _ := labels.NewRequirement(volsyncLabel,
-			selection.Exists, []string{})
-
-		labelSelector := labels.NewSelector()
-		selector := labelSelector.Add(*vLabel)
-		if err := r.Client.List(ctx, configMaps, &client.ListOptions{
-			LabelSelector: selector,
-		}); err == nil {
-			pvcs := []string{}
-			for i := range configMaps.Items {
-				pvc := &v1.PersistentVolumeClaim{}
-				pvcName := configMaps.Items[i].GetLabels()[volsyncLabel]
-				pvcNS := configMaps.Items[i].Namespace
-				lookupKey := types.NamespacedName{
-					Name:      pvcName,
-					Namespace: pvcNS,
-				}
-				if errPVC := r.Client.Get(ctx, lookupKey, pvc); errPVC != nil {
-					pvcs = append(pvcs, pvcName+":"+pvcNS)
-				}
-
-			}
-			restoreLogger.Info("Exit waitForPVCHooksOnRestore wait on PVCs: " + strings.Join(pvcs, ", "))
-			return len(pvcs) > 0, "waiting for PVC " + strings.Join(pvcs, ", ")
-		}
-
+	restore := &veleroapi.Restore{}
+	lookupKey := types.NamespacedName{
+		Name:      restoreName,
+		Namespace: acmRestore.Namespace,
 	}
+	if err := r.Client.Get(ctx, lookupKey, restore); err != nil {
+		return false, ""
+	}
+
+	if restore.Status.Phase == "" ||
+		restore.Status.Phase == veleroapi.RestorePhaseNew ||
+		restore.Status.Phase == veleroapi.RestorePhaseInProgress {
+		// look for the list of PVCs, wait firt for the backup to complete
+		restoreLogger.Info("Exit waitForPVCHooksOnRestore wait, restore not completed")
+		return true, "waiting for restore to complete " + restoreName
+	}
+
+	// look for all PVC configmaps with  label and verify the PVC was created
+	configMaps := &v1.ConfigMapList{}
+	vLabel, _ := labels.NewRequirement(volsyncLabel,
+		selection.Exists, []string{})
+
+	labelSelector := labels.NewSelector()
+	selector := labelSelector.Add(*vLabel)
+	if err := r.Client.List(ctx, configMaps, &client.ListOptions{
+		LabelSelector: selector,
+	}); err == nil {
+		pvcs := []string{}
+		for i := range configMaps.Items {
+			pvc := &v1.PersistentVolumeClaim{}
+			pvcName := configMaps.Items[i].GetLabels()[volsyncLabel]
+			pvcNS := configMaps.Items[i].Namespace
+			lookupKey := types.NamespacedName{
+				Name:      pvcName,
+				Namespace: pvcNS,
+			}
+			if errPVC := r.Client.Get(ctx, lookupKey, pvc); errPVC != nil {
+				pvcs = append(pvcs, pvcName+":"+pvcNS)
+			}
+
+		}
+		restoreLogger.Info("Exit waitForPVCHooksOnRestore wait on PVCs: " + strings.Join(pvcs, ", "))
+		return len(pvcs) > 0, "waiting for PVC " + strings.Join(pvcs, ", ")
+	}
+
 	restoreLogger.Info("Exit waitForPVCHooksOnRestore no wait")
 
 	return false, ""
