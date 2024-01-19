@@ -521,14 +521,14 @@ func (r *RestoreReconciler) waitForPVCHooksOnRestore(
 		Name:      restoreName,
 		Namespace: acmRestore.Namespace,
 	}
-	if err := r.Client.Get(ctx, lookupKey, restore); err != nil {
-		return false, ""
+
+	status := veleroapi.RestorePhaseNew
+	if err := r.Client.Get(ctx, lookupKey, restore); err == nil {
+		status = restore.Status.Phase
 	}
 
-	if restore.Status.Phase == "" ||
-		restore.Status.Phase == veleroapi.RestorePhaseNew ||
-		restore.Status.Phase == veleroapi.RestorePhaseInProgress {
-		// look for the list of PVCs, wait firt for the backup to complete
+	if status == "" || status == veleroapi.RestorePhaseNew || status == veleroapi.RestorePhaseInProgress {
+		// look for the list of PVCs, wait first for the backup to complete
 		restoreLogger.Info("Exit waitForPVCHooksOnRestore wait, restore not completed")
 		return true, "waiting for restore to complete " + restoreName
 	}
