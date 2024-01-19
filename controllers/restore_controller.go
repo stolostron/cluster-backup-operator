@@ -402,7 +402,9 @@ func (r *RestoreReconciler) initVeleroRestores(
 		waitForPVC := updateLabelsForActiveResources(restore, key, veleroRestoresToCreate)
 		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
 		// check if needed to wait for pvcs to be created before the app data is restored
-		if shouldWait, waitMsg := r.waitForPVCHooksOnRestore(ctx, waitForPVC, veleroRestoresToCreate[key].Name, restore); shouldWait {
+		if shouldWait, waitMsg := r.waitForPVCHooksOnRestore(ctx,
+			waitForPVC,
+			veleroRestoresToCreate[key].Name, restore); shouldWait {
 			// some PVCs were not created yet, wait for them
 			return true, waitMsg, nil
 		}
