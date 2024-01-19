@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -26,7 +27,10 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
@@ -53,6 +57,9 @@ const (
 	latestBackupStr     string = "latest"
 	restoreSyncInterval        = time.Minute * 30
 	noopMsg                    = "Nothing to do for restore %s"
+
+	volsyncLabel    = "cluster.open-cluster-management.io/volsync-pvc"
+	pvcWaitInterval = time.Second * 10
 )
 
 type DynamicStruct struct {
@@ -184,9 +191,14 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	isValidSync, msg := isValidSyncOptions(restore)
 	sync := isValidSync && restore.Status.Phase == v1beta1.RestorePhaseEnabled
+	// wait for pvc to be  created using the volsync config map, if any created on the backup hub
+	// the config map is restored with the credentials backup, which is the first backup to be restored
+	// wait for the pvc when only the credentials backup was created and the restore is not set to sync backup data
+	waitforpvcs := len(veleroRestoreList.Items) == 1 && restore.Status.Phase == v1beta1.RestorePhaseStarted
 
-	if len(veleroRestoreList.Items) == 0 || sync {
-		if err := r.initVeleroRestores(ctx, restore, sync); err != nil {
+	if len(veleroRestoreList.Items) == 0 || sync || waitforpvcs {
+		mustwait, waitmsg, err := r.initVeleroRestores(ctx, restore, sync)
+		if err != nil {
 			msg := fmt.Sprintf(
 				"unable to initialize Velero restores for restore %s/%s: %v",
 				req.Namespace,
@@ -201,6 +213,15 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
 				r.Client.Status().Update(ctx, restore),
 				msg,
+			)
+		}
+
+		if mustwait {
+			restore.Status.Phase = v1beta1.RestorePhaseStarted
+			restore.Status.LastMessage = waitmsg
+			return ctrl.Result{RequeueAfter: pvcWaitInterval}, errors.Wrap(
+				r.Client.Status().Update(ctx, restore),
+				waitmsg,
 			)
 		}
 	} else {
@@ -295,7 +316,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 	ctx context.Context,
 	restore *v1beta1.Restore,
 	sync bool,
-) error {
+) (bool, string, error) {
 	restoreLogger := log.FromContext(ctx)
 
 	restoreOnlyManagedClusters := false
@@ -313,7 +334,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			// allow that now
 			restoreOnlyManagedClusters = true
 		} else {
-			return nil
+			return false, "", nil
 		}
 	}
 
@@ -326,12 +347,12 @@ func (r *RestoreReconciler) initVeleroRestores(
 		restoreOnlyManagedClusters,
 	)
 	if err != nil {
-		return err
+		return false, "", err
 	}
 	if len(veleroRestoresToCreate) == 0 {
 		restore.Status.Phase = v1beta1.RestorePhaseFinished
 		restore.Status.LastMessage = fmt.Sprintf(noopMsg, restore.Name)
-		return nil
+		return false, "", nil
 	}
 
 	newVeleroRestoreCreated := false
@@ -366,6 +387,8 @@ func (r *RestoreReconciler) initVeleroRestores(
 				*req,
 			)
 		}
+
+		waitForPVC := false
 		if (key == ResourcesGeneric && veleroRestoresToCreate[Resources] == nil) ||
 			(key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil) {
 			// if restoring the ManagedClusters and resources are not restored
@@ -393,8 +416,20 @@ func (r *RestoreReconciler) initVeleroRestores(
 				(key == Credentials && *restore.Spec.VeleroCredentialsBackupName != skipRestoreStr) {
 				veleroRestoresToCreate[key].Name = veleroRestoresToCreate[key].Name + "-active"
 			}
+			if key == Credentials {
+				// this is an activation stage and the credebtials are being restored
+				// before going to the next restore
+				// wait for the creation of the PVCs defined by volsync configmaps stored by this backup
+				waitForPVC = true
+			}
 		}
 		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
+		// check if needed to wait for pvcs to be created before the app data is restored
+		if waitforpvc, waitmsg := r.waitForPVCHooksOnRestore(ctx, waitForPVC, veleroRestoresToCreate[key].Name, restore); waitforpvc {
+			// some PVCs were not created yet, wait for them
+			return true, waitmsg, nil
+		}
+
 		if err != nil {
 			restoreLogger.Info(
 				"unable to create Velero restore for restore",
@@ -436,5 +471,71 @@ func (r *RestoreReconciler) initVeleroRestores(
 		restore.Status.Phase = v1beta1.RestorePhaseFinished
 		restore.Status.LastMessage = fmt.Sprintf(noopMsg, restore.Name)
 	}
-	return nil
+	return false, "", nil
+}
+
+// check if the credentials backup has any velero pvcs configuration
+// check if the PVC were created and wait for that
+// the PVC should be created by the volsync policy
+func (r *RestoreReconciler) waitForPVCHooksOnRestore(
+	ctx context.Context,
+	waitForPVC bool,
+	restoreName string,
+	acmRestore *v1beta1.Restore,
+) (bool, string) {
+
+	restoreLogger := log.FromContext(ctx)
+	restoreLogger.Info("Enter waitForPVCHooksOnRestore " + restoreName)
+
+	if waitForPVC {
+
+		restore := &veleroapi.Restore{}
+		lookupKey := types.NamespacedName{
+			Name:      restoreName,
+			Namespace: acmRestore.Namespace,
+		}
+		if err := r.Client.Get(ctx, lookupKey, restore); err != nil {
+			return false, ""
+		}
+
+		if restore.Status.Phase == "" ||
+			restore.Status.Phase == veleroapi.RestorePhaseNew ||
+			restore.Status.Phase == veleroapi.RestorePhaseInProgress {
+			// look for the list of PVCs, wait firt for the backup to complete
+			restoreLogger.Info("Exit waitForPVCHooksOnRestore wait, restore not completed")
+			return true, "waiting for restore to complete " + restoreName
+		}
+
+		// look for all PVC configmaps with  label and verify the PVC was created
+		configMaps := &v1.ConfigMapList{}
+		vLabel, _ := labels.NewRequirement(volsyncLabel,
+			selection.Exists, []string{})
+
+		labelSelector := labels.NewSelector()
+		selector := labelSelector.Add(*vLabel)
+		if err := r.Client.List(ctx, configMaps, &client.ListOptions{
+			LabelSelector: selector,
+		}); err == nil {
+			pvcs := []string{}
+			for i := range configMaps.Items {
+				pvc := &v1.PersistentVolumeClaim{}
+				pvcName := configMaps.Items[i].GetLabels()[volsyncLabel]
+				pvcNS := configMaps.Items[i].Namespace
+				lookupKey := types.NamespacedName{
+					Name:      pvcName,
+					Namespace: pvcNS,
+				}
+				if err_pvc := r.Client.Get(ctx, lookupKey, pvc); err_pvc != nil {
+					pvcs = append(pvcs, pvcName+":"+pvcNS)
+				}
+
+			}
+			restoreLogger.Info("Exit waitForPVCHooksOnRestore wait on PVCs: " + strings.Join(pvcs, ", "))
+			return len(pvcs) > 0, "waiting for PVC " + strings.Join(pvcs, ", ")
+		}
+
+	}
+	restoreLogger.Info("Exit waitForPVCHooksOnRestore no wait")
+
+	return false, ""
 }
