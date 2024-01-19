@@ -524,7 +524,7 @@ func (r *RestoreReconciler) waitForPVCHooksOnRestore(
 			Namespace: acmRestore.Namespace,
 		}
 		if err := r.Client.Get(ctx, lookupKey, restore); err != nil {
-			return false, ""
+			return true, "Waiting on restore"
 		}
 
 		if restore.Status.Phase == "" ||
