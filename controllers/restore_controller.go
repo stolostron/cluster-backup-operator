@@ -194,9 +194,9 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// wait for pvc to be  created using the volsync config map, if any created on the backup hub
 	// the config map is restored with the credentials backup, which is the first backup to be restored
 	// wait for the pvc when only the credentials backup was created and the restore is not set to sync backup data
-	waitforpvcs := len(veleroRestoreList.Items) == 1 && restore.Status.Phase == v1beta1.RestorePhaseStarted
+	isCredsClsOnActiveSteps := len(veleroRestoreList.Items) == 1 && restore.Status.Phase == v1beta1.RestorePhaseStarted
 
-	if len(veleroRestoreList.Items) == 0 || sync || waitforpvcs {
+	if len(veleroRestoreList.Items) == 0 || sync || isCredsClsOnActiveSteps {
 		mustwait, waitmsg, err := r.initVeleroRestores(ctx, restore, sync)
 		if err != nil {
 			msg := fmt.Sprintf(
@@ -399,7 +399,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			)
 		}
 
-		waitForPVC := updateLabelsForActiveResources(restore, key, veleroRestoresToCreate)
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(restore, key, veleroRestoresToCreate)
 		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
 
 		if err != nil {
@@ -435,8 +435,8 @@ func (r *RestoreReconciler) initVeleroRestores(
 			}
 		}
 		// check if needed to wait for pvcs to be created before the app data is restored
-		if waitForPVC {
-			if shouldWait, waitMsg := r.waitForPVCHooksOnRestore(ctx,
+		if isCredsClsOnActiveStep {
+			if shouldWait, waitMsg := r.processRestoreWait(ctx,
 				veleroRestoresToCreate[key].Name, restore); shouldWait {
 				// some PVCs were not created yet, wait for them
 				return true, waitMsg, nil
@@ -461,8 +461,9 @@ func updateLabelsForActiveResources(
 	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
 ) bool {
 
-	// for credential restore file wait for pvc validation
-	waitForPVC := false
+	// check if this is the credential restore run
+	// during the cluster activation step
+	isCredsClsOnActiveStep := false
 
 	restoreObj := veleroRestoresToCreate[key]
 
@@ -497,24 +498,24 @@ func updateLabelsForActiveResources(
 			// this is an activation stage and the credebtials are being restored
 			// before going to the next restore
 			// wait for the creation of the PVCs defined by volsync configmaps stored by this backup
-			waitForPVC = true
+			isCredsClsOnActiveStep = true
 		}
 	}
 
-	return waitForPVC
+	return isCredsClsOnActiveStep
 }
 
 // check if the credentials backup has any velero pvcs configuration
-// check if the PVC were created and wait for that
-// the PVC should be created by the volsync policy
-func (r *RestoreReconciler) waitForPVCHooksOnRestore(
+// then verify if the PVC have been created and wait for the
+// PVC to be created by the volsync policy
+func (r *RestoreReconciler) processRestoreWait(
 	ctx context.Context,
 	restoreName string,
 	acmRestore *v1beta1.Restore,
 ) (bool, string) {
 
 	restoreLogger := log.FromContext(ctx)
-	restoreLogger.Info("Enter waitForPVCHooksOnRestore " + restoreName)
+	restoreLogger.Info("Enter processRestoreWait " + restoreName)
 
 	restore := &veleroapi.Restore{}
 	lookupKey := types.NamespacedName{
@@ -529,7 +530,7 @@ func (r *RestoreReconciler) waitForPVCHooksOnRestore(
 
 	if status == "" || status == veleroapi.RestorePhaseNew || status == veleroapi.RestorePhaseInProgress {
 		// look for the list of PVCs, wait first for the backup to complete
-		restoreLogger.Info("Exit waitForPVCHooksOnRestore wait, restore not completed")
+		restoreLogger.Info("Exit processRestoreWait wait, restore not completed")
 		return true, "waiting for restore to complete " + restoreName
 	}
 
@@ -557,11 +558,11 @@ func (r *RestoreReconciler) waitForPVCHooksOnRestore(
 			}
 
 		}
-		restoreLogger.Info("Exit waitForPVCHooksOnRestore wait on PVCs: " + strings.Join(pvcs, ", "))
+		restoreLogger.Info("Exit processRestoreWait, wait on PVCs: " + strings.Join(pvcs, ", "))
 		return len(pvcs) > 0, "waiting for PVC " + strings.Join(pvcs, ", ")
 	}
 
-	restoreLogger.Info("Exit waitForPVCHooksOnRestore no wait")
+	restoreLogger.Info("Exit processRestoreWait with no wait")
 
 	return false, ""
 }
