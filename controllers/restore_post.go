@@ -93,7 +93,8 @@ func cleanupDeltaResources(
 		backupName, veleroBackup := getBackupInfoFromRestore(ctx, c,
 			acmRestore.Status.VeleroCredentialsRestoreName, acmRestore.Namespace)
 		cleanupDeltaForCredentials(ctx, c,
-			backupName, veleroBackup, acmRestore.Spec.CleanupBeforeRestore)
+			backupName, veleroBackup, acmRestore.Spec.CleanupBeforeRestore,
+			*acmRestore.Spec.VeleroManagedClustersBackupName != skipRestoreStr)
 
 		// clean up resources and generic resources
 		backupName, veleroBackup = getBackupInfoFromRestore(ctx, c,
@@ -119,13 +120,16 @@ func cleanupDeltaForCredentials(
 	backupName string,
 	veleroBackup *veleroapi.Backup,
 	cleanupType v1beta1.CleanupType,
+	isClusterActivation bool,
 ) {
-
+	logger := log.FromContext(ctx)
+	logger.Info("enter cleanupDeltaForCredentials ")
 	if backupName == "" {
 		// nothing to clean up
 		return
 	}
 
+	logger.Info("cleanup user credentials")
 	// this is the user credentials backup, delete user credentials
 	userCredsLabel, _ := labels.NewRequirement(backupCredsUserLabel,
 		selection.Exists, []string{})
@@ -141,16 +145,24 @@ func cleanupDeltaForCredentials(
 		// it means those resources were removed and they should be cleaned up
 
 		// hive credentials
+		logger.Info("cleanup hive credentials")
 		hiveCredsLabel, _ := labels.NewRequirement(backupCredsHiveLabel,
 			selection.Exists, []string{})
 		deleteSecretsWithLabelSelector(ctx, c, backupName, cleanupType,
 			[]labels.Requirement{*hiveCredsLabel})
 
+		logger.Info("cleanup cluster credentials")
 		// cluster credentials
 		clsCredsLabel, _ := labels.NewRequirement(backupCredsClusterLabel,
 			selection.Exists, []string{})
-		deleteSecretsWithLabelSelector(ctx, c, backupName, cleanupType,
-			[]labels.Requirement{*clsCredsLabel})
+		otherLabels := []labels.Requirement{*clsCredsLabel}
+		if !isClusterActivation {
+			// don't touch secrets or configmaps with cluster-activation label, these are not restored here
+			clsCredsLabelNotActivation, _ := labels.NewRequirement(backupCredsClusterLabel,
+				selection.NotEquals, []string{"cluster-activation"})
+			otherLabels = append(otherLabels, *clsCredsLabelNotActivation)
+		}
+		deleteSecretsWithLabelSelector(ctx, c, backupName, cleanupType, otherLabels)
 
 	} else {
 		// clean up credentials based on backup type, secrets should be stored in 3 separate files
@@ -176,7 +188,7 @@ func cleanupDeltaForCredentials(
 			})
 		///
 	}
-
+	logger.Info("exit cleanupDeltaForCredentials ")
 }
 
 // for the specified backup type, find corresponding backup and send a request to

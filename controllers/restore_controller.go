@@ -346,7 +346,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			// this type of backup is not restored now
 			continue
 		}
-		if key == ResourcesGeneric &&
+		if (key == ResourcesGeneric || key == Credentials) &&
 			veleroRestoresToCreate[ManagedClusters] == nil {
 			// if restoring the resources but not the managed clusters,
 			// do not restore generic resources in the activation stage
@@ -366,10 +366,12 @@ func (r *RestoreReconciler) initVeleroRestores(
 				*req,
 			)
 		}
-		if key == ResourcesGeneric &&
-			veleroRestoresToCreate[Resources] == nil {
+		if (key == ResourcesGeneric && veleroRestoresToCreate[Resources] == nil) ||
+			(key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil) {
 			// if restoring the ManagedClusters and resources are not restored
 			// need to restore the generic resources for the activation phase
+
+			// if managed clusters are restored, then need to restore the credentials to get active resources
 			if restoreObj.Spec.LabelSelector == nil {
 				labels := &metav1.LabelSelector{}
 				restoreObj.Spec.LabelSelector = labels
@@ -385,6 +387,9 @@ func (r *RestoreReconciler) initVeleroRestores(
 				restoreObj.Spec.LabelSelector.MatchExpressions,
 				*req,
 			)
+			// use a different name for this activation restore; if this Restore was run using the sync operation,
+			// the generic and credentials restore for this backup name may already exist
+			veleroRestoresToCreate[key].Name = veleroRestoresToCreate[key].Name + "-active"
 		}
 		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
 		if err != nil {
