@@ -554,14 +554,16 @@ func (r *RestoreReconciler) processRestoreWait(
 				Name:      pvcName,
 				Namespace: pvcNS,
 			}
+			restoreLogger.Info(fmt.Sprintf("Check if PVC exists %s:%s", pvcNS, pvcName))
 			if errPVC := r.Client.Get(ctx, lookupKey, pvc); errPVC != nil {
 				restoreLogger.Info(fmt.Sprintf("PVC not found %s:%s", pvcNS, pvcName))
 				pvcs = append(pvcs, pvcName+":"+pvcNS)
 			}
-
 		}
-		restoreLogger.Info("Exit processRestoreWait, wait on PVCs: " + strings.Join(pvcs, ", "))
-		return len(pvcs) > 0, "waiting for PVC " + strings.Join(pvcs, ", ")
+		if len(pvcs) > 0 {
+			restoreLogger.Info("Exit processRestoreWait, PVCs not found : " + strings.Join(pvcs, ", "))
+			return true, "waiting for PVC " + strings.Join(pvcs, ", ")
+		}
 	}
 
 	restoreLogger.Info("Exit processRestoreWait with no wait")
