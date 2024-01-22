@@ -388,8 +388,11 @@ func (r *RestoreReconciler) initVeleroRestores(
 				*req,
 			)
 			// use a different name for this activation restore; if this Restore was run using the sync operation,
-			// the generic and credentials restore for this backup name may already exist
-			veleroRestoresToCreate[key].Name = veleroRestoresToCreate[key].Name + "-active"
+			// the generic and credentials restore for this backup name already exist
+			if (key == ResourcesGeneric && *restore.Spec.VeleroResourcesBackupName != skipRestoreStr) ||
+				(key == Credentials && *restore.Spec.VeleroCredentialsBackupName != skipRestoreStr) {
+				veleroRestoresToCreate[key].Name = veleroRestoresToCreate[key].Name + "-active"
+			}
 		}
 		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
 		if err != nil {
