@@ -58,7 +58,7 @@ const (
 	restoreSyncInterval        = time.Minute * 30
 	noopMsg                    = "Nothing to do for restore %s"
 
-	volsyncLabel    = "cluster.open-cluster-management.io/volsync-pvc"
+	backupPVCLabel  = "cluster.open-cluster-management.io/backup-pvc"
 	pvcWaitInterval = time.Second * 10
 )
 
@@ -191,7 +191,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	isValidSync, msg := isValidSyncOptions(restore)
 	sync := isValidSync && restore.Status.Phase == v1beta1.RestorePhaseEnabled
-	// wait for pvc to be  created using the volsync config map, if any created on the backup hub
+	// If any pvcs were created on the backup hub using the backup-pvc label, wait for the pvc to be created by the pvc configmap
 	// the config map is restored with the credentials backup, which is the first backup to be restored
 	// wait for the pvc when only the credentials backup was created and the restore is not set to sync backup data
 	isCredsClsOnActiveSteps := len(veleroRestoreList.Items) == 1 && restore.Status.Phase == v1beta1.RestorePhaseStarted
@@ -497,7 +497,7 @@ func updateLabelsForActiveResources(
 		if key == Credentials {
 			// this is an activation stage and the credebtials are being restored
 			// before going to the next restore
-			// wait for the creation of the PVCs defined by volsync configmaps stored by this backup
+			// wait for the creation of the PVCs defined by backup-pvc configmaps stored by this backup
 			isCredsClsOnActiveStep = true
 		}
 	}
@@ -507,7 +507,7 @@ func updateLabelsForActiveResources(
 
 // check if the credentials backup has any velero pvcs configuration
 // then verify if the PVC have been created and wait for the
-// PVC to be created by the volsync policy
+// PVC to be created by the backup-pvc policy
 func (r *RestoreReconciler) processRestoreWait(
 	ctx context.Context,
 	restoreName string,
@@ -536,7 +536,7 @@ func (r *RestoreReconciler) processRestoreWait(
 
 	// look for all PVC configmaps with  label and verify the PVC was created
 	configMaps := &v1.ConfigMapList{}
-	vLabel, _ := labels.NewRequirement(volsyncLabel,
+	vLabel, _ := labels.NewRequirement(backupPVCLabel,
 		selection.Exists, []string{})
 
 	labelSelector := labels.NewSelector()
@@ -546,14 +546,16 @@ func (r *RestoreReconciler) processRestoreWait(
 	}); err == nil {
 		pvcs := []string{}
 		for i := range configMaps.Items {
+			restoreLogger.Info(fmt.Sprintf("checking configmap %s:%s", configMaps.Items[i].Namespace, configMaps.Items[i].Name))
 			pvc := &v1.PersistentVolumeClaim{}
-			pvcName := configMaps.Items[i].GetLabels()[volsyncLabel]
+			pvcName := configMaps.Items[i].GetLabels()[backupPVCLabel]
 			pvcNS := configMaps.Items[i].Namespace
 			lookupKey := types.NamespacedName{
 				Name:      pvcName,
 				Namespace: pvcNS,
 			}
 			if errPVC := r.Client.Get(ctx, lookupKey, pvc); errPVC != nil {
+				restoreLogger.Info(fmt.Sprintf("PVC not found %s:%s", pvcNS, pvcName))
 				pvcs = append(pvcs, pvcName+":"+pvcNS)
 			}
 
