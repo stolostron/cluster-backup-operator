@@ -191,7 +191,8 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	isValidSync, msg := isValidSyncOptions(restore)
 	sync := isValidSync && restore.Status.Phase == v1beta1.RestorePhaseEnabled
-	// If any pvcs were created on the backup hub using the backup-pvc label, wait for the pvc to be created by the pvc configmap
+	// If any pvcs were created on the backup hub using the backup-pvc label,
+	// wait for the pvc to be created by the pvc configmap
 	// the config map is restored with the credentials backup, which is the first backup to be restored
 	// wait for the pvc when only the credentials backup was created and the restore is not set to sync backup data
 	isCredsClsOnActiveSteps := len(veleroRestoreList.Items) == 1 && restore.Status.Phase == v1beta1.RestorePhaseStarted
