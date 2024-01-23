@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -26,7 +27,10 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
@@ -53,6 +57,9 @@ const (
 	latestBackupStr     string = "latest"
 	restoreSyncInterval        = time.Minute * 30
 	noopMsg                    = "Nothing to do for restore %s"
+
+	backupPVCLabel  = "cluster.open-cluster-management.io/backup-pvc"
+	pvcWaitInterval = time.Second * 10
 )
 
 type DynamicStruct struct {
@@ -184,9 +191,15 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	isValidSync, msg := isValidSyncOptions(restore)
 	sync := isValidSync && restore.Status.Phase == v1beta1.RestorePhaseEnabled
+	// If any pvcs were created on the backup hub using the backup-pvc label,
+	// wait for the pvc to be created by the pvc configmap
+	// the config map is restored with the credentials backup, which is the first backup to be restored
+	// wait for the pvc when only the credentials backup was created and the restore is not set to sync backup data
+	isCredsClsOnActiveSteps := len(veleroRestoreList.Items) == 1 && restore.Status.Phase == v1beta1.RestorePhaseStarted
 
-	if len(veleroRestoreList.Items) == 0 || sync {
-		if err := r.initVeleroRestores(ctx, restore, sync); err != nil {
+	if len(veleroRestoreList.Items) == 0 || sync || isCredsClsOnActiveSteps {
+		mustwait, waitmsg, err := r.initVeleroRestores(ctx, restore, sync)
+		if err != nil {
 			msg := fmt.Sprintf(
 				"unable to initialize Velero restores for restore %s/%s: %v",
 				req.Namespace,
@@ -203,20 +216,17 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				msg,
 			)
 		}
-	} else {
-		_, cleanupOnRestore := setRestorePhase(&veleroRestoreList, restore)
 
-		reconcileArgs := DynamicStruct{
-			dc:  r.DiscoveryClient,
-			dyn: r.DynamicClient,
+		if mustwait {
+			restore.Status.Phase = v1beta1.RestorePhaseStarted
+			restore.Status.LastMessage = waitmsg
+			return ctrl.Result{RequeueAfter: pvcWaitInterval}, errors.Wrap(
+				r.Client.Status().Update(ctx, restore),
+				waitmsg,
+			)
 		}
-		restoreOptions := RestoreOptions{
-			dynamicArgs: reconcileArgs,
-			cleanupType: restore.Spec.CleanupBeforeRestore,
-			mapper:      restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(r.DiscoveryClient)),
-		}
-		cleanupDeltaResources(ctx, r.Client, restore, cleanupOnRestore, restoreOptions)
-		executePostRestoreTasks(ctx, r.Client, restore)
+	} else {
+		r.cleanupOnRestore(ctx, restore, veleroRestoreList)
 	}
 
 	if restore.Spec.SyncRestoreWithNewBackups && !isValidSync {
@@ -226,6 +236,29 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	err = r.Client.Status().Update(ctx, restore)
 	return sendResult(restore, err)
+}
+
+// call clean up resources after the velero restore is completed
+// execute any other post restore tasks
+func (r *RestoreReconciler) cleanupOnRestore(
+	ctx context.Context,
+	restore *v1beta1.Restore,
+	veleroRestoreList veleroapi.RestoreList,
+) {
+	_, cleanupOnRestore := setRestorePhase(&veleroRestoreList, restore)
+
+	reconcileArgs := DynamicStruct{
+		dc:  r.DiscoveryClient,
+		dyn: r.DynamicClient,
+	}
+	restoreOptions := RestoreOptions{
+		dynamicArgs: reconcileArgs,
+		cleanupType: restore.Spec.CleanupBeforeRestore,
+		mapper:      restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(r.DiscoveryClient)),
+	}
+	cleanupDeltaResources(ctx, r.Client, restore, cleanupOnRestore, restoreOptions)
+	executePostRestoreTasks(ctx, r.Client, restore)
+
 }
 
 func sendResult(restore *v1beta1.Restore, err error) (ctrl.Result, error) {
@@ -295,7 +328,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 	ctx context.Context,
 	restore *v1beta1.Restore,
 	sync bool,
-) error {
+) (bool, string, error) {
 	restoreLogger := log.FromContext(ctx)
 
 	restoreOnlyManagedClusters := false
@@ -313,7 +346,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			// allow that now
 			restoreOnlyManagedClusters = true
 		} else {
-			return nil
+			return false, "", nil
 		}
 	}
 
@@ -326,12 +359,12 @@ func (r *RestoreReconciler) initVeleroRestores(
 		restoreOnlyManagedClusters,
 	)
 	if err != nil {
-		return err
+		return false, "", err
 	}
 	if len(veleroRestoresToCreate) == 0 {
 		restore.Status.Phase = v1beta1.RestorePhaseFinished
 		restore.Status.LastMessage = fmt.Sprintf(noopMsg, restore.Name)
-		return nil
+		return false, "", nil
 	}
 
 	newVeleroRestoreCreated := false
@@ -366,35 +399,10 @@ func (r *RestoreReconciler) initVeleroRestores(
 				*req,
 			)
 		}
-		if (key == ResourcesGeneric && veleroRestoresToCreate[Resources] == nil) ||
-			(key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil) {
-			// if restoring the ManagedClusters and resources are not restored
-			// need to restore the generic resources for the activation phase
 
-			// if managed clusters are restored, then need to restore the credentials to get active resources
-			if restoreObj.Spec.LabelSelector == nil {
-				labels := &metav1.LabelSelector{}
-				restoreObj.Spec.LabelSelector = labels
-
-				requirements := make([]metav1.LabelSelectorRequirement, 0)
-				restoreObj.Spec.LabelSelector.MatchExpressions = requirements
-			}
-			req := &metav1.LabelSelectorRequirement{}
-			req.Key = backupCredsClusterLabel
-			req.Operator = "In"
-			req.Values = []string{ClusterActivationLabel}
-			restoreObj.Spec.LabelSelector.MatchExpressions = append(
-				restoreObj.Spec.LabelSelector.MatchExpressions,
-				*req,
-			)
-			// use a different name for this activation restore; if this Restore was run using the sync operation,
-			// the generic and credentials restore for this backup name already exist
-			if (key == ResourcesGeneric && *restore.Spec.VeleroResourcesBackupName != skipRestoreStr) ||
-				(key == Credentials && *restore.Spec.VeleroCredentialsBackupName != skipRestoreStr) {
-				veleroRestoresToCreate[key].Name = veleroRestoresToCreate[key].Name + "-active"
-			}
-		}
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(restore, key, veleroRestoresToCreate)
 		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
+
 		if err != nil {
 			restoreLogger.Info(
 				"unable to create Velero restore for restore",
@@ -427,6 +435,14 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 			}
 		}
+		// check if needed to wait for pvcs to be created before the app data is restored
+		if isCredsClsOnActiveStep {
+			if shouldWait, waitMsg := r.processRestoreWait(ctx,
+				veleroRestoresToCreate[key].Name, restore); shouldWait {
+				// some PVCs were not created yet, wait for them
+				return true, waitMsg, nil
+			}
+		}
 	}
 
 	if newVeleroRestoreCreated {
@@ -436,5 +452,122 @@ func (r *RestoreReconciler) initVeleroRestores(
 		restore.Status.Phase = v1beta1.RestorePhaseFinished
 		restore.Status.LastMessage = fmt.Sprintf(noopMsg, restore.Name)
 	}
-	return nil
+	return false, "", nil
+}
+
+// for an activation phase update restore labels to include activation resources
+func updateLabelsForActiveResources(
+	restore *v1beta1.Restore,
+	key ResourceType,
+	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
+) bool {
+
+	// check if this is the credential restore run
+	// during the cluster activation step
+	isCredsClsOnActiveStep := false
+
+	restoreObj := veleroRestoresToCreate[key]
+
+	if (key == ResourcesGeneric && veleroRestoresToCreate[Resources] == nil) ||
+		(key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil) {
+		// if restoring the ManagedClusters and resources are not restored
+		// need to restore the generic resources for the activation phase
+
+		// if managed clusters are restored, then need to restore the credentials to get active resources
+		if restoreObj.Spec.LabelSelector == nil {
+			labels := &metav1.LabelSelector{}
+			restoreObj.Spec.LabelSelector = labels
+
+			requirements := make([]metav1.LabelSelectorRequirement, 0)
+			restoreObj.Spec.LabelSelector.MatchExpressions = requirements
+		}
+		req := &metav1.LabelSelectorRequirement{}
+		req.Key = backupCredsClusterLabel
+		req.Operator = "In"
+		req.Values = []string{ClusterActivationLabel}
+		restoreObj.Spec.LabelSelector.MatchExpressions = append(
+			restoreObj.Spec.LabelSelector.MatchExpressions,
+			*req,
+		)
+		// use a different name for this activation restore; if this Restore was run using the sync operation,
+		// the generic and credentials restore for this backup name already exist
+		if (key == ResourcesGeneric && *restore.Spec.VeleroResourcesBackupName != skipRestoreStr) ||
+			(key == Credentials && *restore.Spec.VeleroCredentialsBackupName != skipRestoreStr) {
+			veleroRestoresToCreate[key].Name = veleroRestoresToCreate[key].Name + "-active"
+		}
+		if key == Credentials {
+			// this is an activation stage and the credebtials are being restored
+			// before going to the next restore
+			// wait for the creation of the PVCs defined by backup-pvc configmaps stored by this backup
+			isCredsClsOnActiveStep = true
+		}
+	}
+
+	return isCredsClsOnActiveStep
+}
+
+// check if the credentials backup has any velero pvcs configuration
+// then verify if the PVC have been created and wait for the
+// PVC to be created by the backup-pvc policy
+func (r *RestoreReconciler) processRestoreWait(
+	ctx context.Context,
+	restoreName string,
+	acmRestore *v1beta1.Restore,
+) (bool, string) {
+
+	restoreLogger := log.FromContext(ctx)
+	restoreLogger.Info("Enter processRestoreWait " + restoreName)
+
+	restore := &veleroapi.Restore{}
+	lookupKey := types.NamespacedName{
+		Name:      restoreName,
+		Namespace: acmRestore.Namespace,
+	}
+
+	status := veleroapi.RestorePhaseNew
+	if err := r.Client.Get(ctx, lookupKey, restore); err == nil {
+		status = restore.Status.Phase
+	}
+
+	if status == "" || status == veleroapi.RestorePhaseNew || status == veleroapi.RestorePhaseInProgress {
+		// look for the list of PVCs, wait first for the backup to complete
+		restoreLogger.Info("Exit processRestoreWait wait, restore not completed")
+		return true, "waiting for restore to complete " + restoreName
+	}
+
+	// look for all PVC configmaps with  label and verify the PVC was created
+	configMaps := &v1.ConfigMapList{}
+	vLabel, _ := labels.NewRequirement(backupPVCLabel,
+		selection.Exists, []string{})
+
+	labelSelector := labels.NewSelector()
+	selector := labelSelector.Add(*vLabel)
+	if err := r.Client.List(ctx, configMaps, &client.ListOptions{
+		LabelSelector: selector,
+	}); err == nil {
+		pvcs := []string{}
+		for i := range configMaps.Items {
+			restoreLogger.Info(fmt.Sprintf("checking configmap %s:%s", configMaps.Items[i].Namespace, configMaps.Items[i].Name))
+			pvc := &v1.PersistentVolumeClaim{}
+			pvcName := configMaps.Items[i].GetLabels()[backupPVCLabel]
+			pvcNS := configMaps.Items[i].Namespace
+			lookupKey := types.NamespacedName{
+				Name:      pvcName,
+				Namespace: pvcNS,
+			}
+			restoreLogger.Info(fmt.Sprintf("Check if PVC exists %s:%s", pvcNS, pvcName))
+			if errPVC := r.Client.Get(ctx, lookupKey, pvc); errPVC != nil {
+				restoreLogger.Info(fmt.Sprintf("PVC not found %s:%s", pvcNS, pvcName))
+				pvcs = append(pvcs, pvcName+":"+pvcNS)
+			}
+		}
+		if len(pvcs) > 0 {
+			restoreLogger.Info("Exit processRestoreWait, PVCs not found : " + strings.Join(pvcs, ", "))
+			return true, "waiting for PVC " + strings.Join(pvcs, ", ")
+		}
+	}
+
+	restoreLogger.Info("Exit processRestoreWait with no wait")
+
+	return false, ""
 }
