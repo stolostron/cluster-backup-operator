@@ -396,11 +396,12 @@ func (r *RestoreReconciler) initVeleroRestores(
 		}
 		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
 		if err != nil {
-			restoreLogger.Info(
-				"unable to create Velero restore for restore",
-				"namespace", veleroRestoresToCreate[key].Namespace,
-				"name", veleroRestoresToCreate[key].Name,
+			msg := fmt.Sprintf(
+				"unable to create Velero restore for restore %s:%s",
+				veleroRestoresToCreate[key].Namespace,
+				veleroRestoresToCreate[key].Name,
 			)
+			restoreLogger.Error(err, msg)
 			if k8serr.IsAlreadyExists(err) && key == Credentials {
 				restore.Status.VeleroCredentialsRestoreName = veleroRestoresToCreate[key].Name
 			}
