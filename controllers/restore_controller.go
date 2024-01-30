@@ -191,13 +191,9 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	isValidSync, msg := isValidSyncOptions(restore)
 	sync := isValidSync && restore.Status.Phase == v1beta1.RestorePhaseEnabled
-	// If any pvcs were created on the backup hub using the backup-pvc label,
-	// wait for the pvc to be created by the pvc configmap
-	// the config map is restored with the credentials backup, which is the first backup to be restored
-	// wait for the pvc when only the credentials backup was created and the restore is not set to sync backup data
-	isCredsClsOnActiveSteps := len(veleroRestoreList.Items) == 1 && restore.Status.Phase == v1beta1.RestorePhaseStarted
+	isPVCStep := isPVCInitializationStep(ctx, restore, veleroRestoreList)
 
-	if len(veleroRestoreList.Items) == 0 || sync || isCredsClsOnActiveSteps {
+	if len(veleroRestoreList.Items) == 0 || sync || isPVCStep {
 		mustwait, waitmsg, err := r.initVeleroRestores(ctx, restore, sync)
 		if err != nil {
 			msg := fmt.Sprintf(
@@ -236,6 +232,35 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	err = r.Client.Status().Update(ctx, restore)
 	return sendResult(restore, err)
+}
+
+// If any pvcs were created on the backup hub using the backup-pvc label,
+// wait for the pvc to be created by the pvc configmap
+// the config map is restored with the credentials backup, which is the first backup to be restored
+// wait for the pvc when only the credentials backup was created and the restore is not set to sync backup data
+func isPVCInitializationStep(
+	ctx context.Context,
+	acmRestore *v1beta1.Restore,
+	veleroRestoreList veleroapi.RestoreList,
+) bool {
+	if len(veleroRestoreList.Items) == 0 || acmRestore.Status.Phase != v1beta1.RestorePhaseStarted {
+		// should be at least one velero restore created by this acmRestore and the acmRestore phase should be 'Started'
+		return false
+	}
+
+	// check that the only restores are the credential ones
+	// you could end up with more than one restore for credentials if the wait was long enough
+	// so that a new credentials backup was created on the backup hub and then restored here
+	for i := range veleroRestoreList.Items {
+		veleroRestore := &veleroRestoreList.Items[i]
+		if veleroRestore.Spec.ScheduleName != veleroScheduleNames[Credentials] {
+			// at least one restore not  created by the credentials schedule
+			return false
+		}
+	}
+
+	// only credentials restores and acmRestore phase is Started
+	return true
 }
 
 // call clean up resources after the velero restore is completed
