@@ -564,7 +564,6 @@ func (r *RestoreReconciler) processRestoreWait(
 	if status == "" || status == veleroapi.RestorePhaseNew || status == veleroapi.RestorePhaseInProgress {
 		// look for the list of PVCs, wait first for the backup to complete
 		restoreLogger.Info("Exit processRestoreWait wait, restore not completed")
-		fmt.Println("\nStudent1:", restoreName)
 		return true, "waiting for restore to complete " + restoreName
 	}
 
