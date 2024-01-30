@@ -243,6 +243,13 @@ func isPVCInitializationStep(
 	acmRestore *v1beta1.Restore,
 	veleroRestoreList veleroapi.RestoreList,
 ) bool {
+
+	if acmRestore.Spec.SyncRestoreWithNewBackups && *acmRestore.Spec.VeleroManagedClustersBackupName != skipRestoreStr {
+		// this is a sync restore where the managed cluster restore was requested
+		// this must be the activation step
+		return true
+	}
+
 	if len(veleroRestoreList.Items) == 0 || acmRestore.Status.Phase != v1beta1.RestorePhaseStarted {
 		// should be at least one velero restore created by this acmRestore and the acmRestore phase should be 'Started'
 		return false
@@ -557,6 +564,7 @@ func (r *RestoreReconciler) processRestoreWait(
 	if status == "" || status == veleroapi.RestorePhaseNew || status == veleroapi.RestorePhaseInProgress {
 		// look for the list of PVCs, wait first for the backup to complete
 		restoreLogger.Info("Exit processRestoreWait wait, restore not completed")
+		fmt.Println("\nStudent1:", restoreName)
 		return true, "waiting for restore to complete " + restoreName
 	}
 
