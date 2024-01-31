@@ -1190,3 +1190,125 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 	testEnv.Stop()
 
 }
+
+func Test_updateLabelsForActiveResources(t *testing.T) {
+	type args struct {
+		acmRestore             *v1beta1.Restore
+		restype                ResourceType
+		veleroRestoresToCreate map[ResourceType]*veleroapi.Restore
+	}
+
+	tests := []struct {
+		name        string
+		args        args
+		want        bool
+		wantResName string // the name of the restore after parsing the current state; could vahe suffix -active if on the activation step
+	}{
+		{
+			name: "Credentials restore with no ManagedCluster, should return false",
+			args: args{
+				restype: Credentials,
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(skipRestoreStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
+				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
+					Credentials: createRestore("credentials-restore", "ns").object,
+				},
+			},
+			want:        false,
+			wantResName: "credentials-restore",
+		},
+		{
+			name: "Credentials restore with ManagedCluster latest and sync, should return true",
+			args: args{
+				restype: Credentials,
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
+				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
+					Credentials:     createRestore("credentials-restore", "ns").object,
+					ManagedClusters: createRestore("clusters-restore", "ns").object,
+				},
+			},
+			want:        true,
+			wantResName: "credentials-restore-active",
+		},
+		{
+			name: "Credentials restore for ManagedCluster latest with no sync, should return true",
+			args: args{
+				restype: Credentials,
+				acmRestore: createACMRestore("acm-restore", "ns").
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(skipRestoreStr).
+					veleroResourcesBackupName(skipRestoreStr).object,
+				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
+					Credentials:     createRestore("credentials-restore", "ns").object,
+					ManagedClusters: createRestore("clusters-restore", "ns").object,
+				},
+			},
+			want:        true,
+			wantResName: "credentials-restore", // creds was skipped
+		},
+		{
+			name: "Generic Res restore with ManagedCluster and no sync, should return false no active",
+			args: args{
+				restype: ResourcesGeneric,
+				acmRestore: createACMRestore("acm-restore", "ns").
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
+				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
+					Resources:        createRestore("resources-restore", "ns").object,
+					ResourcesGeneric: createRestore("generic-restore", "ns").object,
+					ManagedClusters:  createRestore("clusters-restore", "ns").object,
+					Credentials:      createRestore("credentials-restore", "ns").object,
+				},
+			},
+			want:        false,
+			wantResName: "generic-restore",
+		},
+		{
+			name: "Generic Res restore with ManagedCluster and sync, should return false and active",
+			args: args{
+				restype: ResourcesGeneric,
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
+				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
+					Resources:        createRestore("resources-restore", "ns").object,
+					ResourcesGeneric: createRestore("generic-restore", "ns").object,
+					ManagedClusters:  createRestore("clusters-restore", "ns").object,
+					Credentials:      createRestore("credentials-restore", "ns").object,
+				},
+			},
+			want:        false,
+			wantResName: "generic-restore-active",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := updateLabelsForActiveResources(tt.args.acmRestore, tt.args.restype, tt.args.veleroRestoresToCreate)
+			if got != tt.want {
+				t.Errorf(tt.name)
+			}
+			if tt.wantResName != tt.args.veleroRestoresToCreate[tt.args.restype].Name {
+				t.Errorf("The restore resource name should be  %v, but got %v", tt.wantResName, tt.args.veleroRestoresToCreate[tt.args.restype].Name)
+			}
+
+		})
+	}
+}

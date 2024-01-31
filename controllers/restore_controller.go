@@ -469,7 +469,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 		}
 		// check if needed to wait for pvcs to be created before the app data is restored
 		if isCredsClsOnActiveStep {
-			if shouldWait, waitMsg := r.processRestoreWait(ctx,
+			if shouldWait, waitMsg := processRestoreWait(r.Client, ctx,
 				veleroRestoresToCreate[key].Name, restore); shouldWait {
 				// some PVCs were not created yet, wait for them
 				return true, waitMsg, nil
@@ -482,7 +482,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 		restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
 	} else {
 		restore.Status.Phase = v1beta1.RestorePhaseFinished
-		restore.Status.LastMessage = fmt.Sprintf(noopMsg, restore.Name)
+		restore.Status.LastMessage = fmt.Sprintf("Restore %s completed", restore.Name)
 	}
 	return false, "", nil
 }
@@ -500,11 +500,14 @@ func updateLabelsForActiveResources(
 
 	restoreObj := veleroRestoresToCreate[key]
 
-	if (key == ResourcesGeneric && veleroRestoresToCreate[Resources] == nil) ||
+	if (key == ResourcesGeneric && (veleroRestoresToCreate[Resources] == nil ||
+		veleroRestoresToCreate[ManagedClusters] != nil && restore.Spec.SyncRestoreWithNewBackups)) ||
 		(key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil) {
-		// if restoring the ManagedClusters and resources are not restored
+		// if restoring the ManagedClusters
+		// and resources are not restored or this is a sync phase
 		// need to restore the generic resources for the activation phase
 
+		// if restoring the ManagedClusters need to restore the credentials resources for the activation phase
 		// if managed clusters are restored, then need to restore the credentials to get active resources
 		if restoreObj.Spec.LabelSelector == nil {
 			labels := &metav1.LabelSelector{}
@@ -541,7 +544,8 @@ func updateLabelsForActiveResources(
 // check if the credentials backup has any velero pvcs configuration
 // then verify if the PVC have been created and wait for the
 // PVC to be created by the backup-pvc policy
-func (r *RestoreReconciler) processRestoreWait(
+func processRestoreWait(
+	c client.Client,
 	ctx context.Context,
 	restoreName string,
 	acmRestore *v1beta1.Restore,
@@ -557,7 +561,7 @@ func (r *RestoreReconciler) processRestoreWait(
 	}
 
 	status := veleroapi.RestorePhaseNew
-	if err := r.Client.Get(ctx, lookupKey, restore); err == nil {
+	if err := c.Get(ctx, lookupKey, restore); err == nil {
 		status = restore.Status.Phase
 	}
 
@@ -574,7 +578,7 @@ func (r *RestoreReconciler) processRestoreWait(
 
 	labelSelector := labels.NewSelector()
 	selector := labelSelector.Add(*vLabel)
-	if err := r.Client.List(ctx, configMaps, &client.ListOptions{
+	if err := c.List(ctx, configMaps, &client.ListOptions{
 		LabelSelector: selector,
 	}); err == nil {
 		pvcs := []string{}
@@ -588,7 +592,7 @@ func (r *RestoreReconciler) processRestoreWait(
 				Namespace: pvcNS,
 			}
 			restoreLogger.Info(fmt.Sprintf("Check if PVC exists %s:%s", pvcNS, pvcName))
-			if errPVC := r.Client.Get(ctx, lookupKey, pvc); errPVC != nil {
+			if errPVC := c.Get(ctx, lookupKey, pvc); errPVC != nil {
 				restoreLogger.Info(fmt.Sprintf("PVC not found %s:%s", pvcNS, pvcName))
 				pvcs = append(pvcs, pvcName+":"+pvcNS)
 			}
