@@ -885,7 +885,7 @@ var _ = Describe("BackupSchedule controller", func() {
 						"clusterdeployment.hive.openshift.io")).Should(BeFalse())
 					Expect(findValue(
 						veleroSchedule.Spec.Template.IncludedResources, //excludedGroup
-						"managedclustermutators.admission.cluster.open-cluster-management.io",
+						"managedclustermutators.proxy.open-cluster-management.io",
 					)).ShouldNot(BeTrue())
 					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
 						"clusterpool.other.hive.openshift.io")).Should(BeFalse())

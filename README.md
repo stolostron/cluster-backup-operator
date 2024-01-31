@@ -195,17 +195,26 @@ With this approach the backup includes all CRDs installed on the hub, including 
 
 
 1. Exclude all resources in the MultiClusterHub namespace. This is to avoid backing up installation resources which are linked to the current Hub identity and should not be backed up.
-2. Backup all CRDs with an api version suffixed by `.open-cluster-management.io`. This will cover all Advanced Cluster Management resources.
-3. Additionally, backup all CRDs from these api groups: `argoproj.io`,`app.k8s.io`,`core.observatorium.io`,`hive.openshift.io`
-4. Exclude all CRDs from the following api groups : `admission.cluster.open-cluster-management.io`,
-  `admission.work.open-cluster-management.io`,
-  `internal.open-cluster-management.io`,
-  `operator.open-cluster-management.io`,
-  `work.open-cluster-management.io`,
-  `search.open-cluster-management.io`,
-  `admission.hive.openshift.io`,
-  `velero.io`
-5. Exclude the following CRDs; they are part of the included api groups but are either not needed or they are being recreated by owner resources, which are also backed up: `clustermanagementaddon`, `observabilityaddon`, `applicationmanager`,`certpolicycontroller`,`iampolicycontroller`,`policycontroller`,`searchcollector`,`workmanager`,`backupschedule`,`restore`,`clusterclaim.cluster.open-cluster-management.io`
+2. Backup all CRDs with an api version suffixed by `.open-cluster-management.io` and `.hive.openshift.io`. This will cover all Advanced Cluster Management resources.
+3. Additionally, backup all CRDs from these api groups: `argoproj.io`,`app.k8s.io`,`core.observatorium.io`,`hive.openshift.io` under the resources backup and all CRDs from this group `agent-install.openshift.io` under the managed-clusters backup.
+4. Exclude all CRDs from the following api groups : 
+		"internal.open-cluster-management.io",
+		"operator.open-cluster-management.io",
+		"work.open-cluster-management.io",
+		"search.open-cluster-management.io",
+		"admission.hive.openshift.io",
+		"proxy.open-cluster-management.io",
+		"action.open-cluster-management.io",
+		"view.open-cluster-management.io",
+		"clusterview.open-cluster-management.io",
+		"velero.io",
+5. Exclude the following CRDs; they are part of the included api groups but are either not needed or they are being recreated by owner resources, which are also backed up: 		
+    "clustermanagementaddon.addon.open-cluster-management.io",
+		"backupschedule.cluster.open-cluster-management.io",
+		"restore.cluster.open-cluster-management.io",
+		"clusterclaim.cluster.open-cluster-management.io",
+		"discoveredcluster.discovery.open-cluster-management.io",
+		"placementdecisions.cluster.open-cluster-management.io",
 6. Backup secrets and configmaps with one of the following labels:
 `cluster.open-cluster-management.io/type`, `hive.openshift.io/secret-type`, `cluster.open-cluster-management.io/backup`
 7. Use this label for any other resources that should be backed up and are not included in the above criteria: `cluster.open-cluster-management.io/backup`
