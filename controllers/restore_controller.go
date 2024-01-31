@@ -470,8 +470,8 @@ func (r *RestoreReconciler) initVeleroRestores(
 		}
 		// check if needed to wait for pvcs to be created before the app data is restored
 		if isCredsClsOnActiveStep {
-			if shouldWait, waitMsg := processRestoreWait(r.Client, ctx,
-				veleroRestoresToCreate[key].Name, restore); shouldWait {
+			if shouldWait, waitMsg := processRestoreWait(ctx, r.Client,
+				veleroRestoresToCreate[key].Name, restore.Namespace); shouldWait {
 				// some PVCs were not created yet, wait for them
 				return true, waitMsg, nil
 			}
@@ -546,10 +546,10 @@ func updateLabelsForActiveResources(
 // then verify if the PVC have been created and wait for the
 // PVC to be created by the backup-pvc policy
 func processRestoreWait(
-	c client.Client,
 	ctx context.Context,
+	c client.Client,
 	restoreName string,
-	acmRestore *v1beta1.Restore,
+	restoreNamespace string,
 ) (bool, string) {
 
 	restoreLogger := log.FromContext(ctx)
@@ -558,7 +558,7 @@ func processRestoreWait(
 	restore := &veleroapi.Restore{}
 	lookupKey := types.NamespacedName{
 		Name:      restoreName,
-		Namespace: acmRestore.Namespace,
+		Namespace: restoreNamespace,
 	}
 
 	status := veleroapi.RestorePhaseNew
