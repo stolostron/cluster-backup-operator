@@ -1312,3 +1312,175 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 		})
 	}
 }
+
+func Test_isPVCInitializationStep(t *testing.T) {
+	type args struct {
+		acmRestore        *v1beta1.Restore
+		veleroRestoreList veleroapi.RestoreList
+	}
+
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "sync restore with ManagedCluster skip, should return false",
+			args: args{
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(skipRestoreStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
+				veleroRestoreList: veleroapi.RestoreList{},
+			},
+			want: false,
+		},
+		{
+			name: "no sync and ManagedCluster is skipped, should return false",
+			args: args{
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(false).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(skipRestoreStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
+				veleroRestoreList: veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						*createRestore("credentials-restore", "ns").
+							scheduleName(veleroScheduleNames[Credentials]).
+							object,
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "sync restore with ManagedCluster, and only credentials restore, should return true",
+			args: args{
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
+				veleroRestoreList: veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						*createRestore("credentials-restore", "ns").
+							scheduleName(veleroScheduleNames[Credentials]).
+							object,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "sync restore with ManagedCluster, and credentials plus generic restored, should return true",
+			args: args{
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
+				veleroRestoreList: veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						*createRestore("credentials-restore", "ns").
+							scheduleName(veleroScheduleNames[Credentials]).
+							object,
+						*createRestore("generic-restore", "ns").
+							scheduleName(veleroScheduleNames[ResourcesGeneric]).
+							object,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "no sync restore with ManagedCluster, and credentials plus generic restored, should return true",
+			args: args{
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(false).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
+				veleroRestoreList: veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						*createRestore("credentials-restore", "ns").
+							scheduleName(veleroScheduleNames[Credentials]).
+							object,
+						*createRestore("generic-restore", "ns").
+							scheduleName(veleroScheduleNames[ResourcesGeneric]).
+							object,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "no sync restore with ManagedCluster, and credentials plus generic and managedcls restored, should return false",
+			args: args{
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(false).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
+				veleroRestoreList: veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						*createRestore("credentials-restore", "ns").
+							scheduleName(veleroScheduleNames[Credentials]).
+							object,
+						*createRestore("generic-restore", "ns").
+							scheduleName(veleroScheduleNames[ResourcesGeneric]).
+							object,
+						*createRestore("clusters-restore", "ns").
+							scheduleName(veleroScheduleNames[ManagedClusters]).
+							object,
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "sync restore with ManagedCluster, and credentials plus generic and managedcls restored, should return false",
+			args: args{
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(true).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
+				veleroRestoreList: veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						*createRestore("credentials-restore", "ns").
+							scheduleName(veleroScheduleNames[Credentials]).
+							object,
+						*createRestore("generic-restore", "ns").
+							scheduleName(veleroScheduleNames[ResourcesGeneric]).
+							object,
+						*createRestore("clusters-restore", "ns").
+							scheduleName(veleroScheduleNames[ManagedClusters]).
+							object,
+					},
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isPVCInitializationStep(tt.args.acmRestore, tt.args.veleroRestoreList)
+			if got != tt.want {
+				t.Errorf(tt.name)
+			}
+
+		})
+	}
+}

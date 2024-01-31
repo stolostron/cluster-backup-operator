@@ -268,6 +268,11 @@ func (b *RestoreHelper) backupName(name string) *RestoreHelper {
 	return b
 }
 
+func (b *RestoreHelper) scheduleName(name string) *RestoreHelper {
+	b.object.Spec.ScheduleName = name
+	return b
+}
+
 func (b *RestoreHelper) phase(phase veleroapi.RestorePhase) *RestoreHelper {
 	b.object.Status.Phase = phase
 	return b

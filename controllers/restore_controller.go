@@ -191,7 +191,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	isValidSync, msg := isValidSyncOptions(restore)
 	sync := isValidSync && restore.Status.Phase == v1beta1.RestorePhaseEnabled
-	isPVCStep := isPVCInitializationStep(ctx, restore, veleroRestoreList)
+	isPVCStep := isPVCInitializationStep(restore, veleroRestoreList)
 
 	if len(veleroRestoreList.Items) == 0 || sync || isPVCStep {
 		mustwait, waitmsg, err := r.initVeleroRestores(ctx, restore, sync)
@@ -239,34 +239,35 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 // the config map is restored with the credentials backup, which is the first backup to be restored
 // wait for the pvc when only the credentials backup was created and the restore is not set to sync backup data
 func isPVCInitializationStep(
-	ctx context.Context,
 	acmRestore *v1beta1.Restore,
 	veleroRestoreList veleroapi.RestoreList,
 ) bool {
 
-	if acmRestore.Spec.SyncRestoreWithNewBackups && *acmRestore.Spec.VeleroManagedClustersBackupName != skipRestoreStr {
-		// this is a sync restore where the managed cluster restore was requested
-		// this must be the activation step
-		return true
-	}
+	isSync := acmRestore.Spec.SyncRestoreWithNewBackups
+	isActiveDataBeingRestored := *acmRestore.Spec.VeleroManagedClustersBackupName != skipRestoreStr
 
-	if len(veleroRestoreList.Items) == 0 || acmRestore.Status.Phase != v1beta1.RestorePhaseStarted {
-		// should be at least one velero restore created by this acmRestore and the acmRestore phase should be 'Started'
+	if isSync && !isActiveDataBeingRestored {
+		// don't have to wait, this is a sync op, and active data is not restored yet
 		return false
 	}
 
-	// check that the only restores are the credential ones
-	// you could end up with more than one restore for credentials if the wait was long enough
-	// so that a new credentials backup was created on the backup hub and then restored here
+	if !isSync && !isActiveDataBeingRestored {
+		// don't have to wait, this is not a sync op, but active data is not restored with this restore
+		return false
+	}
+
+	// active data is requested to be restored
+	// get out of wait if the ManagedClusters has been restored
 	for i := range veleroRestoreList.Items {
 		veleroRestore := &veleroRestoreList.Items[i]
-		if veleroRestore.Spec.ScheduleName != veleroScheduleNames[Credentials] {
-			// at least one restore not  created by the credentials schedule
+
+		if veleroRestore.Spec.ScheduleName == veleroScheduleNames[ManagedClusters] {
+			// at least one restore not created by the credentials schedule, seems to be passed the  creds restore
 			return false
 		}
 	}
 
-	// only credentials restores and acmRestore phase is Started
+	// should wait
 	return true
 }
 
