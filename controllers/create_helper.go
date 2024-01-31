@@ -2,6 +2,8 @@ package controllers
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	ocinfrav1 "github.com/openshift/api/config/v1"
@@ -88,6 +90,32 @@ func createConfigMap(name string, ns string,
 	}
 
 	return cmap
+
+}
+
+func createPVC(name string, ns string) *corev1.PersistentVolumeClaim {
+
+	pvc := &corev1.PersistentVolumeClaim{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "PersistentVolumeClaim",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{
+				"ReadWriteOnce",
+			},
+			Resources: corev1.ResourceRequirements{
+				Requests: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): resource.MustParse("10Gi"),
+				},
+			},
+		},
+	}
+	return pvc
 
 }
 
@@ -265,6 +293,11 @@ func createRestore(name string, ns string) *RestoreHelper {
 
 func (b *RestoreHelper) backupName(name string) *RestoreHelper {
 	b.object.Spec.BackupName = name
+	return b
+}
+
+func (b *RestoreHelper) scheduleName(name string) *RestoreHelper {
+	b.object.Spec.ScheduleName = name
 	return b
 }
 

@@ -191,13 +191,9 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	isValidSync, msg := isValidSyncOptions(restore)
 	sync := isValidSync && restore.Status.Phase == v1beta1.RestorePhaseEnabled
-	// If any pvcs were created on the backup hub using the backup-pvc label,
-	// wait for the pvc to be created by the pvc configmap
-	// the config map is restored with the credentials backup, which is the first backup to be restored
-	// wait for the pvc when only the credentials backup was created and the restore is not set to sync backup data
-	isCredsClsOnActiveSteps := len(veleroRestoreList.Items) == 1 && restore.Status.Phase == v1beta1.RestorePhaseStarted
+	isPVCStep := isPVCInitializationStep(restore, veleroRestoreList)
 
-	if len(veleroRestoreList.Items) == 0 || sync || isCredsClsOnActiveSteps {
+	if len(veleroRestoreList.Items) == 0 || sync || isPVCStep {
 		mustwait, waitmsg, err := r.initVeleroRestores(ctx, restore, sync)
 		if err != nil {
 			msg := fmt.Sprintf(
@@ -236,6 +232,43 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	err = r.Client.Status().Update(ctx, restore)
 	return sendResult(restore, err)
+}
+
+// If any pvcs were created on the backup hub using the backup-pvc label,
+// wait for the pvc to be created by the pvc configmap
+// the config map is restored with the credentials backup, which is the first backup to be restored
+// wait for the pvc when only the credentials backup was created and the restore is not set to sync backup data
+func isPVCInitializationStep(
+	acmRestore *v1beta1.Restore,
+	veleroRestoreList veleroapi.RestoreList,
+) bool {
+
+	isSync := acmRestore.Spec.SyncRestoreWithNewBackups
+	isActiveDataBeingRestored := *acmRestore.Spec.VeleroManagedClustersBackupName != skipRestoreStr
+
+	if isSync && !isActiveDataBeingRestored {
+		// don't have to wait, this is a sync op, and active data is not restored yet
+		return false
+	}
+
+	if !isSync && !isActiveDataBeingRestored {
+		// don't have to wait, this is not a sync op, but active data is not restored with this restore
+		return false
+	}
+
+	// active data is requested to be restored
+	// get out of wait if the ManagedClusters has been restored
+	for i := range veleroRestoreList.Items {
+		veleroRestore := &veleroRestoreList.Items[i]
+
+		if veleroRestore.Spec.ScheduleName == veleroScheduleNames[ManagedClusters] {
+			// at least one restore not created by the credentials schedule, seems to be passed the  creds restore
+			return false
+		}
+	}
+
+	// should wait
+	return true
 }
 
 // call clean up resources after the velero restore is completed
@@ -437,8 +470,8 @@ func (r *RestoreReconciler) initVeleroRestores(
 		}
 		// check if needed to wait for pvcs to be created before the app data is restored
 		if isCredsClsOnActiveStep {
-			if shouldWait, waitMsg := r.processRestoreWait(ctx,
-				veleroRestoresToCreate[key].Name, restore); shouldWait {
+			if shouldWait, waitMsg := processRestoreWait(ctx, r.Client,
+				veleroRestoresToCreate[key].Name, restore.Namespace); shouldWait {
 				// some PVCs were not created yet, wait for them
 				return true, waitMsg, nil
 			}
@@ -450,7 +483,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 		restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
 	} else {
 		restore.Status.Phase = v1beta1.RestorePhaseFinished
-		restore.Status.LastMessage = fmt.Sprintf(noopMsg, restore.Name)
+		restore.Status.LastMessage = fmt.Sprintf("Restore %s completed", restore.Name)
 	}
 	return false, "", nil
 }
@@ -468,11 +501,14 @@ func updateLabelsForActiveResources(
 
 	restoreObj := veleroRestoresToCreate[key]
 
-	if (key == ResourcesGeneric && veleroRestoresToCreate[Resources] == nil) ||
+	if (key == ResourcesGeneric && (veleroRestoresToCreate[Resources] == nil ||
+		veleroRestoresToCreate[ManagedClusters] != nil && restore.Spec.SyncRestoreWithNewBackups)) ||
 		(key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil) {
-		// if restoring the ManagedClusters and resources are not restored
+		// if restoring the ManagedClusters
+		// and resources are not restored or this is a sync phase
 		// need to restore the generic resources for the activation phase
 
+		// if restoring the ManagedClusters need to restore the credentials resources for the activation phase
 		// if managed clusters are restored, then need to restore the credentials to get active resources
 		if restoreObj.Spec.LabelSelector == nil {
 			labels := &metav1.LabelSelector{}
@@ -509,10 +545,11 @@ func updateLabelsForActiveResources(
 // check if the credentials backup has any velero pvcs configuration
 // then verify if the PVC have been created and wait for the
 // PVC to be created by the backup-pvc policy
-func (r *RestoreReconciler) processRestoreWait(
+func processRestoreWait(
 	ctx context.Context,
+	c client.Client,
 	restoreName string,
-	acmRestore *v1beta1.Restore,
+	restoreNamespace string,
 ) (bool, string) {
 
 	restoreLogger := log.FromContext(ctx)
@@ -521,11 +558,11 @@ func (r *RestoreReconciler) processRestoreWait(
 	restore := &veleroapi.Restore{}
 	lookupKey := types.NamespacedName{
 		Name:      restoreName,
-		Namespace: acmRestore.Namespace,
+		Namespace: restoreNamespace,
 	}
 
 	status := veleroapi.RestorePhaseNew
-	if err := r.Client.Get(ctx, lookupKey, restore); err == nil {
+	if err := c.Get(ctx, lookupKey, restore); err == nil {
 		status = restore.Status.Phase
 	}
 
@@ -542,7 +579,7 @@ func (r *RestoreReconciler) processRestoreWait(
 
 	labelSelector := labels.NewSelector()
 	selector := labelSelector.Add(*vLabel)
-	if err := r.Client.List(ctx, configMaps, &client.ListOptions{
+	if err := c.List(ctx, configMaps, &client.ListOptions{
 		LabelSelector: selector,
 	}); err == nil {
 		pvcs := []string{}
@@ -556,7 +593,7 @@ func (r *RestoreReconciler) processRestoreWait(
 				Namespace: pvcNS,
 			}
 			restoreLogger.Info(fmt.Sprintf("Check if PVC exists %s:%s", pvcNS, pvcName))
-			if errPVC := r.Client.Get(ctx, lookupKey, pvc); errPVC != nil {
+			if errPVC := c.Get(ctx, lookupKey, pvc); errPVC != nil {
 				restoreLogger.Info(fmt.Sprintf("PVC not found %s:%s", pvcNS, pvcName))
 				pvcs = append(pvcs, pvcName+":"+pvcNS)
 			}
