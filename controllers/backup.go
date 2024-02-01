@@ -94,7 +94,6 @@ var (
 		"restore.cluster.open-cluster-management.io",
 		"clusterclaim.cluster.open-cluster-management.io",
 		"discoveredcluster.discovery.open-cluster-management.io",
-		"placementdecisions.cluster.open-cluster-management.io",
 	}
 
 	// resources used to activate the connection between hub and managed clusters - activation resources
