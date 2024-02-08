@@ -262,7 +262,6 @@ func Test_getSchedulesWithUpdatedResources(t *testing.T) {
 	}
 
 	resourcesToBackup := []string{
-		"managedproxyserviceresolver.proxy.open-cluster-management.io",
 		"channel.apps.open-cluster-management.io",
 		"iampolicy.policy.open-cluster-management.io",
 		"agentclusterinstall.extensions.hive.openshift.io",

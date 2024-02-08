@@ -74,13 +74,15 @@ var (
 	// we want those CRs to be labeled with cluster.open-cluster-management.io/backup
 	// so they are picked up by the resources-generic backup
 	excludedAPIGroups = []string{
-		"admission.cluster.open-cluster-management.io",
-		"admission.work.open-cluster-management.io",
 		"internal.open-cluster-management.io",
 		"operator.open-cluster-management.io",
 		"work.open-cluster-management.io",
 		"search.open-cluster-management.io",
 		"admission.hive.openshift.io",
+		"proxy.open-cluster-management.io",
+		"action.open-cluster-management.io",
+		"view.open-cluster-management.io",
+		"clusterview.open-cluster-management.io",
 		"velero.io",
 	}
 	// exclude these CRDs
@@ -88,13 +90,6 @@ var (
 	// or they are being recreated by owner resources, which are also backed up
 	excludedCRDs = []string{
 		"clustermanagementaddon.addon.open-cluster-management.io",
-		"observabilityaddon.observability.open-cluster-management.io",
-		"applicationmanager.agent.open-cluster-management.io",
-		"certpolicycontroller.agent.open-cluster-management.io",
-		"iampolicycontroller.agent.open-cluster-management.io",
-		"policycontroller.agent.open-cluster-management.io",
-		"searchcollector.agent.open-cluster-management.io",
-		"workmanager.agent.open-cluster-management.io",
 		"backupschedule.cluster.open-cluster-management.io",
 		"restore.cluster.open-cluster-management.io",
 		"clusterclaim.cluster.open-cluster-management.io",

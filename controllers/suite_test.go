@@ -143,7 +143,7 @@ var _ = BeforeSuite(func() {
 		},
 	}
 	excluded := metav1.APIResourceList{
-		GroupVersion: "admission.cluster.open-cluster-management.io/v1beta1",
+		GroupVersion: "proxy.open-cluster-management.io/v1beta1",
 		APIResources: []metav1.APIResource{
 			{Name: "managedclustermutators", Namespaced: false, Kind: "AdmissionReview"},
 		},
@@ -176,7 +176,7 @@ var _ = BeforeSuite(func() {
 			list = &clusterv1beta1Info
 		case "/apis/cluster.open-cluster-management.io/v1":
 			list = &clusterv1Info
-		case "/apis/admission.cluster.open-cluster-management.io/v1beta1":
+		case "/apis/proxy.open-cluster-management.io/v1beta1":
 			list = &excluded
 		case "/apis/hive.openshift.io/v1":
 			list = &hiveInfo
@@ -243,14 +243,14 @@ var _ = BeforeSuite(func() {
 						},
 					},
 					{
-						Name: "admission.cluster.open-cluster-management.io",
+						Name: "proxy.open-cluster-management.io",
 						Versions: []metav1.GroupVersionForDiscovery{
 							{
-								GroupVersion: "admission.cluster.open-cluster-management.io/v1beta1",
+								GroupVersion: "proxy.open-cluster-management.io/v1beta1",
 								Version:      "v1beta1",
 							},
 							{
-								GroupVersion: "admission.cluster.open-cluster-management.io/v1",
+								GroupVersion: "proxy.open-cluster-management.io/v1",
 								Version:      "v1",
 							},
 						},
@@ -358,8 +358,8 @@ var _ = BeforeSuite(func() {
 		},
 		{
 			resourcesList: &excluded,
-			path:          "/apis/admission.cluster.open-cluster-management.io/v1beta1",
-			request:       "admission.cluster.open-cluster-management.io/v1beta1",
+			path:          "/apis/proxy.open-cluster-management.io/v1beta1",
+			request:       "proxy.open-cluster-management.io/v1beta1",
 			expectErr:     false,
 		},
 	}
@@ -591,9 +591,9 @@ var _ = BeforeSuite(func() {
 	bsSGVKList := schema.GroupVersionResource{Group: "cluster.open-cluster-management.io",
 		Version: "v1beta1", Resource: "backupschedules"}
 	//mutators
-	mGVK := schema.GroupVersionKind{Group: "admission.cluster.open-cluster-management.io",
+	mGVK := schema.GroupVersionKind{Group: "proxy.open-cluster-management.io",
 		Version: "v1beta1", Kind: "AdmissionReview"}
-	mVKList := schema.GroupVersionResource{Group: "admission.cluster.open-cluster-management.io",
+	mVKList := schema.GroupVersionResource{Group: "proxy.open-cluster-management.io",
 		Version: "v1beta1", Resource: "managedclustermutators"}
 	//pools
 	cpGVK := schema.GroupVersionKind{Group: "other.hive.openshift.io",
