@@ -39,6 +39,7 @@ Cluster Back up and Restore Operator
   - [Enabling the automatic import feature](#enabling-the-automatic-import-feature)
   - [Limitations with the automatic import feature](#limitations-with-the-automatic-import-feature)
 - [Backup validation using a Policy](#backup-validation-using-a-policy)
+  - [OADP channel validation](#oadp-channel-validation)
   - [Pod validation](#pod-validation)
   - [Data Protection Application validation](#data-protection-application-validation)
   - [Backup Storage validation](#backup-storage-validation)
@@ -47,6 +48,7 @@ Cluster Back up and Restore Operator
   - [Backups exist validation](#backups-exist-validation)
   - [Backups are running to completion](#backups-are-running-to-completion)
   - [Backups are actively running as a cron job](#backups-are-actively-running-as-a-cron-job)
+  - [Automatic import feature validation](#automatic-import-feature-validation)
 - [Active passive configuration design](#active-passive-configuration-design)
   - [Setting up an active passive configuration](#setting-up-an-active-passive-configuration)
   - [Disaster recovery](#disaster-recovery)
@@ -600,9 +602,13 @@ spec:
 
 ## Backup validation using a Policy
 
-The Cluster Back up and Restore Operator [helm chart](https://github.com/stolostron/cluster-backup-chart) installs the [backup-restore-enabled](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. 
+The Cluster Backup and Restore Operator [helm chart](https://github.com/stolostron/multiclusterhub-operator/tree/main/pkg/templates/charts/toggle/cluster-backup) installs [backup-restore-enabled](https://github.com/stolostron/multiclusterhub-operator/blob/main/pkg/templates/charts/toggle/cluster-backup/templates/hub-backup-pod.yaml) and [backup-restore-auto-import](https://github.com/stolostron/multiclusterhub-operator/blob/main/pkg/templates/charts/toggle/cluster-backup/templates/hub-backup-auto-import.yaml) Policies, designed to provide information on issues with the backup and restore component. 
 
-The Policy has a set of templates which check for the following constraints and informs when any of them are violated. 
+These policies include a set of templates that check for the following constraints and alerts when any of them are violated.
+
+### OADP channel validation
+- `oadp-channel` template checks if the Red Hat OADP Operator is installed from the expected channel.
+When you enable the backup component on the MCH (Multicluster Hub), the OADP operator is installed by the Cluster Backup and Restore Operator Helm chart. The oadp-channel template checks if the installed Red Hat OADP Operator version matches the version set by the ACM Cluster Backup and Restore Operator. The template shows violations if a Red Hat OADP Operator version is found to be installed on the hub and it doesn't match the version installed by the ACM Cluster Backup and Restore Operator Helm chart. The reason for showing this violation is that the OADP/Velero Custom Resource Definitions (CRDs) are cluster-scoped. If multiple versions of OADP are installed on the ACM (Advanced Cluster Management) hub, or if the version installed by MCH has been uninstalled and a different version is installed manually, the Backup and Restore Operator might run with incorrect CRDs, resulting in erroneous behavior.
 
 ### Pod validation
 The following templates check the pod status for the backup component and dependencies:
@@ -633,6 +639,11 @@ The following templates check the pod status for the backup component and depend
 - This validation is done by the `backup-schedule-cron-enabled` template. It checks that a `BackupSchedule.cluster.open-cluster-management.io` is actively running and creating new backups at the storage location.  The template verifies there is a `Backup.velero.io` with a label `velero.io/schedule-name: acm-validation-policy-schedule` at the storage location. The `acm-validation-policy-schedule` backups are set to expire after the time set for the backups cron schedule. If no cron job is running anymore to create backups, the old `acm-validation-policy-schedule` backup is deleted because it expired and a new one is not created. So if no `acm-validation-policy-schedule` backup exists at any moment in time, it means that there are no active cron jobs generating acm backups.
 
 This Policy is intended to help notify the Hub admin of any backup issues as the hub is active and expected to produce or restore backups.
+
+### Automatic import feature validation
+The following templates verify the existence of a ManagedServiceAccount secret and the required label to be included in ACM backups:
+- `auto-import-account-secret` template checks whether a ManagedServiceAccount secret is created under managed cluster namespaces other than local-cluster. The backup controller regularly scans for imported managed clusters and creates the ManagedServiceAccount resource under the managed cluster namespace as soon as such a managed cluster is discovered. This process triggers token creation on the managed cluster. However, if the managed cluster is not accessible at the time of this operation (e.g., the managed cluster is hibernating or down), the ManagedServiceAccount is unable to create the token. Consequently, if a hub backup is executed during this period, the backup will lack a token for auto-importing the managed cluster.
+- `auto-import-backup-label` template verifies the existence of a ManagedServiceAccount secret under managed cluster namespaces other than local-cluster. If found, it enforces the `cluster.open-cluster-management.io/backup` label on it if it doesn't already exist. This label is crucial for including the ManagedServiceAccount secrets in ACM backups.
 
 ## Active passive configuration design
 

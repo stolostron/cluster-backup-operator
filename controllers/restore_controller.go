@@ -192,8 +192,9 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	isValidSync, msg := isValidSyncOptions(restore)
 	sync := isValidSync && restore.Status.Phase == v1beta1.RestorePhaseEnabled
 	isPVCStep := isPVCInitializationStep(restore, veleroRestoreList)
+	initRestoreCond := len(veleroRestoreList.Items) == 0 || sync
 
-	if len(veleroRestoreList.Items) == 0 || sync || isPVCStep {
+	if initRestoreCond || isPVCStep {
 		mustwait, waitmsg, err := r.initVeleroRestores(ctx, restore, sync)
 		if err != nil {
 			msg := fmt.Sprintf(
@@ -221,7 +222,8 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				waitmsg,
 			)
 		}
-	} else {
+	}
+	if !initRestoreCond {
 		r.cleanupOnRestore(ctx, restore, veleroRestoreList)
 	}
 
