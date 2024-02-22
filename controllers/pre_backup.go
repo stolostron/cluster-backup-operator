@@ -585,7 +585,7 @@ func createManifestWork(
 				manifestWork.Namespace = namespace
 				manifestWork.Labels = map[string]string{
 					addon_work_label:        msa_addon,
-					backupCredsClusterLabel: "msa"}
+					backupCredsClusterLabel: ClusterActivationLabel}
 
 				manifest := &workv1.Manifest{}
 				manifest.Raw = []byte(fmt.Sprintf(manifestwork, mworkBinding, role_name, msaserviceName, installNamespace))
