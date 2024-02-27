@@ -120,7 +120,21 @@ var _ = Describe("BackupSchedule controller", func() {
 		clusterPoolSecrets = []corev1.Secret{
 			*createSecret("app-prow-47-aws-creds", clusterPoolNSName,
 				nil, nil, nil),
-			*createSecret("auto-import", clusterPoolNSName,
+			*createSecret("auto-import-account", clusterPoolNSName,
+				map[string]string{
+					"authentication.open-cluster-management.io/is-managed-serviceaccount": "true",
+				}, map[string]string{
+					"expirationTimestamp":  "2024-08-05T15:25:34Z",
+					"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
+				}, nil),
+			*createSecret("auto-import-account-pair", clusterPoolNSName,
+				map[string]string{
+					"authentication.open-cluster-management.io/is-managed-serviceaccount": "true",
+				}, map[string]string{
+					"expirationTimestamp":  "2024-08-05T15:25:34Z",
+					"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
+				}, nil),
+			*createSecret("some-other-msa-account", clusterPoolNSName,
 				map[string]string{
 					"authentication.open-cluster-management.io/is-managed-serviceaccount": "true",
 				}, map[string]string{
@@ -296,7 +310,7 @@ var _ = Describe("BackupSchedule controller", func() {
 		if clusterPoolNS != nil {
 
 			for i := range clusterPoolSecrets {
-				if clusterPoolSecrets[i].Name == "auto-import" {
+				if clusterPoolSecrets[i].Name == "auto-import-account" || clusterPoolSecrets[i].Name == "auto-import-account-pair" {
 					// this should be already cleaned up by the MSA disabled function
 					Expect(k8sClient.Delete(ctx, &clusterPoolSecrets[i])).ShouldNot(Succeed())
 				} else {
@@ -483,12 +497,32 @@ var _ = Describe("BackupSchedule controller", func() {
 			autoImportSecret := corev1.Secret{}
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      "auto-import",
+					Name:      "auto-import-account",
 					Namespace: clusterPoolNSName,
 				}, &autoImportSecret)
 				return err == nil &&
 					autoImportSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "msa"
 			}, timeout, interval).Should(Equal(rhacmBackupSchedule.Spec.UseManagedServiceAccount))
+
+			// verify pair secret gets backup label
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "auto-import-account-pair",
+					Namespace: clusterPoolNSName,
+				}, &autoImportSecret)
+				return err == nil &&
+					autoImportSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "msa"
+			}, timeout, interval).Should(Equal(rhacmBackupSchedule.Spec.UseManagedServiceAccount))
+
+			// verify other typo of msa secret DOES NOT get the backup label
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "some-other-msa-account",
+					Namespace: clusterPoolNSName,
+				}, &autoImportSecret)
+				return err == nil &&
+					autoImportSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "msa"
+			}, timeout, interval).ShouldNot(Equal(rhacmBackupSchedule.Spec.UseManagedServiceAccount))
 
 			// validate that the managedserviceaccount ManagedClusterAddOn is created for managed clusters since
 			// useManagedServiceAccount is true

@@ -105,12 +105,12 @@ func Test_postRestoreActivation(t *testing.T) {
 				},
 
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "local-cluster",
+					*createSecret("auto-import-account", "local-cluster",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
 						}, nil),
-					*createSecret("auto-import", "managed1",
+					*createSecret("auto-import-account", "managed1",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
@@ -136,19 +136,19 @@ func Test_postRestoreActivation(t *testing.T) {
 						}).object,
 				},
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "local-cluster",
+					*createSecret("auto-import-account", "local-cluster",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
 						}, nil),
-					*createSecret("auto-import", "managed1",
+					*createSecret("auto-import-account", "managed1",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
 						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
 						}),
-					*createSecret("auto-import", "managed2",
+					*createSecret("auto-import-account", "managed2",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
@@ -194,19 +194,19 @@ func Test_postRestoreActivation(t *testing.T) {
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 						}, nil),
-					*createSecret("auto-import", "local-cluster",
+					*createSecret("auto-import-account", "local-cluster",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
 						}, nil),
-					*createSecret("auto-import", "managed1",
+					*createSecret("auto-import-account", "managed1",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
 						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
 						}),
-					*createSecret("auto-import", "managed2",
+					*createSecret("auto-import-account", "managed2",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
@@ -1591,7 +1591,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
-			"name":      "auto-import",
+			"name":      "auto-import-account",
 			"namespace": "managed1",
 			"labels": map[string]interface{}{
 				msa_label: msa_service_name,
