@@ -343,7 +343,7 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "managed1",
+					*createSecret("auto-import-account", "managed1",
 						nil, map[string]string{
 							"expirationTimestamp": fourHoursAgo,
 						}, nil),
@@ -355,7 +355,7 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "managed1",
+					*createSecret("auto-import-account", "managed1",
 						nil, map[string]string{
 							"expirationTimestamp": nextHour,
 						}, map[string][]byte{
@@ -369,13 +369,13 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "managed1",
+					*createSecret("auto-import-account", "managed1",
 						nil, map[string]string{
 							"expirationTimestamp": nextHour,
 						}, map[string][]byte{
 							"token1": []byte("aaa"),
 						}),
-					*createSecret("auto-import", "managed1",
+					*createSecret("auto-import-account", "managed1",
 						nil, map[string]string{
 							"expirationTimestamp": nextHour,
 						}, map[string][]byte{
@@ -389,7 +389,7 @@ func Test_findValidMSAToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "managed1",
+					*createSecret("auto-import-account", "managed1",
 						nil, map[string]string{
 							"expirationTimestamp": nextHour,
 						}, map[string][]byte{

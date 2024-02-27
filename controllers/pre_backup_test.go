@@ -626,7 +626,7 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			name: "MSA has secrets but no expirationTimestamp",
 			args: args{
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "managed1", nil,
+					*createSecret("auto-import-account", "managed1", nil,
 						map[string]string{
 							"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
 						}, nil),
@@ -637,7 +637,7 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			name: "MSA has secrets with invalid expirationTimestamp",
 			args: args{
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "managed2", nil,
+					*createSecret("auto-import-account", "managed2", nil,
 						map[string]string{
 							"lastRefreshTimestamp": "2022-08-05T15:25:38Z",
 							"expirationTimestamp":  "bbb",
@@ -649,7 +649,7 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			name: "MSA has secrets with invalid lastRefreshTimestamp",
 			args: args{
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "managed2", nil,
+					*createSecret("auto-import-account", "managed2", nil,
 						map[string]string{
 							"lastRefreshTimestamp": "aaaaa",
 							"expirationTimestamp":  "2022-08-05T15:25:38Z",
@@ -661,7 +661,7 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			name: "MSA has secrets with invalid lastRefreshTimestamp",
 			args: args{
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "managed3", nil,
+					*createSecret("auto-import-account", "managed3", nil,
 						map[string]string{
 							"lastRefreshTimestamp": "2022-08-05T15:25:38Z",
 							"expirationTimestamp":  "aaa",
@@ -674,7 +674,7 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "managed3", nil,
+					*createSecret("auto-import-account", "managed3", nil,
 						map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
@@ -687,7 +687,7 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "managed6", nil,
+					*createSecret("auto-import-account", "managed6", nil,
 						map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextThreeHours,
@@ -700,7 +700,7 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "managed3", nil,
+					*createSecret("auto-import-account", "managed3", nil,
 						map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextHour,
@@ -713,7 +713,7 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "managed3", nil,
+					*createSecret("auto-import-account", "managed3", nil,
 						map[string]string{
 							"lastRefreshTimestamp": initialTime,
 							"expirationTimestamp":  expiryTime,
@@ -726,7 +726,7 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{
-					*createSecret("auto-import", "managed3", nil,
+					*createSecret("auto-import-account", "managed3", nil,
 						map[string]string{
 							"lastRefreshTimestamp": initialTimeNoPair,
 							"expirationTimestamp":  expiryTimeNoPair,
@@ -943,4 +943,70 @@ func Test_updateSecretsLabels(t *testing.T) {
 	}
 	testEnv.Stop()
 
+}
+
+func Test_retrieveMSAImportSecrets(t *testing.T) {
+	type args struct {
+		secrets       []corev1.Secret
+		returnSecrets []corev1.Secret
+	}
+
+	tests := []struct {
+		name string
+		args args
+	}{
+		{
+			name: "test 1",
+			args: args{
+				secrets: []corev1.Secret{
+					*createSecret("auto-import-account-2", "default",
+						map[string]string{
+							msa_label: "true",
+						}, map[string]string{
+							"expirationTimestamp":  "2022-07-26T15:26:36Z",
+							"lastRefreshTimestamp": "2022-07-26T15:22:34Z",
+						}, nil),
+					*createSecret("some-other-msa-secret", "default",
+						map[string]string{
+							msa_label: "true",
+						}, map[string]string{
+							"expirationTimestamp":  "2022-07-26T15:26:36Z",
+							"lastRefreshTimestamp": "2022-07-26T15:22:34Z",
+						}, nil),
+				},
+				returnSecrets: []corev1.Secret{
+					*createSecret("auto-import-account-2", "default",
+						map[string]string{
+							msa_label: "true",
+						}, map[string]string{
+							"expirationTimestamp":  "2022-07-26T15:26:36Z",
+							"lastRefreshTimestamp": "2022-07-26T15:22:34Z",
+						}, nil),
+				},
+			},
+		},
+		{
+			name: "test 2",
+			args: args{
+				secrets: []corev1.Secret{
+					*createSecret("some-other-msa-secret", "default",
+						map[string]string{
+							msa_label: "true",
+						}, map[string]string{
+							"expirationTimestamp":  "2022-07-26T15:26:36Z",
+							"lastRefreshTimestamp": "2022-07-26T15:22:34Z",
+						}, nil),
+				},
+				returnSecrets: []corev1.Secret{},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := retrieveMSAImportSecrets(tt.args.secrets); len(got) != len(tt.args.returnSecrets) {
+				t.Errorf("getBackupTimestamp() = %v, want %v", got, tt.args.returnSecrets)
+			}
+		})
+	}
 }

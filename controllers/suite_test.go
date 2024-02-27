@@ -478,7 +478,7 @@ var _ = BeforeSuite(func() {
 		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
-			"name":      "auto-import",
+			"name":      "auto-import-account",
 			"namespace": "managed1",
 			"labels": map[string]interface{}{
 				msa_label: msa_service_name,
@@ -499,7 +499,7 @@ var _ = BeforeSuite(func() {
 		"apiVersion": "authentication.open-cluster-management.io/v1alpha1",
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
-			"name":      "auto-import",
+			"name":      "auto-import-account",
 			"namespace": "app",
 			"labels": map[string]interface{}{
 				msa_label: msa_service_name,
