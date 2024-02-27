@@ -514,7 +514,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					autoImportSecret.GetLabels()["cluster.open-cluster-management.io/backup"] == "msa"
 			}, timeout, interval).Should(Equal(rhacmBackupSchedule.Spec.UseManagedServiceAccount))
 
-			// verify other typo of msa secret DOES NOT get the backup label
+			// verify other type of msa secret DOES NOT get the backup label
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      "some-other-msa-account",
