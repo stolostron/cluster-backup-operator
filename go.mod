@@ -80,4 +80,4 @@ require (
 )
 
 replace github.com/ulikunitz/xz => github.com/ulikunitz/xz v0.5.10
-replace golang.org/x/net => golang.org/x/net 0.17.0 // CVE-2023-39325
+replace golang.org/x/net => golang.org/x/net v0.17.0 // CVE-2023-39325
