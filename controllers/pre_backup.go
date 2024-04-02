@@ -585,7 +585,7 @@ func createManifestWork(
 				manifestWork.Namespace = namespace
 				manifestWork.Labels = map[string]string{
 					addon_work_label:        msa_addon,
-					backupCredsClusterLabel: "msa"}
+					backupCredsClusterLabel: ClusterActivationLabel}
 
 				manifest := &workv1.Manifest{}
 				manifest.Raw = []byte(fmt.Sprintf(manifestwork, mworkBinding, role_name, msaserviceName, installNamespace))
@@ -626,7 +626,7 @@ func getMSASecrets(
 			if err := c.List(ctx, msaSecrets, &client.ListOptions{
 				LabelSelector: selector,
 			}); err == nil {
-				return msaSecrets.Items
+				return retrieveMSAImportSecrets(msaSecrets.Items)
 			}
 		} else {
 			// get secrets from specified namespace
@@ -634,12 +634,28 @@ func getMSASecrets(
 				Namespace:     namespace,
 				LabelSelector: selector,
 			}); err == nil {
-				return msaSecrets.Items
+				return retrieveMSAImportSecrets(msaSecrets.Items)
 			}
 		}
 
 	}
 	return []corev1.Secret{}
+}
+
+// return only secrets with a prefix of msa_service_name
+func retrieveMSAImportSecrets(
+	secrets []corev1.Secret,
+) []corev1.Secret {
+
+	msaSecrets := []corev1.Secret{}
+
+	for i := range secrets {
+		if strings.HasPrefix(secrets[i].Name, msa_service_name) {
+			msaSecrets = append(msaSecrets, secrets[i])
+		}
+	}
+
+	return msaSecrets
 }
 
 // prepare managed service account secrets for backup
