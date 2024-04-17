@@ -159,7 +159,9 @@ type RestoreStatus struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.lastMessage`
 
-// Restore is the Schema for the restores API
+// Restore is an ACM resource that you can use to restore resources from a cluster backup to a target cluster.
+// The restore resource has properties that you can use to restore only passive data or to restore managed cluster activation resources.
+// Additionally, it has a property that you can use to periodically check for new backups and automatically restore them on the target cluster.
 type Restore struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

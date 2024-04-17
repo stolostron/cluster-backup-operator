@@ -115,7 +115,8 @@ type BackupScheduleStatus struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.lastMessage`
 
-// BackupSchedule is the Schema for the backup schedules API
+// BackupSchedule is an ACM resource that you can use to schedule cluster backups at specified intervals.
+// The backupschedule resource creates a set of schedule.velero.io resources to periodically generate backups for resources on your ACM hub cluster.
 type BackupSchedule struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
