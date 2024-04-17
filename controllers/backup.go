@@ -101,7 +101,6 @@ var (
 		"clusterdeployment.hive.openshift.io",               // restore these first
 		"machinepool.hive.openshift.io",                     // restore these first
 		"managedcluster.cluster.open-cluster-management.io", //global
-		"managedcluster.clusterview.open-cluster-management.io",
 		"klusterletaddonconfig.agent.open-cluster-management.io",
 		"managedclusteraddon.addon.open-cluster-management.io",
 		"clusterpool.hive.openshift.io",

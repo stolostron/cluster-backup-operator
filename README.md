@@ -260,7 +260,6 @@ metadata:
 
 Aside of these activation data resources, identified by using the `cluster.open-cluster-management.io/backup: cluster-activation` label and stored by the `acm-resources-generic-schedule` backup, the Cluster Back up and Restore Operator includes by default a few resources in the activation set. These resources are backed up by the `acm-managed-clusters-schedule`:
   - managedcluster.cluster.open-cluster-management.io
-  - managedcluster.clusterview.open-cluster-management.io
   - klusterletaddonconfig.agent.open-cluster-management.io
   - managedclusteraddon.addon.open-cluster-management.io
   - managedclusterset.cluster.open-cluster-management.io
