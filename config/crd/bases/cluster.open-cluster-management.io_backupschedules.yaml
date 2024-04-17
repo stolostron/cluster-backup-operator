@@ -28,7 +28,10 @@ spec:
     name: v1beta1
     schema:
       openAPIV3Schema:
-        description: BackupSchedule is the Schema for the backup schedules API
+        description: BackupSchedule is an ACM resource that you can use to schedule
+          cluster backups at specified intervals. The backupschedule resource creates
+          a set of schedule.velero.io resources to periodically generate backups for
+          resources on your ACM hub cluster.
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
