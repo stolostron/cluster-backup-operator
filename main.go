@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 	"time"
@@ -27,6 +28,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
 
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
@@ -43,6 +45,7 @@ import (
 	workv1 "open-cluster-management.io/api/work/v1"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -144,43 +147,55 @@ func main() {
 
 	cfg := mgr.GetConfig()
 
-	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+	// Check for VeleroCRDs
+	crdCheckSuccessful, err := requiredCRDsPresent(cfg)
 	if err != nil {
-		setupLog.Error(err, "unable to set up discovery client")
 		os.Exit(1)
 	}
 
-	// prepare the dynamic client
-	dyn, err := dynamic.NewForConfig(cfg)
-	if err != nil {
-		setupLog.Error(err, "unable to set up dynamic client")
-		os.Exit(1)
-	}
+	if !crdCheckSuccessful {
+		setupLog.Info("Velero CRDs are not installed, not starting BackupScheduleReconciler or RestoreReconciler controllers",
+			"crdCheckSuccessful", crdCheckSuccessful)
+		//TODO: retries?
+	} else {
+		dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+		if err != nil {
+			setupLog.Error(err, "unable to set up discovery client")
+			os.Exit(1)
+		}
 
-	if err = (&controllers.BackupScheduleReconciler{
-		Client:          mgr.GetClient(),
-		DiscoveryClient: dc,
-		DynamicClient:   dyn,
-		Scheme:          mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create Schedule controller")
-		os.Exit(1)
-	}
+		// prepare the dynamic client
+		dyn, err := dynamic.NewForConfig(cfg)
+		if err != nil {
+			setupLog.Error(err, "unable to set up dynamic client")
+			os.Exit(1)
+		}
 
-	kubeClient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		kubeClient = nil
-	}
-	if err = (&controllers.RestoreReconciler{
-		Client:          mgr.GetClient(),
-		KubeClient:      kubeClient,
-		DiscoveryClient: dc,
-		DynamicClient:   dyn,
-		Scheme:          mgr.GetScheme(),
-		Recorder:        mgr.GetEventRecorderFor("Restore controller"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create Restore controller")
-		os.Exit(1)
+		if err = (&controllers.BackupScheduleReconciler{
+			Client:          mgr.GetClient(),
+			DiscoveryClient: dc,
+			DynamicClient:   dyn,
+			Scheme:          mgr.GetScheme(),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create Schedule controller")
+			os.Exit(1)
+		}
+
+		kubeClient, err := kubernetes.NewForConfig(cfg)
+		if err != nil {
+			kubeClient = nil
+		}
+		if err = (&controllers.RestoreReconciler{
+			Client:          mgr.GetClient(),
+			KubeClient:      kubeClient,
+			DiscoveryClient: dc,
+			DynamicClient:   dyn,
+			Scheme:          mgr.GetScheme(),
+			Recorder:        mgr.GetEventRecorderFor("Restore controller"),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create Restore controller")
+			os.Exit(1)
+		}
 	}
 	//+kubebuilder:scaffold:builder
 
@@ -198,4 +213,21 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func requiredCRDsPresent(cfg *rest.Config) (bool, error) {
+	// Temp client for this check for CRDs before ctrl manager is started - no client cache
+	setupClient, err := client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Error(err, "error creating client")
+		return false, err
+	}
+
+	crdsPresent, err := controllers.VeleroCRDsPresent(context.Background(), setupClient)
+	if err != nil {
+		setupLog.Error(err, "error querying k8s APIs")
+		return false, err
+	}
+
+	return crdsPresent, nil
 }
