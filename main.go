@@ -28,7 +28,6 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"k8s.io/client-go/rest"
 
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
@@ -147,55 +146,69 @@ func main() {
 
 	cfg := mgr.GetConfig()
 
-	// Check for VeleroCRDs
-	crdCheckSuccessful, err := requiredCRDsPresent(cfg)
+	// Check for VeleroCRDs - cannot start the controllers until the CRDs are present
+	// (i.e. OADP has been installed)
+	// Temp client for this check for CRDs before ctrl manager is started - no client cache
+	setupClient, err := client.New(cfg, client.Options{Scheme: scheme})
 	if err != nil {
+		setupLog.Error(err, "error creating client")
+		os.Exit(1)
+	}
+	for {
+		crdCheckSuccessful, err := requiredCRDsPresent(context.Background(), setupClient)
+		if err != nil {
+			os.Exit(1)
+		}
+
+		if !crdCheckSuccessful {
+			setupLog.Info("Velero CRDs are not installed, not starting BackupScheduleReconciler or RestoreReconciler controllers",
+				"crdCheckSuccessful", crdCheckSuccessful)
+			time.Sleep(30 * time.Second)
+			continue
+		}
+
+		// CRDs found
+		setupLog.Info("Velero CRDs detected, starting controllers", "crdCheckSuccessful", crdCheckSuccessful)
+		break
+	}
+
+	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+	if err != nil {
+		setupLog.Error(err, "unable to set up discovery client")
 		os.Exit(1)
 	}
 
-	if !crdCheckSuccessful {
-		setupLog.Info("Velero CRDs are not installed, not starting BackupScheduleReconciler or RestoreReconciler controllers",
-			"crdCheckSuccessful", crdCheckSuccessful)
-		//TODO: retries?
-	} else {
-		dc, err := discovery.NewDiscoveryClientForConfig(cfg)
-		if err != nil {
-			setupLog.Error(err, "unable to set up discovery client")
-			os.Exit(1)
-		}
+	// prepare the dynamic client
+	dyn, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		setupLog.Error(err, "unable to set up dynamic client")
+		os.Exit(1)
+	}
 
-		// prepare the dynamic client
-		dyn, err := dynamic.NewForConfig(cfg)
-		if err != nil {
-			setupLog.Error(err, "unable to set up dynamic client")
-			os.Exit(1)
-		}
+	if err = (&controllers.BackupScheduleReconciler{
+		Client:          mgr.GetClient(),
+		DiscoveryClient: dc,
+		DynamicClient:   dyn,
+		Scheme:          mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create Schedule controller")
+		os.Exit(1)
+	}
 
-		if err = (&controllers.BackupScheduleReconciler{
-			Client:          mgr.GetClient(),
-			DiscoveryClient: dc,
-			DynamicClient:   dyn,
-			Scheme:          mgr.GetScheme(),
-		}).SetupWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create Schedule controller")
-			os.Exit(1)
-		}
-
-		kubeClient, err := kubernetes.NewForConfig(cfg)
-		if err != nil {
-			kubeClient = nil
-		}
-		if err = (&controllers.RestoreReconciler{
-			Client:          mgr.GetClient(),
-			KubeClient:      kubeClient,
-			DiscoveryClient: dc,
-			DynamicClient:   dyn,
-			Scheme:          mgr.GetScheme(),
-			Recorder:        mgr.GetEventRecorderFor("Restore controller"),
-		}).SetupWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create Restore controller")
-			os.Exit(1)
-		}
+	kubeClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		kubeClient = nil
+	}
+	if err = (&controllers.RestoreReconciler{
+		Client:          mgr.GetClient(),
+		KubeClient:      kubeClient,
+		DiscoveryClient: dc,
+		DynamicClient:   dyn,
+		Scheme:          mgr.GetScheme(),
+		Recorder:        mgr.GetEventRecorderFor("Restore controller"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create Restore controller")
+		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
 
@@ -215,15 +228,8 @@ func main() {
 	}
 }
 
-func requiredCRDsPresent(cfg *rest.Config) (bool, error) {
-	// Temp client for this check for CRDs before ctrl manager is started - no client cache
-	setupClient, err := client.New(cfg, client.Options{Scheme: scheme})
-	if err != nil {
-		setupLog.Error(err, "error creating client")
-		return false, err
-	}
-
-	crdsPresent, err := controllers.VeleroCRDsPresent(context.Background(), setupClient)
+func requiredCRDsPresent(ctx context.Context, k8sClient client.Client) (bool, error) {
+	crdsPresent, err := controllers.VeleroCRDsPresent(ctx, k8sClient)
 	if err != nil {
 		setupLog.Error(err, "error querying k8s APIs")
 		return false, err
