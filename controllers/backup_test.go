@@ -190,7 +190,10 @@ var _ = Describe("Backup", func() {
 func Test_deleteBackup(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()

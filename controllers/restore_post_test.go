@@ -53,7 +53,10 @@ import (
 func Test_postRestoreActivation(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -232,7 +235,10 @@ func Test_postRestoreActivation(t *testing.T) {
 func Test_executePostRestoreTasks(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -638,7 +644,10 @@ func Test_deleteDynamicResource(t *testing.T) {
 func Test_cleanupDeltaResources(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -741,7 +750,10 @@ func Test_cleanupDeltaResources(t *testing.T) {
 func Test_getBackupInfoFromRestore(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -853,7 +865,10 @@ func Test_getBackupInfoFromRestore(t *testing.T) {
 func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -1077,7 +1092,10 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 func Test_deleteSecretsForBackupType(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -1310,7 +1328,10 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 func Test_cleanupDeltaForCredentials(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -1386,7 +1407,10 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
