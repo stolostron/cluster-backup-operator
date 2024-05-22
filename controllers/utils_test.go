@@ -534,7 +534,10 @@ func Test_getHubIdentification(t *testing.T) {
 	crWithVersion := createClusterVersion("version", "aaa", nil)
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()
@@ -644,7 +647,7 @@ func Test_VeleroCRDsPresent_NotPresent(t *testing.T) {
 func Test_VeleroCRDsPresent(t *testing.T) {
 	// Test env with our dependent CRDs loaded
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths:     []string{filepath.Join("..", "hack", "crds")},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()

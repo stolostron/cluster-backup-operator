@@ -250,7 +250,10 @@ func Test_setSchedulePhase(t *testing.T) {
 
 func Test_getSchedulesWithUpdatedResources(t *testing.T) {
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()
@@ -434,7 +437,10 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 	veleroNamespace := *createNamespace(veleroNamespaceName)
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()
@@ -700,7 +706,10 @@ func Test_isRestoreRunning(t *testing.T) {
 	veleroNamespace := *createNamespace(veleroNamespaceName)
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()
@@ -807,7 +816,10 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 	veleroNamespace := *createNamespace(veleroNamespaceName)
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()
@@ -894,7 +906,10 @@ func Test_createFailedValidationResponse(t *testing.T) {
 	veleroNamespaceName := "backup-ns-v"
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()
@@ -958,7 +973,10 @@ func Test_createFailedValidationResponse(t *testing.T) {
 func Test_verifyMSAOptione(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -1122,7 +1140,10 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 	veleroNamespaceName := "default"
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()

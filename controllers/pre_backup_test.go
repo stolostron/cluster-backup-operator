@@ -43,7 +43,10 @@ import (
 func Test_createMSA(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -749,7 +752,10 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 func Test_cleanupMSAForImportedClusters(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -849,7 +855,10 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 func Test_updateSecretsLabels(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
