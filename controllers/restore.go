@@ -678,7 +678,7 @@ func processRetrieveRestoreDetails(
 			}
 
 			veleroRestore := &veleroapi.Restore{}
-			veleroBackupName, _, err := getVeleroBackupName(
+			veleroBackupName, veleroBackup, err := getVeleroBackupName(
 				ctx,
 				c,
 				acmRestore.Namespace,
@@ -711,6 +711,14 @@ func processRetrieveRestoreDetails(
 
 				veleroRestore.Namespace = acmRestore.Namespace
 				veleroRestore.Spec.BackupName = veleroBackupName
+
+				// set backup label
+				labels := veleroRestore.GetLabels()
+				if labels == nil {
+					labels = make(map[string]string)
+				}
+				labels[BackupScheduleClusterLabel] = veleroBackup.GetLabels()[BackupScheduleClusterLabel]
+				veleroRestore.SetLabels(labels)
 
 				setOptionalProperties(key, acmRestore, veleroRestore)
 

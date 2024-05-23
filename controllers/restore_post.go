@@ -42,6 +42,10 @@ const (
 	obs_addon_ns = "open-cluster-management-addon-observability"
 	/* #nosec G101 -- This is a false positive */
 	obs_secret_name = "observability-controller-open-cluster-management.io-observability-signer-client-cert"
+
+	// RestoreClusterLabel is the label key used to identify the cluster id
+	// that had run a restore clusters operation, so it had become the active hub
+	RestoreClusterLabel string = "cluster.open-cluster-management.io/restore-cluster"
 )
 
 // execute any tasks after restore is done
@@ -59,7 +63,9 @@ func executePostRestoreTasks(
 
 		// workaround for ACM-8406
 		deleteObsClientCert(ctx, c)
-		// get all managed clusters and run the auto import for imported clusters
+		// broadcast the restore managed clusters operation by creating a backup resource
+		recordClustersRestoreOperation(ctx, c, acmRestore)
+
 		managedClusters := &clusterv1.ManagedClusterList{}
 		if err := c.List(ctx, managedClusters, &client.ListOptions{}); err == nil {
 			processed = true
@@ -89,6 +95,75 @@ func deleteObsClientCert(
 			logger.Info("Secret deleted " + secret.Name)
 		}
 	}
+}
+
+// record the restore managed clusters operation by creating a backup resource
+// this is a dummy backup, its only purpose being to share with all hubs using
+// the current backup storage location
+// that a restore of managed clusters has been completed on this hub
+func recordClustersRestoreOperation(
+	ctx context.Context,
+	c client.Client,
+	acmRestore *v1beta1.Restore,
+) {
+
+	logger := log.FromContext(ctx)
+
+	currentTime := time.Now().Format("20060102150405")
+
+	veleroBackup := &veleroapi.Backup{}
+	veleroBackup.Name = "acm-restore-clusters-" + currentTime
+
+	logger.Info("recordClustersRestoreOperation " + veleroBackup.Name)
+
+	veleroBackup.Namespace = acmRestore.Namespace
+	// add restore details
+	labels := veleroBackup.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+
+	managedClustersRestore := acmRestore.Status.VeleroManagedClustersRestoreName
+	veleroClsRestore := &veleroapi.Restore{}
+	if err := c.Get(ctx, types.NamespacedName{
+		Name:      managedClustersRestore,
+		Namespace: acmRestore.Namespace,
+	}, veleroClsRestore); err == nil {
+		logger.Info("Get backup hub cluster id")
+		labels[BackupScheduleClusterLabel] = veleroClsRestore.GetLabels()[BackupScheduleClusterLabel]
+	}
+
+	//set labels
+	labels["cluster.open-cluster-management.io/acm-hub-dr"] = "true"
+	labels["cluster.open-cluster-management.io/acm-restore-name"] = acmRestore.Name
+	labels[veleroBackupNames[ManagedClusters]] = veleroClsRestore.Spec.BackupName
+	// get this restore cluster id
+	clusterID, _ := getHubIdentification(ctx, c)
+	labels[RestoreClusterLabel] = clusterID
+	// set all labels
+	veleroBackup.SetLabels(labels)
+
+	// set spec from schedule spec
+	veleroBackup.Spec.IncludedNamespaces = appendUnique(
+		veleroBackup.Spec.IncludedNamespaces,
+		acmRestore.Namespace,
+	)
+	veleroBackup.Spec.IncludedResources = appendUnique(
+		veleroBackup.Spec.IncludedResources,
+		acmRestore.Kind,
+	)
+
+	// now create the backup, with a default ttl
+	if err := c.Create(ctx, veleroBackup, &client.CreateOptions{}); err != nil {
+		logger.Error(
+			err,
+			"Error in creating velero.io.Backup",
+			"name", veleroBackup.Name,
+			"namespace", veleroBackup.Namespace,
+		)
+	}
+
+	logger.Info("exit recordClustersRestoreOperation ")
 }
 
 // clean up resources with a restore label
