@@ -153,6 +153,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 
+	collisionMsg := ""
 	// enforce backup collision only if this schedule was NOT created now ( current time - creation > 5)
 	// in this case ignore any collisions since the user had initiated this backup
 	if len(veleroScheduleList.Items) > 0 &&
@@ -165,33 +166,39 @@ func (r *BackupScheduleReconciler) Reconcile(
 			// and storing them at the same location
 			// we risk a backup collision, as more then one cluster seems to be
 			// backing up data in the same location
-			msg := fmt.Sprintf(BackupCollisionPhaseMsg,
+			collisionMsg = fmt.Sprintf(BackupCollisionPhaseMsg,
 				lastBackup.GetName(),
 				lastBackup.GetLabels()[BackupScheduleClusterLabel],
 				veleroScheduleList.Items[0].GetLabels()[BackupScheduleClusterLabel],
 			)
-			scheduleLogger.Info(msg)
-
-			backupSchedule.Status.Phase = v1beta1.SchedulePhaseBackupCollision
-			backupSchedule.Status.LastMessage = msg
-
-			err := r.Client.Status().Update(ctx, backupSchedule)
-
-			// delete schedules, don't generate new backups
-			for i := range veleroScheduleList.Items {
-				scheduleLogger.Info(
-					"Attempt to delete schedule " + veleroScheduleList.Items[i].Name,
-				)
-				if err := r.Delete(ctx, &veleroScheduleList.Items[i]); err == nil {
-					scheduleLogger.Info(
-						"Schedule deleted successfully " + veleroScheduleList.Items[i].Name,
-					)
-				}
-			}
-			return ctrl.Result{}, errors.Wrap(err, msg)
+			scheduleLogger.Info(collisionMsg)
+		} else {
+			// check if an existing hub restore was found  created after this backup schedule and report collision
+			_, collisionMsg = isRestoreHubAfterSchedule(ctx, r.Client, backupSchedule)
 		}
 		// add any missing labels and create any resources required by the backup and restore process
 		r.prepareForBackup(ctx, mapper, backupSchedule)
+	}
+
+	if collisionMsg != "" {
+		//collision found
+		backupSchedule.Status.Phase = v1beta1.SchedulePhaseBackupCollision
+		backupSchedule.Status.LastMessage = collisionMsg
+
+		err := r.Client.Status().Update(ctx, backupSchedule)
+
+		// delete schedules, don't generate new backups
+		for i := range veleroScheduleList.Items {
+			scheduleLogger.Info(
+				"Attempt to delete schedule " + veleroScheduleList.Items[i].Name,
+			)
+			if err := r.Delete(ctx, &veleroScheduleList.Items[i]); err == nil {
+				scheduleLogger.Info(
+					"Schedule deleted successfully " + veleroScheduleList.Items[i].Name,
+				)
+			}
+		}
+		return ctrl.Result{}, errors.Wrap(err, collisionMsg)
 	}
 	// no velero schedules, so create them
 	if len(veleroScheduleList.Items) == 0 {
