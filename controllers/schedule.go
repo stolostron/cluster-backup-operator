@@ -48,11 +48,11 @@ const (
 		" This is a backup collision with current cluster [%s] backup." +
 		" Review and resolve the collision then create a new BackupSchedule resource to " +
 		" resume backups from this cluster."
-	// BackupCollisionPhaseMsg when another cluster had run the restore managed cluster operation while this cluster schedule is active
-	BackupCollisionRestorePhaseMsg string = "Cluster with id [%s] had run a restore managed cluster operation, recorded by [%s]." +
-		" Current cluster is no longer the active cluster so the BackupSchedule is set to backup collision." +
-		" Review and resolve the collision then create a new BackupSchedule resource to " +
-		" resume backups from this cluster, or create a BackupSchedule on the [%s] cluster."
+	// Collision when another hub had run the restore managed cluster operation while this cluster schedule is active
+	BackupCollisionRestoreMsg string = "Hub with id [%s] had run a restore managed cluster operation, see [%s]." +
+		" Current hub is no longer the active cluster so the BackupSchedule is set to backup collision." +
+		" Review and resolve the collision then create a new BackupSchedule resource " +
+		" from this hub, or from the [%s] hub."
 )
 
 func updateScheduleStatus(
@@ -585,7 +585,7 @@ func isRestoreHubAfterSchedule(
 		restoreHubId := latestRestoreBackup.GetLabels()[RestoreClusterLabel]
 		if hubId, _ := getHubIdentification(ctx, c); hubId != restoreHubId {
 			// this backup schedule was create before the latest restore operation
-			msg := fmt.Sprintf(BackupCollisionRestorePhaseMsg,
+			msg := fmt.Sprintf(BackupCollisionRestoreMsg,
 				restoreHubId,
 				latestRestoreBackup.Name,
 				restoreHubId,
