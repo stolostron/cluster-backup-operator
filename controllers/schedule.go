@@ -48,6 +48,11 @@ const (
 		" This is a backup collision with current cluster [%s] backup." +
 		" Review and resolve the collision then create a new BackupSchedule resource to " +
 		" resume backups from this cluster."
+	// BackupCollisionPhaseMsg when another cluster had run the restore managed cluster operation while this cluster schedule is active
+	BackupCollisionRestorePhaseMsg string = "Cluster with id [%s] had run a restore managed cluster operation, recorded by [%s]." +
+		" Current cluster is no longer the active cluster so the BackupSchedule is set to backup collision." +
+		" Review and resolve the collision then create a new BackupSchedule resource to " +
+		" resume backups from this cluster, or create a BackupSchedule on the [%s] cluster."
 )
 
 func updateScheduleStatus(
@@ -547,4 +552,48 @@ func isVeleroSchedulesUpdateRequired(
 	}
 
 	return ctrl.Result{}, false, nil
+}
+
+// returns true if there was a passive activation after this schedule was created
+// this means that another hub has been designated the active hub and this schedule should no longer execute
+func isRestoreHubAfterSchedule(
+	ctx context.Context,
+	c client.Client,
+	backupSchedule *v1beta1.BackupSchedule,
+) (bool, string) {
+
+	logger := log.FromContext(ctx)
+
+	// get all acm-restore-clusters backups and sort them by creation timestamp
+	restoreClustersBackups := &veleroapi.BackupList{}
+	if err := c.List(ctx, restoreClustersBackups, client.InNamespace(backupSchedule.Namespace),
+		client.HasLabels{RestoreClusterLabel}); err != nil {
+		logger.Error(
+			err,
+			"Failed to get new Velero restore backups",
+		)
+		return false, ""
+	}
+	if len(restoreClustersBackups.Items) == 0 {
+		// no managed clusters restore backups found
+		return false, ""
+	}
+
+	sort.Sort(mostRecent(restoreClustersBackups.Items))
+	latestRestoreBackup := restoreClustersBackups.Items[0]
+	if backupSchedule.CreationTimestamp.Time.Before(latestRestoreBackup.CreationTimestamp.Time) {
+		restoreHubId := latestRestoreBackup.GetLabels()[RestoreClusterLabel]
+		if hubId, _ := getHubIdentification(ctx, c); hubId != restoreHubId {
+			// this backup schedule was create before the latest restore operation
+			msg := fmt.Sprintf(BackupCollisionRestorePhaseMsg,
+				restoreHubId,
+				latestRestoreBackup.Name,
+				restoreHubId,
+			)
+			logger.Info(msg)
+			return true, msg
+		}
+	}
+
+	return false, ""
 }
