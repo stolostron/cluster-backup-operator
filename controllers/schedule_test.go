@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	ocinfrav1 "github.com/openshift/api/config/v1"
 	"github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	backupv1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
@@ -1222,6 +1223,163 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 
 	}
 	// clean up
+	testEnv.Stop()
+
+}
+
+func Test_isRestoreHubAfterSchedule(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, _ := testEnv.Start()
+	scheme2 := runtime.NewScheme()
+	corev1.AddToScheme(scheme2)
+	backupv1beta1.AddToScheme(scheme2)
+	ocinfrav1.AddToScheme(scheme2)
+
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme2})
+
+	veleroNamespaceName := "backup-ns"
+	veleroNamespace := *createNamespace(veleroNamespaceName)
+	k8sClient1.Create(context.Background(), &veleroNamespace)
+
+	crWithVersion := createClusterVersion("version", "cluster1", nil)
+	if err := k8sClient1.Create(context.Background(), crWithVersion); err != nil {
+		t.Errorf("cannot create cluster version  %s ", err.Error())
+	}
+
+	type args struct {
+		ctx                         context.Context
+		c                           client.Client
+		backupSchedule              *v1beta1.BackupSchedule
+		acmClusterActivationBackups []*veleroapi.Backup
+		createScheduleFirst         bool
+		sleepTime                   int
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "no collision, list backup fails",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+				backupSchedule: createBackupSchedule("acm-backup-schedule", veleroNamespaceName).
+					object,
+				acmClusterActivationBackups: []*veleroapi.Backup{},
+				createScheduleFirst:         true,
+				sleepTime:                   2,
+			},
+			want: false,
+		},
+		{
+			name: "no collision, no backup restore found",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+				backupSchedule: createBackupSchedule("acm-backup-schedule", veleroNamespaceName).
+					object,
+				acmClusterActivationBackups: []*veleroapi.Backup{},
+				createScheduleFirst:         true,
+				sleepTime:                   2,
+			},
+			want: false,
+		},
+		{
+			name: "collision, backup schedule created first, before restore",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+				backupSchedule: createBackupSchedule("acm-backup-schedule", veleroNamespaceName).
+					object,
+				acmClusterActivationBackups: []*veleroapi.Backup{createBackup("acm-restore-clusters-2", veleroNamespaceName).
+					labels(map[string]string{BackupScheduleClusterLabel: "cluster1",
+						RestoreClusterLabel: "cluster2"}).
+					phase(veleroapi.BackupPhaseCompleted).
+					object},
+				createScheduleFirst: true,
+				sleepTime:           2,
+			},
+			want: true,
+		},
+		{
+			name: "no collision, backup schedule created first, before restore,  but on the same hub",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+				backupSchedule: createBackupSchedule("acm-backup-schedule", veleroNamespaceName).
+					object,
+				acmClusterActivationBackups: []*veleroapi.Backup{createBackup("acm-restore-clusters-1", veleroNamespaceName).
+					labels(map[string]string{BackupScheduleClusterLabel: "cluster1",
+						RestoreClusterLabel: "cluster1"}).
+					phase(veleroapi.BackupPhaseCompleted).
+					object},
+				createScheduleFirst: true,
+				sleepTime:           2,
+			},
+			want: false,
+		},
+		{
+			name: "no collision, backup schedule created after restore",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+				backupSchedule: createBackupSchedule("acm-backup-schedule", veleroNamespaceName).
+					object,
+				acmClusterActivationBackups: []*veleroapi.Backup{createBackup("acm-restore-clusters-2", veleroNamespaceName).
+					labels(map[string]string{BackupScheduleClusterLabel: "cluster1",
+						RestoreClusterLabel: "cluster2"}).
+					phase(veleroapi.BackupPhaseCompleted).
+					object},
+				createScheduleFirst: false,
+				sleepTime:           2,
+			},
+			want: false,
+		},
+	}
+
+	for idx, tt := range tests {
+
+		if idx > 0 {
+			veleroapi.AddToScheme(scheme2)
+		}
+
+		if tt.args.createScheduleFirst {
+			k8sClient1.Create(tt.args.ctx, tt.args.backupSchedule)
+			time.Sleep(time.Duration(tt.args.sleepTime) * time.Second)
+			for i := range tt.args.acmClusterActivationBackups {
+				k8sClient1.Create(tt.args.ctx, tt.args.acmClusterActivationBackups[i])
+			}
+
+		} else {
+			for i := range tt.args.acmClusterActivationBackups {
+				k8sClient1.Create(tt.args.ctx, tt.args.acmClusterActivationBackups[i])
+			}
+			time.Sleep(time.Duration(tt.args.sleepTime) * time.Second)
+			k8sClient1.Create(tt.args.ctx, tt.args.backupSchedule)
+
+		}
+
+		t.Run(tt.name, func(t *testing.T) {
+			if got, _ := isRestoreHubAfterSchedule(tt.args.ctx, tt.args.c,
+				tt.args.backupSchedule); got != tt.want {
+				t.Errorf("isRestoreHubAfterSchedule() = %v, want %v ", got, tt.want)
+			}
+		})
+
+		// clean up after the test is run
+		k8sClient1.Delete(tt.args.ctx, tt.args.backupSchedule)
+		for i := range tt.args.acmClusterActivationBackups {
+			k8sClient1.Delete(tt.args.ctx, tt.args.acmClusterActivationBackups[i])
+		}
+	}
 	testEnv.Stop()
 
 }
