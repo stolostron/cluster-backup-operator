@@ -1230,10 +1230,7 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 func Test_isRestoreHubAfterSchedule(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths: []string{
-			filepath.Join("..", "config", "crd", "bases"),
-			filepath.Join("..", "hack", "crds"),
-		},
+		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()
