@@ -224,7 +224,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 	if !initRestoreCond {
-		r.cleanupOnRestore(ctx, restore, veleroRestoreList)
+		r.cleanupOnRestore(ctx, restore)
 	}
 
 	if restore.Spec.SyncRestoreWithNewBackups && !isValidSync {
@@ -277,10 +277,26 @@ func isPVCInitializationStep(
 // execute any other post restore tasks
 func (r *RestoreReconciler) cleanupOnRestore(
 	ctx context.Context,
-	restore *v1beta1.Restore,
-	veleroRestoreList veleroapi.RestoreList,
+	acmRestore *v1beta1.Restore,
 ) {
-	_, cleanupOnRestore := setRestorePhase(&veleroRestoreList, restore)
+
+	restoreLogger := log.FromContext(ctx)
+	// get the list of velero restore resources created by this acm restore
+	veleroRestoreList := veleroapi.RestoreList{}
+	if err := r.List(
+		ctx,
+		&veleroRestoreList,
+		client.InNamespace(acmRestore.Namespace),
+		client.MatchingFields{restoreOwnerKey: acmRestore.Name},
+	); err != nil {
+		msg := "unable to list velero restores for acm restore" +
+			"namespace:" + acmRestore.Namespace +
+			"name:" + acmRestore.Name
+		restoreLogger.Error(err, msg)
+		return
+	}
+
+	_, cleanupOnRestore := setRestorePhase(&veleroRestoreList, acmRestore)
 
 	reconcileArgs := DynamicStruct{
 		dc:  r.DiscoveryClient,
@@ -288,11 +304,11 @@ func (r *RestoreReconciler) cleanupOnRestore(
 	}
 	restoreOptions := RestoreOptions{
 		dynamicArgs: reconcileArgs,
-		cleanupType: restore.Spec.CleanupBeforeRestore,
+		cleanupType: acmRestore.Spec.CleanupBeforeRestore,
 		mapper:      restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(r.DiscoveryClient)),
 	}
-	cleanupDeltaResources(ctx, r.Client, restore, cleanupOnRestore, restoreOptions)
-	executePostRestoreTasks(ctx, r.Client, restore)
+	cleanupDeltaResources(ctx, r.Client, acmRestore, cleanupOnRestore, restoreOptions)
+	executePostRestoreTasks(ctx, r.Client, acmRestore)
 
 }
 
