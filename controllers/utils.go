@@ -27,6 +27,8 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -366,4 +368,45 @@ func managedClusterShouldReimport(
 	}
 
 	return false, url, ""
+}
+
+func VeleroCRDsPresent(
+	ctx context.Context,
+	c client.Client) (bool, error) {
+
+	veleroScheduleList := veleroapi.ScheduleList{}
+	veleroScheduleCRDPresent, err := isCRDPresent(ctx, c, &veleroScheduleList)
+	if err != nil {
+		return false, err
+	}
+
+	veleroRestoreList := veleroapi.RestoreList{}
+	veleroRestoreCRDPresent, err := isCRDPresent(ctx, c, &veleroRestoreList)
+	if err != nil {
+		return false, err
+	}
+
+	return veleroScheduleCRDPresent && veleroRestoreCRDPresent, nil
+}
+
+func isCRDPresent(ctx context.Context, k8sClient client.Client, objList client.ObjectList) (bool, error) {
+	err := k8sClient.List(ctx, objList)
+	if err != nil {
+		if isCRDNotPresentError(err) {
+			// This api Kind is not present
+			return false, nil
+		}
+		// Some other error querying
+		return false, err
+	}
+	// API is present
+	return true, nil
+}
+
+func isCRDNotPresentError(err error) bool {
+	if apimeta.IsNoMatchError(err) || kerrors.IsNotFound(err) ||
+		strings.Contains(err.Error(), "failed to get API group resources") {
+		return true
+	}
+	return false
 }

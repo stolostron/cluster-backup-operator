@@ -452,7 +452,10 @@ func Test_setRestorePhase(t *testing.T) {
 func Test_getVeleroBackupName(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -632,7 +635,10 @@ func Test_getVeleroBackupName(t *testing.T) {
 func Test_isNewBackupAvailable(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()
@@ -951,7 +957,10 @@ func Test_setOptionalProperties(t *testing.T) {
 func Test_retrieveRestoreDetails(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -1049,7 +1058,10 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 func Test_isOtherResourcesRunning(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -1488,7 +1500,10 @@ func Test_isPVCInitializationStep(t *testing.T) {
 func Test_processRestoreWait(t *testing.T) {
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 

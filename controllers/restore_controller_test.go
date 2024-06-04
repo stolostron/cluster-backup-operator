@@ -10,6 +10,7 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,6 +20,7 @@ import (
 )
 
 var _ = Describe("Basic Restore controller", func() {
+	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 	var (
 		ctx                                context.Context
 		veleroNamespace                    *corev1.Namespace
@@ -220,22 +222,50 @@ var _ = Describe("Basic Restore controller", func() {
 				return createdRestore.Status.VeleroCredentialsRestoreName
 			}, timeout, interval).ShouldNot(BeEmpty())
 
-			// update restore status to completed so we get out of waiting for pvc info
-			createdRestore.Status.Phase = v1beta1.RestoreComplete
-			k8sClient.Status().Update(ctx, &createdRestore)
+			// At this point, other velerorestores should not be be listed in the status - neeed to wait for
+			// the velerocredentialsrestore to complete first
+			Expect(createdRestore.Status.VeleroGenericResourcesRestoreName).To(BeEmpty())
+			Expect(createdRestore.Status.VeleroResourcesRestoreName).To(BeEmpty())
+			Expect(createdRestore.Status.VeleroManagedClustersRestoreName).To(BeEmpty())
 
-			Eventually(func() string {
-				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
-				return string(createdRestore.Status.Phase)
-			}, timeout, interval).Should(BeIdenticalTo(v1beta1.RestoreComplete))
+			// Update credentials veleroRestore status to fake out a completed velero restore
+			veleroCredentialsRestore := &veleroapi.Restore{}
+			Expect(k8sClient.Get(ctx,
+				types.NamespacedName{Name: createdRestore.Status.VeleroCredentialsRestoreName, Namespace: veleroNamespace.Name},
+				veleroCredentialsRestore)).To(Succeed())
+			// Set status to completed
+			veleroCredentialsRestore.Status = veleroapi.RestoreStatus{
+				Phase: veleroapi.RestorePhaseCompleted,
+			}
+			// Velero CRD doesn't have status subresource set, so simply update the
+			// status with a normal update() call.
+			Expect(k8sClient.Update(ctx, veleroCredentialsRestore)).To(Succeed())
+			//Expect(k8sClient.Status().Update(ctx, veleroCredentialsRestore)).To(Succeed())
 
-			veleroRestores := veleroapi.RestoreList{}
+			// Now that the credentials restore is done (we faked it was complete in the
+			// velero restore status), other restores should be created
 			Eventually(func() bool {
-				if err := k8sClient.List(ctx, &veleroRestores, client.InNamespace(veleroNamespace.Name)); err != nil {
-					return false
-				}
-				return len(veleroRestores.Items) > 0
+				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+
+				// Fail immediately if we see either of these phases - means we have a timing
+				// issue and have incorrectly upated the status before all restores are done
+				Expect(createdRestore.Status.Phase).NotTo(Equal(v1beta1.RestorePhaseFinished))
+				Expect(createdRestore.Status.Phase).NotTo(Equal(v1beta1.RestoreComplete))
+
+				return createdRestore.Status.VeleroGenericResourcesRestoreName != "" &&
+					createdRestore.Status.VeleroResourcesRestoreName != "" &&
+					createdRestore.Status.VeleroManagedClustersRestoreName != ""
 			}, timeout, interval).Should(BeTrue())
+
+			Consistently(func() bool {
+				// Make sure acm restore status never goes to finished or complete as the other velero restores
+				// are not done (status is "" which we interpret as "Unknown")
+				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+				logger.Info("velero restores running", "createdRestore.Status.Phase", createdRestore.Status.Phase)
+				return createdRestore.Status.Phase == v1beta1.RestorePhaseFinished ||
+					createdRestore.Status.Phase == v1beta1.RestoreComplete
+			}, 2*time.Second, interval).Should(BeFalse())
+
 			backupNames := []string{
 				veleroManagedClustersBackupName,
 				veleroResourcesBackupName,
@@ -244,20 +274,70 @@ var _ = Describe("Basic Restore controller", func() {
 				veleroCredentialsHiveBackupName,
 				veleroCredentialsClusterBackupName,
 			}
-			// look for velero optional properties
-			Expect(*veleroRestores.Items[0].Spec.RestorePVs).Should(BeTrue())
-			Expect(*veleroRestores.Items[0].Spec.PreserveNodePorts).Should(BeTrue())
-			Expect(veleroRestores.Items[0].Spec.RestoreStatus.IncludedResources[0]).
-				Should(BeIdenticalTo("webhook"))
-			Expect(veleroRestores.Items[0].Spec.Hooks.Resources[0].Name).Should(
-				BeIdenticalTo("hookName"))
-			Expect(veleroRestores.Items[0].Spec.ExcludedNamespaces).Should(
-				ContainElement("ns1"))
-			Expect(veleroRestores.Items[0].Spec.ExcludedResources).Should(
-				ContainElement("res1"))
-			//
-			_, found := find(backupNames, veleroRestores.Items[0].Spec.BackupName)
-			Expect(found).Should(BeTrue())
+			veleroRestores := veleroapi.RestoreList{}
+			Eventually(func() int {
+				if err := k8sClient.List(ctx, &veleroRestores, client.InNamespace(veleroNamespace.Name)); err != nil {
+					return 0
+				}
+				return len(veleroRestores.Items)
+			}, timeout, interval).Should(Equal(len(backupNames)))
+
+			restoreNames := []string{}
+			for i := range backupNames {
+				// look for velero optional properties
+				Expect(*veleroRestores.Items[i].Spec.RestorePVs).Should(BeTrue())
+				Expect(*veleroRestores.Items[i].Spec.PreserveNodePorts).Should(BeTrue())
+				Expect(veleroRestores.Items[i].Spec.RestoreStatus.IncludedResources[0]).
+					Should(BeIdenticalTo("webhook"))
+				Expect(veleroRestores.Items[i].Spec.Hooks.Resources[0].Name).Should(
+					BeIdenticalTo("hookName"))
+				Expect(veleroRestores.Items[i].Spec.ExcludedNamespaces).Should(
+					ContainElement("ns1"))
+				Expect(veleroRestores.Items[i].Spec.ExcludedResources).Should(
+					ContainElement("res1"))
+				//
+				_, found := find(backupNames, veleroRestores.Items[i].Spec.BackupName)
+				Expect(found).Should(BeTrue())
+
+				restoreNames = append(restoreNames, veleroRestores.Items[i].GetName())
+			}
+
+			// Now update all the velero restores to simulate that they are complete
+			Eventually(func() error {
+				for _, restoreName := range restoreNames {
+					veleroRestore := &veleroapi.Restore{}
+					err := k8sClient.Get(ctx,
+						types.NamespacedName{
+							Name:      restoreName,
+							Namespace: veleroNamespace.Name,
+						},
+						veleroRestore)
+					if err != nil {
+						return err
+					}
+					if veleroRestore.Status.Phase != veleroapi.RestorePhaseCompleted {
+						veleroRestore.Status.Phase = veleroapi.RestorePhaseCompleted
+						// Velero restore CRD doesn't have status subresource set, so simply update the
+						// status with a normal update() call.
+						err = k8sClient.Update(ctx, veleroRestore)
+						//err = k8sClient.Status().Update(ctx, veleroRestore)
+						if err != nil {
+							return err
+						}
+					}
+				}
+				return nil
+			}, timeout, interval).Should(Succeed())
+
+			//TODO: there's a lot more steps in the restore that could be
+			// tested here
+
+			// Now the acm restore should proceed to Finished phase
+			Eventually(func() string {
+				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+				return string(createdRestore.Status.Phase)
+			}, timeout, interval).Should(BeIdenticalTo(v1beta1.RestorePhaseFinished))
+			//}, timeout, interval).Should(BeIdenticalTo(v1beta1.RestoreComplete))
 		})
 	})
 

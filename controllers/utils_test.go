@@ -534,7 +534,10 @@ func Test_getHubIdentification(t *testing.T) {
 	crWithVersion := createClusterVersion("version", "aaa", nil)
 
 	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, _ := testEnv.Start()
@@ -614,4 +617,59 @@ func Test_getHubIdentification(t *testing.T) {
 	// clean up
 	testEnv.Stop()
 
+}
+
+func Test_VeleroCRDsPresent_NotPresent(t *testing.T) {
+	// Test env with no additional CRDs (velero crds will not be present)
+	testEnv := &envtest.Environment{ErrorIfCRDPathMissing: true}
+	cfg, _ := testEnv.Start()
+
+	// clean up after
+	defer testEnv.Stop()
+
+	scheme1 := runtime.NewScheme()
+	_ = veleroapi.AddToScheme(scheme1) // for velero types
+
+	// test client to testEnv above with no velero CRDs
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	t.Run("velero CRDs not present", func(t *testing.T) {
+		crdsPresent, err := VeleroCRDsPresent(context.Background(), k8sClient1)
+		if err != nil {
+			t.Errorf("VeleroCRDsPresent() returned an unexpected error %s", err.Error())
+		}
+		if crdsPresent {
+			t.Errorf("VeleroCRDsPresent() should return false when CRDs not present")
+		}
+	})
+}
+
+func Test_VeleroCRDsPresent(t *testing.T) {
+	// Test env with our dependent CRDs loaded
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "hack", "crds")},
+		ErrorIfCRDPathMissing: true,
+	}
+	cfg, _ := testEnv.Start()
+
+	// clean up after
+	defer testEnv.Stop()
+
+	scheme1 := runtime.NewScheme()
+	_ = veleroapi.AddToScheme(scheme1) // for velero types
+
+	// test client to testEnv above with no velero CRDs
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+
+	// Rely on testEnv setup in suite_test.go (this will have all the CRDs)
+	// (use k8sClient setup in BeforeSuite that talks to the testEnv)
+	t.Run("velero CRDs present", func(t *testing.T) {
+		crdsPresent, err := VeleroCRDsPresent(context.Background(), k8sClient1)
+		if err != nil {
+			t.Errorf("VeleroCRDsPresent() returned an unexpected error %s", err.Error())
+		}
+		if !crdsPresent {
+			t.Errorf("VeleroCRDsPresent() should return true when CRDs are present")
+		}
+	})
 }
