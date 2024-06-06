@@ -606,8 +606,15 @@ The Cluster Backup and Restore Operator [helm chart](https://github.com/stolostr
 These policies include a set of templates that check for the following constraints and alerts when any of them are violated.
 
 ### OADP channel validation
-- `oadp-channel` template checks if the Red Hat OADP Operator is installed from the expected channel.
-When you enable the backup component on the MCH (Multicluster Hub), the OADP operator is installed by the Cluster Backup and Restore Operator Helm chart. The oadp-channel template checks if the installed Red Hat OADP Operator version matches the version set by the ACM Cluster Backup and Restore Operator. The template shows violations if a Red Hat OADP Operator version is found to be installed on the hub and it doesn't match the version installed by the ACM Cluster Backup and Restore Operator Helm chart. The reason for showing this violation is that the OADP/Velero Custom Resource Definitions (CRDs) are cluster-scoped. If multiple versions of OADP are installed on the ACM (Advanced Cluster Management) hub, or if the version installed by MCH has been uninstalled and a different version is installed manually, the Backup and Restore Operator might run with incorrect CRDs, resulting in erroneous behavior.
+When you enable the backup component on the MultiClusterHub, the cluster backup and restore operator Helm chart can automatically install the OADP operator in the open-cluster-management-backup namespace, or you can install it manually in that namespace. The OADP channel you select for manual installation must match or exceed the version set by the Red Hat Advanced Cluster Management backup and restore operator Helm chart. Since the OADP Operator and Velero Custom Resource Definitions (CRDs) are cluster-scoped, you cannot have multiple versions on the same cluster. You must install the same version in the open-cluster-management-backup namespace and any other namespaces.
+
+The following templates check for availability and validate the OADP installation:
+
+- `oadp-operator-exists` template verifies if the OADP operator is installed in the open-cluster-management-backup namespace.
+
+- `oadp-channel-validation` template ensures the OADP operator version in the open-cluster-management-backup namespace matches or exceeds the version set by the Red Hat Advanced Cluster Management cluster backup and restore operator.
+
+- `custom-oadp-channel-validation` template checks if OADP operators in other namespaces match the version in the open-cluster-management-backup namespace.
 
 ### Pod validation
 The following templates check the pod status for the backup component and dependencies:
