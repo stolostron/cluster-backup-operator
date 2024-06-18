@@ -328,8 +328,8 @@ k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f h1:2kWPakN3i/k81b0gvD5C5F
 k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f/go.mod h1:byini6yhqGC14c3ebc/QwanvYwhuMWF6yz2F8uwW8eg=
 k8s.io/utils v0.0.0-20230209194617-a36077c30491 h1:r0BAOLElQnnFhE/ApUsg3iHdVYYPBjNSSOMowRZxxsY=
 k8s.io/utils v0.0.0-20230209194617-a36077c30491/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
-open-cluster-management.io/api v0.10.1 h1:/qv1qfIkAVSz6RQmKGehSv6zYI34Xmb8hK7sIUVmduM=
-open-cluster-management.io/api v0.10.1/go.mod h1:6BB/Y6r3hXlPjpJgDwIs6Ubxyx/kXXOg6D9Cntg1I9E=
+open-cluster-management.io/api v0.11.0 h1:zBxa33Co3wseLBF4HEJobhl0P6ygj+Drhe7Wrfo0/h8=
+open-cluster-management.io/api v0.11.0/go.mod h1:WgKUCJ7+Bf40DsOmH1Gdkpyj3joco+QLzrlM6Ak39zE=
 open-cluster-management.io/multicloud-operators-channel v0.11.0 h1:Uprx8ShWY2P/ng4UduYg6kgZZyF+732uJ4z0ZZWLi04=
 open-cluster-management.io/multicloud-operators-channel v0.11.0/go.mod h1:XpOQgTYxprwTGQBKXwI+6TaJKdOjltO5+jHkTU+LfVA=
 sigs.k8s.io/controller-runtime v0.15.1 h1:9UvgKD4ZJGcj24vefUFgZFP3xej/3igL9BsOUTb/+4c=
