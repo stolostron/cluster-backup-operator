@@ -280,7 +280,12 @@ func prepareImportedClusters(ctx context.Context,
 			for addon := range addons.Items {
 				if addons.Items[addon].Name == msa_addon {
 					alreadyCreated = true
-					installNamespace = addons.Items[addon].Spec.InstallNamespace
+					if addons.Items[addon].Status.Namespace != "" {
+						installNamespace = addons.Items[addon].Status.Namespace
+					} else {
+						logger.Info("ManagedClusterAddOn status namespace not set",
+							"addon", msa_addon, "cluster", managedCluster.Name)
+					}
 					break
 				}
 			}
@@ -299,10 +304,11 @@ func prepareImportedClusters(ctx context.Context,
 				}
 				msaAddon.SetLabels(labels)
 
-				logger.Info(fmt.Sprintf("Attempt to create ClusterManagementAddOn %s for cluster =%s",
+				logger.Info(fmt.Sprintf("Attempt to create ManagedClusterAddOn %s for cluster =%s",
 					msaAddon.Name, msaAddon.Namespace))
 				if err := c.Create(ctx, msaAddon, &client.CreateOptions{}); err == nil {
-					logger.Info(fmt.Sprintf("Created ClusterManagementAddOn for cluster =%s", msaAddon.Namespace))
+					logger.Info(fmt.Sprintf("Created ManagedClusterAddOn %s for cluster =%s",
+						msaAddon.Name, msaAddon.Namespace))
 				}
 			}
 
