@@ -376,12 +376,7 @@ func getResourcesByBackupType(
 			}
 		}
 	case ResourcesGeneric:
-		for i := range excludedCRDs { // exclude resources not backed up
-			filteredResourceNames = appendUnique(
-				filteredResourceNames,
-				excludedCRDs[i],
-			)
-		}
+
 		for i := range backupCredsResources { // exclude resources already backed up by creds
 			filteredResourceNames = appendUnique(
 				filteredResourceNames,
