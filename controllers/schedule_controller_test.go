@@ -931,8 +931,9 @@ var _ = Describe("BackupSchedule controller", func() {
 					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, //secrets are in the creds backup
 						"secret")).Should(BeTrue())
 
-					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, // resources excluded from backup
-						"clustermanagementaddon.addon.open-cluster-management.io")).Should(BeTrue())
+					// resources excluded from backup should still be allowed to be backed up by the generic backup, if they have a backup label
+					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources,
+						"clustermanagementaddon.addon.open-cluster-management.io")).ShouldNot(BeTrue())
 
 					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, //already in cluster resources backup
 						"klusterletaddonconfig.agent.open-cluster-management.io")).Should(BeTrue())

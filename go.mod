@@ -16,7 +16,7 @@ require (
 	k8s.io/api v0.27.2
 	k8s.io/apimachinery v0.27.2
 	k8s.io/client-go v0.27.2
-	open-cluster-management.io/api v0.10.1
+	open-cluster-management.io/api v0.11.0
 	open-cluster-management.io/multicloud-operators-channel v0.11.0
 	sigs.k8s.io/controller-runtime v0.15.1
 )
@@ -80,5 +80,3 @@ require (
 )
 
 replace github.com/ulikunitz/xz => github.com/ulikunitz/xz v0.5.10
-
-replace golang.org/x/net => golang.org/x/net v0.24.0 // CVE-2023-45288

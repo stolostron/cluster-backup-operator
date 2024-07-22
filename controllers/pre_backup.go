@@ -114,7 +114,7 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 	msaMapping, err := mapper.RESTMapping(msaKind, "")
 	var dr dynamic.NamespaceableResourceInterface
 	if err == nil {
-		logger.Info("ManagedServiceAccounts is enabled, generate MSA accounts if needed")
+		logger.Info("ManagedServiceAccounts is enabled, generate MSA accounts if needed", "useMSA", useMSA)
 		dr = r.DynamicClient.Resource(msaMapping.Resource)
 		if dr != nil {
 			if useMSA {
@@ -123,6 +123,8 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 				cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping)
 			}
 		}
+	} else {
+		logger.Info("ManagedServiceAccounts are not enabled")
 	}
 
 	hiveDeploymentMapping, _ := mapper.RESTMapping(schema.GroupKind{
@@ -226,7 +228,7 @@ func cleanupMSAForImportedClusters(
 func prepareImportedClusters(ctx context.Context,
 	c client.Client,
 	dr dynamic.NamespaceableResourceInterface,
-	msaMapping *meta.RESTMapping,
+	_ *meta.RESTMapping,
 	backupSchedule *v1beta1.BackupSchedule,
 ) {
 	logger := log.FromContext(ctx)
@@ -243,15 +245,30 @@ func prepareImportedClusters(ctx context.Context,
 		tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.ManagedServiceAccountTTL.Duration)
 	}
 
+	localClusterFound := false
+	hiveClusterCount := 0 // Hive clusters, no MSA ManagedClusterAddOn required
+	msaClusterCount := 0  // Other mgd clusters, MSA ManagedClusterAddOn should be created
+
 	// get all managed clusters
 	managedClusters := &clusterv1.ManagedClusterList{}
 	if err := c.List(ctx, managedClusters, &client.ListOptions{}); err == nil {
 		for i := range managedClusters.Items {
 			managedCluster := managedClusters.Items[i]
-			if managedCluster.Name == "local-cluster" ||
-				isHiveCreatedCluster(ctx, c, managedCluster.Name) {
+			if managedCluster.Name == "local-cluster" {
+				localClusterFound = true
+				// No MSA needed
 				continue
 			}
+
+			if isHiveCreatedCluster(ctx, c, managedCluster.Name) {
+				hiveClusterCount++
+				// No MSA needed
+				continue
+			}
+
+			// MSA required for this mgd cluster
+			msaClusterCount++
+
 			// create managedservice addon if not available
 			addons := &addonv1alpha1.ManagedClusterAddOnList{}
 			if err := c.List(ctx, addons, &client.ListOptions{Namespace: managedCluster.Name}); err != nil {
@@ -263,7 +280,12 @@ func prepareImportedClusters(ctx context.Context,
 			for addon := range addons.Items {
 				if addons.Items[addon].Name == msa_addon {
 					alreadyCreated = true
-					installNamespace = addons.Items[addon].Spec.InstallNamespace
+					if addons.Items[addon].Status.Namespace != "" {
+						installNamespace = addons.Items[addon].Status.Namespace
+					} else {
+						logger.Info("ManagedClusterAddOn status namespace not set",
+							"addon", msa_addon, "cluster", managedCluster.Name)
+					}
 					break
 				}
 			}
@@ -282,10 +304,11 @@ func prepareImportedClusters(ctx context.Context,
 				}
 				msaAddon.SetLabels(labels)
 
-				logger.Info(fmt.Sprintf("Attempt to create ClusterManagementAddOn %s for cluster =%s",
+				logger.Info(fmt.Sprintf("Attempt to create ManagedClusterAddOn %s for cluster =%s",
 					msaAddon.Name, msaAddon.Namespace))
 				if err := c.Create(ctx, msaAddon, &client.CreateOptions{}); err == nil {
-					logger.Info(fmt.Sprintf("Created ClusterManagementAddOn for cluster =%s", msaAddon.Namespace))
+					logger.Info(fmt.Sprintf("Created ManagedClusterAddOn %s for cluster =%s",
+						msaAddon.Name, msaAddon.Namespace))
 				}
 			}
 
@@ -303,6 +326,12 @@ func prepareImportedClusters(ctx context.Context,
 				secretCreatedNowForPairCluster
 		}
 	}
+
+	logger.Info("prepareImportedClusters",
+		"total mgd clusters", len(managedClusters.Items),
+		"localClusterFound (no MSA required)", localClusterFound,
+		"hiveClusterCount (no MSA required)", hiveClusterCount,
+		"msaClusterCount", msaClusterCount)
 
 	if secretsGeneratedNow {
 		// sleep to allow secrets to be propagated
