@@ -1,15 +1,11 @@
-# apply this resource to restore all backup data, including managed clusters activation data 
-# cleanupBeforeRestore - required, asks to clean up cluster after applying restore
-# valid options : 
-# CleanupRestored - clean up resources created by a previous acm restore and not part of the currently restored backup
-# None : don't clean up anything, just apply the restore
-# restoreStatus - optional, IncludedResources specifies the resources to which will restore the status.
+# This sample shows how to use Velero restoreStatus https://velero.io/docs/main/api-types/restore/
+# restoreStatus - optional, selects resources to restore not only the specification, but the status of the manifest.
 # This sample restores BareMetalHosts resources status
 
 apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Restore
 metadata:
-  name: restore-acm-bmh
+  name: restore-acm-status
   namespace: open-cluster-management-backup
 spec:
   cleanupBeforeRestore: CleanupRestored
