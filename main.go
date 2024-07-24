@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 	"time"
@@ -43,6 +44,7 @@ import (
 	workv1 "open-cluster-management.io/api/work/v1"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -144,6 +146,32 @@ func main() {
 
 	cfg := mgr.GetConfig()
 
+	// Check for VeleroCRDs - cannot start the controllers until the CRDs are present
+	// (i.e. OADP has been installed)
+	// Temp client for this check for CRDs before ctrl manager is started - no client cache
+	setupClient, err := client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Error(err, "error creating client")
+		os.Exit(1)
+	}
+	for {
+		crdCheckSuccessful, err := requiredCRDsPresent(context.Background(), setupClient)
+		if err != nil {
+			os.Exit(1)
+		}
+
+		if !crdCheckSuccessful {
+			setupLog.Info("Velero CRDs are not installed, not starting BackupScheduleReconciler or RestoreReconciler controllers",
+				"crdCheckSuccessful", crdCheckSuccessful)
+			time.Sleep(30 * time.Second)
+			continue
+		}
+
+		// CRDs found
+		setupLog.Info("Velero CRDs detected, starting controllers", "crdCheckSuccessful", crdCheckSuccessful)
+		break
+	}
+
 	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
 	if err != nil {
 		setupLog.Error(err, "unable to set up discovery client")
@@ -198,4 +226,14 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func requiredCRDsPresent(ctx context.Context, k8sClient client.Client) (bool, error) {
+	crdsPresent, err := controllers.VeleroCRDsPresent(ctx, k8sClient)
+	if err != nil {
+		setupLog.Error(err, "error querying k8s APIs")
+		return false, err
+	}
+
+	return crdsPresent, nil
 }
