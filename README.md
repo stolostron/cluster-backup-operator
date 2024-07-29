@@ -61,6 +61,7 @@ Cluster Back up and Restore Operator
   - [Testing](#testing)
     - [Schedule  a backup](#schedule--a-backup)
     - [Restore a backup](#restore-a-backup)
+- [OADP Version Relationship](#oadp-version-relationship)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -850,6 +851,18 @@ spec:
   veleroCredentialsBackupName: skip
   veleroResourcesBackupName: skip
 ```
+
+## OADP Version Relationship
+
+The Cluster Back up and Restore Operator chart automatically installs the [OADP Operator](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md), in the `open-cluster-management-backup` namespace, which is the namespace where the chart is installed. Here is the default mapping of versions:
+
+| ACM Version | OADP Version |
+|:------------| -----------: |
+| 2.11        | 1.4          |
+| 2.10        | 1.4          |
+| 2.9         | 1.3          |
+| 2.8         | 1.3          |
+| 2.7         | 1.3          |
 
 <!---
 Date: May/10/2023
