@@ -859,10 +859,13 @@ The Cluster Back up and Restore Operator chart automatically installs the [OADP 
 | ACM Version | OADP Version |
 |:------------| -----------: |
 | 2.11        | 1.4          |
-| 2.10        | 1.4          |
-| 2.9         | 1.3          |
-| 2.8         | 1.3          |
-| 2.7         | 1.3          |
+| 2.10.4      | 1.4          |
+| 2.10        | 1.3          |
+| 2.9.3       | 1.3          |
+| 2.9         | 1.2          |
+| 2.8.5       | 1.3          |
+| 2.8.4       | 1.2          |
+| 2.8         | 1.1          |
 
 <!---
 Date: May/10/2023
