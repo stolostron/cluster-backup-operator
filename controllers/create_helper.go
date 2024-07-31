@@ -376,6 +376,11 @@ func (b *ACMRestoreHelper) restoreLabelSelector(selector *metav1.LabelSelector) 
 	return b
 }
 
+func (b *ACMRestoreHelper) restoreORLabelSelector(selectors []*metav1.LabelSelector) *ACMRestoreHelper {
+	b.object.Spec.OrLabelSelectors = selectors
+	return b
+}
+
 func (b *ACMRestoreHelper) restorePVs(restorePV bool) *ACMRestoreHelper {
 	b.object.Spec.RestorePVs = &restorePV
 	return b

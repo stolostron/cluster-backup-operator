@@ -206,6 +206,19 @@ var _ = Describe("Basic Restore controller", func() {
 			req2,
 		}
 
+		restoreOrSelector := []*metav1.LabelSelector{
+			{
+				MatchLabels: map[string]string{
+					"restore-test-1": "restore-test-1-value",
+				},
+			},
+			{
+				MatchLabels: map[string]string{
+					"restore-test-2": "restore-test-2-value",
+				},
+			},
+		}
+
 		managedClusterNamespaces = []corev1.Namespace{}
 		rhacmRestore = *createACMRestore(restoreName, veleroNamespace.Name).
 			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).syncRestoreWithNewBackups(true).
@@ -232,6 +245,7 @@ var _ = Describe("Basic Restore controller", func() {
 				},
 				MatchExpressions: matchExpressions,
 			}).
+			restoreORLabelSelector(restoreOrSelector).
 			veleroResourcesBackupName(veleroResourcesBackupName).object
 	})
 
@@ -346,13 +360,14 @@ var _ = Describe("Basic Restore controller", func() {
 					ContainElement("res4"))
 				Expect(veleroRestores.Items[i].Spec.LabelSelector.MatchLabels["restorelabel"]).Should(
 					BeIdenticalTo("value"))
-				Expect(veleroRestores.Items[i].Spec.LabelSelector.MatchLabels["restorelabel1"]).Should(
-					BeIdenticalTo("value1"))
 				Expect(veleroRestores.Items[i].Spec.LabelSelector.MatchExpressions).Should(
 					ContainElement(req1))
 				Expect(veleroRestores.Items[i].Spec.LabelSelector.MatchExpressions).Should(
 					ContainElement(req2))
-
+				Expect(veleroRestores.Items[i].Spec.OrLabelSelectors[0].MatchLabels["restore-test-1"]).Should(
+					BeIdenticalTo("restore-test-1-value"))
+				Expect(veleroRestores.Items[i].Spec.OrLabelSelectors[1].MatchLabels["restore-test-2"]).Should(
+					BeIdenticalTo("restore-test-2-value"))
 				_, found := find(backupNames, veleroRestores.Items[i].Spec.BackupName)
 				Expect(found).Should(BeTrue())
 
