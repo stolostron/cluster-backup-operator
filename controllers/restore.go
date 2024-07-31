@@ -804,8 +804,6 @@ func setOptionalProperties(
 				veleroRestore.Spec.LabelSelector.MatchLabels = matchlabels
 			}
 
-			// append suer defined OrLabelSelector values to the restore OrLabelSelector
-			// to keep any predefined OrLabelSelector values
 			maps.Copy(veleroRestore.Spec.LabelSelector.MatchLabels, acmRestore.Spec.LabelSelector.MatchLabels)
 		}
 	}
@@ -818,6 +816,8 @@ func setOptionalProperties(
 			veleroRestore.Spec.OrLabelSelectors = labels
 		}
 
+		// append user defined OrLabelSelector values to the restore OrLabelSelector
+		// to keep any predefined OrLabelSelector values
 		veleroRestore.Spec.OrLabelSelectors = append(veleroRestore.Spec.OrLabelSelectors, acmRestore.Spec.OrLabelSelectors...)
 
 	}
