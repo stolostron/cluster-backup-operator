@@ -16,7 +16,7 @@
 # to restore only resources from the managed-cls-1 namespace
 #
 # We strongly recommend to review the cleanupBeforeRestore option and use cleanupBeforeRestore=None when restoring a subset of the data, as 
-#  cleanupBeforeRestore=CleanupRestored would clean up resources on the restore hub which are excluded by your restore filter criteria.
+#  cleanupBeforeRestore=CleanupRestored may clean up resources on the restore hub which are excluded by the restore filter criteria.
 # 
 
 apiVersion: cluster.open-cluster-management.io/v1beta1
