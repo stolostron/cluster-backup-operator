@@ -190,6 +190,22 @@ var _ = Describe("Basic Restore controller", func() {
 				object,
 		}
 
+		req1 := metav1.LabelSelectorRequirement{
+			Key:      "foo",
+			Operator: metav1.LabelSelectorOperator("In"),
+			Values:   []string{"bar"},
+		}
+		req2 := metav1.LabelSelectorRequirement{
+			Key:      "foo2",
+			Operator: metav1.LabelSelectorOperator("NotIn"),
+			Values:   []string{"bar2"},
+		}
+
+		matchExpressions := []metav1.LabelSelectorRequirement{
+			req1,
+			req2,
+		}
+
 		managedClusterNamespaces = []corev1.Namespace{}
 		rhacmRestore = *createACMRestore(restoreName, veleroNamespace.Name).
 			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).syncRestoreWithNewBackups(true).
@@ -205,7 +221,17 @@ var _ = Describe("Basic Restore controller", func() {
 				veleroapi.RestoreResourceHookSpec{Name: "hookName"},
 			}).
 			excludedResources([]string{"res1", "res2"}).
+			includedResources([]string{"res3", "res4"}).
 			excludedNamespaces([]string{"ns1", "ns2"}).
+			namespaceMapping(map[string]string{"ns3": "map-ns3"}).
+			includedNamespaces([]string{"ns3", "ns4"}).
+			restoreLabelSelector(&metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"restorelabel":  "value",
+					"restorelabel1": "value1",
+				},
+				MatchExpressions: matchExpressions,
+			}).
 			veleroResourcesBackupName(veleroResourcesBackupName).object
 	})
 
@@ -282,6 +308,17 @@ var _ = Describe("Basic Restore controller", func() {
 				return len(veleroRestores.Items)
 			}, timeout, interval).Should(Equal(len(backupNames)))
 
+			req1 := metav1.LabelSelectorRequirement{
+				Key:      "foo",
+				Operator: metav1.LabelSelectorOperator("In"),
+				Values:   []string{"bar"},
+			}
+			req2 := metav1.LabelSelectorRequirement{
+				Key:      "foo2",
+				Operator: metav1.LabelSelectorOperator("NotIn"),
+				Values:   []string{"bar2"},
+			}
+
 			restoreNames := []string{}
 			for i := range backupNames {
 				// look for velero optional properties
@@ -293,9 +330,29 @@ var _ = Describe("Basic Restore controller", func() {
 					BeIdenticalTo("hookName"))
 				Expect(veleroRestores.Items[i].Spec.ExcludedNamespaces).Should(
 					ContainElement("ns1"))
+				Expect(veleroRestores.Items[i].Spec.IncludedNamespaces).Should(
+					ContainElement("ns3"))
+				Expect(veleroRestores.Items[i].Spec.NamespaceMapping["ns3"]).Should(
+					BeIdenticalTo("map-ns3"))
+				Expect(veleroRestores.Items[i].Spec.IncludedNamespaces).Should(
+					ContainElement("ns4"))
+				Expect(veleroRestores.Items[i].Spec.IncludedNamespaces).Should(
+					ContainElement("ns4"))
 				Expect(veleroRestores.Items[i].Spec.ExcludedResources).Should(
 					ContainElement("res1"))
-				//
+				Expect(veleroRestores.Items[i].Spec.IncludedResources).Should(
+					ContainElement("res3"))
+				Expect(veleroRestores.Items[i].Spec.IncludedResources).Should(
+					ContainElement("res4"))
+				Expect(veleroRestores.Items[i].Spec.LabelSelector.MatchLabels["restorelabel"]).Should(
+					BeIdenticalTo("value"))
+				Expect(veleroRestores.Items[i].Spec.LabelSelector.MatchLabels["restorelabel1"]).Should(
+					BeIdenticalTo("value1"))
+				Expect(veleroRestores.Items[i].Spec.LabelSelector.MatchExpressions).Should(
+					ContainElement(req1))
+				Expect(veleroRestores.Items[i].Spec.LabelSelector.MatchExpressions).Should(
+					ContainElement(req2))
+
 				_, found := find(backupNames, veleroRestores.Items[i].Spec.BackupName)
 				Expect(found).Should(BeTrue())
 

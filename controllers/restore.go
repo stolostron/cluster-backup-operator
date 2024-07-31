@@ -19,12 +19,14 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -768,6 +770,45 @@ func setOptionalProperties(
 			acmRestore.Spec.Hooks.Resources...,
 		)
 	}
+
+	// add any label selector set using the acm restore resource spec
+	if acmRestore.Spec.LabelSelector != nil {
+
+		if veleroRestore.Spec.LabelSelector == nil {
+			labels := &v1.LabelSelector{}
+			veleroRestore.Spec.LabelSelector = labels
+		}
+
+		// set MatchExpressions
+		if acmRestore.Spec.LabelSelector.MatchExpressions != nil {
+			// create the MatchExpression for the velero resource, if not defined yet
+			if veleroRestore.Spec.LabelSelector.MatchExpressions == nil {
+				requirements := make([]v1.LabelSelectorRequirement, 0)
+				veleroRestore.Spec.LabelSelector.MatchExpressions = requirements
+			}
+
+			veleroRestore.Spec.LabelSelector.MatchExpressions = append(veleroRestore.Spec.LabelSelector.MatchExpressions,
+				acmRestore.Spec.LabelSelector.MatchExpressions...,
+			)
+		}
+
+		// set MatchLabels
+		if acmRestore.Spec.LabelSelector.MatchLabels != nil {
+			// create the MatchLabels for the velero resource, if not defined yet
+			if veleroRestore.Spec.LabelSelector.MatchLabels == nil {
+				matchlabels := make(map[string]string, 0)
+				veleroRestore.Spec.LabelSelector.MatchLabels = matchlabels
+			}
+
+			maps.Copy(veleroRestore.Spec.LabelSelector.MatchLabels, acmRestore.Spec.LabelSelector.MatchLabels)
+		}
+	}
+
+	// add any or label selector set using the acm restore resource spec
+	if acmRestore.Spec.OrLabelSelectors != nil {
+		veleroRestore.Spec.OrLabelSelectors = acmRestore.Spec.OrLabelSelectors
+	}
+
 	// allow excluding namespaces
 	if acmRestore.Spec.ExcludedNamespaces != nil {
 
@@ -777,6 +818,17 @@ func setOptionalProperties(
 		}
 
 	}
+
+	// allow including namespaces
+	if acmRestore.Spec.IncludedNamespaces != nil {
+
+		for i := range acmRestore.Spec.IncludedNamespaces {
+			veleroRestore.Spec.IncludedNamespaces = appendUnique(veleroRestore.Spec.IncludedNamespaces,
+				acmRestore.Spec.IncludedNamespaces[i])
+		}
+
+	}
+
 	// allow excluding resources
 	if acmRestore.Spec.ExcludedResources != nil {
 
@@ -785,5 +837,20 @@ func setOptionalProperties(
 				acmRestore.Spec.ExcludedResources[i])
 		}
 
+	}
+
+	// allow including resources
+	if acmRestore.Spec.IncludedResources != nil {
+
+		for i := range acmRestore.Spec.IncludedResources {
+			veleroRestore.Spec.IncludedResources = appendUnique(veleroRestore.Spec.IncludedResources,
+				acmRestore.Spec.IncludedResources[i])
+		}
+
+	}
+
+	// allow namespace mapping
+	if acmRestore.Spec.NamespaceMapping != nil {
+		veleroRestore.Spec.NamespaceMapping = acmRestore.Spec.NamespaceMapping
 	}
 }

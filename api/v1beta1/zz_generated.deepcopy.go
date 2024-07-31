@@ -23,6 +23,7 @@ package v1beta1
 
 import (
 	"github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -231,8 +232,18 @@ func (in *RestoreSpec) DeepCopyInto(out *RestoreSpec) {
 		**out = **in
 	}
 	in.Hooks.DeepCopyInto(&out.Hooks)
+	if in.IncludedNamespaces != nil {
+		in, out := &in.IncludedNamespaces, &out.IncludedNamespaces
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.ExcludedNamespaces != nil {
 		in, out := &in.ExcludedNamespaces, &out.ExcludedNamespaces
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.IncludedResources != nil {
+		in, out := &in.IncludedResources, &out.IncludedResources
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
@@ -240,6 +251,29 @@ func (in *RestoreSpec) DeepCopyInto(out *RestoreSpec) {
 		in, out := &in.ExcludedResources, &out.ExcludedResources
 		*out = make([]string, len(*in))
 		copy(*out, *in)
+	}
+	if in.LabelSelector != nil {
+		in, out := &in.LabelSelector, &out.LabelSelector
+		*out = new(metav1.LabelSelector)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.OrLabelSelectors != nil {
+		in, out := &in.OrLabelSelectors, &out.OrLabelSelectors
+		*out = make([]*metav1.LabelSelector, len(*in))
+		for i := range *in {
+			if (*in)[i] != nil {
+				in, out := &(*in)[i], &(*out)[i]
+				*out = new(metav1.LabelSelector)
+				(*in).DeepCopyInto(*out)
+			}
+		}
+	}
+	if in.NamespaceMapping != nil {
+		in, out := &in.NamespaceMapping, &out.NamespaceMapping
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
 	}
 }
 
