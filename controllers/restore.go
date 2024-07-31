@@ -796,7 +796,8 @@ func setUserRestoreFilters(
 		}
 
 		// append LabelSelector resources since the acm restore uses the veleroRestore.Spec.LabelSelector
-		// to filter out activation resources when restoring the data - as it does for credentials-active restore, using the cluster.open-cluster-management.io/backup=cluster-activation label
+		// to filter out activation resources when restoring the data - as it does for credentials-active restore,
+		// using the cluster.open-cluster-management.io/backup=cluster-activation label
 		// we want to keep any acm predefined veleroRestore.Spec.LabelSelector and add to those the user defined ones
 
 		// set MatchExpressions
