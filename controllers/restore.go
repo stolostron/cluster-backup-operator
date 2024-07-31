@@ -743,6 +743,7 @@ func setOptionalProperties(
 	acmRestore *v1beta1.Restore,
 	veleroRestore *veleroapi.Restore,
 ) {
+
 	// set includeClusterResources for all restores except credentials
 	if key == Resources || key == ManagedClusters || key == ResourcesGeneric {
 		var clusterResource bool = true
@@ -770,6 +771,21 @@ func setOptionalProperties(
 			acmRestore.Spec.Hooks.Resources...,
 		)
 	}
+
+	// set user options for resource filtering
+	setUserRestoreFilters(acmRestore, veleroRestore)
+
+	// allow namespace mapping
+	if acmRestore.Spec.NamespaceMapping != nil {
+		veleroRestore.Spec.NamespaceMapping = acmRestore.Spec.NamespaceMapping
+	}
+}
+
+// set user options for resource filtering
+func setUserRestoreFilters(
+	acmRestore *v1beta1.Restore,
+	veleroRestore *veleroapi.Restore,
+) {
 
 	// add any label selector set using the acm restore resource spec
 	if acmRestore.Spec.LabelSelector != nil {
@@ -860,10 +876,5 @@ func setOptionalProperties(
 				acmRestore.Spec.IncludedResources[i])
 		}
 
-	}
-
-	// allow namespace mapping
-	if acmRestore.Spec.NamespaceMapping != nil {
-		veleroRestore.Spec.NamespaceMapping = acmRestore.Spec.NamespaceMapping
 	}
 }
