@@ -371,6 +371,16 @@ func (b *ACMRestoreHelper) preserveNodePorts(preserve bool) *ACMRestoreHelper {
 	return b
 }
 
+func (b *ACMRestoreHelper) restoreLabelSelector(selector *metav1.LabelSelector) *ACMRestoreHelper {
+	b.object.Spec.LabelSelector = selector
+	return b
+}
+
+func (b *ACMRestoreHelper) restoreORLabelSelector(selectors []*metav1.LabelSelector) *ACMRestoreHelper {
+	b.object.Spec.OrLabelSelectors = selectors
+	return b
+}
+
 func (b *ACMRestoreHelper) restorePVs(restorePV bool) *ACMRestoreHelper {
 	b.object.Spec.RestorePVs = &restorePV
 	return b
@@ -397,8 +407,23 @@ func (b *ACMRestoreHelper) excludedResources(resources []string) *ACMRestoreHelp
 	return b
 }
 
+func (b *ACMRestoreHelper) includedResources(resources []string) *ACMRestoreHelper {
+	b.object.Spec.IncludedResources = resources
+	return b
+}
+
 func (b *ACMRestoreHelper) excludedNamespaces(nspaces []string) *ACMRestoreHelper {
 	b.object.Spec.ExcludedNamespaces = nspaces
+	return b
+}
+
+func (b *ACMRestoreHelper) includedNamespaces(nspaces []string) *ACMRestoreHelper {
+	b.object.Spec.IncludedNamespaces = nspaces
+	return b
+}
+
+func (b *ACMRestoreHelper) namespaceMapping(nspaces map[string]string) *ACMRestoreHelper {
+	b.object.Spec.NamespaceMapping = nspaces
 	return b
 }
 
