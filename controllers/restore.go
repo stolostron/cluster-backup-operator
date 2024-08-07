@@ -773,7 +773,7 @@ func setOptionalProperties(
 	}
 
 	// set user options for resource filtering
-	setUserRestoreFilters(acmRestore, veleroRestore, key)
+	setUserRestoreFilters(acmRestore, veleroRestore)
 
 	// allow namespace mapping
 	if acmRestore.Spec.NamespaceMapping != nil {
@@ -785,7 +785,6 @@ func setOptionalProperties(
 func setUserRestoreFilters(
 	acmRestore *v1beta1.Restore,
 	veleroRestore *veleroapi.Restore,
-	key ResourceType,
 ) {
 
 	// add any label selector set using the acm restore resource spec
@@ -827,20 +826,14 @@ func setUserRestoreFilters(
 	}
 
 	// add any or label selector set using the acm restore resource spec
-	// skip resources generic and credentials since they already define a LabelSelector for cluster activation
-	// LabelSelector and OrLabelSelectors are mutually exclusive
-	if (key != ResourcesGeneric && key != Credentials) && acmRestore.Spec.OrLabelSelectors != nil {
-
-		if veleroRestore.Spec.OrLabelSelectors == nil {
-			labels := []*v1.LabelSelector{}
-			veleroRestore.Spec.OrLabelSelectors = labels
-		}
-
-		// append user defined OrLabelSelector values to the restore OrLabelSelector
-		// to keep any predefined OrLabelSelector values
-		veleroRestore.Spec.OrLabelSelectors = append(veleroRestore.Spec.OrLabelSelectors, acmRestore.Spec.OrLabelSelectors...)
-
+	if veleroRestore.Spec.OrLabelSelectors == nil {
+		labels := []*v1.LabelSelector{}
+		veleroRestore.Spec.OrLabelSelectors = labels
 	}
+
+	// append user defined OrLabelSelector values to the restore OrLabelSelector
+	// to keep any predefined OrLabelSelector values
+	veleroRestore.Spec.OrLabelSelectors = append(veleroRestore.Spec.OrLabelSelectors, acmRestore.Spec.OrLabelSelectors...)
 
 	// allow excluding namespaces
 	if acmRestore.Spec.ExcludedNamespaces != nil {

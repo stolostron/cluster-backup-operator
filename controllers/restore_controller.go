@@ -434,21 +434,12 @@ func (r *RestoreReconciler) initVeleroRestores(
 			veleroRestoresToCreate[ManagedClusters] == nil {
 			// if restoring the resources but not the managed clusters,
 			// do not restore generic resources in the activation stage
-			if restoreObj.Spec.LabelSelector == nil {
-				labels := &metav1.LabelSelector{}
-				restoreObj.Spec.LabelSelector = labels
-
-				requirements := make([]metav1.LabelSelectorRequirement, 0)
-				restoreObj.Spec.LabelSelector.MatchExpressions = requirements
-			}
 			req := &metav1.LabelSelectorRequirement{}
 			req.Key = backupCredsClusterLabel
 			req.Operator = "NotIn"
 			req.Values = []string{ClusterActivationLabel}
-			restoreObj.Spec.LabelSelector.MatchExpressions = append(
-				restoreObj.Spec.LabelSelector.MatchExpressions,
-				*req,
-			)
+
+			addRestoreLabelSelector(restoreObj, *req)
 		}
 
 		isCredsClsOnActiveStep := updateLabelsForActiveResources(restore, key, veleroRestoresToCreate)
@@ -528,21 +519,14 @@ func updateLabelsForActiveResources(
 
 		// if restoring the ManagedClusters need to restore the credentials resources for the activation phase
 		// if managed clusters are restored, then need to restore the credentials to get active resources
-		if restoreObj.Spec.LabelSelector == nil {
-			labels := &metav1.LabelSelector{}
-			restoreObj.Spec.LabelSelector = labels
 
-			requirements := make([]metav1.LabelSelectorRequirement, 0)
-			restoreObj.Spec.LabelSelector.MatchExpressions = requirements
-		}
 		req := &metav1.LabelSelectorRequirement{}
 		req.Key = backupCredsClusterLabel
 		req.Operator = "In"
 		req.Values = []string{ClusterActivationLabel}
-		restoreObj.Spec.LabelSelector.MatchExpressions = append(
-			restoreObj.Spec.LabelSelector.MatchExpressions,
-			*req,
-		)
+
+		addRestoreLabelSelector(restoreObj, *req)
+
 		// use a different name for this activation restore; if this Restore was run using the sync operation,
 		// the generic and credentials restore for this backup name already exist
 		if (key == ResourcesGeneric && *restore.Spec.VeleroResourcesBackupName != skipRestoreStr) ||
