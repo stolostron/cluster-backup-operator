@@ -714,11 +714,20 @@ func labelSelectorEqual(a *v1.LabelSelector, b *v1.LabelSelector) bool {
 	ma := a.MatchExpressions
 	mb := b.MatchExpressions
 
+	return requirementsEqual(ma, mb)
+}
+
+func requirementsEqual(ma []metav1.LabelSelectorRequirement, mb []metav1.LabelSelectorRequirement) bool {
+
 	if ma == nil && mb == nil {
 		return true
 	}
 
 	if (ma == nil && mb != nil) || (mb == nil && ma != nil) {
+		return false
+	}
+
+	if len(ma) != len(mb) {
 		return false
 	}
 
@@ -970,6 +979,66 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 
 			if !labelSelectorEqual(tt.args.veleroRestore.Spec.LabelSelector, &tt.wantLabelSelector) {
 				t.Errorf("LabelSelector not as expected  = %v, want %v got=%v", tt.name, tt.wantLabelSelector, tt.args.veleroRestore.Spec.LabelSelector)
+			}
+
+		})
+	}
+}
+
+func Test_appendUniqueReq(t *testing.T) {
+	type args struct {
+		requirements  []metav1.LabelSelectorRequirement
+		labelSelector metav1.LabelSelectorRequirement
+	}
+
+	req1 := metav1.LabelSelectorRequirement{
+		Key:      "foo",
+		Operator: metav1.LabelSelectorOperator("In"),
+		Values:   []string{"bar"},
+	}
+	req2 := metav1.LabelSelectorRequirement{
+		Key:      "foo2",
+		Operator: metav1.LabelSelectorOperator("NotIn"),
+		Values:   []string{"bar2"},
+	}
+
+	tests := []struct {
+		name             string
+		args             args
+		wantRequirements []metav1.LabelSelectorRequirement
+	}{
+		{
+			name: "return the same selector",
+			args: args{
+				requirements:  []metav1.LabelSelectorRequirement{req1, req2},
+				labelSelector: metav1.LabelSelectorRequirement{},
+			},
+			wantRequirements: []metav1.LabelSelectorRequirement{req1, req2},
+		},
+		{
+			name: "return the same selector req1 no duplication",
+			args: args{
+				requirements:  []metav1.LabelSelectorRequirement{req1, req2},
+				labelSelector: req1,
+			},
+			wantRequirements: []metav1.LabelSelectorRequirement{req1, req2},
+		},
+		{
+			name: "return the same selector req2 no duplication",
+			args: args{
+				requirements:  []metav1.LabelSelectorRequirement{req1, req2},
+				labelSelector: req2,
+			},
+			wantRequirements: []metav1.LabelSelectorRequirement{req1, req2},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			appendUniqueReq(tt.args.requirements, tt.args.labelSelector)
+
+			if !requirementsEqual(tt.args.requirements, tt.wantRequirements) {
+				t.Errorf("reqs not as expected  = %v, want %v got=%v", tt.name, tt.wantRequirements, tt.args.requirements)
 			}
 
 		})
