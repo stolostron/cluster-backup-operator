@@ -412,7 +412,7 @@ func isCRDNotPresentError(err error) bool {
 	return false
 }
 
-// add any restore label selector requirement (like cluster activation label requirement, for credentials and generis resources restore files)
+// add any restore label selector requirement (like cluster activation label requirement, for credentials and generic resources restore files)
 // This will be appended to any user defined restore filters with the following rule:
 // 1. if the user defines a set of OrLabelSelectors rules, the req LabelSelectorRequirement will be injected
 // to each OrLabelSelectors MatchExpression (will run as an AND rule on each MatchExpression).
