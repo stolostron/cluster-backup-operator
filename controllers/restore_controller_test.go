@@ -365,7 +365,7 @@ var _ = Describe("Basic Restore controller", func() {
 				Expect(veleroRestores.Items[i].Spec.LabelSelector.MatchExpressions).Should(
 					ContainElement(req2))
 
-				// anything but credentials and resources-generic restore files should use the OrLabelSelectors
+				// should use the OrLabelSelectors
 				Expect(veleroRestores.Items[i].Spec.OrLabelSelectors[0].MatchLabels["restore-test-1"]).Should(
 					BeIdenticalTo("restore-test-1-value"))
 				Expect(veleroRestores.Items[i].Spec.OrLabelSelectors[1].MatchLabels["restore-test-2"]).Should(

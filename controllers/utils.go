@@ -412,11 +412,11 @@ func isCRDNotPresentError(err error) bool {
 	return false
 }
 
-// add restore label selector requirement - like cluster activation label requirement, for credentials and generis resources restore files
-// This will be added to the user defined restore filters with the following rule:
-// 1. if the user defines a set of OrLabelSelectors, the req LabelSelectorRequirement will be injected
-// to each OrLabelSelectors MatchExpression ( will run as an AND rule on each MatchExpression).
-// 2. if the user defines a LabelSelector, the req LabelSelectorRequirement will be appeded to each of the OR MatchExpressions ( ANDed)
+// add any restore label selector requirement (like cluster activation label requirement, for credentials and generis resources restore files)
+// This will be appended to any user defined restore filters with the following rule:
+// 1. if the user defines a set of OrLabelSelectors rules, the req LabelSelectorRequirement will be injected
+// to each OrLabelSelectors MatchExpression (will run as an AND rule on each MatchExpression).
+// 2. if the user defines a LabelSelector, the req LabelSelectorRequirement will be appeded to each of the OR MatchExpressions (ANDed)
 // 3. If the user doesn't define a LabelSelector or a OrLabelSelectors, the req Requirement will be created as a LabelSelector option
 func addRestoreLabelSelector(
 	restoreObj *veleroapi.Restore,
