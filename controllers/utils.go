@@ -413,7 +413,9 @@ func isCRDNotPresentError(err error) bool {
 }
 
 // append requirement if it doesn't exist
-func appendUniqueReq(requirements []metav1.LabelSelectorRequirement, req metav1.LabelSelectorRequirement) []metav1.LabelSelectorRequirement {
+func appendUniqueReq(requirements []metav1.LabelSelectorRequirement,
+	req metav1.LabelSelectorRequirement,
+) []metav1.LabelSelectorRequirement {
 
 	exists := false
 	for idx := range requirements {
