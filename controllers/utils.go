@@ -29,6 +29,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -409,4 +410,63 @@ func isCRDNotPresentError(err error) bool {
 		return true
 	}
 	return false
+}
+
+// append requirement if it doesn't exist
+func appendUniqueReq(requirements []metav1.LabelSelectorRequirement,
+	req metav1.LabelSelectorRequirement,
+) []metav1.LabelSelectorRequirement {
+
+	exists := false
+	for idx := range requirements {
+
+		if requirements[idx].Key == req.Key {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		requirements = append(requirements, req)
+	}
+
+	return requirements
+}
+
+// add any restore label selector requirement (like cluster activation label requirement,
+// for credentials and generic resources restore files)
+// This will be appended to any user defined restore filters with the following rule:
+// 1. if the user defines a set of OrLabelSelectors rules, the req LabelSelectorRequirement will be injected
+// to each OrLabelSelectors MatchExpression (will run as an AND rule on each MatchExpression).
+// 2. if the user defines a LabelSelector, the req LabelSelectorRequirement
+// will be appeded to each of the OR MatchExpressions (ANDed)
+// 3. If the user doesn't define a LabelSelector or a OrLabelSelectors, the req Requirement
+// will be created as a LabelSelector option
+func addRestoreLabelSelector(
+	restoreObj *veleroapi.Restore,
+	req metav1.LabelSelectorRequirement,
+) {
+
+	if restoreObj.Spec.OrLabelSelectors != nil && len(restoreObj.Spec.OrLabelSelectors) > 0 {
+		// LabelSelector and OrLabelSelectors are mutually exclusive
+		// if restoreObj.Spec.OrLabelSelectors is not null,
+		// add LabelSelectors match expressions ( which are ANDed ) to each of the
+		// OrLabelSelectors expressions ( which are also ANDed )
+		for i := range restoreObj.Spec.OrLabelSelectors {
+			restoreObj.Spec.OrLabelSelectors[i].MatchExpressions =
+				appendUniqueReq(restoreObj.Spec.OrLabelSelectors[i].MatchExpressions, req)
+		}
+	} else {
+		// if no OrLabelSelector, add the MatchExpression to the LabelSelector
+		if restoreObj.Spec.LabelSelector == nil {
+			labels := &metav1.LabelSelector{}
+			restoreObj.Spec.LabelSelector = labels
+
+			requirements := make([]metav1.LabelSelectorRequirement, 0)
+			restoreObj.Spec.LabelSelector.MatchExpressions = requirements
+		}
+		restoreObj.Spec.LabelSelector.MatchExpressions = appendUniqueReq(
+			restoreObj.Spec.LabelSelector.MatchExpressions,
+			req,
+		)
+	}
 }

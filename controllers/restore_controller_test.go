@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -366,20 +365,11 @@ var _ = Describe("Basic Restore controller", func() {
 				Expect(veleroRestores.Items[i].Spec.LabelSelector.MatchExpressions).Should(
 					ContainElement(req2))
 
-				if !strings.Contains(veleroRestores.Items[i].Name, veleroScheduleNames[Credentials]) &&
-					!strings.Contains(veleroRestores.Items[i].Name, veleroScheduleNames[ResourcesGeneric]) {
-					// anything but credentials and resources-generic restore files should use the OrLabelSelectors
-					Expect(veleroRestores.Items[i].Spec.OrLabelSelectors[0].MatchLabels["restore-test-1"]).Should(
-						BeIdenticalTo("restore-test-1-value"))
-					Expect(veleroRestores.Items[i].Spec.OrLabelSelectors[1].MatchLabels["restore-test-2"]).Should(
-						BeIdenticalTo("restore-test-2-value"))
-				} else {
-					// credentials and resources-generic restore files should ignore OrLabelSelectors
-					// because they are already using the LabelSelectors to filter activation-resources
-					// LabelSelector and OrLabelSelectors are mutually exclusive
-					Expect(veleroRestores.Items[i].Spec.OrLabelSelectors).Should(BeEmpty())
-					Expect(veleroRestores.Items[i].Spec.OrLabelSelectors).Should(BeEmpty())
-				}
+				// should use the OrLabelSelectors
+				Expect(veleroRestores.Items[i].Spec.OrLabelSelectors[0].MatchLabels["restore-test-1"]).Should(
+					BeIdenticalTo("restore-test-1-value"))
+				Expect(veleroRestores.Items[i].Spec.OrLabelSelectors[1].MatchLabels["restore-test-2"]).Should(
+					BeIdenticalTo("restore-test-2-value"))
 
 				_, found := find(backupNames, veleroRestores.Items[i].Spec.BackupName)
 				Expect(found).Should(BeTrue())

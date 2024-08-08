@@ -19,14 +19,12 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"maps"
 	"sort"
 	"strings"
 
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -773,7 +771,7 @@ func setOptionalProperties(
 	}
 
 	// set user options for resource filtering
-	setUserRestoreFilters(acmRestore, veleroRestore, key)
+	setUserRestoreFilters(acmRestore, veleroRestore)
 
 	// allow namespace mapping
 	if acmRestore.Spec.NamespaceMapping != nil {
@@ -785,62 +783,11 @@ func setOptionalProperties(
 func setUserRestoreFilters(
 	acmRestore *v1beta1.Restore,
 	veleroRestore *veleroapi.Restore,
-	key ResourceType,
 ) {
 
 	// add any label selector set using the acm restore resource spec
-	if acmRestore.Spec.LabelSelector != nil {
-
-		if veleroRestore.Spec.LabelSelector == nil {
-			labels := &v1.LabelSelector{}
-			veleroRestore.Spec.LabelSelector = labels
-		}
-
-		// append LabelSelector resources since the acm restore uses the veleroRestore.Spec.LabelSelector
-		// to filter out activation resources when restoring the data - as it does for credentials-active restore,
-		// using the cluster.open-cluster-management.io/backup=cluster-activation label
-		// we want to keep any acm predefined veleroRestore.Spec.LabelSelector and add to those the user defined ones
-
-		// set MatchExpressions
-		if acmRestore.Spec.LabelSelector.MatchExpressions != nil {
-			// create the MatchExpression for the velero resource, if not defined yet
-			if veleroRestore.Spec.LabelSelector.MatchExpressions == nil {
-				requirements := make([]v1.LabelSelectorRequirement, 0)
-				veleroRestore.Spec.LabelSelector.MatchExpressions = requirements
-			}
-
-			veleroRestore.Spec.LabelSelector.MatchExpressions = append(veleroRestore.Spec.LabelSelector.MatchExpressions,
-				acmRestore.Spec.LabelSelector.MatchExpressions...,
-			)
-		}
-
-		// set MatchLabels
-		if acmRestore.Spec.LabelSelector.MatchLabels != nil {
-			// create the MatchLabels for the velero resource, if not defined yet
-			if veleroRestore.Spec.LabelSelector.MatchLabels == nil {
-				matchlabels := make(map[string]string, 0)
-				veleroRestore.Spec.LabelSelector.MatchLabels = matchlabels
-			}
-
-			maps.Copy(veleroRestore.Spec.LabelSelector.MatchLabels, acmRestore.Spec.LabelSelector.MatchLabels)
-		}
-	}
-
-	// add any or label selector set using the acm restore resource spec
-	// skip resources generic and credentials since they already define a LabelSelector for cluster activation
-	// LabelSelector and OrLabelSelectors are mutually exclusive
-	if (key != ResourcesGeneric && key != Credentials) && acmRestore.Spec.OrLabelSelectors != nil {
-
-		if veleroRestore.Spec.OrLabelSelectors == nil {
-			labels := []*v1.LabelSelector{}
-			veleroRestore.Spec.OrLabelSelectors = labels
-		}
-
-		// append user defined OrLabelSelector values to the restore OrLabelSelector
-		// to keep any predefined OrLabelSelector values
-		veleroRestore.Spec.OrLabelSelectors = append(veleroRestore.Spec.OrLabelSelectors, acmRestore.Spec.OrLabelSelectors...)
-
-	}
+	veleroRestore.Spec.LabelSelector = acmRestore.Spec.LabelSelector
+	veleroRestore.Spec.OrLabelSelectors = acmRestore.Spec.OrLabelSelectors
 
 	// allow excluding namespaces
 	if acmRestore.Spec.ExcludedNamespaces != nil {

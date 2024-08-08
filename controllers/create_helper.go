@@ -291,6 +291,16 @@ func createRestore(name string, ns string) *RestoreHelper {
 	}
 }
 
+func (b *RestoreHelper) labelSelector(selector *metav1.LabelSelector) *RestoreHelper {
+	b.object.Spec.LabelSelector = selector
+	return b
+}
+
+func (b *RestoreHelper) orLabelSelector(selectors []*metav1.LabelSelector) *RestoreHelper {
+	b.object.Spec.OrLabelSelectors = selectors
+	return b
+}
+
 func (b *RestoreHelper) backupName(name string) *RestoreHelper {
 	b.object.Spec.BackupName = name
 	return b

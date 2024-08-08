@@ -673,3 +673,374 @@ func Test_VeleroCRDsPresent(t *testing.T) {
 		}
 	})
 }
+
+func labelSelectorArrayEqual(a []*v1.LabelSelector, b []v1.LabelSelector) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, v := range a {
+		if !labelSelectorEqual(v, &b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func labelSelectorEqual(a *v1.LabelSelector, b *v1.LabelSelector) bool {
+
+	if a == nil && b == nil {
+		return true
+	}
+
+	if (a == nil && b != nil) || (a != nil && b == nil) {
+		return true
+	}
+
+	al := a.MatchLabels
+	bl := b.MatchLabels
+
+	if al == nil || bl == nil {
+		return true
+	}
+
+	for key, value := range al {
+		if value != bl[key] {
+			// match labels should be equal
+			return false
+		}
+	}
+
+	// validate MatchExpressions
+	ma := a.MatchExpressions
+	mb := b.MatchExpressions
+
+	return requirementsEqual(ma, mb)
+}
+
+func requirementsEqual(ma []metav1.LabelSelectorRequirement, mb []metav1.LabelSelectorRequirement) bool {
+
+	if ma == nil && mb == nil {
+		return true
+	}
+
+	if (ma == nil && mb != nil) || (mb == nil && ma != nil) {
+		return false
+	}
+
+	if len(ma) != len(mb) {
+		return false
+	}
+
+	for i, v := range ma {
+		if v.Key != mb[i].Key || v.Operator != mb[i].Operator || !sortCompare(v.Values, mb[i].Values) {
+			return false
+		}
+	}
+	return true
+}
+
+func Test_addRestoreLabelSelector(t *testing.T) {
+	type args struct {
+		veleroRestore *veleroapi.Restore
+		labelSelector metav1.LabelSelectorRequirement
+	}
+
+	emptyLabelSelector := make([]v1.LabelSelector, 0)
+
+	clusterActivationReq := metav1.LabelSelectorRequirement{}
+	clusterActivationReq.Key = backupCredsClusterLabel
+	clusterActivationReq.Operator = "NotIn"
+	clusterActivationReq.Values = []string{ClusterActivationLabel}
+
+	req1 := metav1.LabelSelectorRequirement{
+		Key:      "foo",
+		Operator: metav1.LabelSelectorOperator("In"),
+		Values:   []string{"bar"},
+	}
+	req2 := metav1.LabelSelectorRequirement{
+		Key:      "foo2",
+		Operator: metav1.LabelSelectorOperator("NotIn"),
+		Values:   []string{"bar2"},
+	}
+	req3 := metav1.LabelSelectorRequirement{
+		Key:      "foo3",
+		Operator: metav1.LabelSelectorOperator("NotIn"),
+		Values:   []string{"bar3"},
+	}
+
+	tests := []struct {
+		name                string
+		args                args
+		wantOrLabelSelector []v1.LabelSelector
+		wantLabelSelector   v1.LabelSelector
+	}{
+		{
+			name: "no user defined orLabelSelector or LabelSelector, get empty match expressions",
+			args: args{
+				veleroRestore: createRestore("restore", "restore-ns").
+					object,
+				labelSelector: metav1.LabelSelectorRequirement{},
+			},
+			wantOrLabelSelector: emptyLabelSelector,
+			wantLabelSelector:   v1.LabelSelector{},
+		},
+		{
+			name: "no user defined orLabelSelector or LabelSelector, just create cluster activation LabelSelector",
+			args: args{
+				veleroRestore: createRestore("restore", "restore-ns").
+					object,
+				labelSelector: clusterActivationReq,
+			},
+			wantOrLabelSelector: emptyLabelSelector,
+			wantLabelSelector: metav1.LabelSelector{
+				MatchExpressions: []metav1.LabelSelectorRequirement{
+					clusterActivationReq,
+				},
+			},
+		},
+		{
+			name: "using user defined orLabelSelector, so add cluster activation LabelSelector to it",
+			args: args{
+				veleroRestore: createRestore("restore", "restore-ns").
+					orLabelSelector([]*metav1.LabelSelector{
+						&metav1.LabelSelector{
+							MatchExpressions: []metav1.LabelSelectorRequirement{
+								req1,
+								req2,
+							},
+						},
+						&metav1.LabelSelector{
+							MatchExpressions: []metav1.LabelSelectorRequirement{
+								req3,
+							},
+						},
+					}).
+					object,
+				labelSelector: clusterActivationReq,
+			},
+			wantOrLabelSelector: []metav1.LabelSelector{
+				metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						req1,
+						req2,
+						clusterActivationReq,
+					},
+				},
+				metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						req3,
+						clusterActivationReq,
+					},
+				},
+			},
+			wantLabelSelector: v1.LabelSelector{},
+		},
+		{
+			name: "using user defined orLabelSelector, no cluster activation LabelSelector",
+			args: args{
+				veleroRestore: createRestore("restore", "restore-ns").
+					orLabelSelector([]*metav1.LabelSelector{
+						&metav1.LabelSelector{
+							MatchExpressions: []metav1.LabelSelectorRequirement{
+								req1,
+								req2,
+							},
+						},
+						&metav1.LabelSelector{
+							MatchExpressions: []metav1.LabelSelectorRequirement{
+								req3,
+							},
+						},
+					}).
+					object,
+				labelSelector: metav1.LabelSelectorRequirement{},
+			},
+			wantOrLabelSelector: []metav1.LabelSelector{
+				metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						req1,
+						req2,
+					},
+				},
+				metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						req3,
+					},
+				},
+			},
+			wantLabelSelector: v1.LabelSelector{},
+		},
+		{
+			name: "using user defined LabelSelector, set cluster activation LabelSelectors as usual",
+			args: args{
+				veleroRestore: createRestore("restore", "restore-ns").
+					labelSelector(
+						&metav1.LabelSelector{
+							MatchExpressions: []metav1.LabelSelectorRequirement{
+								req1,
+								req2,
+							},
+						},
+					).
+					object,
+				labelSelector: clusterActivationReq,
+			},
+			wantOrLabelSelector: emptyLabelSelector,
+			wantLabelSelector: metav1.LabelSelector{
+				MatchExpressions: []metav1.LabelSelectorRequirement{
+					req1,
+					req2,
+					clusterActivationReq,
+				},
+			},
+		},
+		{
+			name: "using user defined LabelSelector, no activation LabelSelectors",
+			args: args{
+				veleroRestore: createRestore("restore", "restore-ns").
+					labelSelector(
+						&metav1.LabelSelector{
+							MatchExpressions: []metav1.LabelSelectorRequirement{
+								req1,
+								req2,
+							},
+						},
+					).
+					object,
+				labelSelector: metav1.LabelSelectorRequirement{},
+			},
+			wantOrLabelSelector: emptyLabelSelector,
+			wantLabelSelector: metav1.LabelSelector{
+				MatchExpressions: []metav1.LabelSelectorRequirement{
+					req1,
+					req2,
+				},
+			},
+		},
+		{
+			// this is is going to be flagged as a validation error by velero so this is not really a valid usecase
+			// the user can set both, still, so verifing that the cluster activation LabelSelector goes to the orLabelSelector in this case
+			name: "using both user defined orLabelSelector and LabelSelector, add cluster activation LabelSelector to orLabelSelector",
+			args: args{
+				veleroRestore: createRestore("restore", "restore-ns").
+					orLabelSelector([]*metav1.LabelSelector{
+						&metav1.LabelSelector{
+							MatchExpressions: []metav1.LabelSelectorRequirement{
+								req1,
+								req2,
+							},
+						},
+						&metav1.LabelSelector{
+							MatchExpressions: []metav1.LabelSelectorRequirement{
+								req3,
+							},
+						},
+					}).
+					labelSelector(
+						&metav1.LabelSelector{
+							MatchExpressions: []metav1.LabelSelectorRequirement{
+								req3,
+							},
+						},
+					).
+					object,
+				labelSelector: clusterActivationReq,
+			},
+			wantOrLabelSelector: []metav1.LabelSelector{
+				metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						req1,
+						req2,
+						clusterActivationReq,
+					},
+				},
+				metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						req3,
+						clusterActivationReq,
+					},
+				},
+			},
+			wantLabelSelector: metav1.LabelSelector{
+				MatchExpressions: []metav1.LabelSelectorRequirement{
+					req3,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			addRestoreLabelSelector(tt.args.veleroRestore, tt.args.labelSelector)
+
+			if !labelSelectorArrayEqual(tt.args.veleroRestore.Spec.OrLabelSelectors, tt.wantOrLabelSelector) {
+				t.Errorf("OrLabelSelectors not as expected  = %v, want %v got=%v", tt.name, tt.wantOrLabelSelector, tt.args.veleroRestore.Spec.OrLabelSelectors)
+			}
+
+			if !labelSelectorEqual(tt.args.veleroRestore.Spec.LabelSelector, &tt.wantLabelSelector) {
+				t.Errorf("LabelSelector not as expected  = %v, want %v got=%v", tt.name, tt.wantLabelSelector, tt.args.veleroRestore.Spec.LabelSelector)
+			}
+
+		})
+	}
+}
+
+func Test_appendUniqueReq(t *testing.T) {
+	type args struct {
+		requirements  []metav1.LabelSelectorRequirement
+		labelSelector metav1.LabelSelectorRequirement
+	}
+
+	req1 := metav1.LabelSelectorRequirement{
+		Key:      "foo",
+		Operator: metav1.LabelSelectorOperator("In"),
+		Values:   []string{"bar"},
+	}
+	req2 := metav1.LabelSelectorRequirement{
+		Key:      "foo2",
+		Operator: metav1.LabelSelectorOperator("NotIn"),
+		Values:   []string{"bar2"},
+	}
+
+	tests := []struct {
+		name             string
+		args             args
+		wantRequirements []metav1.LabelSelectorRequirement
+	}{
+		{
+			name: "return the same selector",
+			args: args{
+				requirements:  []metav1.LabelSelectorRequirement{req1, req2},
+				labelSelector: metav1.LabelSelectorRequirement{},
+			},
+			wantRequirements: []metav1.LabelSelectorRequirement{req1, req2},
+		},
+		{
+			name: "return the same selector req1 no duplication",
+			args: args{
+				requirements:  []metav1.LabelSelectorRequirement{req1, req2},
+				labelSelector: req1,
+			},
+			wantRequirements: []metav1.LabelSelectorRequirement{req1, req2},
+		},
+		{
+			name: "return the same selector req2 no duplication",
+			args: args{
+				requirements:  []metav1.LabelSelectorRequirement{req1, req2},
+				labelSelector: req2,
+			},
+			wantRequirements: []metav1.LabelSelectorRequirement{req1, req2},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			appendUniqueReq(tt.args.requirements, tt.args.labelSelector)
+
+			if !requirementsEqual(tt.args.requirements, tt.wantRequirements) {
+				t.Errorf("reqs not as expected  = %v, want %v got=%v", tt.name, tt.wantRequirements, tt.args.requirements)
+			}
+
+		})
+	}
+}
