@@ -183,7 +183,8 @@ func (r *BackupScheduleReconciler) Reconcile(
 			)
 			scheduleLogger.Info(collisionMsg)
 		} else {
-			// check if an existing hub restore was found  created after this backup schedule and report collision
+			// check if an existing hub restore was created
+			// after this backup schedule and report a collision
 			_, collisionMsg = isRestoreHubAfterSchedule(ctx, r.Client, &veleroScheduleList.Items[0])
 		}
 		// add any missing labels and create any resources required by the backup and restore process
@@ -271,7 +272,9 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	}
 
 	// don't create schedule if an active restore exists
-	if restoreName := isRestoreRunning(ctx, r.Client, backupSchedule); restoreName != "" {
+	// allow to create paused schedules even if a restore is running
+	if restoreName := isRestoreRunning(ctx, r.Client, backupSchedule); restoreName != "" &&
+		!backupSchedule.Spec.Paused {
 		msg := "Restore resource " + restoreName + " is currently active, " +
 			"verify that any active restores are removed."
 		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
