@@ -462,6 +462,11 @@ func (b *BackupScheduleHelper) veleroTTL(ttl metav1.Duration) *BackupScheduleHel
 	return b
 }
 
+func (b *BackupScheduleHelper) paused(isPaused bool) *BackupScheduleHelper {
+	b.object.Spec.Paused = isPaused
+	return b
+}
+
 func (b *BackupScheduleHelper) schedule(sch string) *BackupScheduleHelper {
 	b.object.Spec.VeleroSchedule = sch
 	return b
@@ -479,6 +484,20 @@ func (b *BackupScheduleHelper) managedServiceAccountTTL(ttl metav1.Duration) *Ba
 
 func (b *BackupScheduleHelper) phase(ph v1beta1.SchedulePhase) *BackupScheduleHelper {
 	b.object.Status.Phase = ph
+	return b
+}
+
+func (b *BackupScheduleHelper) scheduleStatus(scheduleType ResourceType, sch veleroapi.Schedule) *BackupScheduleHelper {
+	if scheduleType == Credentials {
+		b.object.Status.VeleroScheduleCredentials = sch.DeepCopy()
+	}
+	if scheduleType == ManagedClusters {
+		b.object.Status.VeleroScheduleManagedClusters = sch.DeepCopy()
+	}
+	if scheduleType == Resources {
+		b.object.Status.VeleroScheduleResources = sch.DeepCopy()
+	}
+
 	return b
 }
 

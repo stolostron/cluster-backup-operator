@@ -153,6 +153,16 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 
+	if backupSchedule.Spec.Paused {
+		//backup schedule is paused
+		msg := "BackupSchedule is paused."
+
+		err := updateBackupSchedulePhaseWhenPaused(ctx, r.Client, veleroScheduleList,
+			backupSchedule, v1beta1.SchedulePhasePaused, msg)
+
+		return ctrl.Result{}, errors.Wrap(err, msg)
+	}
+
 	collisionMsg := ""
 	// enforce backup collision only if this schedule was NOT created now ( current time - creation > 5)
 	// in this case ignore any collisions since the user had initiated this backup
@@ -174,7 +184,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 			scheduleLogger.Info(collisionMsg)
 		} else {
 			// check if an existing hub restore was found  created after this backup schedule and report collision
-			_, collisionMsg = isRestoreHubAfterSchedule(ctx, r.Client, backupSchedule)
+			_, collisionMsg = isRestoreHubAfterSchedule(ctx, r.Client, &veleroScheduleList.Items[0])
 		}
 		// add any missing labels and create any resources required by the backup and restore process
 		r.prepareForBackup(ctx, mapper, backupSchedule)
@@ -182,22 +192,9 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 	if collisionMsg != "" {
 		//collision found
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseBackupCollision
-		backupSchedule.Status.LastMessage = collisionMsg
+		err := updateBackupSchedulePhaseWhenPaused(ctx, r.Client, veleroScheduleList,
+			backupSchedule, v1beta1.SchedulePhaseBackupCollision, collisionMsg)
 
-		err := r.Client.Status().Update(ctx, backupSchedule)
-
-		// delete schedules, don't generate new backups
-		for i := range veleroScheduleList.Items {
-			scheduleLogger.Info(
-				"Attempt to delete schedule " + veleroScheduleList.Items[i].Name,
-			)
-			if err := r.Delete(ctx, &veleroScheduleList.Items[i]); err == nil {
-				scheduleLogger.Info(
-					"Schedule deleted successfully " + veleroScheduleList.Items[i].Name,
-				)
-			}
-		}
 		return ctrl.Result{}, errors.Wrap(err, collisionMsg)
 	}
 	// no velero schedules, so create them
