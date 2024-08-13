@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
@@ -1073,18 +1074,21 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 	res := *createSchedule(veleroBackupNames[Resources], "default").object
 
 	tests := []struct {
-		name                  string
-		args                  args
-		wantBackupSchedule    v1beta1.BackupSchedule
-		wantDeletedSchedules  []veleroapi.Schedule
-		wantScheduleStatusNil bool
+		name                    string
+		args                    args
+		wantBackupSchedule      v1beta1.BackupSchedule
+		wantDeletedSchedules    []veleroapi.Schedule
+		wantScheduleStatusNil   bool
+		wantReturn              ctrl.Result
+		wantBackupSchedulePhase v1beta1.SchedulePhase
+		wantMsg                 string
 	}{
 		{
 			name: "backup schedule paused",
 			args: args{
 				ctx:   context.Background(),
 				c:     k8sClient1,
-				msg:   "paused",
+				msg:   "BackupSchedule is paused.",
 				phase: v1beta1.SchedulePhasePaused,
 				veleroScheduleList: veleroapi.ScheduleList{
 					Items: []veleroapi.Schedule{
@@ -1095,6 +1099,7 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 				},
 				backupSchedule: createBackupSchedule("acm-schedule", "default").
 					paused(true).
+					phase(v1beta1.SchedulePhaseEnabled).
 					scheduleStatus(Credentials, creds).
 					scheduleStatus(ManagedClusters, cls).
 					scheduleStatus(Resources, res).
@@ -1108,7 +1113,10 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 				cls,
 				res,
 			},
-			wantScheduleStatusNil: true,
+			wantScheduleStatusNil:   false, // backup schedule status doesn't get updated bc of delete error
+			wantReturn:              ctrl.Result{RequeueAfter: failureInterval},
+			wantBackupSchedulePhase: v1beta1.SchedulePhaseEnabled,
+			wantMsg:                 "Failed to delete schedule acm-credentials-schedule",
 		},
 		{
 			name: "backup schedule in collision",
@@ -1139,14 +1147,17 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 				cls,
 				res,
 			},
-			wantScheduleStatusNil: true,
+			wantScheduleStatusNil:   true,
+			wantReturn:              ctrl.Result{},
+			wantBackupSchedulePhase: v1beta1.SchedulePhaseBackupCollision,
+			wantMsg:                 "collision",
 		},
 		{
 			name: "backup schedule paused with creds schedule not found",
 			args: args{
 				ctx:   context.Background(),
 				c:     k8sClient1,
-				msg:   "collision",
+				msg:   "BackupSchedule is paused.",
 				phase: v1beta1.SchedulePhasePaused,
 				veleroScheduleList: veleroapi.ScheduleList{
 					Items: []veleroapi.Schedule{
@@ -1169,14 +1180,17 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 				cls,
 				res,
 			},
-			wantScheduleStatusNil: true,
+			wantScheduleStatusNil:   true,
+			wantReturn:              ctrl.Result{},
+			wantBackupSchedulePhase: v1beta1.SchedulePhasePaused,
+			wantMsg:                 "BackupSchedule is paused.",
 		},
 		{
 			name: "backup schedule not in collision or paused",
 			args: args{
 				ctx:   context.Background(),
 				c:     k8sClient1,
-				msg:   "",
+				msg:   "some value",
 				phase: v1beta1.SchedulePhaseEnabled,
 				veleroScheduleList: veleroapi.ScheduleList{
 					Items: []veleroapi.Schedule{
@@ -1194,58 +1208,84 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 			},
 			wantBackupSchedule: *createBackupSchedule("acm-schedule", "default").
 				paused(false).
-				scheduleStatus(Credentials, creds).
-				scheduleStatus(ManagedClusters, cls).
-				scheduleStatus(Resources, res).
 				phase(v1beta1.SchedulePhaseEnabled).
 				object,
-			wantDeletedSchedules:  []veleroapi.Schedule{},
-			wantScheduleStatusNil: false,
+			wantDeletedSchedules:    []veleroapi.Schedule{},
+			wantScheduleStatusNil:   true,
+			wantReturn:              ctrl.Result{},
+			wantBackupSchedulePhase: "",
+			wantMsg:                 "",
 		},
 	}
 
-	for _, tt := range tests {
+	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			k8sClient1.Create(tt.args.ctx, tt.args.backupSchedule, &client.CreateOptions{})
-
-			// create resources
-			for i := range tt.args.veleroScheduleList.Items {
-				k8sClient1.Create(tt.args.ctx, &tt.args.veleroScheduleList.Items[i], &client.CreateOptions{})
+			if i == 1 {
+				// create the scheme now, to have the delete resource fail
+				_ = veleroapi.AddToScheme(scheme1) // for velero types
+				_ = v1beta1.AddToScheme(scheme1)   // for acm backup types
 			}
 
-			updateBackupSchedulePhaseWhenPaused(tt.args.ctx, tt.args.c,
+			if i > 0 {
+				if err := k8sClient1.Create(tt.args.ctx, tt.args.backupSchedule, &client.CreateOptions{}); err != nil {
+					t.Errorf("Failed to create backup schedule name =%v ns =%v , err=%v",
+						tt.args.backupSchedule.Name,
+						tt.args.backupSchedule.Namespace,
+						err.Error())
+
+				}
+
+				// create resources
+				for i := range tt.args.veleroScheduleList.Items {
+					if err := k8sClient1.Create(tt.args.ctx, &tt.args.veleroScheduleList.Items[i], &client.CreateOptions{}); err != nil {
+						t.Errorf("Failed to create schedule name =%v ns =%v , err=%v",
+							tt.args.veleroScheduleList.Items[i].Name,
+							tt.args.veleroScheduleList.Items[i].Namespace,
+							err.Error())
+
+					}
+				}
+			}
+
+			returnValue, _ := updateBackupSchedulePhaseWhenPaused(tt.args.ctx, tt.args.c,
 				tt.args.veleroScheduleList, tt.args.backupSchedule, tt.args.phase, tt.args.msg)
+
+			if returnValue != tt.wantReturn {
+				t.Errorf("updateBackupSchedulePhaseWhenPaused return should be =%v got=%v",
+					tt.wantReturn,
+					returnValue)
+			}
 
 			// check schedules in status
 			if (tt.args.backupSchedule.Status.VeleroScheduleCredentials == nil) !=
 				tt.wantScheduleStatusNil {
-				t.Errorf("VeleroScheduleCredentials don't match , should be nil =%v got=%v",
+				t.Errorf("VeleroScheduleCredentials don't match , should be nil =%v got should be nil =%v",
 					tt.args.backupSchedule.Status.VeleroScheduleCredentials,
 					tt.wantScheduleStatusNil)
 			}
 			if (tt.args.backupSchedule.Status.VeleroScheduleManagedClusters == nil) !=
 				tt.wantScheduleStatusNil {
-				t.Errorf("VeleroScheduleManagedClusters don't match , should be nil =%v got=%v",
+				t.Errorf("VeleroScheduleManagedClusters don't match , should be  =%v got=%v",
 					tt.args.backupSchedule.Status.VeleroScheduleManagedClusters,
 					tt.wantScheduleStatusNil)
 			}
 			if (tt.args.backupSchedule.Status.VeleroScheduleResources == nil) !=
 				tt.wantScheduleStatusNil {
-				t.Errorf("VeleroScheduleResources don't match , should be nil =%v got=%v",
+				t.Errorf("VeleroScheduleResources don't match , should be  =%v got=%v",
 					tt.args.backupSchedule.Status.VeleroScheduleResources,
 					tt.wantScheduleStatusNil)
 			}
 
 			// check phase
-			if tt.args.backupSchedule.Status.Phase != tt.args.phase {
+			if tt.args.backupSchedule.Status.Phase != tt.wantBackupSchedulePhase {
 				t.Errorf("backup schedule should have phase= %v got=%v",
-					tt.args.phase, tt.args.backupSchedule.Status.Phase)
+					tt.wantBackupSchedulePhase, tt.args.backupSchedule.Status.Phase)
 			}
 			// check msg
-			if tt.args.backupSchedule.Status.LastMessage != tt.args.msg {
-				t.Errorf("backup schedule last message shouild be = %v got=%v",
-					tt.args.msg, tt.args.backupSchedule.Status.LastMessage)
+			if tt.args.backupSchedule.Status.LastMessage != tt.wantMsg {
+				t.Errorf("backup schedule last message should be = %v got=%v",
+					tt.wantMsg, tt.args.backupSchedule.Status.LastMessage)
 			}
 
 			// check schedules are deleted
@@ -1273,4 +1313,6 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 
 		})
 	}
+	// clean up
+	testEnv.Stop()
 }

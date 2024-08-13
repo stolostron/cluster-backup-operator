@@ -36,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/discovery"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -481,23 +482,13 @@ func updateBackupSchedulePhaseWhenPaused(
 	backupSchedule *v1beta1.BackupSchedule,
 	phase v1beta1.SchedulePhase,
 	msg string,
-) error {
+) (ctrl.Result, error) {
 	scheduleLogger := log.FromContext(ctx)
 
 	if phase != v1beta1.SchedulePhasePaused && phase != v1beta1.SchedulePhaseBackupCollision {
 		// do not process any other type of schedule here
-		return nil
+		return ctrl.Result{}, nil
 	}
-
-	//update status
-	backupSchedule.Status.Phase = phase
-	backupSchedule.Status.LastMessage = msg
-
-	backupSchedule.Status.VeleroScheduleCredentials = nil
-	backupSchedule.Status.VeleroScheduleManagedClusters = nil
-	backupSchedule.Status.VeleroScheduleResources = nil
-
-	err := c.Status().Update(ctx, backupSchedule)
 
 	// delete schedules, so we don't generate new backups
 	for i := range veleroScheduleList.Items {
@@ -509,8 +500,31 @@ func updateBackupSchedulePhaseWhenPaused(
 			scheduleLogger.Info(
 				"Schedule deleted successfully " + veleroScheduleList.Items[i].Name,
 			)
+		} else {
+
+			// ignore not found errors
+			if !kerrors.IsNotFound(err) {
+				errMsg := "Failed to delete schedule " + veleroScheduleList.Items[i].Name
+				scheduleLogger.Error(err,
+					errMsg,
+				)
+				// update failed, retry
+				backupSchedule.Status.LastMessage = errMsg
+				c.Status().Update(ctx, backupSchedule)
+				return ctrl.Result{RequeueAfter: failureInterval}, err
+			}
 		}
 	}
 
-	return err
+	//update status
+	backupSchedule.Status.Phase = phase
+	backupSchedule.Status.LastMessage = msg
+
+	backupSchedule.Status.VeleroScheduleCredentials = nil
+	backupSchedule.Status.VeleroScheduleManagedClusters = nil
+	backupSchedule.Status.VeleroScheduleResources = nil
+
+	c.Status().Update(ctx, backupSchedule)
+
+	return ctrl.Result{}, nil
 }

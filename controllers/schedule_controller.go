@@ -156,11 +156,8 @@ func (r *BackupScheduleReconciler) Reconcile(
 	if backupSchedule.Spec.Paused {
 		//backup schedule is paused
 		msg := "BackupSchedule is paused."
-
-		err := updateBackupSchedulePhaseWhenPaused(ctx, r.Client, veleroScheduleList,
+		return updateBackupSchedulePhaseWhenPaused(ctx, r.Client, veleroScheduleList,
 			backupSchedule, v1beta1.SchedulePhasePaused, msg)
-
-		return ctrl.Result{}, errors.Wrap(err, msg)
 	}
 
 	collisionMsg := ""
@@ -193,10 +190,8 @@ func (r *BackupScheduleReconciler) Reconcile(
 
 	if collisionMsg != "" {
 		//collision found
-		err := updateBackupSchedulePhaseWhenPaused(ctx, r.Client, veleroScheduleList,
+		return updateBackupSchedulePhaseWhenPaused(ctx, r.Client, veleroScheduleList,
 			backupSchedule, v1beta1.SchedulePhaseBackupCollision, collisionMsg)
-
-		return ctrl.Result{}, errors.Wrap(err, collisionMsg)
 	}
 	// no velero schedules, so create them
 	if len(veleroScheduleList.Items) == 0 {
