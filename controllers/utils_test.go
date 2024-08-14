@@ -1114,9 +1114,9 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 				res,
 			},
 			wantScheduleStatusNil:   false, // backup schedule status doesn't get updated bc of delete error
-			wantReturn:              ctrl.Result{RequeueAfter: failureInterval},
+			wantReturn:              ctrl.Result{},
 			wantBackupSchedulePhase: v1beta1.SchedulePhaseEnabled,
-			wantMsg:                 "Failed to delete schedule acm-credentials-schedule",
+			wantMsg:                 "",
 		},
 		{
 			name: "backup schedule in collision",

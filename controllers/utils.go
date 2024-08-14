@@ -508,10 +508,7 @@ func updateBackupSchedulePhaseWhenPaused(
 				scheduleLogger.Error(err,
 					errMsg,
 				)
-				// update failed, retry
-				backupSchedule.Status.LastMessage = errMsg
-				c.Status().Update(ctx, backupSchedule)
-				return ctrl.Result{RequeueAfter: failureInterval}, err
+				return ctrl.Result{}, err
 			}
 		}
 	}
@@ -524,7 +521,7 @@ func updateBackupSchedulePhaseWhenPaused(
 	backupSchedule.Status.VeleroScheduleManagedClusters = nil
 	backupSchedule.Status.VeleroScheduleResources = nil
 
-	c.Status().Update(ctx, backupSchedule)
+	err := c.Status().Update(ctx, backupSchedule)
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, err
 }
