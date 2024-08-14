@@ -773,7 +773,7 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 		t.Errorf("cannot create ns %s ", err.Error())
 	}
 
-	if err := k8sClient1.Create(context.Background(), createManagedCluster("managed1").object); err != nil {
+	if err := k8sClient1.Create(context.Background(), createManagedCluster("managed1", false).object); err != nil {
 		t.Errorf("cannot create %s ", err.Error())
 	}
 

@@ -106,8 +106,8 @@ var _ = Describe("BackupSchedule controller", func() {
 		}
 
 		managedClusters = []clusterv1.ManagedCluster{
-			*createManagedCluster("local-cluster").object,
-			*createManagedCluster(managedClusterNSName).object,
+			*createManagedCluster("local-cluster", true).object,
+			*createManagedCluster(managedClusterNSName, false).object,
 		}
 		managedClusterNS = createNamespace(managedClusterNSName)
 		chartsv1NS = createNamespace(chartsv1NSName)

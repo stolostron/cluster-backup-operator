@@ -96,9 +96,9 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					*createManagedCluster("local-cluster").object,
-					*createManagedCluster("test1").object,
-					*createManagedCluster("managed1").clusterUrl("someurl").
+					*createManagedCluster("local-cluster", true).object,
+					*createManagedCluster("test1", false).object,
+					*createManagedCluster("managed1", false).clusterUrl("someurl").
 						conditions([]metav1.Condition{
 							v1.Condition{
 								Status: v1.ConditionTrue,
@@ -129,9 +129,9 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					*createManagedCluster("local-cluster").object,
-					*createManagedCluster("test1").object,
-					*createManagedCluster("managed1").emptyClusterUrl().
+					*createManagedCluster("local-cluster", true).object,
+					*createManagedCluster("test1", false).object,
+					*createManagedCluster("managed1", false).emptyClusterUrl().
 						conditions([]metav1.Condition{
 							v1.Condition{
 								Status: v1.ConditionFalse,
@@ -174,9 +174,9 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					*createManagedCluster("local-cluster").object,
-					*createManagedCluster("test1").object,
-					*createManagedCluster("managed1").
+					*createManagedCluster("local-cluster", true).object,
+					*createManagedCluster("test1", false).object,
+					*createManagedCluster("managed1", false).
 						clusterUrl("someurl").
 						conditions([]metav1.Condition{
 							v1.Condition{
@@ -184,7 +184,7 @@ func Test_postRestoreActivation(t *testing.T) {
 							},
 						}).
 						object,
-					*createManagedCluster("managed2").clusterUrl("someurl").
+					*createManagedCluster("managed2", false).clusterUrl("someurl").
 						conditions([]metav1.Condition{
 							v1.Condition{
 								Status: v1.ConditionFalse,

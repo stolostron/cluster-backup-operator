@@ -41,6 +41,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+const localClusterLabel = "local-cluster"
+
 func findSuffix(slice []string, val string) (int, bool) {
 	for i, item := range slice {
 		if strings.HasSuffix(val, item) {
@@ -324,10 +326,6 @@ func managedClusterShouldReimport(
 	logger := log.FromContext(ctx)
 
 	url := ""
-	if clusterName == "local-cluster" {
-		// skip local-cluster
-		return false, url, ""
-	}
 
 	for i := range managedClusters {
 
@@ -336,6 +334,11 @@ func managedClusterShouldReimport(
 		if clusterName != managedCluster.Name {
 			// find the cluster by name
 			continue
+		}
+
+		if isLocalCluster(&managedCluster) {
+			// skip local-cluster
+			return false, url, ""
 		}
 
 		// skip available managed clusters
@@ -524,4 +527,9 @@ func updateBackupSchedulePhaseWhenPaused(
 	err := c.Status().Update(ctx, backupSchedule)
 
 	return ctrl.Result{}, err
+}
+
+// Return true if the managedCluster object has label "local-cluster": "true"
+func isLocalCluster(managedCluster *clusterv1.ManagedCluster) bool {
+	return managedCluster.GetLabels()[localClusterLabel] == "true"
 }
