@@ -153,6 +153,11 @@ func cleanupMSAForImportedClusters(
 	logger := log.FromContext(ctx)
 
 	if msaMapping != nil {
+		localClusterName, err := getLocalClusterName(ctx, c)
+		if err != nil {
+			logger.Error(err, "Error finding local cluster")
+			return // FIXME: handle error
+		}
 
 		// delete ManagedServiceAccounts with msa_service_name label
 		listOptions := v1.ListOptions{LabelSelector: fmt.Sprintf("%s in (%s)", msa_label, msa_service_name)}
@@ -164,6 +169,7 @@ func cleanupMSAForImportedClusters(
 					dr,
 					dynamiclist.Items[i],
 					[]string{},
+					localClusterName,
 					false, // don't skip resource if ExcludeBackupLabel is set
 				)
 			}
@@ -254,7 +260,7 @@ func prepareImportedClusters(ctx context.Context,
 	err := c.List(ctx, managedClusters, &client.ListOptions{})
 	if err != nil {
 		logger.Error(err, "Unable to list managed clusters")
-		//FIXME: handle error
+		// FIXME: handle error
 		return
 	}
 	for i := range managedClusters.Items {
@@ -278,7 +284,7 @@ func prepareImportedClusters(ctx context.Context,
 		addons := &addonv1alpha1.ManagedClusterAddOnList{}
 		if err := c.List(ctx, addons, &client.ListOptions{Namespace: managedCluster.Name}); err != nil {
 			logger.Error(err, "Unable to list managedclusteraddons in namespace %s", managedCluster.Name)
-			//FIXME: handle error
+			// FIXME: handle error
 			continue
 		}
 

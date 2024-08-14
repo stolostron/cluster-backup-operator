@@ -32,6 +32,7 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/discovery"
@@ -41,7 +42,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-const localClusterLabel = "local-cluster"
+const (
+	localClusterLabel  = "local-cluster"
+	managedClusterKind = "ManagedCluster"
+)
 
 func findSuffix(slice []string, val string) (int, bool) {
 	for i, item := range slice {
@@ -531,5 +535,34 @@ func updateBackupSchedulePhaseWhenPaused(
 
 // Return true if the managedCluster object has label "local-cluster": "true"
 func isLocalCluster(managedCluster *clusterv1.ManagedCluster) bool {
-	return managedCluster.GetLabels()[localClusterLabel] == "true"
+	return hasLocalClusterLabel(managedCluster)
+}
+
+func hasLocalClusterLabel(obj client.Object) bool {
+	return obj.GetLabels()[localClusterLabel] == "true"
+}
+
+func isResourceLocalCluster(resource *unstructured.Unstructured) bool {
+	return resource.GetKind() == managedClusterKind && hasLocalClusterLabel(resource)
+}
+
+func getLocalClusterName(ctx context.Context, c client.Client) (string, error) {
+	locClusterLabelMatchOption := []client.ListOption{
+		client.MatchingLabels{
+			localClusterLabel: "true",
+		},
+	}
+	localMgdClusterList := &clusterv1.ManagedClusterList{}
+	err := c.List(ctx, localMgdClusterList, locClusterLabelMatchOption...)
+	if err != nil {
+		return "", err
+	}
+
+	if len(localMgdClusterList.Items) == 0 {
+		return "", fmt.Errorf("No local managed cluster found")
+	}
+
+	// If we ever get more than 1 managed cluster with the label, this will be problem - returning 1st in list
+	// This code assumes that there should only ever be 1 managed cluster with the 'local-cluster': 'true' label
+	return localMgdClusterList.Items[0].Name, nil
 }

@@ -478,7 +478,7 @@ func deleteDynamicResourcesForBackup(
 				groupKind, err.Error()))
 			continue
 		}
-		invokeDynamicDelete(ctx, restoreOptions, labelSelector,
+		invokeDynamicDelete(ctx, c, restoreOptions, labelSelector,
 			veleroBackup, mapping)
 	}
 
@@ -486,14 +486,21 @@ func deleteDynamicResourcesForBackup(
 
 func invokeDynamicDelete(
 	ctx context.Context,
+	c client.Client,
 	restoreOptions RestoreOptions,
 	labelSelector string,
 	veleroBackup *veleroapi.Backup,
 	mapping *meta.RESTMapping,
 ) {
+	logger := log.FromContext(ctx)
 
 	backupName := veleroBackup.Name
 	if dr := restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource); dr != nil {
+		localClusterName, err := getLocalClusterName(ctx, c)
+		if err != nil {
+			logger.Error(err, "Error finding local cluster")
+			return // FIXME: handle error
+		}
 
 		var listOptions = v1.ListOptions{}
 		if labelSelector != "" {
@@ -516,6 +523,7 @@ func invokeDynamicDelete(
 					dr,
 					item,
 					veleroBackup.Spec.ExcludedNamespaces,
+					localClusterName,
 					true, // skip resource if ExcludeBackupLabel is set
 				)
 			}
@@ -564,13 +572,20 @@ func postRestoreActivation(
 
 	activationMessages := []string{}
 
+	localClusterName, err := getLocalClusterName(ctx, c)
+	if err != nil {
+		logger.Error(err, "Error finding local cluster")
+		// FIXME: handle error instead
+		localClusterName = "local-cluster"
+	}
+
 	processedClusters := []string{}
 	for s := range msaSecrets {
 		secret := msaSecrets[s]
 
 		clusterName := secret.Namespace
 		if findValue(processedClusters, clusterName) ||
-			clusterName == "local-cluster" {
+			clusterName == localClusterName {
 			// this cluster should not be processed
 			continue
 		}
@@ -703,10 +718,10 @@ func deleteDynamicResource(
 	dr dynamic.NamespaceableResourceInterface,
 	resource unstructured.Unstructured,
 	excludedNamespaces []string,
+	localClusterName string,
 	skipExcludedBackupLabel bool,
 ) (bool, string) {
 	logger := log.FromContext(ctx)
-	localCluster := "local-cluster"
 
 	nsSkipMsg := fmt.Sprintf(
 		"Skipping resource %s [%s.%s]",
@@ -714,9 +729,9 @@ func deleteDynamicResource(
 		resource.GetName(),
 		resource.GetNamespace())
 
-	if resource.GetName() == localCluster ||
+	if isResourceLocalCluster(&resource) ||
 		(mapping.Scope.Name() == meta.RESTScopeNameNamespace &&
-			(resource.GetNamespace() == localCluster ||
+			(resource.GetNamespace() == localClusterName ||
 				findValue(excludedNamespaces, resource.GetNamespace()))) {
 		// do not clean up local-cluster resources or resources from excluded NS
 		logger.Info(nsSkipMsg)
