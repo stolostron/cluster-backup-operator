@@ -1094,6 +1094,24 @@ var _ = Describe("Basic Restore controller", func() {
 		})
 
 		It("Should track the status evolution", func() {
+
+			// should be able to  create a paused schedule, even if a restore is running
+			rhacmBackupPaused := *createBackupSchedule("backup-sch-paused", veleroNamespace.Name).
+				schedule("0 */1 * * *").
+				paused(true).
+				veleroTTL(metav1.Duration{Duration: time.Hour * 72}).object
+
+			Expect(k8sClient.Create(ctx, &rhacmBackupPaused)).Should(Succeed())
+			Eventually(func() v1beta1.SchedulePhase {
+				k8sClient.Get(ctx,
+					types.NamespacedName{
+						Name:      rhacmBackupPaused.Name,
+						Namespace: veleroNamespace.Name,
+					}, &rhacmBackupPaused)
+				return rhacmBackupPaused.Status.Phase
+			}, timeout, interval).Should(BeEquivalentTo(v1beta1.SchedulePhasePaused))
+
+			// should be able to create a restore resource when there is a paused backup schedule running
 			createdRestore := v1beta1.Restore{}
 			By("created restore should contain velero restores in status")
 			Eventually(func() string {
@@ -1162,6 +1180,27 @@ var _ = Describe("Basic Restore controller", func() {
 			Expect(
 				createdRestore.Status.Phase,
 			).Should(BeEquivalentTo(v1beta1.RestorePhaseFinished))
+
+			// delete the paused schedule
+			Expect(k8sClient.Delete(ctx, &rhacmBackupPaused)).Should(Succeed())
+
+			// should be able to  create paused schedule, even if restore is running
+			rhacmBackupScheduleNoErrPaused := *createBackupSchedule("backup-sch-no-error-restore-paused", veleroNamespace.Name).
+				schedule("0 */1 * * *").
+				paused(true).
+				veleroTTL(metav1.Duration{Duration: time.Hour * 72}).object
+
+			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleNoErrPaused)).Should(Succeed())
+			Eventually(func() v1beta1.SchedulePhase {
+				k8sClient.Get(ctx,
+					types.NamespacedName{
+						Name:      rhacmBackupScheduleNoErrPaused.Name,
+						Namespace: veleroNamespace.Name,
+					}, &rhacmBackupScheduleNoErrPaused)
+				return rhacmBackupScheduleNoErrPaused.Status.Phase
+			}, timeout, interval).Should(BeEquivalentTo(v1beta1.SchedulePhasePaused))
+			// delete this paused schedule
+			Expect(k8sClient.Delete(ctx, &rhacmBackupScheduleNoErrPaused)).Should(Succeed())
 
 			// failing to create schedule, restore is running
 			rhacmBackupScheduleErr := *createBackupSchedule("backup-sch-to-error-restore", veleroNamespace.Name).

@@ -856,6 +856,17 @@ func Test_isBackupScheduleRunning(t *testing.T) {
 			},
 			want: "",
 		},
+		{
+			name: "backup WITH paused schedule",
+			args: args{
+				backupSchedules: []v1beta1.BackupSchedule{
+					*createBackupSchedule("backup-name", "ns").
+						phase(v1beta1.SchedulePhasePaused).
+						object,
+				},
+			},
+			want: "",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	ocinfrav1 "github.com/openshift/api/config/v1"
+	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
@@ -35,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/discovery"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -469,4 +471,57 @@ func addRestoreLabelSelector(
 			req,
 		)
 	}
+}
+
+// update BackupSchedule status and remove velero schedules
+// when the BackupSchedule is paused or in BackupCollision
+func updateBackupSchedulePhaseWhenPaused(
+	ctx context.Context,
+	c client.Client,
+	veleroScheduleList veleroapi.ScheduleList,
+	backupSchedule *v1beta1.BackupSchedule,
+	phase v1beta1.SchedulePhase,
+	msg string,
+) (ctrl.Result, error) {
+	scheduleLogger := log.FromContext(ctx)
+
+	if phase != v1beta1.SchedulePhasePaused && phase != v1beta1.SchedulePhaseBackupCollision {
+		// do not process any other type of schedule here
+		return ctrl.Result{}, nil
+	}
+
+	// delete schedules, so we don't generate new backups
+	for i := range veleroScheduleList.Items {
+		scheduleLogger.Info(
+			"Attempt to delete schedule " + veleroScheduleList.Items[i].Name,
+		)
+
+		if err := c.Delete(ctx, &veleroScheduleList.Items[i]); err == nil {
+			scheduleLogger.Info(
+				"Schedule deleted successfully " + veleroScheduleList.Items[i].Name,
+			)
+		} else {
+
+			// ignore not found errors
+			if !kerrors.IsNotFound(err) {
+				errMsg := "Failed to delete schedule " + veleroScheduleList.Items[i].Name
+				scheduleLogger.Error(err,
+					errMsg,
+				)
+				return ctrl.Result{}, err
+			}
+		}
+	}
+
+	//update status
+	backupSchedule.Status.Phase = phase
+	backupSchedule.Status.LastMessage = msg
+
+	backupSchedule.Status.VeleroScheduleCredentials = nil
+	backupSchedule.Status.VeleroScheduleManagedClusters = nil
+	backupSchedule.Status.VeleroScheduleResources = nil
+
+	err := c.Status().Update(ctx, backupSchedule)
+
+	return ctrl.Result{}, err
 }

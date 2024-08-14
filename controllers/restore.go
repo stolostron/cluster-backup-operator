@@ -315,7 +315,8 @@ func isBackupScheduleRunning(
 
 	for i := range schedules {
 		backupScheduleItem := schedules[i]
-		if backupScheduleItem.Status.Phase != v1beta1.SchedulePhaseBackupCollision {
+		if backupScheduleItem.Status.Phase != v1beta1.SchedulePhaseBackupCollision &&
+			backupScheduleItem.Status.Phase != v1beta1.SchedulePhasePaused {
 			return backupScheduleItem.Name
 		}
 	}

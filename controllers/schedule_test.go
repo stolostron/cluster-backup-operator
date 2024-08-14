@@ -1276,7 +1276,7 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 	type args struct {
 		ctx                         context.Context
 		c                           client.Client
-		backupSchedule              *v1beta1.BackupSchedule
+		veleroSchedule              *veleroapi.Schedule
 		acmClusterActivationBackups []*veleroapi.Backup
 		createScheduleFirst         bool
 		sleepTime                   int
@@ -1291,7 +1291,7 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				c:   k8sClient1,
-				backupSchedule: createBackupSchedule("acm-backup-schedule", veleroNamespaceName).
+				veleroSchedule: createSchedule("acm-backup-schedule", veleroNamespaceName).
 					object,
 				acmClusterActivationBackups: []*veleroapi.Backup{},
 				createScheduleFirst:         true,
@@ -1304,7 +1304,7 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				c:   k8sClient1,
-				backupSchedule: createBackupSchedule("acm-backup-schedule", veleroNamespaceName).
+				veleroSchedule: createSchedule("acm-backup-schedule", veleroNamespaceName).
 					object,
 				acmClusterActivationBackups: []*veleroapi.Backup{},
 				createScheduleFirst:         true,
@@ -1317,7 +1317,7 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				c:   k8sClient1,
-				backupSchedule: createBackupSchedule("acm-backup-schedule", veleroNamespaceName).
+				veleroSchedule: createSchedule("acm-backup-schedule", veleroNamespaceName).
 					object,
 				acmClusterActivationBackups: []*veleroapi.Backup{createBackup("acm-restore-clusters-2", veleroNamespaceName).
 					labels(map[string]string{BackupScheduleClusterLabel: "cluster1",
@@ -1334,7 +1334,7 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				c:   k8sClient1,
-				backupSchedule: createBackupSchedule("acm-backup-schedule", veleroNamespaceName).
+				veleroSchedule: createSchedule("acm-backup-schedule", veleroNamespaceName).
 					object,
 				acmClusterActivationBackups: []*veleroapi.Backup{createBackup("acm-restore-clusters-1", veleroNamespaceName).
 					labels(map[string]string{BackupScheduleClusterLabel: "cluster1",
@@ -1351,7 +1351,7 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				c:   k8sClient1,
-				backupSchedule: createBackupSchedule("acm-backup-schedule", veleroNamespaceName).
+				veleroSchedule: createSchedule("acm-backup-schedule", veleroNamespaceName).
 					object,
 				acmClusterActivationBackups: []*veleroapi.Backup{createBackup("acm-restore-clusters-2", veleroNamespaceName).
 					labels(map[string]string{BackupScheduleClusterLabel: "cluster1",
@@ -1372,7 +1372,7 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 		}
 
 		if tt.args.createScheduleFirst {
-			k8sClient1.Create(tt.args.ctx, tt.args.backupSchedule)
+			k8sClient1.Create(tt.args.ctx, tt.args.veleroSchedule)
 			time.Sleep(time.Duration(tt.args.sleepTime) * time.Second)
 			for i := range tt.args.acmClusterActivationBackups {
 				k8sClient1.Create(tt.args.ctx, tt.args.acmClusterActivationBackups[i])
@@ -1383,19 +1383,19 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 				k8sClient1.Create(tt.args.ctx, tt.args.acmClusterActivationBackups[i])
 			}
 			time.Sleep(time.Duration(tt.args.sleepTime) * time.Second)
-			k8sClient1.Create(tt.args.ctx, tt.args.backupSchedule)
+			k8sClient1.Create(tt.args.ctx, tt.args.veleroSchedule)
 
 		}
 
 		t.Run(tt.name, func(t *testing.T) {
 			if got, _ := isRestoreHubAfterSchedule(tt.args.ctx, tt.args.c,
-				tt.args.backupSchedule); got != tt.want {
+				tt.args.veleroSchedule); got != tt.want {
 				t.Errorf("isRestoreHubAfterSchedule() = %v, want %v ", got, tt.want)
 			}
 		})
 
 		// clean up after the test is run
-		k8sClient1.Delete(tt.args.ctx, tt.args.backupSchedule)
+		k8sClient1.Delete(tt.args.ctx, tt.args.veleroSchedule)
 		for i := range tt.args.acmClusterActivationBackups {
 			k8sClient1.Delete(tt.args.ctx, tt.args.acmClusterActivationBackups[i])
 		}

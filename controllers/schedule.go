@@ -559,14 +559,14 @@ func isVeleroSchedulesUpdateRequired(
 func isRestoreHubAfterSchedule(
 	ctx context.Context,
 	c client.Client,
-	backupSchedule *v1beta1.BackupSchedule,
+	veleroSchedule *veleroapi.Schedule,
 ) (bool, string) {
 
 	logger := log.FromContext(ctx)
 
 	// get all acm-restore-clusters backups and sort them by creation timestamp
 	restoreClustersBackups := &veleroapi.BackupList{}
-	if err := c.List(ctx, restoreClustersBackups, client.InNamespace(backupSchedule.Namespace),
+	if err := c.List(ctx, restoreClustersBackups, client.InNamespace(veleroSchedule.Namespace),
 		client.HasLabels{RestoreClusterLabel}); err != nil {
 		logger.Error(
 			err,
@@ -581,7 +581,7 @@ func isRestoreHubAfterSchedule(
 
 	sort.Sort(mostRecent(restoreClustersBackups.Items))
 	latestRestoreBackup := restoreClustersBackups.Items[0]
-	if backupSchedule.CreationTimestamp.Time.Before(latestRestoreBackup.CreationTimestamp.Time) {
+	if veleroSchedule.CreationTimestamp.Time.Before(latestRestoreBackup.CreationTimestamp.Time) {
 		restoreHubId := latestRestoreBackup.GetLabels()[RestoreClusterLabel]
 		if hubId, _ := getHubIdentification(ctx, c); hubId != restoreHubId {
 			// this backup schedule was create before the latest restore operation
