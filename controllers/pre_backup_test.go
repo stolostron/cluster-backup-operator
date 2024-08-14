@@ -32,10 +32,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
+	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	workv1 "open-cluster-management.io/api/work/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 )
@@ -750,6 +753,7 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 }
 
 func Test_cleanupMSAForImportedClusters(t *testing.T) {
+	log.SetLogger(zap.New())
 
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
@@ -765,6 +769,7 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: unstructuredScheme})
 	clusterv1.AddToScheme(unstructuredScheme)
 	corev1.AddToScheme(unstructuredScheme)
+	addonv1alpha1.AddToScheme(unstructuredScheme)
 
 	backupNS := "velero-ns"
 	backupSchedule := *createBackupSchedule("acm-schedule", backupNS).object
@@ -772,8 +777,31 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 	if err := k8sClient1.Create(context.Background(), createNamespace("managed1")); err != nil {
 		t.Errorf("cannot create ns %s ", err.Error())
 	}
-
 	if err := k8sClient1.Create(context.Background(), createManagedCluster("managed1", false).object); err != nil {
+		t.Errorf("cannot create %s ", err.Error())
+	}
+
+	// Create a "hive" managedcluster
+	if err := k8sClient1.Create(context.Background(), createNamespace("managed2-hive")); err != nil {
+		t.Errorf("cannot create ns %s ", err.Error())
+	}
+	if err := k8sClient1.Create(context.Background(), createManagedCluster("managed2-hive", false).object); err != nil {
+		t.Errorf("cannot create %s ", err.Error())
+	}
+	// For hive cluster, we need a secret in the namespace with the hive label on it
+	hiveLabels := map[string]string{
+		backupCredsHiveLabel: "somevalue",
+	}
+	if err := k8sClient1.Create(context.Background(), createSecret("managed-hive-secret", "managed2-hive",
+		hiveLabels, nil, nil)); err != nil {
+		t.Errorf("cannot create %s ", err.Error())
+	}
+
+	// Create a local managedcluster
+	if err := k8sClient1.Create(context.Background(), createNamespace("loc")); err != nil {
+		t.Errorf("cannot create ns %s ", err.Error())
+	}
+	if err := k8sClient1.Create(context.Background(), createManagedCluster("loc", true /* local cluster */).object); err != nil {
 		t.Errorf("cannot create %s ", err.Error())
 	}
 
@@ -846,7 +874,40 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 			prepareImportedClusters(tt.args.ctx, k8sClient1,
 				tt.args.dr,
 				tt.args.mapping, &backupSchedule)
+
 		})
+
+		// List all mgd cluster addons - make sure the correct ones were created by prepareImportedClusters()
+		addons := &addonv1alpha1.ManagedClusterAddOnList{}
+		if err := tt.args.c.List(tt.args.ctx, addons); err != nil {
+			t.Errorf("cannot list managedclusteraddons %s ", err.Error())
+		}
+		var foundManaged1MSAAddon *addonv1alpha1.ManagedClusterAddOn
+		for i := range addons.Items {
+			addon := addons.Items[i]
+
+			if addon.Name != msa_addon {
+				continue // not a managed service account addon, ignore
+			}
+			if addon.Namespace == "managed1" {
+				foundManaged1MSAAddon = &addon
+			}
+
+			// Hive managed cluster and local cluster should not have the MSA addon created
+			if addon.Namespace == "managed2-hive" {
+				t.Errorf("ManagedClusterAddon should not have been created for hive namespace: %s", addon.Namespace)
+			}
+			if addon.Namespace == "loc" {
+				t.Errorf("ManagedClusterAddon should not have been created for local cluster namespace: %s", addon.Namespace)
+			}
+		}
+		if foundManaged1MSAAddon == nil {
+			t.Errorf("No ManagedClusterAddOn created for managed cluster %s", "managed1")
+		}
+		msaLabel := foundManaged1MSAAddon.Labels[msa_label]
+		if msaLabel != msa_service_name {
+			t.Errorf("ManagedClusterAddOn for managed cluster %s is missing proper msa label", "managed1")
+		}
 	}
 	testEnv.Stop()
 

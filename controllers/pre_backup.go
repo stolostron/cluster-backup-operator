@@ -251,80 +251,86 @@ func prepareImportedClusters(ctx context.Context,
 
 	// get all managed clusters
 	managedClusters := &clusterv1.ManagedClusterList{}
-	if err := c.List(ctx, managedClusters, &client.ListOptions{}); err == nil {
-		for i := range managedClusters.Items {
-			managedCluster := managedClusters.Items[i]
-			if managedCluster.Name == "local-cluster" {
-				localClusterFound = true
-				// No MSA needed
-				continue
-			}
-
-			if isHiveCreatedCluster(ctx, c, managedCluster.Name) {
-				hiveClusterCount++
-				// No MSA needed
-				continue
-			}
-
-			// MSA required for this mgd cluster
-			msaClusterCount++
-
-			// create managedservice addon if not available
-			addons := &addonv1alpha1.ManagedClusterAddOnList{}
-			if err := c.List(ctx, addons, &client.ListOptions{Namespace: managedCluster.Name}); err != nil {
-				continue
-			}
-
-			installNamespace := ""
-			alreadyCreated := false
-			for addon := range addons.Items {
-				if addons.Items[addon].Name == msa_addon {
-					alreadyCreated = true
-					if addons.Items[addon].Status.Namespace != "" {
-						installNamespace = addons.Items[addon].Status.Namespace
-					} else {
-						logger.Info("ManagedClusterAddOn status namespace not set",
-							"addon", msa_addon, "cluster", managedCluster.Name)
-					}
-					break
-				}
-			}
-			// use default addon ns when the ManagedClusterAddOn installNamespace is not set
-			if installNamespace == "" {
-				installNamespace = defaultAddonNS
-			}
-
-			if !alreadyCreated {
-				msaAddon := &addonv1alpha1.ManagedClusterAddOn{}
-				msaAddon.Name = msa_addon
-				msaAddon.Namespace = managedCluster.Name
-				// Not setting msaAddon.Spec.InstallNamespace - will leave default
-				labels := map[string]string{
-					msa_label: msa_service_name,
-				}
-				msaAddon.SetLabels(labels)
-
-				logger.Info(fmt.Sprintf("Attempt to create ManagedClusterAddOn %s for cluster =%s",
-					msaAddon.Name, msaAddon.Namespace))
-				if err := c.Create(ctx, msaAddon, &client.CreateOptions{}); err == nil {
-					logger.Info(fmt.Sprintf("Created ManagedClusterAddOn %s for cluster =%s",
-						msaAddon.Name, msaAddon.Namespace))
-				}
-			}
-
-			secretCreatedNowForCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
-				msa_service_name, managedCluster.Name, time.Now(), installNamespace)
-			// create ManagedServiceAccount pair if needed
-			// the pair MSA is used to generate a token at half
-			// the interval of the initial MSA so that any backup will contain
-			// a valid token, either from the initial MSA or pair
-			secretCreatedNowForPairCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
-				msa_service_name_pair, managedCluster.Name, time.Now(), installNamespace)
-
-			secretsGeneratedNow = secretsGeneratedNow ||
-				secretCreatedNowForCluster ||
-				secretCreatedNowForPairCluster
+	err := c.List(ctx, managedClusters, &client.ListOptions{})
+	if err != nil {
+		logger.Error(err, "Unable to list managed clusters")
+		//FIXME: handle error
+		return
+	}
+	for i := range managedClusters.Items {
+		managedCluster := managedClusters.Items[i]
+		if isLocalCluster(&managedCluster) {
+			localClusterFound = true
+			// No MSA needed
+			continue
 		}
+
+		if isHiveCreatedCluster(ctx, c, managedCluster.Name) {
+			hiveClusterCount++
+			// No MSA needed
+			continue
+		}
+
+		// MSA required for this mgd cluster
+		msaClusterCount++
+
+		// create managedservice addon if not available
+		addons := &addonv1alpha1.ManagedClusterAddOnList{}
+		if err := c.List(ctx, addons, &client.ListOptions{Namespace: managedCluster.Name}); err != nil {
+			logger.Error(err, "Unable to list managedclusteraddons in namespace %s", managedCluster.Name)
+			//FIXME: handle error
+			continue
+		}
+
+		installNamespace := ""
+		alreadyCreated := false
+		for addon := range addons.Items {
+			if addons.Items[addon].Name == msa_addon {
+				alreadyCreated = true
+				if addons.Items[addon].Status.Namespace != "" {
+					installNamespace = addons.Items[addon].Status.Namespace
+				} else {
+					logger.Info("ManagedClusterAddOn status namespace not set",
+						"addon", msa_addon, "cluster", managedCluster.Name)
+				}
+				break
+			}
+		}
+		// use default addon ns when the ManagedClusterAddOn installNamespace is not set
+		if installNamespace == "" {
+			installNamespace = defaultAddonNS
+		}
+
+		if !alreadyCreated {
+			msaAddon := &addonv1alpha1.ManagedClusterAddOn{}
+			msaAddon.Name = msa_addon
+			msaAddon.Namespace = managedCluster.Name
+			// Not setting msaAddon.Spec.InstallNamespace - will leave default
+			labels := map[string]string{
+				msa_label: msa_service_name,
+			}
+			msaAddon.SetLabels(labels)
+
+			logger.Info(fmt.Sprintf("Attempt to create ManagedClusterAddOn %s for cluster =%s",
+				msaAddon.Name, msaAddon.Namespace))
+			if err := c.Create(ctx, msaAddon, &client.CreateOptions{}); err == nil {
+				logger.Info(fmt.Sprintf("Created ManagedClusterAddOn %s for cluster =%s",
+					msaAddon.Name, msaAddon.Namespace))
+			}
+		}
+
+		secretCreatedNowForCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
+			msa_service_name, managedCluster.Name, time.Now(), installNamespace)
+		// create ManagedServiceAccount pair if needed
+		// the pair MSA is used to generate a token at half
+		// the interval of the initial MSA so that any backup will contain
+		// a valid token, either from the initial MSA or pair
+		secretCreatedNowForPairCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
+			msa_service_name_pair, managedCluster.Name, time.Now(), installNamespace)
+
+		secretsGeneratedNow = secretsGeneratedNow ||
+			secretCreatedNowForCluster ||
+			secretCreatedNowForPairCluster
 	}
 
 	logger.Info("prepareImportedClusters",
