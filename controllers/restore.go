@@ -25,6 +25,7 @@ import (
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -787,8 +788,20 @@ func setUserRestoreFilters(
 ) {
 
 	// add any label selector set using the acm restore resource spec
-	veleroRestore.Spec.LabelSelector = acmRestore.Spec.LabelSelector
-	veleroRestore.Spec.OrLabelSelectors = acmRestore.Spec.OrLabelSelectors
+	if acmRestore.Spec.LabelSelector != nil {
+		// make a copy of the label selector
+		veleroRestore.Spec.LabelSelector = acmRestore.Spec.LabelSelector.DeepCopy()
+	}
+
+	if acmRestore.Spec.OrLabelSelectors != nil && len(acmRestore.Spec.OrLabelSelectors) > 0 {
+
+		veleroRestore.Spec.OrLabelSelectors = make([]*v1.LabelSelector, 0, len(acmRestore.Spec.OrLabelSelectors))
+		for i := range len(acmRestore.Spec.OrLabelSelectors) {
+			// make a copy of the label selector
+			veleroRestore.Spec.OrLabelSelectors = append(veleroRestore.Spec.OrLabelSelectors,
+				acmRestore.Spec.OrLabelSelectors[i].DeepCopy())
+		}
+	}
 
 	// allow excluding namespaces
 	if acmRestore.Spec.ExcludedNamespaces != nil {
