@@ -798,7 +798,8 @@ func setUserRestoreFilters(
 		veleroRestore.Spec.OrLabelSelectors = make([]*v1.LabelSelector, 0, len(acmRestore.Spec.OrLabelSelectors))
 		for i := range len(acmRestore.Spec.OrLabelSelectors) {
 			// make a copy of the label selector
-			veleroRestore.Spec.OrLabelSelectors = append(veleroRestore.Spec.OrLabelSelectors, acmRestore.Spec.OrLabelSelectors[i].DeepCopy())
+			veleroRestore.Spec.OrLabelSelectors = append(veleroRestore.Spec.OrLabelSelectors,
+				acmRestore.Spec.OrLabelSelectors[i].DeepCopy())
 		}
 	}
 
