@@ -546,7 +546,10 @@ func isResourceLocalCluster(resource *unstructured.Unstructured) bool {
 	return resource.GetKind() == managedClusterKind && hasLocalClusterLabel(resource)
 }
 
+// Will return "" if no managed cluster represents the local-cluster
 func getLocalClusterName(ctx context.Context, c client.Client) (string, error) {
+	logger := log.FromContext(ctx)
+
 	locClusterLabelMatchOption := []client.ListOption{
 		client.MatchingLabels{
 			localClusterLabel: "true",
@@ -559,10 +562,16 @@ func getLocalClusterName(ctx context.Context, c client.Client) (string, error) {
 	}
 
 	if len(localMgdClusterList.Items) == 0 {
-		return "", fmt.Errorf("No local managed cluster found")
+		logger.Info("No local managed cluster found")
+		return "", nil // Valid scenario, no local managed cluster
+	}
+	if len(localMgdClusterList.Items) > 1 {
+		logger.Info("Warning - multiple managedclusters are labeled as the local-cluster",
+			"localMgdClusterList.Items", localMgdClusterList.Items)
+		// If we ever get more than 1 managed cluster with the label, this will be problem - returning 1st in list
+		// This code assumes that there should only ever be 1 managed cluster with the 'local-cluster': 'true' label
+		// and just logs the above warning if we find more than 1
 	}
 
-	// If we ever get more than 1 managed cluster with the label, this will be problem - returning 1st in list
-	// This code assumes that there should only ever be 1 managed cluster with the 'local-cluster': 'true' label
 	return localMgdClusterList.Items[0].Name, nil
 }

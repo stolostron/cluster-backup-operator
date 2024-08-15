@@ -718,7 +718,7 @@ func deleteDynamicResource(
 	dr dynamic.NamespaceableResourceInterface,
 	resource unstructured.Unstructured,
 	excludedNamespaces []string,
-	localClusterName string,
+	localClusterName string, /* may be "" if no local cluster */
 	skipExcludedBackupLabel bool,
 ) (bool, string) {
 	logger := log.FromContext(ctx)
