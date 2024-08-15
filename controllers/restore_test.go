@@ -1632,3 +1632,202 @@ func Test_processRestoreWait(t *testing.T) {
 	// clean up
 	testEnv.Stop()
 }
+
+func hasOrActivationLabel(
+	restore veleroapi.Restore,
+) bool {
+
+	hasActivationOrSelector := false
+	if restore.Spec.OrLabelSelectors != nil && len(restore.Spec.OrLabelSelectors) > 0 {
+		for i := range restore.Spec.OrLabelSelectors {
+			requirements := restore.Spec.OrLabelSelectors[i].MatchExpressions
+			for idx := range requirements {
+
+				if requirements[idx].Key == backupCredsClusterLabel {
+					hasActivationOrSelector = true
+					break
+				}
+			}
+		}
+	}
+	return hasActivationOrSelector
+}
+
+func hasActivationLabel(
+	restore veleroapi.Restore,
+) bool {
+
+	hasActivationSelector := false
+	if restore.Spec.LabelSelector != nil {
+		requirements := restore.Spec.LabelSelector.MatchExpressions
+		for idx := range requirements {
+
+			if requirements[idx].Key == backupCredsClusterLabel {
+				hasActivationSelector = true
+				break
+			}
+		}
+	}
+	return hasActivationSelector
+}
+
+func Test_actLabelNotOnManagedClsRestore(t *testing.T) {
+
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	cfg, _ := testEnv.Start()
+	scheme1 := runtime.NewScheme()
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	veleroapi.AddToScheme(scheme1)
+	v1beta1.AddToScheme(scheme1)
+
+	orLabelSelector := []*metav1.LabelSelector{
+		{
+			MatchLabels: map[string]string{
+				"restore-test-1": "restore-test-1-value",
+			},
+		},
+	}
+
+	activationLabel := &metav1.LabelSelectorRequirement{}
+	activationLabel.Key = backupCredsClusterLabel
+	activationLabel.Operator = "In"
+	activationLabel.Values = []string{ClusterActivationLabel}
+
+	type args struct {
+		ctx               context.Context
+		c                 client.Client
+		acmRestore        *v1beta1.Restore
+		credsRestore      *veleroapi.Restore
+		managedClsRestore *veleroapi.Restore
+	}
+	tests := []struct {
+		name string
+		args args
+		// true if the label activation must be part of the orLabelSelector - for creds and generic restore only!
+		wantActivationOrSelector bool
+		// true if the label activation must be part of the LabelSelector - for creds and generic restore only!
+		wantActivationSelector bool
+	}{
+		{
+			name: "restore passive with OR label",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+				acmRestore: createACMRestore("acm-restore", "default").
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).
+					veleroManagedClustersBackupName(skipRestoreStr).
+					restoreORLabelSelector(orLabelSelector).
+					object,
+				credsRestore:      createRestore(veleroScheduleNames[Credentials], "default").object,
+				managedClsRestore: createRestore(veleroScheduleNames[ManagedClusters], "default").object,
+			},
+			wantActivationOrSelector: true,  // restore passive data, no managed clusters
+			wantActivationSelector:   false, // activation label is on the OR path
+		},
+		{
+			name: "restore passive with label",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+				acmRestore: createACMRestore("acm-restore", "default").
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).
+					veleroManagedClustersBackupName(skipRestoreStr).
+					restoreLabelSelector(&metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"restorelabel": "value",
+						},
+						MatchExpressions: []metav1.LabelSelectorRequirement{
+							metav1.LabelSelectorRequirement{
+								Key:      "foo",
+								Operator: metav1.LabelSelectorOperator("In"),
+								Values:   []string{"bar"},
+							},
+						},
+					}).
+					object,
+				credsRestore:      createRestore(veleroScheduleNames[Credentials], "default").object,
+				managedClsRestore: createRestore(veleroScheduleNames[ManagedClusters], "default").object,
+			},
+			wantActivationOrSelector: false, // restore passive data, no managed clusters
+			wantActivationSelector:   true,  // activation label set here
+		},
+		{
+			name: "restore passive with label",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClient1,
+				acmRestore: createACMRestore("acm-restore", "default").
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).
+					veleroManagedClustersBackupName(skipRestoreStr).
+					object,
+				credsRestore:      createRestore(veleroScheduleNames[Credentials], "default").object,
+				managedClsRestore: createRestore(veleroScheduleNames[ManagedClusters], "default").object,
+			},
+			wantActivationOrSelector: false, // restore passive data, no managed clusters
+			wantActivationSelector:   true,  // activation label set here
+		},
+	}
+
+	for _, tt := range tests {
+
+		if err := k8sClient1.Create(context.Background(), tt.args.acmRestore); err != nil {
+			t.Errorf("cannot create resource %v", err.Error())
+		}
+
+		if err := k8sClient1.Create(context.Background(), tt.args.credsRestore); err != nil {
+			t.Errorf("cannot create resource %v", err.Error())
+		}
+		if err := k8sClient1.Create(context.Background(), tt.args.managedClsRestore); err != nil {
+			t.Errorf("cannot create resource %v", err.Error())
+		}
+
+		// set user filters on both restores, using the acm restore
+		setUserRestoreFilters(tt.args.acmRestore, tt.args.credsRestore)
+		setUserRestoreFilters(tt.args.acmRestore, tt.args.managedClsRestore)
+
+		// add activation label to creds restore
+		addRestoreLabelSelector(tt.args.credsRestore, *activationLabel)
+
+		if hasOrActivationLabel(*tt.args.managedClsRestore) {
+			t.Errorf("managed cluster restore should not have the activation label on OR path ")
+		}
+		if hasActivationLabel(*tt.args.managedClsRestore) {
+			t.Errorf("managed cluster restore should not have the activation label ")
+		}
+		credsOrActLabel := hasOrActivationLabel(*tt.args.credsRestore)
+		if credsOrActLabel != tt.wantActivationOrSelector {
+			t.Errorf("creds restore OR activation label should be %v, got %v", tt.wantActivationOrSelector, credsOrActLabel)
+		}
+
+		credsActLabel := hasActivationLabel(*tt.args.credsRestore)
+		if credsActLabel != tt.wantActivationSelector {
+			t.Errorf("creds restore activation label should be %v, got %v", tt.wantActivationSelector, credsActLabel)
+		}
+
+		if err := k8sClient1.Delete(context.Background(), tt.args.acmRestore); err != nil {
+			t.Errorf("cannot delete resource %v", err.Error())
+		}
+
+		if err := k8sClient1.Delete(context.Background(), tt.args.credsRestore); err != nil {
+			t.Errorf("cannot delete resource %v", err.Error())
+		}
+		if err := k8sClient1.Delete(context.Background(), tt.args.managedClsRestore); err != nil {
+			t.Errorf("cannot delete resource %v", err.Error())
+		}
+	}
+	// clean up
+	testEnv.Stop()
+}
