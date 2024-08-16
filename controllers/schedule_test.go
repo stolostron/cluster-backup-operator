@@ -1149,6 +1149,7 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 	}
 	cfg, _ := testEnv.Start()
 	scheme1 := runtime.NewScheme()
+	veleroapi.AddToScheme(scheme1)
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
 
 	velero_schedule := *createSchedule(veleroScheduleNames[Resources], veleroNamespaceName).
@@ -1222,11 +1223,7 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 			},
 		},
 	}
-	for index, tt := range tests {
-
-		if index == 1 {
-			veleroapi.AddToScheme(scheme1)
-		}
+	for _, tt := range tests {
 		for i := range tt.resources {
 			if err := k8sClient1.Create(tt.args.ctx, tt.resources[i]); err != nil {
 				t.Errorf("failed to create %s", err.Error())
@@ -1235,16 +1232,15 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 		}
 
 		t.Run(tt.name, func(t *testing.T) {
-			if got, _ := scheduleOwnsLatestStorageBackups(tt.args.ctx, tt.args.c,
-				tt.args.schedule); got != tt.want {
-				t.Errorf("scheduleOwnsLatestStorageBackups() = got %v, want %v", got, tt.want)
+			if got, _, err := scheduleOwnsLatestStorageBackups(tt.args.ctx, tt.args.c,
+				tt.args.schedule); got != tt.want || err != nil {
+				t.Errorf("scheduleOwnsLatestStorageBackups() = got %v, want %v, err %v", got, tt.want, err)
 			}
 		})
 
 	}
 	// clean up
 	testEnv.Stop()
-
 }
 
 func Test_isRestoreHubAfterSchedule(t *testing.T) {

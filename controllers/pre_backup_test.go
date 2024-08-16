@@ -768,6 +768,7 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 	cfg, _ := testEnv.Start()
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: unstructuredScheme})
 	clusterv1.AddToScheme(unstructuredScheme)
+	workv1.AddToScheme(unstructuredScheme)
 	corev1.AddToScheme(unstructuredScheme)
 	addonv1alpha1.AddToScheme(unstructuredScheme)
 
@@ -866,10 +867,13 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cleanupMSAForImportedClusters(tt.args.ctx, k8sClient1,
+			err := cleanupMSAForImportedClusters(tt.args.ctx, k8sClient1,
 				tt.args.dr,
 				tt.args.mapping,
 			)
+			if err != nil {
+				t.Errorf("Error running cleanupMSAForImportedClusters %s", err.Error())
+			}
 			// cover the path where c.List for ManagedClusterAddOnList fails
 			prepareImportedClusters(tt.args.ctx, k8sClient1,
 				tt.args.dr,

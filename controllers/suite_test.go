@@ -707,9 +707,7 @@ var _ = BeforeSuite(func() {
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
 
-	defer testEnv.Stop()
-
-	defer testEnvManagedCluster.Stop()
-
-	defer server.Close()
+	Expect(testEnv.Stop()).To(Succeed())
+	Expect(testEnvManagedCluster.Stop()).To(Succeed())
+	server.Close()
 })
