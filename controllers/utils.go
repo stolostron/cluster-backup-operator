@@ -558,6 +558,7 @@ func getLocalClusterName(ctx context.Context, c client.Client) (string, error) {
 	localMgdClusterList := &clusterv1.ManagedClusterList{}
 	err := c.List(ctx, localMgdClusterList, locClusterLabelMatchOption...)
 	if err != nil {
+		logger.Error(err, "Error querying managedclusters to find local-cluster")
 		return "", err
 	}
 

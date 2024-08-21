@@ -54,6 +54,7 @@ func executePostRestoreTasks(
 	c client.Client,
 	acmRestore *v1beta1.Restore,
 ) bool {
+	logger := log.FromContext(ctx)
 
 	processed := false
 
@@ -66,14 +67,26 @@ func executePostRestoreTasks(
 		// broadcast the restore managed clusters operation by creating a backup resource
 		recordClustersRestoreOperation(ctx, c, acmRestore)
 
-		managedClusters := &clusterv1.ManagedClusterList{}
-		if err := c.List(ctx, managedClusters, &client.ListOptions{}); err == nil {
-			processed = true
-			// this cluster was activated so try to auto import pending managed clusters
-			_, activationMessages := postRestoreActivation(ctx, c, getMSASecrets(ctx, c, ""),
-				managedClusters.Items, time.Now().In(time.UTC))
-			acmRestore.Status.Messages = activationMessages
+		localClusterName, err := getLocalClusterName(ctx, c)
+		if err != nil {
+			logger.Error(err, "Error getting local cluster name, not able to run postRestoreActivation")
+			// This should only happen if we can't list managedclusters, in which case the list call below
+			// will probably also have failed
+			return processed
 		}
+
+		managedClusters := &clusterv1.ManagedClusterList{}
+		err = c.List(ctx, managedClusters, &client.ListOptions{})
+		if err != nil {
+			logger.Error(err, "Error listing managed clusters, not able to run postRestoreActivation")
+			return processed
+		}
+
+		processed = true
+		// this cluster was activated so try to auto import pending managed clusters
+		_, activationMessages := postRestoreActivation(ctx, c, getMSASecrets(ctx, c, ""),
+			managedClusters.Items, localClusterName, time.Now().In(time.UTC))
+		acmRestore.Status.Messages = activationMessages
 	}
 	return processed
 }
@@ -478,10 +491,12 @@ func deleteDynamicResourcesForBackup(
 				groupKind, err.Error()))
 			continue
 		}
-		invokeDynamicDelete(ctx, c, restoreOptions, labelSelector,
-			veleroBackup, mapping)
+		err = invokeDynamicDelete(ctx, c, restoreOptions, labelSelector, veleroBackup, mapping)
+		// Log err and keep going
+		if err != nil {
+			logger.Error(err, "Error with invokeDynamicDelete", "groupKind", groupKind)
+		}
 	}
-
 }
 
 func invokeDynamicDelete(
@@ -491,45 +506,47 @@ func invokeDynamicDelete(
 	labelSelector string,
 	veleroBackup *veleroapi.Backup,
 	mapping *meta.RESTMapping,
-) {
+) error {
 	logger := log.FromContext(ctx)
 
 	backupName := veleroBackup.Name
 	if dr := restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource); dr != nil {
 		localClusterName, err := getLocalClusterName(ctx, c)
 		if err != nil {
-			logger.Error(err, "Error finding local cluster")
-			return // FIXME: handle error
+			return err
 		}
 
-		var listOptions = v1.ListOptions{}
+		listOptions := v1.ListOptions{}
 		if labelSelector != "" {
 			listOptions = v1.ListOptions{LabelSelector: labelSelector}
 		}
-		if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
-			// get all items and delete them
-			for i := range dynamiclist.Items {
+		dynamiclist, err := dr.List(ctx, listOptions)
+		if err != nil {
+			logger.Error(err, "Error listing unstructured objects by label selector")
+		}
+		// get all items and delete them
+		for i := range dynamiclist.Items {
 
-				item := dynamiclist.Items[i]
-				if restoreOptions.cleanupType == v1beta1.CleanupTypeAll &&
-					item.GetLabels()[BackupNameVeleroLabel] == backupName {
-					// exclude here resources with the same backup as the last restore
-					continue
-				}
-
-				deleteDynamicResource(
-					ctx,
-					mapping,
-					dr,
-					item,
-					veleroBackup.Spec.ExcludedNamespaces,
-					localClusterName,
-					true, // skip resource if ExcludeBackupLabel is set
-				)
+			item := dynamiclist.Items[i]
+			if restoreOptions.cleanupType == v1beta1.CleanupTypeAll &&
+				item.GetLabels()[BackupNameVeleroLabel] == backupName {
+				// exclude here resources with the same backup as the last restore
+				continue
 			}
+
+			deleteDynamicResource(
+				ctx,
+				mapping,
+				dr,
+				item,
+				veleroBackup.Spec.ExcludedNamespaces,
+				localClusterName,
+				true, // skip resource if ExcludeBackupLabel is set
+			)
 		}
 	}
 
+	return nil
 }
 
 // get the backup used by this restore
@@ -563,6 +580,7 @@ func postRestoreActivation(
 	c client.Client,
 	msaSecrets []corev1.Secret,
 	managedClusters []clusterv1.ManagedCluster,
+	localClusterName string,
 	currentTime time.Time,
 ) ([]string, []string) {
 	logger := log.FromContext(ctx)
@@ -571,13 +589,6 @@ func postRestoreActivation(
 	autoImportSecretsCreated := []string{}
 
 	activationMessages := []string{}
-
-	localClusterName, err := getLocalClusterName(ctx, c)
-	if err != nil {
-		logger.Error(err, "Error finding local cluster")
-		// FIXME: handle error instead
-		localClusterName = "local-cluster"
-	}
 
 	processedClusters := []string{}
 	for s := range msaSecrets {

@@ -108,7 +108,7 @@ var _ = Describe("BackupSchedule controller", func() {
 		}
 
 		managedClusters = []clusterv1.ManagedCluster{
-			*createManagedCluster("local-cluster", true).object,
+			*createManagedCluster("lcluster", true /* the local cluster */).object,
 			*createManagedCluster(managedClusterNSName, false).object,
 		}
 		managedClusterNS = createNamespace(managedClusterNSName)
@@ -534,7 +534,7 @@ var _ = Describe("BackupSchedule controller", func() {
 			var managedSvcAccountMCAOs []addonv1alpha1.ManagedClusterAddOn
 			for i := range managedClusters {
 				// managed-serviceaccount ManagedClusterAddOn should not be created for local-cluster
-				if managedClusters[i].GetName() != "local-cluster" { //TODO: test with local-cluster with different name?
+				if managedClusters[i].GetName() != "lcluster" { // The name of the local-cluster we created above
 					managedSvcAccountMCAOs = append(managedSvcAccountMCAOs, addonv1alpha1.ManagedClusterAddOn{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      msa_addon,

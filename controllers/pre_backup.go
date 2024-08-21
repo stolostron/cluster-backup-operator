@@ -118,7 +118,10 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		dr = r.DynamicClient.Resource(msaMapping.Resource)
 		if dr != nil {
 			if useMSA {
-				prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule)
+				if err := prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule); err != nil {
+					logger.Error(err, "prepareForBackup: error preparing imported clusters")
+					return err
+				}
 			} else {
 				if err := cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping); err != nil {
 					logger.Error(err, "prepareForBackup: error cleaning up MSA for imported clusters")
@@ -160,7 +163,6 @@ func cleanupMSAForImportedClusters(
 	if msaMapping != nil {
 		localClusterName, err := getLocalClusterName(ctx, c)
 		if err != nil {
-			logger.Error(err, "Error finding local cluster") //TODO: move logging to getLocalClusterName
 			return err
 		}
 
@@ -193,11 +195,13 @@ func cleanupMSAForImportedClusters(
 	}
 
 	for i := range addons.Items {
-		logger.Info(fmt.Sprintf("deleting addon %s", addons.Items[i].Name))
-		if err := c.Delete(ctx, &addons.Items[i]); err == nil {
-			logger.Info(
-				fmt.Sprintf(" addon deleted %s", addons.Items[i].Name),
-			)
+		if addons.Items[i].GetDeletionTimestamp().IsZero() { // Avoid re-attempting deletes
+			logger.Info(fmt.Sprintf("deleting addon %s", addons.Items[i].Name))
+			if err := c.Delete(ctx, &addons.Items[i]); client.IgnoreNotFound(err) != nil {
+				logger.Error(err, "Error deleting addon", "name", addons.Items[i].Name)
+				return err
+			}
+			logger.Info(fmt.Sprintf(" addon deleted %s", addons.Items[i].Name))
 		}
 	}
 
@@ -213,8 +217,7 @@ func cleanupMSAForImportedClusters(
 	for i := range manifestWorkList.Items {
 		if manifestWorkList.Items[i].GetDeletionTimestamp().IsZero() { // Avoid re-attempting deletes
 			logger.Info(fmt.Sprintf("deleting manifestwork %s", manifestWorkList.Items[i].Name))
-			err := c.Delete(ctx, &manifestWorkList.Items[i])
-			if err != nil {
+			if err := c.Delete(ctx, &manifestWorkList.Items[i]); client.IgnoreNotFound(err) != nil {
 				logger.Error(err, "Error deleting manifestwork", "name", manifestWorkList.Items[i].Name)
 				return err
 			}
@@ -227,10 +230,9 @@ func cleanupMSAForImportedClusters(
 	secrets := getMSASecrets(ctx, c, "")
 	for s := range secrets {
 		secret := secrets[s]
-		if secret.GetDeletionTimestamp().IsZero() {
+		if secret.GetDeletionTimestamp().IsZero() { // Avoid re-attempting deletes
 			logger.Info(fmt.Sprintf("deleting MSA secret %s", secret.Name))
-			err := c.Delete(ctx, &secret)
-			if err != nil {
+			if err := c.Delete(ctx, &secret); client.IgnoreNotFound(err) != nil {
 				logger.Error(err, "Error deleting MSA secret", "name", secret.Name)
 				return err
 			}
@@ -250,7 +252,7 @@ func prepareImportedClusters(ctx context.Context,
 	dr dynamic.NamespaceableResourceInterface,
 	_ *meta.RESTMapping,
 	backupSchedule *v1beta1.BackupSchedule,
-) {
+) error {
 	logger := log.FromContext(ctx)
 
 	secretsGeneratedNow := false
@@ -274,8 +276,7 @@ func prepareImportedClusters(ctx context.Context,
 	err := c.List(ctx, managedClusters, &client.ListOptions{})
 	if err != nil {
 		logger.Error(err, "Unable to list managed clusters")
-		// FIXME: handle error
-		return
+		return err
 	}
 	for i := range managedClusters.Items {
 		managedCluster := managedClusters.Items[i]
@@ -298,8 +299,7 @@ func prepareImportedClusters(ctx context.Context,
 		addons := &addonv1alpha1.ManagedClusterAddOnList{}
 		if err := c.List(ctx, addons, &client.ListOptions{Namespace: managedCluster.Name}); err != nil {
 			logger.Error(err, "Unable to list managedclusteraddons in namespace %s", managedCluster.Name)
-			// FIXME: handle error
-			continue
+			return err
 		}
 
 		installNamespace := ""
@@ -364,6 +364,7 @@ func prepareImportedClusters(ctx context.Context,
 		time.Sleep(2 * time.Second)
 	}
 
+	return nil
 }
 
 // returns true if the pair token needs to be generated now
@@ -801,7 +802,6 @@ func updateHiveResources(ctx context.Context,
 	c client.Client,
 	dr dynamic.NamespaceableResourceInterface,
 ) {
-	//TODO: handle errors
 	logger := log.FromContext(ctx)
 	// update secrets for clusterDeployments created by cluster claims
 	clusterDeployments := &hivev1.ClusterDeploymentList{}

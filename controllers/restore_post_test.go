@@ -41,7 +41,6 @@ import (
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
-	"k8s.io/client-go/kubernetes/scheme"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
@@ -69,8 +68,12 @@ func Test_postRestoreActivation(t *testing.T) {
 	autoImporSecretWithoutLabel := *createSecret(autoImportSecretName, "managed2",
 		nil, nil, nil)
 
+	scheme1 := runtime.NewScheme()
+	corev1.AddToScheme(scheme1)
+	clusterv1.AddToScheme(scheme1)
+
 	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
 	k8sClient1.Create(context.Background(), &ns1)
 	k8sClient1.Create(context.Background(), &ns2)
 	k8sClient1.Create(context.Background(), &autoImporSecretWithLabel)
@@ -226,7 +229,7 @@ func Test_postRestoreActivation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got, _ := postRestoreActivation(tt.args.ctx, k8sClient1,
-				tt.args.secrets, tt.args.managedClusters, tt.args.currentTime); len(got) != len(tt.want) {
+				tt.args.secrets, tt.args.managedClusters, "local-cluster", tt.args.currentTime); len(got) != len(tt.want) {
 				t.Errorf("postRestoreActivation() returns = %v, want %v", got, tt.want)
 			}
 		})
