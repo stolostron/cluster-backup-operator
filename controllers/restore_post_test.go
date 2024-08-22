@@ -41,13 +41,14 @@ import (
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
-	"k8s.io/client-go/kubernetes/scheme"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
 func Test_postRestoreActivation(t *testing.T) {
@@ -67,8 +68,12 @@ func Test_postRestoreActivation(t *testing.T) {
 	autoImporSecretWithoutLabel := *createSecret(autoImportSecretName, "managed2",
 		nil, nil, nil)
 
+	scheme1 := runtime.NewScheme()
+	corev1.AddToScheme(scheme1)
+	clusterv1.AddToScheme(scheme1)
+
 	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
 	k8sClient1.Create(context.Background(), &ns1)
 	k8sClient1.Create(context.Background(), &ns2)
 	k8sClient1.Create(context.Background(), &autoImporSecretWithLabel)
@@ -96,9 +101,9 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					*createManagedCluster("local-cluster").object,
-					*createManagedCluster("test1").object,
-					*createManagedCluster("managed1").clusterUrl("someurl").
+					*createManagedCluster("local-cluster", true).object,
+					*createManagedCluster("test1", false).object,
+					*createManagedCluster("managed1", false).clusterUrl("someurl").
 						conditions([]metav1.Condition{
 							v1.Condition{
 								Status: v1.ConditionTrue,
@@ -129,9 +134,9 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					*createManagedCluster("local-cluster").object,
-					*createManagedCluster("test1").object,
-					*createManagedCluster("managed1").emptyClusterUrl().
+					*createManagedCluster("local-cluster", true).object,
+					*createManagedCluster("test1", false).object,
+					*createManagedCluster("managed1", false).emptyClusterUrl().
 						conditions([]metav1.Condition{
 							v1.Condition{
 								Status: v1.ConditionFalse,
@@ -174,9 +179,9 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					*createManagedCluster("local-cluster").object,
-					*createManagedCluster("test1").object,
-					*createManagedCluster("managed1").
+					*createManagedCluster("local-cluster", true).object,
+					*createManagedCluster("test1", false).object,
+					*createManagedCluster("managed1", false).
 						clusterUrl("someurl").
 						conditions([]metav1.Condition{
 							v1.Condition{
@@ -184,7 +189,7 @@ func Test_postRestoreActivation(t *testing.T) {
 							},
 						}).
 						object,
-					*createManagedCluster("managed2").clusterUrl("someurl").
+					*createManagedCluster("managed2", false).clusterUrl("someurl").
 						conditions([]metav1.Condition{
 							v1.Condition{
 								Status: v1.ConditionFalse,
@@ -224,7 +229,7 @@ func Test_postRestoreActivation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got, _ := postRestoreActivation(tt.args.ctx, k8sClient1,
-				tt.args.secrets, tt.args.managedClusters, tt.args.currentTime); len(got) != len(tt.want) {
+				tt.args.secrets, tt.args.managedClusters, "local-cluster", tt.args.currentTime); len(got) != len(tt.want) {
 				t.Errorf("postRestoreActivation() returns = %v, want %v", got, tt.want)
 			}
 		})
@@ -320,7 +325,7 @@ func Test_executePostRestoreTasks(t *testing.T) {
 }
 
 func Test_deleteDynamicResource(t *testing.T) {
-
+	// Channel resource in the local-cluster namespace
 	res_local_ns := &unstructured.Unstructured{}
 	res_local_ns.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "apps.open-cluster-management.io/v1",
@@ -328,6 +333,21 @@ func Test_deleteDynamicResource(t *testing.T) {
 		"metadata": map[string]interface{}{
 			"name":      "channel-new",
 			"namespace": "local-cluster",
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
+	// Channel resource in local-cluster namespace (where local cluster is named "hub1ns")
+	res_local_ns_uniquename := &unstructured.Unstructured{}
+	res_local_ns_uniquename.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":      "channel-new",
+			"namespace": "hub1ns", /* this will be the local-cluster when we call deleteDynamicResource() below */
 		},
 		"spec": map[string]interface{}{
 			"type":     "Git",
@@ -472,6 +492,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 		mapping                 *meta.RESTMapping
 		dr                      dynamic.NamespaceableResourceInterface
 		resource                unstructured.Unstructured
+		localClusterName        string
 		deleteOptions           v1.DeleteOptions
 		excludedNamespaces      []string
 		skipExcludedBackupLabel bool
@@ -483,12 +504,28 @@ func Test_deleteDynamicResource(t *testing.T) {
 		errMsgEmpty bool
 	}{
 		{
-			name: "Delete local cluster resource",
+			name: "Delete local cluster resource (local-cluster named 'local-cluster')",
 			args: args{
 				ctx:                     context.Background(),
 				mapping:                 &targetMapping,
 				dr:                      resInterface,
 				resource:                *res_local_ns,
+				localClusterName:        "local-cluster",
+				deleteOptions:           delOptions,
+				excludedNamespaces:      []string{"abc"},
+				skipExcludedBackupLabel: false,
+			},
+			want:        false,
+			errMsgEmpty: true,
+		},
+		{
+			name: "Delete local cluster resource (local-cluster named 'hub1ns')",
+			args: args{
+				ctx:                     context.Background(),
+				mapping:                 &targetMapping,
+				dr:                      resInterface,
+				resource:                *res_local_ns_uniquename,
+				localClusterName:        "hub1ns",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{"abc"},
 				skipExcludedBackupLabel: false,
@@ -503,6 +540,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMapping,
 				dr:                      resInterface,
 				resource:                *res_default,
+				localClusterName:        "local-cluster",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{"abc"},
 				skipExcludedBackupLabel: false,
@@ -517,6 +555,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMapping,
 				dr:                      resInterface,
 				resource:                *res_default_with_finalizer,
+				localClusterName:        "",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{"abc"},
 				skipExcludedBackupLabel: true,
@@ -531,6 +570,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMapping,
 				dr:                      resInterface,
 				resource:                *res_default_notfound,
+				localClusterName:        "",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{"abc"},
 				skipExcludedBackupLabel: true,
@@ -545,6 +585,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMapping,
 				dr:                      resInterface,
 				resource:                *res_default_notfound,
+				localClusterName:        "",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{"default"},
 				skipExcludedBackupLabel: true,
@@ -559,6 +600,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMapping,
 				dr:                      resInterface,
 				resource:                *res_exclude_from_backup,
+				localClusterName:        "local-cluster",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{"abc"},
 				skipExcludedBackupLabel: true,
@@ -573,6 +615,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMapping,
 				dr:                      resInterface,
 				resource:                *res_exclude_from_backup,
+				localClusterName:        "local-cluster",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{"abc"},
 				skipExcludedBackupLabel: false,
@@ -587,6 +630,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMappingGlobal,
 				dr:                      resInterface,
 				resource:                *res_global,
+				localClusterName:        "local-cluster",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{},
 				skipExcludedBackupLabel: true,
@@ -601,6 +645,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMappingGlobal,
 				dr:                      resInterface,
 				resource:                *res_global_with_finalizer,
+				localClusterName:        "local-cluster",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{},
 				skipExcludedBackupLabel: true,
@@ -615,6 +660,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMappingGlobal,
 				dr:                      resInterface,
 				resource:                *res_global_notfound,
+				localClusterName:        "local-cluster",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{},
 				skipExcludedBackupLabel: true,
@@ -630,6 +676,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				tt.args.dr,
 				tt.args.resource,
 				tt.args.excludedNamespaces,
+				tt.args.localClusterName,
 				tt.args.skipExcludedBackupLabel); got != tt.want ||
 				(tt.errMsgEmpty && len(msg) != 0) ||
 				(!tt.errMsgEmpty && len(msg) == 0) {
@@ -1405,6 +1452,7 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 }
 
 func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
+	log.SetLogger(zap.New())
 
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
@@ -1417,6 +1465,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	cfg, _ := testEnv.Start()
 	scheme1 := runtime.NewScheme()
 	veleroapi.AddToScheme(scheme1)
+	clusterv1.AddToScheme(scheme1)
 	corev1.AddToScheme(scheme1)
 	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
 
@@ -1438,6 +1487,14 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 	veleroClustersBackupNameOlder := veleroScheduleNames[ManagedClusters] + "-" + tenHourAgoTime
 	veleroClustersBackupName := veleroScheduleNames[ManagedClusters] + "-" + aFewSecondsAgoTime
+
+	// Create a local cluster managedcluster object
+	if err := k8sClient1.Create(context.Background(), createNamespace("myhub1")); err != nil {
+		t.Errorf("cannot create ns %s ", err.Error())
+	}
+	if err := k8sClient1.Create(context.Background(), createManagedCluster("myhub1", true /* local cluster */).object); err != nil {
+		t.Errorf("cannot create %s ", err.Error())
+	}
 
 	// create a resources backup
 	resources := []string{

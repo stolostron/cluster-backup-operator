@@ -278,15 +278,15 @@ func scheduleOwnsLatestStorageBackups(
 	ctx context.Context,
 	c client.Client,
 	backupSchedule *veleroapi.Schedule,
-) (bool, *veleroapi.Backup) {
+) (bool, *veleroapi.Backup, error) {
 
 	logger := log.FromContext(ctx)
 
 	backups := veleroapi.BackupList{}
 	if err := c.List(ctx, &backups,
 		client.MatchingLabels{BackupVeleroLabel: veleroScheduleNames[Resources]}); err != nil {
-		logger.Info(err.Error())
-		return true, nil
+		logger.Error(err, "Error listing velero backups")
+		return true, nil, err
 	}
 	// get only acm resources backups and not in deleting state
 	// which are backups starting with acm-resources-schedule
@@ -308,15 +308,15 @@ func scheduleOwnsLatestStorageBackups(
 	})
 
 	if len(sliceBackups) == 0 {
-		return true, nil
+		return true, nil, nil
 	}
 	lastBackup := sliceBackups[len(sliceBackups)-1]
 
 	if lastBackup.Labels[BackupScheduleClusterLabel] != backupSchedule.GetLabels()[BackupScheduleClusterLabel] {
-		return false, &lastBackup
+		return false, &lastBackup, nil
 	}
 
-	return true, nil
+	return true, nil, nil
 }
 
 // delete all velero schedules owned by this BackupSchedule
@@ -464,8 +464,11 @@ func verifyMSAOption(
 
 		if _, err := mapper.RESTMapping(msaKind, ""); err != nil {
 			scheduleLogger.Info("ManagedServiceAccount CRD not found")
-			//cleanupMSAForImportedClusters
-			cleanupMSAForImportedClusters(ctx, c, nil, nil)
+			cleanupMSAErr := cleanupMSAForImportedClusters(ctx, c, nil, nil)
+			if cleanupMSAErr != nil {
+				scheduleLogger.Error(cleanupMSAErr, "error cleaning up MSA for imported clusters")
+				// Not returning error here, below will set a failed response msg and requeue
+			}
 			// return error
 			return createFailedValidationResponse(ctx, c, backupSchedule,
 				msg, true) // want to reque, if CRD is installed after

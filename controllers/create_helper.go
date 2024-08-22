@@ -563,21 +563,28 @@ type ManagedHelper struct {
 	object *clusterv1.ManagedCluster
 }
 
-func createManagedCluster(name string) *ManagedHelper {
-	return &ManagedHelper{
-		&clusterv1.ManagedCluster{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: name,
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient: true,
-			},
+func createManagedCluster(name string, isLocalCluster bool) *ManagedHelper {
+	mgdCluster := &clusterv1.ManagedCluster{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1",
+			Kind:       "ManagedCluster",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: clusterv1.ManagedClusterSpec{
+			HubAcceptsClient: true,
 		},
 	}
+
+	if isLocalCluster {
+		// Add local-cluster label
+		mgdCluster.Labels = map[string]string{
+			"local-cluster": "true",
+		}
+	}
+
+	return &ManagedHelper{mgdCluster}
 }
 
 func (b *ManagedHelper) clusterUrl(curl string) *ManagedHelper {

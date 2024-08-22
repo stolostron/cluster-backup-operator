@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -25,6 +26,7 @@ import (
 )
 
 var _ = Describe("BackupSchedule controller", func() {
+	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(GinkgoWriter))
 
 	var (
 		ctx                     context.Context
@@ -106,8 +108,8 @@ var _ = Describe("BackupSchedule controller", func() {
 		}
 
 		managedClusters = []clusterv1.ManagedCluster{
-			*createManagedCluster("local-cluster").object,
-			*createManagedCluster(managedClusterNSName).object,
+			*createManagedCluster("lcluster", true /* the local cluster */).object,
+			*createManagedCluster(managedClusterNSName, false).object,
 		}
 		managedClusterNS = createNamespace(managedClusterNSName)
 		chartsv1NS = createNamespace(chartsv1NSName)
@@ -406,6 +408,7 @@ var _ = Describe("BackupSchedule controller", func() {
 			Expect(k8sClient.Create(ctx, &veleroBackups[i])).Should(Succeed())
 		}
 
+		// TODO: look for those expired validation schedule backups and ensure they got deleted? (DeleteBackupRequest)
 	})
 	Context("When creating a BackupSchedule", func() {
 		It("Should be creating a Velero Schedule updating the Status", func() {
@@ -417,10 +420,11 @@ var _ = Describe("BackupSchedule controller", func() {
 				Name:      backupStorageLocation.Name,
 				Namespace: backupStorageLocation.Namespace,
 			}
-			if err := k8sClient.Get(ctx, storageLookupKey, backupStorageLocation); err == nil {
-				backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-				k8sClient.Status().Update(ctx, backupStorageLocation)
-			}
+			Expect(k8sClient.Get(ctx, storageLookupKey, backupStorageLocation)).Should(Succeed())
+			backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
+			// Velero CRD doesn't have status subresource set, so simply update the
+			// status with a normal update() call.
+			Expect(k8sClient.Update(ctx, backupStorageLocation)).Should(Succeed())
 
 			managedClusterList := clusterv1.ManagedClusterList{}
 			Eventually(func() bool {
@@ -530,7 +534,7 @@ var _ = Describe("BackupSchedule controller", func() {
 			var managedSvcAccountMCAOs []addonv1alpha1.ManagedClusterAddOn
 			for i := range managedClusters {
 				// managed-serviceaccount ManagedClusterAddOn should not be created for local-cluster
-				if managedClusters[i].GetName() != "local-cluster" {
+				if managedClusters[i].GetName() != "lcluster" { // The name of the local-cluster we created above
 					managedSvcAccountMCAOs = append(managedSvcAccountMCAOs, addonv1alpha1.ManagedClusterAddOn{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      msa_addon,
@@ -656,7 +660,7 @@ var _ = Describe("BackupSchedule controller", func() {
 				}
 			}
 
-			k8sClient.Delete(ctx, &veleroSchedulesList.Items[1])
+			Expect(k8sClient.Delete(ctx, &veleroSchedulesList.Items[1])).To(Succeed()) // Manually delete a schedule
 			// count velero schedules, should be still len(veleroScheduleNames)
 			Eventually(func() int {
 				if err := k8sClient.List(ctx, &veleroSchedulesList, &client.ListOptions{}); err == nil {
@@ -694,14 +698,14 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			// execute a backup collission validation
 			// first make sure the schedule is in enabled state
-			if err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule); err == nil {
+			Eventually(func() error {
+				err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
+				if err != nil {
+					return err
+				}
 				createdBackupSchedule.Status.Phase = v1beta1.SchedulePhaseEnabled
-				Eventually(func() bool {
-					err := k8sClient.
-						Status().Update(context.Background(), &createdBackupSchedule)
-					return err == nil
-				}, timeout, interval).Should(BeTrue())
-			}
+				return k8sClient.Status().Update(ctx, &createdBackupSchedule)
+			}, timeout, interval).Should(Succeed())
 			Eventually(func() string {
 				err := k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
 				if err != nil {
@@ -784,7 +788,7 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			// backup not created in velero namespace, should fail validation
 			acmBackupName := backupScheduleName
-			rhacmBackupScheduleACM := *createBackupSchedule(acmBackupName, acmNamespaceName).
+			rhacmBackupScheduleACM := *createBackupSchedule(acmBackupName, acmNamespaceName /* NOT velero ns */).
 				schedule(backupSchedule).veleroTTL(metav1.Duration{Duration: time.Hour * 72}).
 				object
 			Expect(k8sClient.Create(ctx, &rhacmBackupScheduleACM)).Should(Succeed())
@@ -808,7 +812,8 @@ var _ = Describe("BackupSchedule controller", func() {
 					return false
 				}
 				return createdBackupScheduleACM.Status.Phase == v1beta1.SchedulePhaseFailedValidation
-			}, timeout, interval).Should(BeTrue())
+			}, timeout*2, interval).Should(BeTrue())
+			logger.Info("backup schedule in wrong ns", "createdBackupScheduleACM", &createdBackupScheduleACM)
 			Expect(
 				createdBackupScheduleACM.Status.LastMessage,
 			).Should(ContainSubstring("location is not available"))
@@ -883,7 +888,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					return ""
 				}
 				return createdBackupScheduleValidCronExp.Status.LastMessage
-			}, timeout, interval).Should(ContainSubstring("already exists"))
+			}, timeout*4, interval).Should(ContainSubstring("already exists"))
 			Expect(
 				createdBackupScheduleValidCronExp.Spec.VeleroSchedule,
 			).Should(BeIdenticalTo(backupSchedule))

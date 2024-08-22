@@ -416,8 +416,11 @@ func Test_findValidMSAToken(t *testing.T) {
 func Test_managedClusterShouldReimport(t *testing.T) {
 
 	managedClusters1 := []clusterv1.ManagedCluster{
-		*createManagedCluster("local-cluster").object,
-		*createManagedCluster("test1").object,
+		*createManagedCluster("local-cluster", true).object,
+		// Just testing should Reimport func, run a test to make sure mgd clusters that are local
+		// but are NOT named "local-cluster" should not be Reimported
+		*createManagedCluster("test-local", true).object, // Local-cluster, but not named 'local-cluster'
+		*createManagedCluster("test1", false).object,
 	}
 
 	conditionTypeAvailableTrue := v1.Condition{
@@ -431,7 +434,7 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 	}
 
 	managedClustersAvailable := []clusterv1.ManagedCluster{
-		*createManagedCluster("test1").
+		*createManagedCluster("test1", false).
 			conditions([]metav1.Condition{
 				conditionTypeAvailableTrue,
 			}).
@@ -439,14 +442,14 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 	}
 
 	managedClustersNOTAvailableNoURL := []clusterv1.ManagedCluster{
-		*createManagedCluster("test1").emptyClusterUrl().
+		*createManagedCluster("test1", false).emptyClusterUrl().
 			conditions([]metav1.Condition{
 				conditionTypeAvailableFalse,
 			}).object,
 	}
 
 	managedClustersNOTAvailableWithURL := []clusterv1.ManagedCluster{
-		*createManagedCluster("test1").
+		*createManagedCluster("test1", false).
 			clusterUrl("aaaaa").
 			conditions([]metav1.Condition{
 				conditionTypeAvailableFalse,
@@ -470,6 +473,15 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 				ctx:             context.Background(),
 				managedClusters: managedClusters1,
 				clusterName:     "local-cluster",
+			},
+			want: false,
+		},
+		{
+			name: "managed cluster is local cluster (but not named 'local-cluster'), ignore",
+			args: args{
+				ctx:             context.Background(),
+				managedClusters: managedClusters1,
+				clusterName:     "test-local",
 			},
 			want: false,
 		},

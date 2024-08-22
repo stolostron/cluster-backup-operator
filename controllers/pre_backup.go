@@ -98,7 +98,7 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 	ctx context.Context,
 	mapper *restmapper.DeferredDiscoveryRESTMapper,
 	backupSchedule *v1beta1.BackupSchedule,
-) {
+) error {
 	logger := log.FromContext(ctx)
 
 	// check if user has checked the UseManagedServiceAccount option
@@ -118,9 +118,15 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		dr = r.DynamicClient.Resource(msaMapping.Resource)
 		if dr != nil {
 			if useMSA {
-				prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule)
+				if err := prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule); err != nil {
+					logger.Error(err, "prepareForBackup: error preparing imported clusters")
+					return err
+				}
 			} else {
-				cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping)
+				if err := cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping); err != nil {
+					logger.Error(err, "prepareForBackup: error cleaning up MSA for imported clusters")
+					return err
+				}
 			}
 		}
 	} else {
@@ -140,6 +146,8 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 		// managedserviceaccount is enabled, add backup labels
 		updateMSAResources(ctx, r.Client, dr)
 	}
+
+	return nil
 }
 
 // if UseManagedServiceAccount is not set, clean up all MSA accounts
@@ -149,24 +157,31 @@ func cleanupMSAForImportedClusters(
 	c client.Client,
 	dr dynamic.NamespaceableResourceInterface,
 	msaMapping *meta.RESTMapping,
-) {
+) error {
 	logger := log.FromContext(ctx)
 
 	if msaMapping != nil {
+		localClusterName, err := getLocalClusterName(ctx, c)
+		if err != nil {
+			return err
+		}
 
 		// delete ManagedServiceAccounts with msa_service_name label
 		listOptions := v1.ListOptions{LabelSelector: fmt.Sprintf("%s in (%s)", msa_label, msa_service_name)}
-		if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
-			for i := range dynamiclist.Items {
-				deleteDynamicResource(
-					ctx,
-					msaMapping,
-					dr,
-					dynamiclist.Items[i],
-					[]string{},
-					false, // don't skip resource if ExcludeBackupLabel is set
-				)
-			}
+		dynamiclist, err := dr.List(ctx, listOptions)
+		if err != nil {
+			return err
+		}
+		for i := range dynamiclist.Items {
+			deleteDynamicResource(
+				ctx,
+				msaMapping,
+				dr,
+				dynamiclist.Items[i],
+				[]string{},
+				localClusterName,
+				false, // don't skip resource if ExcludeBackupLabel is set
+			)
 		}
 	}
 
@@ -174,15 +189,19 @@ func cleanupMSAForImportedClusters(
 	addons := &addonv1alpha1.ManagedClusterAddOnList{}
 	label := labels.SelectorFromSet(
 		map[string]string{msa_label: msa_service_name})
-	if err := c.List(ctx, addons, &client.ListOptions{LabelSelector: label}); err == nil {
+	err := c.List(ctx, addons, &client.ListOptions{LabelSelector: label})
+	if err != nil {
+		return nil
+	}
 
-		for i := range addons.Items {
+	for i := range addons.Items {
+		if addons.Items[i].GetDeletionTimestamp().IsZero() { // Avoid re-attempting deletes
 			logger.Info(fmt.Sprintf("deleting addon %s", addons.Items[i].Name))
-			if err := c.Delete(ctx, &addons.Items[i]); err == nil {
-				logger.Info(
-					fmt.Sprintf(" addon deleted %s", addons.Items[i].Name),
-				)
+			if err := c.Delete(ctx, &addons.Items[i]); client.IgnoreNotFound(err) != nil {
+				logger.Error(err, "Error deleting addon", "name", addons.Items[i].Name)
+				return err
 			}
+			logger.Info(fmt.Sprintf(" addon deleted %s", addons.Items[i].Name))
 		}
 	}
 
@@ -190,17 +209,19 @@ func cleanupMSAForImportedClusters(
 	manifestWorkList := &workv1.ManifestWorkList{}
 	label = labels.SelectorFromSet(
 		map[string]string{addon_work_label: msa_addon})
-	if err := c.List(ctx, manifestWorkList, &client.ListOptions{LabelSelector: label}); err == nil {
+	err = c.List(ctx, manifestWorkList, &client.ListOptions{LabelSelector: label})
+	if err != nil {
+		return err
+	}
 
-		for i := range manifestWorkList.Items {
-			logger.Info(
-				fmt.Sprintf("deleting manifestwork %s", manifestWorkList.Items[i].Name),
-			)
-			if err := c.Delete(ctx, &manifestWorkList.Items[i]); err == nil {
-				logger.Info(
-					fmt.Sprintf("deleted manifestwork %s", manifestWorkList.Items[i].Name),
-				)
+	for i := range manifestWorkList.Items {
+		if manifestWorkList.Items[i].GetDeletionTimestamp().IsZero() { // Avoid re-attempting deletes
+			logger.Info(fmt.Sprintf("deleting manifestwork %s", manifestWorkList.Items[i].Name))
+			if err := c.Delete(ctx, &manifestWorkList.Items[i]); client.IgnoreNotFound(err) != nil {
+				logger.Error(err, "Error deleting manifestwork", "name", manifestWorkList.Items[i].Name)
+				return err
 			}
+			logger.Info(fmt.Sprintf("deleted manifestwork %s", manifestWorkList.Items[i].Name))
 		}
 	}
 
@@ -209,16 +230,17 @@ func cleanupMSAForImportedClusters(
 	secrets := getMSASecrets(ctx, c, "")
 	for s := range secrets {
 		secret := secrets[s]
-		logger.Info(
-			fmt.Sprintf("deleting MSA secret %s", secret.Name),
-		)
-		if err := c.Delete(ctx, &secret); err == nil {
-			logger.Info(
-				fmt.Sprintf("deleted MSA secret %s", secret.Name),
-			)
+		if secret.GetDeletionTimestamp().IsZero() { // Avoid re-attempting deletes
+			logger.Info(fmt.Sprintf("deleting MSA secret %s", secret.Name))
+			if err := c.Delete(ctx, &secret); client.IgnoreNotFound(err) != nil {
+				logger.Error(err, "Error deleting MSA secret", "name", secret.Name)
+				return err
+			}
+			logger.Info(fmt.Sprintf("deleted MSA secret %s", secret.Name))
 		}
 	}
 
+	return nil
 }
 
 // here we go over all managed clusters and find the ones imported with the hub
@@ -230,7 +252,7 @@ func prepareImportedClusters(ctx context.Context,
 	dr dynamic.NamespaceableResourceInterface,
 	_ *meta.RESTMapping,
 	backupSchedule *v1beta1.BackupSchedule,
-) {
+) error {
 	logger := log.FromContext(ctx)
 
 	secretsGeneratedNow := false
@@ -251,80 +273,84 @@ func prepareImportedClusters(ctx context.Context,
 
 	// get all managed clusters
 	managedClusters := &clusterv1.ManagedClusterList{}
-	if err := c.List(ctx, managedClusters, &client.ListOptions{}); err == nil {
-		for i := range managedClusters.Items {
-			managedCluster := managedClusters.Items[i]
-			if managedCluster.Name == "local-cluster" {
-				localClusterFound = true
-				// No MSA needed
-				continue
-			}
-
-			if isHiveCreatedCluster(ctx, c, managedCluster.Name) {
-				hiveClusterCount++
-				// No MSA needed
-				continue
-			}
-
-			// MSA required for this mgd cluster
-			msaClusterCount++
-
-			// create managedservice addon if not available
-			addons := &addonv1alpha1.ManagedClusterAddOnList{}
-			if err := c.List(ctx, addons, &client.ListOptions{Namespace: managedCluster.Name}); err != nil {
-				continue
-			}
-
-			installNamespace := ""
-			alreadyCreated := false
-			for addon := range addons.Items {
-				if addons.Items[addon].Name == msa_addon {
-					alreadyCreated = true
-					if addons.Items[addon].Status.Namespace != "" {
-						installNamespace = addons.Items[addon].Status.Namespace
-					} else {
-						logger.Info("ManagedClusterAddOn status namespace not set",
-							"addon", msa_addon, "cluster", managedCluster.Name)
-					}
-					break
-				}
-			}
-			// use default addon ns when the ManagedClusterAddOn installNamespace is not set
-			if installNamespace == "" {
-				installNamespace = defaultAddonNS
-			}
-
-			if !alreadyCreated {
-				msaAddon := &addonv1alpha1.ManagedClusterAddOn{}
-				msaAddon.Name = msa_addon
-				msaAddon.Namespace = managedCluster.Name
-				// Not setting msaAddon.Spec.InstallNamespace - will leave default
-				labels := map[string]string{
-					msa_label: msa_service_name,
-				}
-				msaAddon.SetLabels(labels)
-
-				logger.Info(fmt.Sprintf("Attempt to create ManagedClusterAddOn %s for cluster =%s",
-					msaAddon.Name, msaAddon.Namespace))
-				if err := c.Create(ctx, msaAddon, &client.CreateOptions{}); err == nil {
-					logger.Info(fmt.Sprintf("Created ManagedClusterAddOn %s for cluster =%s",
-						msaAddon.Name, msaAddon.Namespace))
-				}
-			}
-
-			secretCreatedNowForCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
-				msa_service_name, managedCluster.Name, time.Now(), installNamespace)
-			// create ManagedServiceAccount pair if needed
-			// the pair MSA is used to generate a token at half
-			// the interval of the initial MSA so that any backup will contain
-			// a valid token, either from the initial MSA or pair
-			secretCreatedNowForPairCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
-				msa_service_name_pair, managedCluster.Name, time.Now(), installNamespace)
-
-			secretsGeneratedNow = secretsGeneratedNow ||
-				secretCreatedNowForCluster ||
-				secretCreatedNowForPairCluster
+	err := c.List(ctx, managedClusters, &client.ListOptions{})
+	if err != nil {
+		logger.Error(err, "Unable to list managed clusters")
+		return err
+	}
+	for i := range managedClusters.Items {
+		managedCluster := managedClusters.Items[i]
+		if isLocalCluster(&managedCluster) {
+			localClusterFound = true
+			// No MSA needed
+			continue
 		}
+
+		if isHiveCreatedCluster(ctx, c, managedCluster.Name) {
+			hiveClusterCount++
+			// No MSA needed
+			continue
+		}
+
+		// MSA required for this mgd cluster
+		msaClusterCount++
+
+		// create managedservice addon if not available
+		addons := &addonv1alpha1.ManagedClusterAddOnList{}
+		if err := c.List(ctx, addons, &client.ListOptions{Namespace: managedCluster.Name}); err != nil {
+			logger.Error(err, "Unable to list managedclusteraddons in namespace %s", managedCluster.Name)
+			return err
+		}
+
+		installNamespace := ""
+		alreadyCreated := false
+		for addon := range addons.Items {
+			if addons.Items[addon].Name == msa_addon {
+				alreadyCreated = true
+				if addons.Items[addon].Status.Namespace != "" {
+					installNamespace = addons.Items[addon].Status.Namespace
+				} else {
+					logger.Info("ManagedClusterAddOn status namespace not set",
+						"addon", msa_addon, "cluster", managedCluster.Name)
+				}
+				break
+			}
+		}
+		// use default addon ns when the ManagedClusterAddOn installNamespace is not set
+		if installNamespace == "" {
+			installNamespace = defaultAddonNS
+		}
+
+		if !alreadyCreated {
+			msaAddon := &addonv1alpha1.ManagedClusterAddOn{}
+			msaAddon.Name = msa_addon
+			msaAddon.Namespace = managedCluster.Name
+			// Not setting msaAddon.Spec.InstallNamespace - will leave default
+			labels := map[string]string{
+				msa_label: msa_service_name,
+			}
+			msaAddon.SetLabels(labels)
+
+			logger.Info(fmt.Sprintf("Attempt to create ManagedClusterAddOn %s for cluster =%s",
+				msaAddon.Name, msaAddon.Namespace))
+			if err := c.Create(ctx, msaAddon, &client.CreateOptions{}); err == nil {
+				logger.Info(fmt.Sprintf("Created ManagedClusterAddOn %s for cluster =%s",
+					msaAddon.Name, msaAddon.Namespace))
+			}
+		}
+
+		secretCreatedNowForCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
+			msa_service_name, managedCluster.Name, time.Now(), installNamespace)
+		// create ManagedServiceAccount pair if needed
+		// the pair MSA is used to generate a token at half
+		// the interval of the initial MSA so that any backup will contain
+		// a valid token, either from the initial MSA or pair
+		secretCreatedNowForPairCluster, _, _ := createMSA(ctx, c, dr, tokenValidity,
+			msa_service_name_pair, managedCluster.Name, time.Now(), installNamespace)
+
+		secretsGeneratedNow = secretsGeneratedNow ||
+			secretCreatedNowForCluster ||
+			secretCreatedNowForPairCluster
 	}
 
 	logger.Info("prepareImportedClusters",
@@ -338,6 +364,7 @@ func prepareImportedClusters(ctx context.Context,
 		time.Sleep(2 * time.Second)
 	}
 
+	return nil
 }
 
 // returns true if the pair token needs to be generated now

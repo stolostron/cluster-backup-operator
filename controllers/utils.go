@@ -32,6 +32,7 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/discovery"
@@ -39,6 +40,11 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+)
+
+const (
+	localClusterLabel  = "local-cluster"
+	managedClusterKind = "ManagedCluster"
 )
 
 func findSuffix(slice []string, val string) (int, bool) {
@@ -324,10 +330,6 @@ func managedClusterShouldReimport(
 	logger := log.FromContext(ctx)
 
 	url := ""
-	if clusterName == "local-cluster" {
-		// skip local-cluster
-		return false, url, ""
-	}
 
 	for i := range managedClusters {
 
@@ -336,6 +338,11 @@ func managedClusterShouldReimport(
 		if clusterName != managedCluster.Name {
 			// find the cluster by name
 			continue
+		}
+
+		if isLocalCluster(&managedCluster) {
+			// skip local-cluster
+			return false, url, ""
 		}
 
 		// skip available managed clusters
@@ -524,4 +531,48 @@ func updateBackupSchedulePhaseWhenPaused(
 	err := c.Status().Update(ctx, backupSchedule)
 
 	return ctrl.Result{}, err
+}
+
+// Return true if the managedCluster object has label "local-cluster": "true"
+func isLocalCluster(managedCluster *clusterv1.ManagedCluster) bool {
+	return hasLocalClusterLabel(managedCluster)
+}
+
+func hasLocalClusterLabel(obj client.Object) bool {
+	return obj.GetLabels()[localClusterLabel] == "true"
+}
+
+func isResourceLocalCluster(resource *unstructured.Unstructured) bool {
+	return resource.GetKind() == managedClusterKind && hasLocalClusterLabel(resource)
+}
+
+// Will return "" if no managed cluster represents the local-cluster
+func getLocalClusterName(ctx context.Context, c client.Client) (string, error) {
+	logger := log.FromContext(ctx)
+
+	locClusterLabelMatchOption := []client.ListOption{
+		client.MatchingLabels{
+			localClusterLabel: "true",
+		},
+	}
+	localMgdClusterList := &clusterv1.ManagedClusterList{}
+	err := c.List(ctx, localMgdClusterList, locClusterLabelMatchOption...)
+	if err != nil {
+		logger.Error(err, "Error querying managedclusters to find local-cluster")
+		return "", err
+	}
+
+	if len(localMgdClusterList.Items) == 0 {
+		logger.Info("No local managed cluster found")
+		return "", nil // Valid scenario, no local managed cluster
+	}
+	if len(localMgdClusterList.Items) > 1 {
+		logger.Info("Warning - multiple managedclusters are labeled as the local-cluster",
+			"localMgdClusterList.Items", localMgdClusterList.Items)
+		// If we ever get more than 1 managed cluster with the label, this will be problem - returning 1st in list
+		// This code assumes that there should only ever be 1 managed cluster with the 'local-cluster': 'true' label
+		// and just logs the above warning if we find more than 1
+	}
+
+	return localMgdClusterList.Items[0].Name, nil
 }
