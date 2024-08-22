@@ -1,0 +1,33 @@
+# apply this resource on hub-b, after move-managed-clusters-step1 status is Finished
+
+
+# Restores just ManagedCluster global resource for vb-managed-cls-2
+#    which results in the vb-managed-cls-2 managed cluster being activated on hub-b.
+# Look for a status Ready for the vb-managed-cls-2 managed cluster on hub-b. At this point, vb-managed-cls-2 
+#  is managed by hub-b.
+# To remove the vb-managed-cls-2 from hub-a, wait until the vb-managed-cls-2 status is Unknown on hub-a. Only when 
+#  this happens, delete the vb-managed-cls-2 ManagedCluster global resource on hub-a. This will clean up all
+#  vb-managed-cls-2 resources on hub-a but since the cluster status it Unknown, it will not run any detach operation - which you don't want to happen.
+
+# You can now resume the BackupSchedules on hub-a.
+# Update the DateProtectionApplication on hub-b to point to hub-b storage location. You can resume now the BackupSchedule on hub-b.
+
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: move-managed-clusters-step2
+  namespace: open-cluster-management-backup
+spec:
+  cleanupBeforeRestore: None # don't clean up anything, just apply the restore
+  veleroCredentialsBackupName: skip # already moved with restore-gh-move-clusters-step1
+  veleroResourcesBackupName: skip  # already moved with restore-gh-move-clusters-step1
+  veleroManagedClustersBackupName: latest  # restore just managed cluster resources, to initiate the automatic import
+  includedResources:
+    - ManagedCluster # restore just ManagedCluster global resources
+  orLabelSelectors:  # select only the ManagedCluster you need to move
+    - matchExpressions:
+        - values:
+            - vb-managed-cls-2
+          key: name
+          operator: In
