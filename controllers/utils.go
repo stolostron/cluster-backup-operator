@@ -455,7 +455,7 @@ func addRestoreLabelSelector(
 	req metav1.LabelSelectorRequirement,
 ) {
 
-	if restoreObj.Spec.OrLabelSelectors != nil && len(restoreObj.Spec.OrLabelSelectors) > 0 {
+	if len(restoreObj.Spec.OrLabelSelectors) > 0 {
 		// LabelSelector and OrLabelSelectors are mutually exclusive
 		// if restoreObj.Spec.OrLabelSelectors is not null,
 		// add LabelSelectors match expressions ( which are ANDed ) to each of the

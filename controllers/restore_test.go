@@ -1416,7 +1416,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := updateLabelsForActiveResources(tt.args.acmRestore, tt.args.restype, tt.args.veleroRestoresToCreate)
 			if got != tt.want {
-				t.Errorf(tt.name)
+				t.Errorf("error updating labels for: %s", tt.name)
 			}
 			if tt.wantResName != tt.args.veleroRestoresToCreate[tt.args.restype].Name {
 				t.Errorf("The restore resource name should be  %v, but got %v", tt.wantResName, tt.args.veleroRestoresToCreate[tt.args.restype].Name)
@@ -1591,9 +1591,8 @@ func Test_isPVCInitializationStep(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := isPVCInitializationStep(tt.args.acmRestore, tt.args.veleroRestoreList)
 			if got != tt.want {
-				t.Errorf(tt.name)
+				t.Errorf("error with isPVCInitializationStep for: %s", tt.name)
 			}
-
 		})
 	}
 }
@@ -1730,7 +1729,7 @@ func hasOrActivationLabel(
 ) bool {
 
 	hasActivationOrSelector := false
-	if restore.Spec.OrLabelSelectors != nil && len(restore.Spec.OrLabelSelectors) > 0 {
+	if len(restore.Spec.OrLabelSelectors) > 0 {
 		for i := range restore.Spec.OrLabelSelectors {
 			requirements := restore.Spec.OrLabelSelectors[i].MatchExpressions
 			for idx := range requirements {

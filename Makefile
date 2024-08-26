@@ -8,7 +8,7 @@
 VERSION ?= 0.0.1
 
 # Helper software versions
-GOLANGCI_VERSION := v1.59.1
+GOLANGCI_VERSION := v1.60.3
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
