@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -53,16 +54,25 @@ func Test_createMSA(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Errorf("Error starting testEnv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	corev1.AddToScheme(scheme1)
-	workv1.AddToScheme(scheme1)
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	if err := corev1.AddToScheme(scheme1); err != nil {
+		t.Errorf("Error adding core apis to scheme: %s", err.Error())
+	}
+	if err := workv1.AddToScheme(scheme1); err != nil {
+		t.Errorf("Error adding workv1 apis to scheme: %s", err.Error())
+	}
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Errorf("Error starting client: %s", err.Error())
+	}
 
 	namespace := "managed1"
 	if err := k8sClient1.Create(context.Background(), createNamespace(namespace)); err != nil {
 		t.Errorf("cannot create ns %s", err.Error())
-
 	}
 	if err := k8sClient1.Create(context.Background(),
 		createSecret(msa_service_name, namespace, nil, nil, nil)); err != nil {
@@ -304,8 +314,10 @@ func Test_createMSA(t *testing.T) {
 
 		})
 	}
-	testEnv.Stop()
 
+	if err := testEnv.Stop(); err != nil {
+		t.Errorf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_updateMSAToken(t *testing.T) {
@@ -765,12 +777,21 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 
 	unstructuredScheme := runtime.NewScheme()
 
-	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: unstructuredScheme})
-	clusterv1.AddToScheme(unstructuredScheme)
-	workv1.AddToScheme(unstructuredScheme)
-	corev1.AddToScheme(unstructuredScheme)
-	addonv1alpha1.AddToScheme(unstructuredScheme)
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Errorf("Error starting testEnv: %s", err.Error())
+	}
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: unstructuredScheme})
+	if err != nil {
+		t.Errorf("Error starting client: %s", err.Error())
+	}
+	e1 := clusterv1.AddToScheme(unstructuredScheme)
+	e2 := workv1.AddToScheme(unstructuredScheme)
+	e3 := corev1.AddToScheme(unstructuredScheme)
+	e4 := addonv1alpha1.AddToScheme(unstructuredScheme)
+	if err := errors.Join(e1, e2, e3, e4); err != nil {
+		t.Errorf("Error adding apis to scheme: %s", err.Error())
+	}
 
 	backupNS := "velero-ns"
 	backupSchedule := *createBackupSchedule("acm-schedule", backupNS).object
@@ -875,10 +896,12 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 				t.Errorf("Error running cleanupMSAForImportedClusters %s", err.Error())
 			}
 			// cover the path where c.List for ManagedClusterAddOnList fails
-			prepareImportedClusters(tt.args.ctx, k8sClient1,
+			err = prepareImportedClusters(tt.args.ctx, k8sClient1,
 				tt.args.dr,
 				tt.args.mapping, &backupSchedule)
-
+			if err != nil {
+				t.Errorf("Error running prepareImportedClusters %s", err.Error())
+			}
 		})
 
 		// List all mgd cluster addons - make sure the correct ones were created by prepareImportedClusters()
@@ -907,14 +930,16 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 		}
 		if foundManaged1MSAAddon == nil {
 			t.Errorf("No ManagedClusterAddOn created for managed cluster %s", "managed1")
-		}
-		msaLabel := foundManaged1MSAAddon.Labels[msa_label]
-		if msaLabel != msa_service_name {
-			t.Errorf("ManagedClusterAddOn for managed cluster %s is missing proper msa label", "managed1")
+		} else {
+			msaLabel := foundManaged1MSAAddon.Labels[msa_label]
+			if msaLabel != msa_service_name {
+				t.Errorf("ManagedClusterAddOn for managed cluster %s is missing proper msa label", "managed1")
+			}
 		}
 	}
-	testEnv.Stop()
-
+	if err := testEnv.Stop(); err != nil {
+		t.Errorf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_updateSecretsLabels(t *testing.T) {
@@ -929,10 +954,13 @@ func Test_updateSecretsLabels(t *testing.T) {
 
 	scheme1 := runtime.NewScheme()
 
-	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
-	clusterv1.AddToScheme(scheme1)
-	corev1.AddToScheme(scheme1)
+	cfg, e1 := testEnv.Start()
+	k8sClient1, e2 := client.New(cfg, client.Options{Scheme: scheme1})
+	e3 := clusterv1.AddToScheme(scheme1)
+	e4 := corev1.AddToScheme(scheme1)
+	if err := errors.Join(e1, e2, e3, e4); err != nil {
+		t.Errorf("Error setting up testenv: %s", err.Error())
+	}
 
 	labelName := backupCredsClusterLabel
 	labelValue := "clusterpool"
@@ -1015,8 +1043,10 @@ func Test_updateSecretsLabels(t *testing.T) {
 			t.Errorf("updateSecretsLabels() = %v want %v", result, tt.backupSecrets)
 		}
 	}
-	testEnv.Stop()
 
+	if err := testEnv.Stop(); err != nil {
+		t.Errorf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_retrieveMSAImportSecrets(t *testing.T) {

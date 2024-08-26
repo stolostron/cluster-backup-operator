@@ -271,26 +271,36 @@ func Test_deleteBackup(t *testing.T) {
 	for index, tt := range tests {
 		if index == 1 {
 			// create ns so create calls pass through
-			veleroapi.AddToScheme(scheme1)
+			if err := veleroapi.AddToScheme(scheme1); err != nil {
+				t.Errorf("err adding veleroapis to scheme: %s", err.Error())
+			}
 		}
 		if index == 2 {
 			// create ns so create calls pass through
-			corev1.AddToScheme(scheme1)
-			k8sClient1.Create(tt.args.ctx, createNamespace("ns1"), &client.CreateOptions{})
+			if err := corev1.AddToScheme(scheme1); err != nil {
+				t.Errorf("err adding core apis to scheme: %s", err.Error())
+			}
+			if err := k8sClient1.Create(tt.args.ctx, createNamespace("ns1"), &client.CreateOptions{}); err != nil {
+				t.Errorf("failed to create %s", err.Error())
+			}
 			if err := k8sClient1.Create(tt.args.ctx, createBackup("backup1", "ns1").object, &client.CreateOptions{}); err != nil {
 				t.Errorf("failed to create %s", err.Error())
 			}
 		}
 		if index == len(tests)-2 {
 			// create the delete request to find one already
-			k8sClient1.Create(tt.args.ctx, createNamespace("ns2"), &client.CreateOptions{})
+			if err := k8sClient1.Create(tt.args.ctx, createNamespace("ns2"), &client.CreateOptions{}); err != nil {
+				t.Errorf("failed to create %s", err.Error())
+			}
 			if err := k8sClient1.Create(tt.args.ctx, createBackup("backup2", "ns1").object, &client.CreateOptions{}); err != nil {
 				t.Errorf("failed to create %s", err.Error())
 			}
 		}
 		if index == len(tests)-1 {
 			// create the delete request to find one already
-			k8sClient1.Create(tt.args.ctx, createNamespace("ns3"), &client.CreateOptions{})
+			if err := k8sClient1.Create(tt.args.ctx, createNamespace("ns3"), &client.CreateOptions{}); err != nil {
+				t.Errorf("failed to create %s", err.Error())
+			}
 			if err := k8sClient1.Create(tt.args.ctx,
 				createBackupDeleteRequest("backup-does-not-exist", "ns3", "backup-does-not-exist").
 					errors([]string{"err1", "err2"}).
@@ -305,6 +315,8 @@ func Test_deleteBackup(t *testing.T) {
 		}
 
 	}
-	testEnv.Stop()
 
+	if err := testEnv.Stop(); err != nil {
+		t.Errorf("Error stopping testenv: %s", err.Error())
+	}
 }

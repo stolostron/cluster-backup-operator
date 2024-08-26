@@ -605,23 +605,48 @@ func Test_getVeleroBackupName(t *testing.T) {
 	for index, tt := range tests {
 
 		if index == 1 {
-			veleroapi.AddToScheme(scheme.Scheme)
+			if err := veleroapi.AddToScheme(scheme.Scheme); err != nil {
+				t.Errorf("Error adding api to scheme: %s", err.Error())
+			}
 		}
 		if index == 2 {
-			k8sClient1.Create(context.Background(), &veleroNamespace)
-			k8sClient1.Create(context.Background(), &backup)
-			k8sClient1.Create(context.Background(), &backupClsNoMatch)
+			err := k8sClient1.Create(context.Background(), &veleroNamespace)
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
+			err = k8sClient1.Create(context.Background(), &backup)
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
+			err = k8sClient1.Create(context.Background(), &backupClsNoMatch)
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
 		}
 		if index == len(tests)-2 {
-			k8sClient1.Create(context.Background(), &backupClsExactTime)
+			err := k8sClient1.Create(context.Background(), &backupClsExactTime)
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
 		}
 		if index == len(tests)-1 {
-			k8sClient1.Create(context.Background(), &backupClsExactWithin30s)
-			k8sClient1.Delete(context.Background(), &backupClsExactTime)
+			err := k8sClient1.Create(context.Background(), &backupClsExactWithin30s)
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
+			err = k8sClient1.Delete(context.Background(), &backupClsExactTime)
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
 		}
 		t.Run(tt.name, func(t *testing.T) {
 			veleroBackups := &veleroapi.BackupList{}
-			tt.args.c.List(tt.args.ctx, veleroBackups, client.InNamespace(veleroNamespace.Name))
+			if index > 0 { // First test intentionally doesn't have velero in client scheme
+				err := tt.args.c.List(tt.args.ctx, veleroBackups, client.InNamespace(veleroNamespace.Name))
+				if err != nil {
+					t.Errorf("Error listing veleroBackups: %s", err.Error())
+				}
+			}
 			if name, _, _ := getVeleroBackupName(tt.args.ctx, tt.args.c,
 				tt.args.restoreNamespace, tt.args.resourceType, tt.args.backupName, veleroBackups); name != tt.want {
 				t.Errorf("getVeleroBackupName() returns = %v, want %v", name, tt.want)
@@ -629,7 +654,9 @@ func Test_getVeleroBackupName(t *testing.T) {
 		})
 	}
 	// clean up
-	testEnv.Stop()
+	if err := testEnv.Stop(); err != nil {
+		t.Errorf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_isNewBackupAvailable(t *testing.T) {
@@ -784,18 +811,39 @@ func Test_isNewBackupAvailable(t *testing.T) {
 	for index, tt := range tests {
 
 		if index == 1 {
-			corev1.AddToScheme(scheme1)
-			v1beta1.AddToScheme(scheme1)
-			veleroapi.AddToScheme(scheme1)
+			err := corev1.AddToScheme(scheme1)
+			if err != nil {
+				t.Errorf("Error adding api to scheme: %s", err.Error())
+			}
+			err = v1beta1.AddToScheme(scheme1)
+			if err != nil {
+				t.Errorf("Error adding api to scheme: %s", err.Error())
+			}
+			err = veleroapi.AddToScheme(scheme1)
+			if err != nil {
+				t.Errorf("Error adding api to scheme: %s", err.Error())
+			}
 		}
 		if index == 2 {
-			k8sClient1.Create(tt.args.ctx, &veleroNamespace)
-			k8sClient1.Create(tt.args.ctx, &backup)
-			k8sClient1.Create(context.Background(), &veleroRestore)
+			err := k8sClient1.Create(tt.args.ctx, &veleroNamespace)
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
+			err = k8sClient1.Create(tt.args.ctx, &backup)
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
+			err = k8sClient1.Create(context.Background(), &veleroRestore)
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
 		}
 		if index == len(tests)-1 {
 			// create restore
-			k8sClient1.Create(tt.args.ctx, &restoreCredNewBackup)
+			err := k8sClient1.Create(tt.args.ctx, &restoreCredNewBackup)
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
 		}
 		t.Run(tt.name, func(t *testing.T) {
 			if got := isNewBackupAvailable(tt.args.ctx, tt.args.c,
@@ -804,8 +852,10 @@ func Test_isNewBackupAvailable(t *testing.T) {
 			}
 		})
 	}
-	testEnv.Stop()
 
+	if err := testEnv.Stop(); err != nil {
+		t.Errorf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_isBackupScheduleRunning(t *testing.T) {
@@ -1000,11 +1050,23 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 		veleroCredentialsBackupName(skipRestore).
 		veleroResourcesBackupName(invalidBackupName).object
 
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Errorf("Error starting testEnv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	veleroapi.AddToScheme(scheme1)
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
-	k8sClient1.Create(context.Background(), &backup, &client.CreateOptions{})
+	err = veleroapi.AddToScheme(scheme1)
+	if err != nil {
+		t.Errorf("Error adding api to scheme: %s", err.Error())
+	}
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Errorf("Error starting client: %s", err.Error())
+	}
+	err = k8sClient1.Create(context.Background(), &backup, &client.CreateOptions{})
+	if err != nil {
+		t.Errorf("Error creating backup: %s", err.Error())
+	}
 
 	type args struct {
 		ctx                        context.Context
@@ -1060,7 +1122,9 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 		})
 		if index == len(tests)-1 {
 			// clean up
-			testEnv.Stop()
+			if err := testEnv.Stop(); err != nil {
+				t.Errorf("Error stopping testenv: %s", err.Error())
+			}
 		}
 	}
 
@@ -1102,9 +1166,15 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 	backupFailed := *createBackupSchedule(backupName+"-failed", veleroNamespaceName).
 		object
 
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Errorf("Error starting testEnv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Errorf("Error starting client: %s", err.Error())
+	}
 
 	type args struct {
 		ctx     context.Context
@@ -1176,30 +1246,49 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 
 		if index == 1 {
 			//create CRD
-			v1beta1.AddToScheme(scheme1)
+			if err := v1beta1.AddToScheme(scheme1); err != nil {
+				t.Errorf("Error adding api to scheme: %s", err.Error())
+			}
 			if err := k8sClient1.Create(tt.args.ctx, &restore, &client.CreateOptions{}); err != nil {
-				panic(err.Error())
+				t.Errorf("Error creating restore: %s", err.Error())
 			}
 
 		}
 		if index == 2 {
 			//create backup in collission state
-			k8sClient1.Create(tt.args.ctx, &backupCollision, &client.CreateOptions{})
-			k8sClient1.Get(tt.args.ctx, types.NamespacedName{
+			err := k8sClient1.Create(tt.args.ctx, &backupCollision, &client.CreateOptions{})
+			if err != nil {
+				t.Errorf("Error creating backupschedule: %s", err.Error())
+			}
+			err = k8sClient1.Get(tt.args.ctx, types.NamespacedName{
 				Name:      backupCollision.Name,
 				Namespace: backupCollision.Namespace}, &backupCollision)
+			if err != nil {
+				t.Errorf("Error getting backupschedule: %s", err.Error())
+			}
 			backupCollision.Status.Phase = v1beta1.SchedulePhaseBackupCollision
-			k8sClient1.Status().Update(tt.args.ctx, &backupCollision)
-
+			err = k8sClient1.Status().Update(tt.args.ctx, &backupCollision)
+			if err != nil {
+				t.Errorf("Error updating backupschedule: %s", err.Error())
+			}
 		}
 		if index == 3 {
-			k8sClient1.Create(tt.args.ctx, &backupFailed)
+			err := k8sClient1.Create(tt.args.ctx, &backupFailed)
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
 		}
 		if index == len(tests)-2 {
-			k8sClient1.Delete(tt.args.ctx, &backupFailed)
+			err := k8sClient1.Delete(tt.args.ctx, &backupFailed)
+			if err != nil {
+				t.Errorf("Error deleting: %s", err.Error())
+			}
 		}
 		if index == len(tests)-1 {
-			k8sClient1.Create(tt.args.ctx, &restoreOther)
+			err := k8sClient1.Create(tt.args.ctx, &restoreOther)
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
 		}
 
 		t.Run(tt.name, func(t *testing.T) {
@@ -1210,8 +1299,9 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 		})
 	}
 	// clean up
-	testEnv.Stop()
-
+	if err := testEnv.Stop(); err != nil {
+		t.Errorf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_updateLabelsForActiveResources(t *testing.T) {
@@ -1630,7 +1720,9 @@ func Test_processRestoreWait(t *testing.T) {
 		})
 	}
 	// clean up
-	testEnv.Stop()
+	if err := testEnv.Stop(); err != nil {
+		t.Errorf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func hasOrActivationLabel(
@@ -1681,11 +1773,23 @@ func Test_actLabelNotOnManagedClsRestore(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Errorf("Error starting testEnv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
-	veleroapi.AddToScheme(scheme1)
-	v1beta1.AddToScheme(scheme1)
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Errorf("Error starting client: %s", err.Error())
+	}
+	err = veleroapi.AddToScheme(scheme1)
+	if err != nil {
+		t.Errorf("Error adding api to scheme: %s", err.Error())
+	}
+	err = v1beta1.AddToScheme(scheme1)
+	if err != nil {
+		t.Errorf("Error adding api to scheme: %s", err.Error())
+	}
 
 	orLabelSelector := []*metav1.LabelSelector{
 		{
@@ -1829,5 +1933,7 @@ func Test_actLabelNotOnManagedClsRestore(t *testing.T) {
 		}
 	}
 	// clean up
-	testEnv.Stop()
+	if err := testEnv.Stop(); err != nil {
+		t.Errorf("Error stopping testenv: %s", err.Error())
+	}
 }

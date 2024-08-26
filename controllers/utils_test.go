@@ -256,7 +256,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isValidStorageLocationDefined(*&tt.args.veleroStorageLocations.Items,
+			if got := isValidStorageLocationDefined(tt.args.veleroStorageLocations.Items,
 				tt.args.preferredNS); got != tt.want {
 				t.Errorf("isValidStorageLocationDefined() = %v, want %v", got, tt.want)
 			}
@@ -293,7 +293,7 @@ func Test_getResourceDetails(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotname, gotkind := getResourceDetails(*&tt.args.resourceName)
+			gotname, gotkind := getResourceDetails(tt.args.resourceName)
 			if gotname != tt.wantname || gotkind != tt.wantkind {
 				t.Errorf("getResourceDetails() = %v,%v, want %v,%v", gotname, gotkind, tt.wantname, tt.wantkind)
 			}
@@ -555,9 +555,15 @@ func Test_getHubIdentification(t *testing.T) {
 		},
 		ErrorIfCRDPathMissing: true,
 	}
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Errorf("Error starting testEnv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Errorf("Error starting client: %s", err.Error())
+	}
 
 	type args struct {
 		ctx context.Context
@@ -611,16 +617,28 @@ func Test_getHubIdentification(t *testing.T) {
 	for index, tt := range tests {
 		if index == 1 {
 			//add clusterversion scheme
-			ocinfrav1.AddToScheme(scheme1)
+			err := ocinfrav1.AddToScheme(scheme1)
+			if err != nil {
+				t.Errorf("Error adding api to scheme: %s", err.Error())
+			}
 		}
 		if index == len(tests)-2 {
 			// add a cr with no id
-			k8sClient1.Create(tt.args.ctx, crNoVersion, &client.CreateOptions{})
+			err := k8sClient1.Create(tt.args.ctx, crNoVersion, &client.CreateOptions{})
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
 		}
 		if index == len(tests)-1 {
 			// add a cr with id
-			k8sClient1.Delete(tt.args.ctx, crNoVersion) // so that this is not picked up here
-			k8sClient1.Create(tt.args.ctx, crWithVersion, &client.CreateOptions{})
+			err := k8sClient1.Delete(tt.args.ctx, crNoVersion) // so that this is not picked up here
+			if err != nil {
+				t.Errorf("Error deleting: %s", err.Error())
+			}
+			err = k8sClient1.Create(tt.args.ctx, crWithVersion, &client.CreateOptions{})
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
 		}
 		t.Run(tt.name, func(t *testing.T) {
 			if version, err := getHubIdentification(tt.args.ctx, tt.args.c); (err == nil) != tt.err_nil ||
@@ -630,23 +648,37 @@ func Test_getHubIdentification(t *testing.T) {
 		})
 	}
 	// clean up
-	testEnv.Stop()
-
+	if err := testEnv.Stop(); err != nil {
+		t.Errorf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_VeleroCRDsPresent_NotPresent(t *testing.T) {
 	// Test env with no additional CRDs (velero crds will not be present)
 	testEnv := &envtest.Environment{ErrorIfCRDPathMissing: true}
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Errorf("Error starting testEnv: %s", err.Error())
+	}
 
 	// clean up after
-	defer testEnv.Stop()
+	defer func() {
+		if err := testEnv.Stop(); err != nil {
+			t.Errorf("Error stopping testenv: %s", err.Error())
+		}
+	}()
 
 	scheme1 := runtime.NewScheme()
-	_ = veleroapi.AddToScheme(scheme1) // for velero types
+	err = veleroapi.AddToScheme(scheme1) // for velero types
+	if err != nil {
+		t.Errorf("Error adding api to scheme: %s", err.Error())
+	}
 
 	// test client to testEnv above with no velero CRDs
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Errorf("Error starting client: %s", err.Error())
+	}
 
 	t.Run("velero CRDs not present", func(t *testing.T) {
 		crdsPresent, err := VeleroCRDsPresent(context.Background(), k8sClient1)
@@ -665,16 +697,29 @@ func Test_VeleroCRDsPresent(t *testing.T) {
 		CRDDirectoryPaths:     []string{filepath.Join("..", "hack", "crds")},
 		ErrorIfCRDPathMissing: true,
 	}
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Errorf("Error starting testEnv: %s", err.Error())
+	}
 
 	// clean up after
-	defer testEnv.Stop()
+	defer func() {
+		if err := testEnv.Stop(); err != nil {
+			t.Errorf("Error stopping testenv: %s", err.Error())
+		}
+	}()
 
 	scheme1 := runtime.NewScheme()
-	_ = veleroapi.AddToScheme(scheme1) // for velero types
+	err = veleroapi.AddToScheme(scheme1) // for velero types
+	if err != nil {
+		t.Errorf("Error adding api to scheme: %s", err.Error())
+	}
 
 	// test client to testEnv above with no velero CRDs
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Errorf("Error starting client: %s", err.Error())
+	}
 
 	// Rely on testEnv setup in suite_test.go (this will have all the CRDs)
 	// (use k8sClient setup in BeforeSuite that talks to the testEnv)
@@ -1077,9 +1122,15 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 		},
 		ErrorIfCRDPathMissing: true,
 	}
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Errorf("Error starting testEnv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Errorf("Error starting client: %s", err.Error())
+	}
 
 	creds := *createSchedule(veleroBackupNames[Credentials], "default").object
 	cls := *createSchedule(veleroBackupNames[ManagedClusters], "default").object
@@ -1312,19 +1363,29 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 
 				if err := k8sClient1.Get(tt.args.ctx, lookupKey, &schedule); err == nil {
 					t.Errorf(" schedule should not be found = %v", lookupKey.Name)
-
 				}
 			}
 
-			// clean up
-			k8sClient1.Delete(tt.args.ctx, tt.args.backupSchedule)
+			// first test (i=0) will not create velero schedules, it intentionally doesn't add the api to the
+			// client scheme - so no cleanup required
+			if i > 0 {
+				// clean up
+				err = k8sClient1.Delete(tt.args.ctx, tt.args.backupSchedule)
+				if client.IgnoreNotFound(err) != nil {
+					t.Errorf("Error deleting: %s", err.Error())
+				}
 
-			for i := range tt.args.veleroScheduleList.Items {
-				k8sClient1.Delete(tt.args.ctx, &tt.args.veleroScheduleList.Items[i])
+				for i := range tt.args.veleroScheduleList.Items {
+					err := k8sClient1.Delete(tt.args.ctx, &tt.args.veleroScheduleList.Items[i])
+					if client.IgnoreNotFound(err) != nil {
+						t.Errorf("Error deleting: %s", err.Error())
+					}
+				}
 			}
-
 		})
 	}
 	// clean up
-	testEnv.Stop()
+	if err := testEnv.Stop(); err != nil {
+		t.Errorf("Error stopping testenv: %s", err.Error())
+	}
 }

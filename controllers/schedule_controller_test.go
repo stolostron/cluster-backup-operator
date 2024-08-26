@@ -719,7 +719,7 @@ var _ = Describe("BackupSchedule controller", func() {
 			// and the previous schedules had used abcd as clusterId
 			time.Sleep(time.Second * 7)
 			// get the schedule again
-			k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)
+			Expect(k8sClient.Get(ctx, backupLookupKey, &createdBackupSchedule)).To(Succeed())
 			createdBackupSchedule.Spec.VeleroTTL = metav1.Duration{Duration: time.Hour * 50}
 			Eventually(func() bool {
 				err := k8sClient.Update(
@@ -1044,11 +1044,11 @@ var _ = Describe("BackupSchedule controller", func() {
 					Name:      backupStorageLocation.Name,
 					Namespace: backupStorageLocation.Namespace,
 				}
-				if err := k8sClient.Get(ctx, storageLookupKey, backupStorageLocation); err == nil {
-					backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
-					k8sClient.Status().Update(ctx, backupStorageLocation)
-
-				}
+				Expect(k8sClient.Get(ctx, storageLookupKey, backupStorageLocation)).To(Succeed())
+				backupStorageLocation.Status.Phase = veleroapi.BackupStorageLocationPhaseAvailable
+				// Velero CRD doesn't have status subresource set, so simply update the
+				// status with a normal update() call.
+				Expect(k8sClient.Update(ctx, backupStorageLocation)).To(Succeed())
 
 				rhacmBackupScheduleNew := *createBackupSchedule(backupScheduleName+"-new-1", newVeleroNamespace).
 					schedule(backupSchedule).veleroTTL(metav1.Duration{Duration: time.Hour * 72}).

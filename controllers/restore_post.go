@@ -395,11 +395,6 @@ func cleanupDeltaForResourcesBackup(
 
 	deleteDynamicResourcesForBackup(ctx, c, restoreOptions, veleroBackup, "")
 
-	backupLabel, _ := labels.NewRequirement(BackupScheduleTypeLabel,
-		selection.Equals, []string{string(ResourcesGeneric)})
-	backupSelector := labels.NewSelector()
-	backupSelector = backupSelector.Add(*backupLabel)
-
 	// delete generic resources
 	genericBackupName, genericBackup := getBackupInfoFromRestore(ctx, c,
 		acmRestore.Status.VeleroGenericResourcesRestoreName, acmRestore.Namespace)
@@ -414,7 +409,6 @@ func cleanupDeltaForResourcesBackup(
 		otherLabels = fmt.Sprintf("%s notin (cluster-activation)", backupCredsClusterLabel)
 	}
 	deleteDynamicResourcesForBackup(ctx, c, restoreOptions, genericBackup, otherLabels)
-
 }
 
 func cleanupDeltaForClustersBackup(
@@ -640,10 +634,10 @@ func postRestoreActivation(
 			autoImportSecret.GetLabels() != nil &&
 			autoImportSecret.GetLabels()[activateLabel] == "true" {
 
-			msg := fmt.Sprintf(fmt.Sprintf(
+			msg := fmt.Sprintf(
 				"failed to delete the auto-import-secret from namespace %s",
 				clusterName,
-			))
+			)
 			// found secret
 			if err := c.Delete(ctx, autoImportSecret); err == nil {
 				msg = "deleted auto-import-secret from namespace " + clusterName
