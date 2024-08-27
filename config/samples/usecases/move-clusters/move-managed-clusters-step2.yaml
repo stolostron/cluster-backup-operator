@@ -10,7 +10,7 @@
 #  vb-managed-cls-2 resources on Hub1 but since the cluster status it Unknown, it will not run any detach operation - which you don't want to happen.
 
 # You can now resume the BackupSchedules on Hub1.
-# Update the DateProtectionApplication on Hub2 to point to Hub2 storage location. You can resume now the BackupSchedule on Hub2.
+# Update the DataProtectionApplication on Hub2 to point to Hub2 storage location. You can resume now the BackupSchedule on Hub2.
 
 
 apiVersion: cluster.open-cluster-management.io/v1beta1

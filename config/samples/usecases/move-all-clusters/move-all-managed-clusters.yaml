@@ -12,7 +12,7 @@
 #    This annotation will prevent Hub1 trying to recover any of the managed clusters after being moved to Hub2
 
 # 3. Pause any BackupSchedule on Hub2
-# 4. Update DateProtectionApplication resource on Hub2 to point to the same storage location as Hub1
+# 4. Update DataProtectionApplication resource on Hub2 to point to the same storage location as Hub1
 # 5. Wait until you see the backups from Hub1 being synced up on Hub2
 
 # After the move-all-managed-clusters restore is applied on Hub2 and has a status of Finished, wait and look for a status Ready 
@@ -22,7 +22,7 @@
 #  managed cluster resources on Hub1 but since the cluster status it Unknown, it will not run any detach operation - which you don't want to happen.
 
 # You can now resume the BackupSchedules on Hub1.
-# Update the DateProtectionApplication on Hub2 to point to Hub2 storage location. You can resume now the BackupSchedule on Hub2.
+# Update the DataProtectionApplication on Hub2 to point to Hub2 storage location. You can resume now the BackupSchedule on Hub2.
 
 # apply this resource on Hub2, all user resources and managed clusters from Hub1 to Hub2
 apiVersion: cluster.open-cluster-management.io/v1beta1

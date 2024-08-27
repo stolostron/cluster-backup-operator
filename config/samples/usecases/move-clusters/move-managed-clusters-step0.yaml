@@ -13,7 +13,7 @@
 #    This annotation will prevent Hub1 trying to recover vb-managed-cls-2 after is being moved to Hub2
 
 # 3. Pause any BackupSchedule on Hub2
-# 4. Update DateProtectionApplication resource on Hub2 to point to the same storage location as Hub1
+# 4. Update DataProtectionApplication resource on Hub2 to point to the same storage location as Hub1
 # 5. Wait until you see the backups from Hub1 being synced up on Hub2
 
 
