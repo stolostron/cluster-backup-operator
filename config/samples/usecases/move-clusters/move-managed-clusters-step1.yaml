@@ -1,7 +1,7 @@
 
-# apply this resource on hub-b, after move-managed-clusters-step0 status is Finished
+# apply this resource on Hub2, after move-managed-clusters-step0 status is Finished
 
-# moves all resources from the vb-managed-cls-2 ManagedCluster namespace 
+# moves all resources from the vb-managed-cls-2 managed cluster namespace 
 apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Restore
 metadata:
@@ -13,7 +13,7 @@ spec:
   veleroResourcesBackupName: latest
   veleroManagedClustersBackupName: latest
   excludedResources:
-    - ManagedCluster # restore everything except global resources
+    - ManagedCluster # restore everything except the ManagedCluster global resource
   includedNamespaces:
-    - vb-managed-cls-2
+    - vb-managed-cls-2 # moves all resources, only from the vb-managed-cls-2 namespace
 

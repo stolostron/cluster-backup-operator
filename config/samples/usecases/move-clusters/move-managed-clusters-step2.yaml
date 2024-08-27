@@ -1,16 +1,16 @@
-# apply this resource on hub-b, after move-managed-clusters-step1 status is Finished
+# apply this resource on Hub2, after move-managed-clusters-step1 status is Finished
 
 
 # Restores just ManagedCluster global resource for vb-managed-cls-2
-#    which results in the vb-managed-cls-2 managed cluster being activated on hub-b.
-# Look for a status Ready for the vb-managed-cls-2 managed cluster on hub-b. At this point, vb-managed-cls-2 
-#  is managed by hub-b.
-# To remove the vb-managed-cls-2 from hub-a, wait until the vb-managed-cls-2 status is Unknown on hub-a. Only when 
-#  this happens, delete the vb-managed-cls-2 ManagedCluster global resource on hub-a. This will clean up all
-#  vb-managed-cls-2 resources on hub-a but since the cluster status it Unknown, it will not run any detach operation - which you don't want to happen.
+#    which results in the vb-managed-cls-2 managed cluster being activated on Hub2.
+# Look for a status Ready for the vb-managed-cls-2 managed cluster on Hub2. At this point, vb-managed-cls-2 
+#  is managed by Hub2.
+# To remove the vb-managed-cls-2 from Hub1, wait until the vb-managed-cls-2 status is Unknown on Hub1. Only when 
+#  this happens, delete the vb-managed-cls-2 ManagedCluster global resource on Hub1. This will clean up all
+#  vb-managed-cls-2 resources on Hub1 but since the cluster status it Unknown, it will not run any detach operation - which you don't want to happen.
 
-# You can now resume the BackupSchedules on hub-a.
-# Update the DateProtectionApplication on hub-b to point to hub-b storage location. You can resume now the BackupSchedule on hub-b.
+# You can now resume the BackupSchedules on Hub1.
+# Update the DataProtectionApplication on Hub2 to point to Hub2 storage location. You can resume now the BackupSchedule on Hub2.
 
 
 apiVersion: cluster.open-cluster-management.io/v1beta1
@@ -25,7 +25,7 @@ spec:
   veleroManagedClustersBackupName: latest  # restore just managed cluster resources, to initiate the automatic import
   includedResources:
     - ManagedCluster # restore just ManagedCluster global resources
-  orLabelSelectors:  # select only the ManagedCluster you need to move
+  orLabelSelectors: # get only vb-managed-cls-2 ManagedCluster
     - matchExpressions:
         - values:
             - vb-managed-cls-2

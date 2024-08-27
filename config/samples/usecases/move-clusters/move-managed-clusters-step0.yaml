@@ -1,23 +1,23 @@
 # Scenario : 
-# - hub-a manages vb-managed-cls-1 and vb-managed-cls-2
-# - you want to move vb-managed-cls-2 to hub-b
-# - hub-b manages some other clusters 
+# - Hub1 manages vb-managed-cls-1 and vb-managed-cls-2
+# - you want to move vb-managed-cls-2 to Hub2
+# - Hub2 manages some other clusters 
 ########################################
 
-# This is step 0 of the process, apply move-managed-clusters-step0 on hub-b
+# This is step 0 of the process, apply move-managed-clusters-step0 on Hub2
 
-# Before applying the move-managed-clusters-step0 resource on hub-b:
-# 1. Pause BackupSchedule on hub-a
-# 2. After BackupSchedule is set to paused on hub-a, set this label annotation on the vb-managed-cls-2 ManagedCluster
-#    on hub-a :  import.open-cluster-management.io/disable-auto-import: ''
-#    This annotation will prevent hub-a trying to recover vb-managed-cls-2 after is being moved to hub-b
+# Before applying the move-managed-clusters-step0 resource on Hub2:
+# 1. Pause BackupSchedule on Hub1
+# 2. After BackupSchedule is set to paused on Hub1, set this label annotation on the vb-managed-cls-2 ManagedCluster
+#    on Hub1 :  import.open-cluster-management.io/disable-auto-import: ''
+#    This annotation will prevent Hub1 trying to recover vb-managed-cls-2 after is being moved to Hub2
 
-# 3. Pause any BackupSchedule on hub-b
-# 4. Update DateProtectionApplication resource on hub-b to point to the same storage location as hub-a
-# 5. Wait until you see the backups from hub-a being synced up on hub-b
+# 3. Pause any BackupSchedule on Hub2
+# 4. Update DataProtectionApplication resource on Hub2 to point to the same storage location as Hub1
+# 5. Wait until you see the backups from Hub1 being synced up on Hub2
 
 
-# apply this resource on hub-b, to move hub resources from hub-a to hub-b ( such user apps, policies, credentials )
+# apply this resource on Hub2, to move hub resources from Hub1 to Hub2 ( such user apps, policies, credentials )
 apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Restore
 metadata:
