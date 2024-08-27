@@ -212,7 +212,7 @@ func Test_setSchedulePhase(t *testing.T) {
 		{
 			name: "new",
 			args: args{
-				schedules: initVeleroScheduleList("ns", veleroapi.SchedulePhaseNew, "0 8 * * *",
+				schedules: initVeleroScheduleList("ns", veleroapi.SchedulePhaseNew, "0 7 * * *",
 					metav1.Duration{Duration: time.Second * 5}),
 				backupSchedule: createBackupSchedule("name", "ns").schedule("0 8 * * *").object,
 			},
@@ -1280,7 +1280,7 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 			resources: []*veleroapi.Backup{},
 		},
 		{
-			name: "has backups, diferent cluster version",
+			name: "has backups, different cluster version",
 			args: args{
 				ctx:      context.Background(),
 				c:        k8sClient1,

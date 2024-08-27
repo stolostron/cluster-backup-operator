@@ -283,7 +283,7 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 			msg, true)
 	}
 
-	// don't create schedules if backup storage location doesn't exist or is not avaialble
+	// don't create schedules if backup storage location doesn't exist or is not avaialable
 	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
 	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
 		len(veleroStorageLocations.Items) == 0 {

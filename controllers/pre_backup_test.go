@@ -718,7 +718,7 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "MSA has secrets, current time pased half more than 15min from expiration",
+			name: "MSA has secrets, current time passed half more than 15min from expiration",
 			args: args{
 				currentTime: current,
 				secrets: []corev1.Secret{

@@ -434,14 +434,14 @@ func isNewBackupAvailable(
 func validateStorageSettings(
 	ctx context.Context,
 	c client.Client,
-	name string,
+	_ string,
 	namespace string,
-	restore *v1beta1.Restore,
+	_ *v1beta1.Restore,
 ) (string, bool) {
 	retry := true
 	msg := ""
 
-	// don't create restores if backup storage location doesn't exist or is not avaialble
+	// don't create restores if backup storage location doesn't exist or is not avaialable
 	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
 	if err := c.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
 		veleroStorageLocations == nil || len(veleroStorageLocations.Items) == 0 {
@@ -466,6 +466,7 @@ func validateStorageSettings(
 		return msg, retry
 	}
 
+	retry = false
 	return msg, retry
 }
 
@@ -548,7 +549,7 @@ func getVeleroBackupName(
 			}
 			if targetTimestamp.Sub(bkp.Status.StartTimestamp.Time).Seconds() > 30 ||
 				bkp.Status.StartTimestamp.Time.Sub(targetTimestamp).Seconds() > 30 {
-				return false // not related, more then 30s appart
+				return false // not related, more then 30s apart
 			}
 			return true
 		})

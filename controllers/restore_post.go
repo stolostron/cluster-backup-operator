@@ -96,12 +96,13 @@ func deleteObsClientCert(
 	ctx context.Context,
 	c client.Client,
 ) {
-
 	logger := log.FromContext(ctx)
 
 	secret := corev1.Secret{}
-	if err := c.Get(ctx, types.NamespacedName{Name: obs_secret_name,
-		Namespace: obs_addon_ns}, &secret); err == nil {
+	if err := c.Get(ctx, types.NamespacedName{
+		Name:      obs_secret_name,
+		Namespace: obs_addon_ns,
+	}, &secret); err == nil {
 		logger.Info("Attempt to delete secret " + obs_secret_name + " in ns " + obs_addon_ns)
 		err := c.Delete(ctx, &secret, &client.DeleteOptions{})
 		if err == nil {
@@ -119,7 +120,6 @@ func recordClustersRestoreOperation(
 	c client.Client,
 	acmRestore *v1beta1.Restore,
 ) {
-
 	logger := log.FromContext(ctx)
 
 	currentTime := time.Now().Format("20060102150405")
@@ -146,7 +146,7 @@ func recordClustersRestoreOperation(
 		labels[BackupScheduleClusterLabel] = veleroClsRestore.GetLabels()[BackupScheduleClusterLabel]
 	}
 
-	//set labels
+	// set labels
 	labels["cluster.open-cluster-management.io/acm-hub-dr"] = "true"
 	labels["cluster.open-cluster-management.io/acm-restore-name"] = acmRestore.Name
 	labels[veleroBackupNames[ManagedClusters]] = veleroClsRestore.Spec.BackupName
@@ -311,7 +311,6 @@ func deleteSecretsForBackupType(
 	relatedVeleroBackup veleroapi.Backup,
 	cleanupType v1beta1.CleanupType,
 	secretsSelector []labels.Requirement,
-
 ) {
 	backupLabel, _ := labels.NewRequirement(BackupScheduleTypeLabel,
 		selection.Equals, []string{string(backupType)})
@@ -321,7 +320,6 @@ func deleteSecretsForBackupType(
 	veleroBackups := &veleroapi.BackupList{}
 	if err := c.List(ctx, veleroBackups, client.InNamespace(relatedVeleroBackup.Namespace),
 		&client.ListOptions{LabelSelector: backupSelector}); err == nil {
-
 		if backupName, _, _ := getVeleroBackupName(ctx, c, relatedVeleroBackup.Namespace,
 			backupType,
 			relatedVeleroBackup.Name,
@@ -450,7 +448,7 @@ func deleteDynamicResourcesForBackup(
 		genericLabel = backupCredsClusterLabel
 
 		// for generic resources get all CRDs and exclude the ones in the veleroBackup.Spec.ExcludedResources
-		resources, _ = getGenericCRDFromAPIGroups(ctx, restoreOptions.dynamicArgs.dc, veleroBackup)
+		resources = getGenericCRDFromAPIGroups(ctx, restoreOptions.dynamicArgs.dc, veleroBackup)
 	}
 	labelSelector := fmt.Sprintf("%s, %s notin (%s), %s",
 		BackupNameVeleroLabel, BackupNameVeleroLabel, backupName, genericLabel)
@@ -549,18 +547,19 @@ func getBackupInfoFromRestore(
 	c client.Client,
 	restoreName string,
 	namespace string,
-
 ) (string, *veleroapi.Backup) {
-
 	backupName := ""
 	veleroBackup := veleroapi.Backup{}
 	if restoreName != "" {
 		veleroRestore := veleroapi.Restore{}
-		if err := c.Get(ctx, types.NamespacedName{Name: restoreName,
-			Namespace: namespace}, &veleroRestore); err == nil {
-
-			if err := c.Get(ctx, types.NamespacedName{Name: veleroRestore.Spec.BackupName,
-				Namespace: namespace}, &veleroBackup); err == nil {
+		if err := c.Get(ctx, types.NamespacedName{
+			Name:      restoreName,
+			Namespace: namespace,
+		}, &veleroRestore); err == nil {
+			if err := c.Get(ctx, types.NamespacedName{
+				Name:      veleroRestore.Spec.BackupName,
+				Namespace: namespace,
+			}, &veleroBackup); err == nil {
 				backupName = veleroBackup.Name
 			}
 		}
@@ -698,11 +697,11 @@ func createAutoImportSecret(
 func isValidCleanupOption(
 	acmRestore *v1beta1.Restore,
 ) string {
-
 	if ok := findValue([]string{
 		v1beta1.CleanupTypeNone,
 		v1beta1.CleanupTypeRestored,
-		v1beta1.CleanupTypeAll},
+		v1beta1.CleanupTypeAll,
+	},
 		string(acmRestore.Spec.CleanupBeforeRestore)); !ok {
 
 		msg := "invalid CleanupBeforeRestore value : " +

@@ -1,3 +1,4 @@
+---
 linters:
   # Defaults are still enabled, see:
   #  https://golangci-lint.run/usage/linters/#enabled-by-default
@@ -5,5 +6,8 @@ linters:
   # Enable these specific additional linters to match what
   # sonar checks for
   enable:
+    - goimports
+    - ineffassign
+    - misspell
     - lll
-
+    - unparam

@@ -1161,7 +1161,7 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 		veleroCredentialsBackupName(skipRestoreStr).
 		veleroResourcesBackupName(backupName).object
 
-	backupCollision := *createBackupSchedule(backupName+"-collission", veleroNamespaceName).
+	backupCollision := *createBackupSchedule(backupName+"-collision", veleroNamespaceName).
 		phase(v1beta1.SchedulePhaseBackupCollision).
 		object
 	backupFailed := *createBackupSchedule(backupName+"-failed", veleroNamespaceName).
@@ -1206,7 +1206,7 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 			want: "",
 		},
 		{
-			name: "isOtherResourcesRunning has no errors, backup found but in collission state",
+			name: "isOtherResourcesRunning has no errors, backup found but in collision state",
 			args: args{
 				ctx:     context.Background(),
 				c:       k8sClient1,
@@ -1258,7 +1258,7 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 
 		}
 		if index == 2 {
-			// create backup in collission state
+			// create backup in collision state
 			err := k8sClient1.Create(tt.args.ctx, &backupCollision, &client.CreateOptions{})
 			if err != nil {
 				t.Errorf("Error creating backupschedule: %s", err.Error())

@@ -373,7 +373,6 @@ func shouldGeneratePairToken(
 	secrets []corev1.Secret,
 	currentTime time.Time,
 ) bool {
-
 	generateMSA := false
 	for s := range secrets {
 		secret := secrets[s]
@@ -421,7 +420,6 @@ func createMSA(
 	currentTime time.Time,
 	installNamespace string,
 ) (bool, bool, error) {
-
 	logger := log.FromContext(ctx)
 
 	// delete manifest works prefixed with -custom
@@ -446,7 +444,7 @@ func createMSA(
 
 	secretsGeneratedNow := false
 
-	//check if MSA exists
+	// check if MSA exists
 	if obj, err := dr.Namespace(managedClusterName).Get(ctx, name, v1.GetOptions{}); err == nil {
 		// MSA exists, check if token needs to be updated based on the tokenValidity value
 		secretsUpdated, err := updateMSAToken(ctx, dr, obj, name, managedClusterName, tokenValidity)
@@ -459,7 +457,7 @@ func createMSA(
 		return secretsGeneratedNow, secretsUpdated, err
 	}
 
-	//MSA does not exist
+	// MSA does not exist
 
 	// initial MSA must be always created
 	generateMSA := name == msa_service_name
@@ -530,7 +528,6 @@ func createMSA(
 	}
 
 	return secretsGeneratedNow, false, nil
-
 }
 
 func updateMSAToken(
@@ -541,7 +538,6 @@ func updateMSAToken(
 	namespaceName string,
 	tokenValidity string,
 ) (bool, error) {
-
 	specInfo := msaUnstructuredObj.Object["spec"]
 	if specInfo == nil {
 		return false, nil
@@ -558,7 +554,7 @@ func updateMSAToken(
 		for iterRotation.Next() {
 			if iterRotation.Key().String() == "validity" &&
 				iterRotation.Value().Interface().(string) != tokenValidity {
-				//update MSA validity with the latest token value
+				// update MSA validity with the latest token value
 				_, err := dr.Namespace(namespaceName).Patch(ctx, serviceName,
 					types.JSONPatchType, []byte(patch), v1.PatchOptions{})
 
@@ -579,8 +575,10 @@ func deleteCustomManifestWork(
 	logger := log.FromContext(ctx)
 
 	custommwork := &workv1.ManifestWork{}
-	if err := c.Get(ctx, types.NamespacedName{Name: mworkName + mwork_custom_282,
-		Namespace: namespace}, custommwork); err == nil {
+	if err := c.Get(ctx, types.NamespacedName{
+		Name:      mworkName + mwork_custom_282,
+		Namespace: namespace,
+	}, custommwork); err == nil {
 
 		// delete the resource
 		logger.Info("Deleting manifest work %s in ns %s", mwork_custom_282, namespace)
@@ -595,7 +593,7 @@ func createManifestWork(
 	ctx context.Context,
 	c client.Client,
 	namespace string,
-	name string,
+	_ string,
 	mworkbindingName string,
 	msaserviceName string,
 	mworkName string,
@@ -624,7 +622,8 @@ func createManifestWork(
 		selector = selector.Add(*msaLabel)
 		if err := c.List(ctx, manifestWorkList, &client.ListOptions{
 			Namespace:     namespace,
-			LabelSelector: selector},
+			LabelSelector: selector,
+		},
 		); err == nil {
 
 			alreadyExists := false
@@ -641,7 +640,8 @@ func createManifestWork(
 				manifestWork.Namespace = namespace
 				manifestWork.Labels = map[string]string{
 					addon_work_label:        msa_addon,
-					backupCredsClusterLabel: ClusterActivationLabel}
+					backupCredsClusterLabel: ClusterActivationLabel,
+				}
 
 				manifest := &workv1.Manifest{}
 				manifest.Raw = []byte(fmt.Sprintf(manifestwork, mworkBinding, role_name, msaserviceName, installNamespace))
@@ -702,7 +702,6 @@ func getMSASecrets(
 func retrieveMSAImportSecrets(
 	secrets []corev1.Secret,
 ) []corev1.Secret {
-
 	msaSecrets := []corev1.Secret{}
 
 	for i := range secrets {
@@ -750,11 +749,11 @@ func updateMSAResources(
 // find the MSA account under the secret namespace and use the
 // MSA status expiration info to annotate the secret
 func updateMSASecretTimestamp(
-	ctx context.Context,
-	dr dynamic.NamespaceableResourceInterface,
+	_ context.Context,
+	_ dynamic.NamespaceableResourceInterface,
 	unstructuredObj *unstructured.Unstructured,
-	secret *corev1.Secret) bool {
-
+	secret *corev1.Secret,
+) bool {
 	secretTimestampUpdated := false
 	lastRefreshTimestampUpdated := false
 	// look for the expiration timestamp under status
@@ -794,7 +793,6 @@ func updateMSASecretTimestamp(
 	}
 
 	return secretTimestampUpdated || lastRefreshTimestampUpdated
-
 }
 
 // prepare hive cluster claim and cluster pool
@@ -921,7 +919,7 @@ func updateSecretsLabels(ctx context.Context,
 
 	for s := range secrets.Items {
 		secret := secrets.Items[s]
-		//exclude import secrets
+		// exclude import secrets
 		if secret.Name == secret.Namespace+"-import" {
 			// remove backup label if set by previus code
 			// we don't want hive import secrets to be backed up
@@ -943,7 +941,6 @@ func updateSecretsLabels(ctx context.Context,
 			updateSecret(ctx, c, secret, labelName, labelValue, true)
 		}
 	}
-
 }
 
 // set backup label for hive secrets not having the label set
@@ -980,5 +977,4 @@ func updateSecret(ctx context.Context,
 	}
 	// secret not refreshed
 	return false
-
 }

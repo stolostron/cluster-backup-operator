@@ -68,7 +68,6 @@ func find(slice []string, val string) (int, bool) {
 }
 
 func findValue(slice []string, val string) bool {
-
 	_, ok := find(slice, val)
 
 	return ok
@@ -118,7 +117,7 @@ func sortCompare(a, b []string) bool {
 // returns a valid name for the velero restore kubernetes resource
 // by trimming the concatenated cluster restore and backup names
 func getValidKsRestoreName(clusterRestoreName string, backupName string) string {
-	//max name for ns or resources is 253 chars
+	// max name for ns or resources is 253 chars
 	fullName := clusterRestoreName + "-" + backupName
 
 	if len(fullName) > 252 {
@@ -127,7 +126,7 @@ func getValidKsRestoreName(clusterRestoreName string, backupName string) string 
 	return fullName
 }
 
-// Velero uses TimestampedName for backups using the follwoing format
+// Velero uses TimestampedName for backups using the following format
 // by setting the default backup name format based on the schedule
 // fmt.Sprintf("%s-%s", s.Name, timestamp.Format("20060102150405"))
 // this function parses Velero backupName and returns the timestamp
@@ -173,7 +172,6 @@ func isValidStorageLocationDefined(
 
 // having a resourceKind.resourceGroup string, return (resourceKind, resourceGroup)
 func getResourceDetails(resourceName string) (string, string) {
-
 	indexOfName := strings.Index(resourceName, ".")
 	if indexOfName > -1 {
 		return resourceName[:indexOfName], resourceName[indexOfName+1:]
@@ -189,14 +187,13 @@ func getGenericCRDFromAPIGroups(
 	ctx context.Context,
 	dc discovery.DiscoveryInterface,
 	veleroBackup *veleroapi.Backup,
-) ([]string, error) {
-
+) []string {
 	resources := []string{}
 	if groupList, err := dc.ServerGroups(); err == nil && groupList != nil {
 		resources = processGenericCRDFromAPIGroups(ctx, dc, veleroBackup, *groupList)
 	}
 
-	return resources, nil
+	return resources
 }
 
 func processGenericCRDFromAPIGroups(
@@ -205,13 +202,12 @@ func processGenericCRDFromAPIGroups(
 	veleroBackup *veleroapi.Backup,
 	groupList v1.APIGroupList,
 ) []string {
-
 	logger := log.FromContext(ctx)
 
 	resources := []string{}
 	for _, group := range groupList.Groups {
 		for _, version := range group.Versions {
-			//get all resources for each group version
+			// get all resources for each group version
 			resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
 			if err != nil {
 				logger.Error(err, "failed to get server resources")
@@ -244,7 +240,6 @@ func getHubIdentification(
 	ctx context.Context,
 	c client.Client,
 ) (string, error) {
-
 	clusterId := "unknown"
 	clusterVersions := &ocinfrav1.ClusterVersionList{}
 	if err := c.List(ctx, clusterVersions, &client.ListOptions{}); err != nil {
@@ -263,8 +258,8 @@ func getHubIdentification(
 func isHiveCreatedCluster(
 	ctx context.Context,
 	c client.Client,
-	clusterName string) bool {
-
+	clusterName string,
+) bool {
 	nbOfSecrets := 0
 	hiveSecrets := &corev1.SecretList{}
 	if hiveLabel, err := labels.NewRequirement(backupCredsHiveLabel,
@@ -273,8 +268,8 @@ func isHiveCreatedCluster(
 		selector = selector.Add(*hiveLabel)
 		if err := c.List(ctx, hiveSecrets, &client.ListOptions{
 			Namespace:     clusterName,
-			LabelSelector: selector}); err == nil {
-
+			LabelSelector: selector,
+		}); err == nil {
 			nbOfSecrets = len(hiveSecrets.Items)
 		}
 	}
@@ -283,8 +278,8 @@ func isHiveCreatedCluster(
 
 func findValidMSAToken(
 	secrets []corev1.Secret,
-	currentTime time.Time) string {
-
+	currentTime time.Time,
+) string {
 	accessToken := ""
 
 	// find MSA secrets in this namespace
@@ -326,7 +321,6 @@ func managedClusterShouldReimport(
 	managedClusters []clusterv1.ManagedCluster,
 	clusterName string,
 ) (bool, string, string) {
-
 	logger := log.FromContext(ctx)
 
 	url := ""
@@ -382,8 +376,8 @@ func managedClusterShouldReimport(
 
 func VeleroCRDsPresent(
 	ctx context.Context,
-	c client.Client) (bool, error) {
-
+	c client.Client,
+) (bool, error) {
 	veleroScheduleList := veleroapi.ScheduleList{}
 	veleroScheduleCRDPresent, err := isCRDPresent(ctx, c, &veleroScheduleList)
 	if err != nil {
@@ -425,10 +419,8 @@ func isCRDNotPresentError(err error) bool {
 func appendUniqueReq(requirements []metav1.LabelSelectorRequirement,
 	req metav1.LabelSelectorRequirement,
 ) []metav1.LabelSelectorRequirement {
-
 	exists := false
 	for idx := range requirements {
-
 		if requirements[idx].Key == req.Key {
 			exists = true
 			break
@@ -454,15 +446,14 @@ func addRestoreLabelSelector(
 	restoreObj *veleroapi.Restore,
 	req metav1.LabelSelectorRequirement,
 ) {
-
 	if len(restoreObj.Spec.OrLabelSelectors) > 0 {
 		// LabelSelector and OrLabelSelectors are mutually exclusive
 		// if restoreObj.Spec.OrLabelSelectors is not null,
 		// add LabelSelectors match expressions ( which are ANDed ) to each of the
 		// OrLabelSelectors expressions ( which are also ANDed )
 		for i := range restoreObj.Spec.OrLabelSelectors {
-			restoreObj.Spec.OrLabelSelectors[i].MatchExpressions =
-				appendUniqueReq(restoreObj.Spec.OrLabelSelectors[i].MatchExpressions, req)
+			restoreObj.Spec.OrLabelSelectors[i].MatchExpressions = appendUniqueReq(
+				restoreObj.Spec.OrLabelSelectors[i].MatchExpressions, req)
 		}
 	} else {
 		// if no OrLabelSelector, add the MatchExpression to the LabelSelector
@@ -508,7 +499,6 @@ func updateBackupSchedulePhaseWhenPaused(
 				"Schedule deleted successfully " + veleroScheduleList.Items[i].Name,
 			)
 		} else {
-
 			// ignore not found errors
 			if !kerrors.IsNotFound(err) {
 				errMsg := "Failed to delete schedule " + veleroScheduleList.Items[i].Name
@@ -520,7 +510,7 @@ func updateBackupSchedulePhaseWhenPaused(
 		}
 	}
 
-	//update status
+	// update status
 	backupSchedule.Status.Phase = phase
 	backupSchedule.Status.LastMessage = msg
 
