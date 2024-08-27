@@ -160,7 +160,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 			args: args{
 				veleroStorageLocations: &veleroapi.BackupStorageLocationList{
 					Items: []veleroapi.BackupStorageLocation{
-						veleroapi.BackupStorageLocation{
+						{
 							TypeMeta: metav1.TypeMeta{
 								APIVersion: "velero/v1",
 								Kind:       "BackupStorageLocation",
@@ -184,7 +184,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 			args: args{
 				veleroStorageLocations: &veleroapi.BackupStorageLocationList{
 					Items: []veleroapi.BackupStorageLocation{
-						veleroapi.BackupStorageLocation{
+						{
 							TypeMeta: metav1.TypeMeta{
 								APIVersion: "velero/v1",
 								Kind:       "BackupStorageLocation",
@@ -193,7 +193,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 								Name:      "valid-storage",
 								Namespace: "default",
 								OwnerReferences: []v1.OwnerReference{
-									v1.OwnerReference{
+									{
 										Kind: "DataProtectionApplication",
 									},
 								},
@@ -213,7 +213,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 			args: args{
 				veleroStorageLocations: &veleroapi.BackupStorageLocationList{
 					Items: []veleroapi.BackupStorageLocation{
-						veleroapi.BackupStorageLocation{
+						{
 							TypeMeta: metav1.TypeMeta{
 								APIVersion: "velero/v1",
 								Kind:       "BackupStorageLocation",
@@ -222,7 +222,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 								Name:      "valid-storage",
 								Namespace: "default1",
 								OwnerReferences: []v1.OwnerReference{
-									v1.OwnerReference{
+									{
 										Kind: "DataProtectionApplication",
 									},
 								},
@@ -231,7 +231,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 								Phase: veleroapi.BackupStorageLocationPhaseAvailable,
 							},
 						},
-						veleroapi.BackupStorageLocation{
+						{
 							TypeMeta: metav1.TypeMeta{
 								APIVersion: "velero/v1",
 								Kind:       "BackupStorageLocation",
@@ -240,7 +240,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 								Name:      "valid-storage",
 								Namespace: "default",
 								OwnerReferences: []v1.OwnerReference{
-									v1.OwnerReference{
+									{
 										Kind: "DataProtectionApplication",
 									},
 								},
@@ -302,7 +302,6 @@ func Test_getResourceDetails(t *testing.T) {
 }
 
 func Test_findValidMSAToken(t *testing.T) {
-
 	current, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
 	nextHour := "2022-07-26T16:25:34Z"
 	fourHoursAgo := "2022-07-26T11:25:34Z"
@@ -338,7 +337,8 @@ func Test_findValidMSAToken(t *testing.T) {
 						nil, map[string]string{
 							"expirationTimestamp": "aaa",
 						}, nil),
-				}},
+				},
+			},
 			want: "",
 		},
 		{
@@ -350,7 +350,8 @@ func Test_findValidMSAToken(t *testing.T) {
 						nil, map[string]string{
 							"expirationTimestamp": fourHoursAgo,
 						}, nil),
-				}},
+				},
+			},
 			want: "",
 		},
 		{
@@ -364,7 +365,8 @@ func Test_findValidMSAToken(t *testing.T) {
 						}, map[string][]byte{
 							"token1": []byte("aaa"),
 						}),
-				}},
+				},
+			},
 			want: "",
 		},
 		{
@@ -384,7 +386,8 @@ func Test_findValidMSAToken(t *testing.T) {
 						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
 						}),
-				}},
+				},
+			},
 			want: "YWRtaW4=",
 		},
 		{
@@ -398,7 +401,8 @@ func Test_findValidMSAToken(t *testing.T) {
 						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
 						}),
-				}},
+				},
+			},
 			want: "YWRtaW4=",
 		},
 	}
@@ -410,11 +414,9 @@ func Test_findValidMSAToken(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func Test_managedClusterShouldReimport(t *testing.T) {
-
 	managedClusters1 := []clusterv1.ManagedCluster{
 		*createManagedCluster("local-cluster", true).object,
 		// Just testing should Reimport func, run a test to make sure mgd clusters that are local
@@ -540,11 +542,9 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func Test_getHubIdentification(t *testing.T) {
-
 	crNoVersion := createClusterVersion("version", "", nil)
 	crWithVersion := createClusterVersion("version", "aaa", nil)
 
@@ -616,7 +616,7 @@ func Test_getHubIdentification(t *testing.T) {
 
 	for index, tt := range tests {
 		if index == 1 {
-			//add clusterversion scheme
+			// add clusterversion scheme
 			err := ocinfrav1.AddToScheme(scheme1)
 			if err != nil {
 				t.Errorf("Error adding api to scheme: %s", err.Error())
@@ -643,7 +643,8 @@ func Test_getHubIdentification(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if version, err := getHubIdentification(tt.args.ctx, tt.args.c); (err == nil) != tt.err_nil ||
 				version != tt.want_msg {
-				t.Errorf("getHubIdentification() returns no error = %v, want %v and version=%v want=%v", err == nil, tt.err_nil, version, tt.want_msg)
+				t.Errorf("getHubIdentification() returns no error = %v, want %v and version=%v want=%v",
+					err == nil, tt.err_nil, version, tt.want_msg)
 			}
 		})
 	}
@@ -747,7 +748,6 @@ func labelSelectorArrayEqual(a []*v1.LabelSelector, b []v1.LabelSelector) bool {
 }
 
 func labelSelectorEqual(a *v1.LabelSelector, b *v1.LabelSelector) bool {
-
 	if a == nil && b == nil {
 		return true
 	}
@@ -778,7 +778,6 @@ func labelSelectorEqual(a *v1.LabelSelector, b *v1.LabelSelector) bool {
 }
 
 func requirementsEqual(ma []metav1.LabelSelectorRequirement, mb []metav1.LabelSelectorRequirement) bool {
-
 	if ma == nil && mb == nil {
 		return true
 	}
@@ -863,13 +862,13 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 			args: args{
 				veleroRestore: createRestore("restore", "restore-ns").
 					orLabelSelector([]*metav1.LabelSelector{
-						&metav1.LabelSelector{
+						{
 							MatchExpressions: []metav1.LabelSelectorRequirement{
 								req1,
 								req2,
 							},
 						},
-						&metav1.LabelSelector{
+						{
 							MatchExpressions: []metav1.LabelSelectorRequirement{
 								req3,
 							},
@@ -879,14 +878,14 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 				labelSelector: clusterActivationReq,
 			},
 			wantOrLabelSelector: []metav1.LabelSelector{
-				metav1.LabelSelector{
+				{
 					MatchExpressions: []metav1.LabelSelectorRequirement{
 						req1,
 						req2,
 						clusterActivationReq,
 					},
 				},
-				metav1.LabelSelector{
+				{
 					MatchExpressions: []metav1.LabelSelectorRequirement{
 						req3,
 						clusterActivationReq,
@@ -900,13 +899,13 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 			args: args{
 				veleroRestore: createRestore("restore", "restore-ns").
 					orLabelSelector([]*metav1.LabelSelector{
-						&metav1.LabelSelector{
+						{
 							MatchExpressions: []metav1.LabelSelectorRequirement{
 								req1,
 								req2,
 							},
 						},
-						&metav1.LabelSelector{
+						{
 							MatchExpressions: []metav1.LabelSelectorRequirement{
 								req3,
 							},
@@ -916,13 +915,13 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 				labelSelector: metav1.LabelSelectorRequirement{},
 			},
 			wantOrLabelSelector: []metav1.LabelSelector{
-				metav1.LabelSelector{
+				{
 					MatchExpressions: []metav1.LabelSelectorRequirement{
 						req1,
 						req2,
 					},
 				},
-				metav1.LabelSelector{
+				{
 					MatchExpressions: []metav1.LabelSelectorRequirement{
 						req3,
 					},
@@ -979,18 +978,20 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 		},
 		{
 			// this is is going to be flagged as a validation error by velero so this is not really a valid usecase
-			// the user can set both, still, so verifing that the cluster activation LabelSelector goes to the orLabelSelector in this case
-			name: "using both user defined orLabelSelector and LabelSelector, add cluster activation LabelSelector to orLabelSelector",
+			// the user can set both, still, so verifing that the cluster activation LabelSelector goes to the
+			// orLabelSelector in this case
+			name: "using both user defined orLabelSelector and LabelSelector, " +
+				"add cluster activation LabelSelector to orLabelSelector",
 			args: args{
 				veleroRestore: createRestore("restore", "restore-ns").
 					orLabelSelector([]*metav1.LabelSelector{
-						&metav1.LabelSelector{
+						{
 							MatchExpressions: []metav1.LabelSelectorRequirement{
 								req1,
 								req2,
 							},
 						},
-						&metav1.LabelSelector{
+						{
 							MatchExpressions: []metav1.LabelSelectorRequirement{
 								req3,
 							},
@@ -1007,14 +1008,14 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 				labelSelector: clusterActivationReq,
 			},
 			wantOrLabelSelector: []metav1.LabelSelector{
-				metav1.LabelSelector{
+				{
 					MatchExpressions: []metav1.LabelSelectorRequirement{
 						req1,
 						req2,
 						clusterActivationReq,
 					},
 				},
-				metav1.LabelSelector{
+				{
 					MatchExpressions: []metav1.LabelSelectorRequirement{
 						req3,
 						clusterActivationReq,
@@ -1034,13 +1035,14 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 			addRestoreLabelSelector(tt.args.veleroRestore, tt.args.labelSelector)
 
 			if !labelSelectorArrayEqual(tt.args.veleroRestore.Spec.OrLabelSelectors, tt.wantOrLabelSelector) {
-				t.Errorf("OrLabelSelectors not as expected  = %v, want %v got=%v", tt.name, tt.wantOrLabelSelector, tt.args.veleroRestore.Spec.OrLabelSelectors)
+				t.Errorf("OrLabelSelectors not as expected  = %v, want %v got=%v",
+					tt.name, tt.wantOrLabelSelector, tt.args.veleroRestore.Spec.OrLabelSelectors)
 			}
 
 			if !labelSelectorEqual(tt.args.veleroRestore.Spec.LabelSelector, &tt.wantLabelSelector) {
-				t.Errorf("LabelSelector not as expected  = %v, want %v got=%v", tt.name, tt.wantLabelSelector, tt.args.veleroRestore.Spec.LabelSelector)
+				t.Errorf("LabelSelector not as expected  = %v, want %v got=%v",
+					tt.name, tt.wantLabelSelector, tt.args.veleroRestore.Spec.LabelSelector)
 			}
-
 		})
 	}
 }
@@ -1100,7 +1102,6 @@ func Test_appendUniqueReq(t *testing.T) {
 			if !requirementsEqual(tt.args.requirements, tt.wantRequirements) {
 				t.Errorf("reqs not as expected  = %v, want %v got=%v", tt.name, tt.wantRequirements, tt.args.requirements)
 			}
-
 		})
 	}
 }
@@ -1283,7 +1284,6 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			if i == 1 {
 				// create the scheme now, to have the delete resource fail
 				_ = veleroapi.AddToScheme(scheme1) // for velero types
@@ -1296,17 +1296,16 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 						tt.args.backupSchedule.Name,
 						tt.args.backupSchedule.Namespace,
 						err.Error())
-
 				}
 
 				// create resources
 				for i := range tt.args.veleroScheduleList.Items {
-					if err := k8sClient1.Create(tt.args.ctx, &tt.args.veleroScheduleList.Items[i], &client.CreateOptions{}); err != nil {
+					if err := k8sClient1.Create(
+						tt.args.ctx, &tt.args.veleroScheduleList.Items[i], &client.CreateOptions{}); err != nil {
 						t.Errorf("Failed to create schedule name =%v ns =%v , err=%v",
 							tt.args.veleroScheduleList.Items[i].Name,
 							tt.args.veleroScheduleList.Items[i].Namespace,
 							err.Error())
-
 					}
 				}
 			}

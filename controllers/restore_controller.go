@@ -83,6 +83,7 @@ type RestoreReconciler struct {
 	Recorder        record.EventRecorder
 }
 
+//nolint:lll
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=restores,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=restores/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=restores/finalizers,verbs=update
@@ -246,7 +247,6 @@ func isPVCInitializationStep(
 	acmRestore *v1beta1.Restore,
 	veleroRestoreList veleroapi.RestoreList,
 ) bool {
-
 	isSync := acmRestore.Spec.SyncRestoreWithNewBackups
 	isActiveDataBeingRestored := *acmRestore.Spec.VeleroManagedClustersBackupName != skipRestoreStr
 
@@ -281,7 +281,6 @@ func (r *RestoreReconciler) cleanupOnRestore(
 	ctx context.Context,
 	acmRestore *v1beta1.Restore,
 ) {
-
 	restoreLogger := log.FromContext(ctx)
 	// get the list of velero restore resources created by this acm restore
 	veleroRestoreList := veleroapi.RestoreList{}
@@ -311,11 +310,9 @@ func (r *RestoreReconciler) cleanupOnRestore(
 	}
 	cleanupDeltaResources(ctx, r.Client, acmRestore, cleanupOnRestore, restoreOptions)
 	executePostRestoreTasks(ctx, r.Client, acmRestore)
-
 }
 
 func sendResult(restore *v1beta1.Restore, err error) (ctrl.Result, error) {
-
 	if restore.Spec.SyncRestoreWithNewBackups &&
 		restore.Status.Phase == v1beta1.RestorePhaseEnabled {
 
@@ -372,6 +369,7 @@ func (backups mostRecent) Len() int { return len(backups) }
 func (backups mostRecent) Swap(i, j int) {
 	backups[i], backups[j] = backups[j], backups[i]
 }
+
 func (backups mostRecent) Less(i, j int) bool {
 	return backups[j].Status.StartTimestamp.Before(backups[i].Status.StartTimestamp)
 }
@@ -505,7 +503,6 @@ func updateLabelsForActiveResources(
 	key ResourceType,
 	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
 ) bool {
-
 	// check if this is the credential restore run
 	// during the cluster activation step
 	isCredsClsOnActiveStep := false
@@ -555,7 +552,6 @@ func processRestoreWait(
 	restoreName string,
 	restoreNamespace string,
 ) (bool, string) {
-
 	restoreLogger := log.FromContext(ctx)
 	restoreLogger.Info("Enter processRestoreWait " + restoreName)
 

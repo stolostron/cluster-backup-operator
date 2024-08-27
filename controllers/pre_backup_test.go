@@ -45,7 +45,6 @@ import (
 )
 
 func Test_createMSA(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -108,9 +107,11 @@ func Test_createMSA(t *testing.T) {
 
 	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), obj1)
 
-	var res = schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
+	res := schema.GroupVersionResource{
+		Group:    "authentication.open-cluster-management.io",
 		Version:  "v1beta1",
-		Resource: "ManagedServiceAccount"}
+		Resource: "ManagedServiceAccount",
+	}
 
 	resInterface := dynClient.Resource(res)
 	current, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
@@ -223,7 +224,6 @@ func Test_createMSA(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			for i := range tt.args.secrets {
 				if err := k8sClient1.Create(context.Background(), &tt.args.secrets[i]); err != nil {
 					t.Errorf("secret creation failed: err(%s) ", err.Error())
@@ -265,33 +265,40 @@ func Test_createMSA(t *testing.T) {
 			}
 
 			work := &workv1.ManifestWork{}
-			if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: manifest_work_name,
-				Namespace: tt.args.managedCluster}, work); err != nil {
+			if err := k8sClient1.Get(context.Background(), types.NamespacedName{
+				Name:      manifest_work_name,
+				Namespace: tt.args.managedCluster,
+			}, work); err != nil {
 				t.Errorf("cannot get manifestwork %s ", err.Error())
 			} else {
 				rawData := string(work.Spec.Workload.Manifests[0].Raw[:])
 
 				str := `"kind":"ClusterRoleBinding","metadata":{"name":"managedserviceaccount-import"}`
 				if !strings.Contains(rawData, str) {
-					t.Errorf("Cluster role binding should be %v for manifest %v but is %v", "managedserviceaccount-import", work.Name, rawData)
+					t.Errorf("Cluster role binding should be %v for manifest %v but is %v", "managedserviceaccount-import",
+						work.Name, rawData)
 				}
 
-				strserviceaccount := `{"kind":"ServiceAccount","name":"auto-import-account","namespace":"open-cluster-management-agent-addon"}`
+				strserviceaccount := `{"kind":"ServiceAccount","name":"auto-import-account",` +
+					`"namespace":"open-cluster-management-agent-addon"}`
 				if !strings.Contains(rawData, strserviceaccount) {
 					t.Errorf("ServiceAccount should be %v for manifest %v, but is %v", strserviceaccount, work.Name, rawData)
 				}
 
 			}
 
-			if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: manifest_work_name + "-custom-2",
-				Namespace: tt.args.managedCluster}, work); err != nil {
+			if err := k8sClient1.Get(context.Background(), types.NamespacedName{
+				Name:      manifest_work_name + "-custom-2",
+				Namespace: tt.args.managedCluster,
+			}, work); err != nil {
 				t.Errorf("cannot get manifestwork %s ", err.Error())
 			} else {
 				str := `"kind":"ClusterRoleBinding","metadata":{"name":"managedserviceaccount-import-custom-2"}`
 				rawData := string(work.Spec.Workload.Manifests[0].Raw[:])
 
 				if !strings.Contains(rawData, str) {
-					t.Errorf("Cluster role binding should be %v for manifest %v but is %v", "managedserviceaccount-import-custom-2", work.Name, rawData)
+					t.Errorf("Cluster role binding should be %v for manifest %v but is %v",
+						"managedserviceaccount-import-custom-2", work.Name, rawData)
 				}
 
 				strserviceaccount := `{"kind":"ServiceAccount","name":"auto-import-account","namespace":"managed1"}`
@@ -302,16 +309,19 @@ func Test_createMSA(t *testing.T) {
 			}
 
 			// this should be deleted
-			if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: manifest_work_name + mwork_custom_282,
-				Namespace: tt.args.managedCluster}, work); err == nil {
+			if err := k8sClient1.Get(context.Background(), types.NamespacedName{
+				Name:      manifest_work_name + mwork_custom_282,
+				Namespace: tt.args.managedCluster,
+			}, work); err == nil {
 				t.Errorf("this manifest should no longer exist ! %v ", manifest_work_name+mwork_custom_282)
 			}
 
-			if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: manifest_work_name_pair + mwork_custom_282,
-				Namespace: tt.args.managedCluster}, work); err == nil {
+			if err := k8sClient1.Get(context.Background(), types.NamespacedName{
+				Name:      manifest_work_name_pair + mwork_custom_282,
+				Namespace: tt.args.managedCluster,
+			}, work); err == nil {
 				t.Errorf("this manifest should no longer exist ! %v ", manifest_work_name_pair+mwork_custom_282)
 			}
-
 		})
 	}
 
@@ -321,7 +331,6 @@ func Test_createMSA(t *testing.T) {
 }
 
 func Test_updateMSAToken(t *testing.T) {
-
 	obj1 := &unstructured.Unstructured{}
 	obj1.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
@@ -365,17 +374,23 @@ func Test_updateMSAToken(t *testing.T) {
 
 	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), obj1)
 
-	targetGVK := schema.GroupVersionKind{Group: "authentication.open-cluster-management.io",
+	targetGVK := schema.GroupVersionKind{
+		Group:   "authentication.open-cluster-management.io",
 		Version: "v1beta1",
-		Kind:    "ManagedServiceAccount"}
+		Kind:    "ManagedServiceAccount",
+	}
 
 	targetGVR := targetGVK.GroupVersion().WithResource("somecrs")
-	targetMapping := meta.RESTMapping{Resource: targetGVR, GroupVersionKind: targetGVK,
-		Scope: meta.RESTScopeNamespace}
+	targetMapping := meta.RESTMapping{
+		Resource: targetGVR, GroupVersionKind: targetGVK,
+		Scope: meta.RESTScopeNamespace,
+	}
 
-	var res = schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
+	res := schema.GroupVersionResource{
+		Group:    "authentication.open-cluster-management.io",
 		Version:  "v1beta1",
-		Resource: "ManagedServiceAccount"}
+		Resource: "ManagedServiceAccount",
+	}
 
 	resInterface := dynClient.Resource(res)
 
@@ -471,11 +486,9 @@ func Test_updateMSAToken(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func Test_updateMSASecretTimestamp(t *testing.T) {
-
 	objNoStatus := &unstructured.Unstructured{}
 	objNoStatus.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
@@ -544,9 +557,11 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 
 	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), objNoStatus)
 
-	var res = schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
+	res := schema.GroupVersionResource{
+		Group:    "authentication.open-cluster-management.io",
 		Version:  "v1beta1",
-		Resource: "ManagedServiceAccount"}
+		Resource: "ManagedServiceAccount",
+	}
 
 	resInterface := dynClient.Resource(res)
 
@@ -605,11 +620,9 @@ func Test_updateMSASecretTimestamp(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func Test_shouldGeneratePairToken(t *testing.T) {
-
 	fourHoursAgo := "2022-07-26T11:25:34Z"
 	nextThreeHours := "2022-07-26T18:25:34Z"
 	nextTenHours := "2022-07-27T04:25:34Z"
@@ -632,7 +645,6 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 		args args
 		want bool
 	}{
-
 		{
 			name: "MSA has no secrets",
 			args: args{
@@ -648,7 +660,8 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 						map[string]string{
 							"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
 						}, nil),
-				}},
+				},
+			},
 			want: false,
 		},
 		{
@@ -660,7 +673,8 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 							"lastRefreshTimestamp": "2022-08-05T15:25:38Z",
 							"expirationTimestamp":  "bbb",
 						}, nil),
-				}},
+				},
+			},
 			want: false,
 		},
 		{
@@ -672,7 +686,8 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 							"lastRefreshTimestamp": "aaaaa",
 							"expirationTimestamp":  "2022-08-05T15:25:38Z",
 						}, nil),
-				}},
+				},
+			},
 			want: false,
 		},
 		{
@@ -684,7 +699,8 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 							"lastRefreshTimestamp": "2022-08-05T15:25:38Z",
 							"expirationTimestamp":  "aaa",
 						}, nil),
-				}},
+				},
+			},
 			want: false,
 		},
 		{
@@ -697,7 +713,8 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
 						}, nil),
-				}},
+				},
+			},
 			want: false,
 		},
 		{
@@ -710,7 +727,8 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextThreeHours,
 						}, nil),
-				}},
+				},
+			},
 			want: false,
 		},
 		{
@@ -723,7 +741,8 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextHour,
 						}, nil),
-				}},
+				},
+			},
 			want: false,
 		},
 		{
@@ -736,7 +755,8 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 							"lastRefreshTimestamp": initialTime,
 							"expirationTimestamp":  expiryTime,
 						}, nil),
-				}},
+				},
+			},
 			want: true,
 		},
 		{
@@ -749,7 +769,8 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 							"lastRefreshTimestamp": initialTimeNoPair,
 							"expirationTimestamp":  expiryTimeNoPair,
 						}, nil),
-				}},
+				},
+			},
 			want: false,
 		},
 	}
@@ -761,7 +782,6 @@ func Test_shouldGeneratePairToken(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func Test_cleanupMSAForImportedClusters(t *testing.T) {
@@ -823,7 +843,8 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 	if err := k8sClient1.Create(context.Background(), createNamespace("loc")); err != nil {
 		t.Fatalf("cannot create ns %s ", err.Error())
 	}
-	if err := k8sClient1.Create(context.Background(), createManagedCluster("loc", true /* local cluster */).object); err != nil {
+	err = k8sClient1.Create(context.Background(), createManagedCluster("loc", true /* local cluster */).object)
+	if err != nil {
 		t.Fatalf("cannot create %s ", err.Error())
 	}
 
@@ -847,13 +868,19 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 		},
 	})
 
-	targetGVK := schema.GroupVersionKind{Group: "authentication.open-cluster-management.io",
-		Version: "v1beta1", Kind: "ManagedServiceAccount"}
+	targetGVK := schema.GroupVersionKind{
+		Group:   "authentication.open-cluster-management.io",
+		Version: "v1beta1", Kind: "ManagedServiceAccount",
+	}
 	targetGVR := targetGVK.GroupVersion().WithResource("managedserviceaccount")
-	targetMapping := meta.RESTMapping{Resource: targetGVR, GroupVersionKind: targetGVK,
-		Scope: meta.RESTScopeNamespace}
-	targetGVRList := schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
-		Version: "v1beta1", Resource: "managedserviceaccounts"}
+	targetMapping := meta.RESTMapping{
+		Resource: targetGVR, GroupVersionKind: targetGVK,
+		Scope: meta.RESTScopeNamespace,
+	}
+	targetGVRList := schema.GroupVersionResource{
+		Group:   "authentication.open-cluster-management.io",
+		Version: "v1beta1", Resource: "managedserviceaccounts",
+	}
 
 	gvrToListKind := map[schema.GroupVersionResource]string{
 		targetGVRList: "ManagedServiceAccountList",
@@ -943,7 +970,6 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 }
 
 func Test_updateSecretsLabels(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -1029,8 +1055,10 @@ func Test_updateSecretsLabels(t *testing.T) {
 		result := []string{}
 		for index := range hiveSecrets.Items {
 			secret := hiveSecrets.Items[index]
-			if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: secret.Name,
-				Namespace: secret.Namespace}, &secret); err != nil {
+			if err := k8sClient1.Get(context.Background(), types.NamespacedName{
+				Name:      secret.Name,
+				Namespace: secret.Namespace,
+			}, &secret); err != nil {
 				t.Errorf("cannot get secret %s ", err.Error())
 			}
 			if secret.GetLabels()[labelName] == labelValue {

@@ -53,7 +53,6 @@ func initVeleroScheduleList(
 	cronSpec string,
 	ttl metav1.Duration,
 ) *veleroapi.ScheduleList {
-
 	veleroSchedules := []veleroapi.Schedule{}
 	for _, value := range veleroScheduleNames {
 		schedule := *createSchedule(value, veleroNamespaceName).
@@ -74,7 +73,8 @@ func initVeleroScheduleList(
 
 func initVeleroSchedulesWithSpecs(
 	cronSpec string,
-	ttl metav1.Duration) *veleroapi.ScheduleList {
+	ttl metav1.Duration,
+) *veleroapi.ScheduleList {
 	veleroScheduleList := initVeleroScheduleTypes()
 	for i := range veleroScheduleList.Items {
 		veleroSchedule := &veleroScheduleList.Items[i]
@@ -141,7 +141,6 @@ func initVeleroScheduleTypes() *veleroapi.ScheduleList {
 }
 
 func Test_parseCronSchedule(t *testing.T) {
-
 	type args struct {
 		ctx            context.Context
 		backupSchedule *v1beta1.BackupSchedule
@@ -234,7 +233,8 @@ func Test_setSchedulePhase(t *testing.T) {
 		{
 			name: "enabled",
 			args: args{
-				schedules:      initVeleroScheduleList("ns", veleroapi.SchedulePhaseEnabled, "0 8 * * *", metav1.Duration{Duration: time.Second * 5}),
+				schedules: initVeleroScheduleList("ns", veleroapi.SchedulePhaseEnabled, "0 8 * * *",
+					metav1.Duration{Duration: time.Second * 5}),
 				backupSchedule: createBackupSchedule("name", "ns").schedule("0 8 * * *").object,
 			},
 			want: v1beta1.SchedulePhaseEnabled,
@@ -441,7 +441,6 @@ func Test_isScheduleSpecUpdated(t *testing.T) {
 }
 
 func Test_deleteVeleroSchedules(t *testing.T) {
-
 	veleroNamespaceName := "backup-ns"
 	veleroNamespace := *createNamespace(veleroNamespaceName)
 
@@ -530,7 +529,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 				backupSchedule: &rhacmBackupSchedule,
 				schedules: &veleroapi.ScheduleList{
 					Items: []veleroapi.Schedule{
-						veleroapi.Schedule{
+						{
 							TypeMeta: metav1.TypeMeta{
 								APIVersion: "velero/v1",
 								Kind:       "Schedule",
@@ -557,7 +556,6 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 		},
 	}
 	for _, tt := range testsForDelete {
-
 		t.Run(tt.name, func(t *testing.T) {
 			if got := deleteVeleroSchedules(tt.args.ctx, tt.args.c,
 				tt.args.backupSchedule, tt.args.schedules); (got != nil) != tt.want {
@@ -669,7 +667,8 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 				resourcesToBackup: []string{"policy456.open-cluster-management.io"},
 			},
 			want: true,
-			err:  `Operation cannot be fulfilled on schedules.velero.io "acm-resources-schedule": the object has been modified; please apply your changes to the latest version and try again`,
+			err: `Operation cannot be fulfilled on schedules.velero.io "acm-resources-schedule": ` +
+				`the object has been modified; please apply your changes to the latest version and try again`,
 		},
 	}
 	for idx, tt := range testsForSchedulesUpdateRequired {
@@ -687,8 +686,8 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 
 		if idx == len(testsForSchedulesUpdateRequired)-1 {
 			// update one schedule now so the code fails when it tries to update it with the new CRD
-			veleroSchedulesUpdate.Items[0].Spec.Template.IncludedResources = append(veleroSchedulesUpdate.Items[0].Spec.Template.IncludedResources,
-				"new-res")
+			veleroSchedulesUpdate.Items[0].Spec.Template.IncludedResources = append(
+				veleroSchedulesUpdate.Items[0].Spec.Template.IncludedResources, "new-res")
 			// don't throw error if the update fails
 			_ = k8sClient1.Update(context.Background(), &veleroSchedulesUpdate.Items[0])
 		}
@@ -725,7 +724,6 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 }
 
 func Test_isRestoreRunning(t *testing.T) {
-
 	veleroNamespaceName := "backup-ns"
 	veleroNamespace := *createNamespace(veleroNamespaceName)
 
@@ -847,7 +845,6 @@ func Test_isRestoreRunning(t *testing.T) {
 }
 
 func Test_createInitialBackupForSchedule(t *testing.T) {
-
 	timeStr := "20220912191647"
 	veleroNamespaceName := "backup-ns"
 	rhacmBackupSchedule := *createBackupSchedule("backup-sch", veleroNamespaceName).
@@ -952,10 +949,8 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got_backup := createInitialBackupForSchedule(tt.args.ctx, tt.args.c, tt.args.veleroSchedule,
 				tt.args.backupSchedule, timeStr); got_backup != tt.want_veleroBackup {
-
 				t.Errorf("createInitialBackupForSchedule() backupName is %v, want %v",
 					got_backup, tt.want_veleroBackup)
-
 			}
 		})
 	}
@@ -967,7 +962,6 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 }
 
 func Test_createFailedValidationResponse(t *testing.T) {
-
 	veleroNamespaceName := "backup-ns-v"
 
 	testEnv := &envtest.Environment{
@@ -1025,7 +1019,6 @@ func Test_createFailedValidationResponse(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-
 		t.Run(tt.name, func(t *testing.T) {
 			if r, _, _ := createFailedValidationResponse(tt.args.ctx, tt.args.c,
 				tt.args.backupSchedule, tt.args.msg,
@@ -1033,7 +1026,6 @@ func Test_createFailedValidationResponse(t *testing.T) {
 				t.Errorf("createFailedValidationResponse() = %v, want %v", r.RequeueAfter, tt.want)
 			}
 		})
-
 	}
 	// clean up
 	if err := testEnv.Stop(); err != nil {
@@ -1042,7 +1034,6 @@ func Test_createFailedValidationResponse(t *testing.T) {
 }
 
 func Test_verifyMSAOptione(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -1109,13 +1100,13 @@ func Test_verifyMSAOptione(t *testing.T) {
 				},
 			}
 		default:
-			//t.Logf("unexpected request: %s", req.URL.Path)
+			// t.Logf("unexpected request: %s", req.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		output, err := json.Marshal(list)
 		if err != nil {
-			//t.Errorf("unexpected encoding error: %v", err)
+			// t.Errorf("unexpected encoding error: %v", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -1227,7 +1218,6 @@ func Test_verifyMSAOptione(t *testing.T) {
 }
 
 func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
-
 	veleroNamespaceName := "default"
 
 	testEnv := &envtest.Environment{
@@ -1300,8 +1290,10 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 			resources: []*veleroapi.Backup{
 				createBackup(veleroScheduleNames[Resources]+"-1", veleroNamespaceName).
 					startTimestamp(anHourAgo).errors(0).
-					labels(map[string]string{BackupScheduleClusterLabel: "abcd",
-						BackupVeleroLabel: veleroScheduleNames[Resources]}).
+					labels(map[string]string{
+						BackupScheduleClusterLabel: "abcd",
+						BackupVeleroLabel:          veleroScheduleNames[Resources],
+					}).
 					object,
 			},
 		},
@@ -1316,8 +1308,10 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 			resources: []*veleroapi.Backup{
 				createBackup(veleroScheduleNames[Resources]+"-2", veleroNamespaceName).
 					startTimestamp(aFewSecondsAgo).errors(0).
-					labels(map[string]string{BackupScheduleClusterLabel: "cls",
-						BackupVeleroLabel: veleroScheduleNames[Resources]}).
+					labels(map[string]string{
+						BackupScheduleClusterLabel: "cls",
+						BackupVeleroLabel:          veleroScheduleNames[Resources],
+					}).
 					object,
 			},
 		},
@@ -1327,7 +1321,6 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 			if err := k8sClient1.Create(tt.args.ctx, tt.resources[i]); err != nil {
 				t.Errorf("failed to create %s", err.Error())
 			}
-
 		}
 
 		t.Run(tt.name, func(t *testing.T) {
@@ -1345,7 +1338,6 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 }
 
 func Test_isRestoreHubAfterSchedule(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -1439,8 +1431,10 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 				veleroSchedule: createSchedule("acm-backup-schedule", veleroNamespaceName).
 					object,
 				acmClusterActivationBackups: []*veleroapi.Backup{createBackup("acm-restore-clusters-2", veleroNamespaceName).
-					labels(map[string]string{BackupScheduleClusterLabel: "cluster1",
-						RestoreClusterLabel: "cluster2"}).
+					labels(map[string]string{
+						BackupScheduleClusterLabel: "cluster1",
+						RestoreClusterLabel:        "cluster2",
+					}).
 					phase(veleroapi.BackupPhaseCompleted).
 					object},
 				createScheduleFirst: true,
@@ -1456,8 +1450,10 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 				veleroSchedule: createSchedule("acm-backup-schedule", veleroNamespaceName).
 					object,
 				acmClusterActivationBackups: []*veleroapi.Backup{createBackup("acm-restore-clusters-1", veleroNamespaceName).
-					labels(map[string]string{BackupScheduleClusterLabel: "cluster1",
-						RestoreClusterLabel: "cluster1"}).
+					labels(map[string]string{
+						BackupScheduleClusterLabel: "cluster1",
+						RestoreClusterLabel:        "cluster1",
+					}).
 					phase(veleroapi.BackupPhaseCompleted).
 					object},
 				createScheduleFirst: true,
@@ -1473,8 +1469,10 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 				veleroSchedule: createSchedule("acm-backup-schedule", veleroNamespaceName).
 					object,
 				acmClusterActivationBackups: []*veleroapi.Backup{createBackup("acm-restore-clusters-2", veleroNamespaceName).
-					labels(map[string]string{BackupScheduleClusterLabel: "cluster1",
-						RestoreClusterLabel: "cluster2"}).
+					labels(map[string]string{
+						BackupScheduleClusterLabel: "cluster1",
+						RestoreClusterLabel:        "cluster2",
+					}).
 					phase(veleroapi.BackupPhaseCompleted).
 					object},
 				createScheduleFirst: false,

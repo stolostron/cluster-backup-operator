@@ -94,6 +94,7 @@ type BackupScheduleReconciler struct {
 	Scheme          *runtime.Scheme
 }
 
+//nolint:lll
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules/finalizers,verbs=update
@@ -154,7 +155,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 
 	if backupSchedule.Spec.Paused {
-		//backup schedule is paused
+		// backup schedule is paused
 		msg := "BackupSchedule is paused."
 		return updateBackupSchedulePhaseWhenPaused(ctx, r.Client, veleroScheduleList,
 			backupSchedule, v1beta1.SchedulePhasePaused, msg)
@@ -195,7 +196,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 
 	if collisionMsg != "" {
-		//collision found
+		// collision found
 		return updateBackupSchedulePhaseWhenPaused(ctx, r.Client, veleroScheduleList,
 			backupSchedule, v1beta1.SchedulePhaseBackupCollision, collisionMsg)
 	}
@@ -260,7 +261,6 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	req ctrl.Request,
 	backupSchedule *v1beta1.BackupSchedule,
 ) (ctrl.Result, bool, error) {
-
 	validConfiguration := false
 	scheduleLogger := log.FromContext(ctx)
 
@@ -312,7 +312,6 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 
 	// check MSA status for backup schedules
 	return verifyMSAOption(ctx, r.Client, mapper, backupSchedule)
-
 }
 
 // create velero.io.Schedule resource for each resource type that needs backup

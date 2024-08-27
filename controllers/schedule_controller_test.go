@@ -231,9 +231,8 @@ var _ = Describe("BackupSchedule controller", func() {
 		oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
 		aFewSecondsAgo := metav1.NewTime(time.Now().Add(-2 * time.Second))
 
-		//create 3 sets of backups, for each timestamp
+		// create 3 sets of backups, for each timestamp
 		for _, timestampStr := range backupTimestamps {
-
 			for key, value := range veleroScheduleNames {
 
 				backup := *createBackup(value+"-"+timestampStr, veleroNamespaceName).
@@ -387,7 +386,6 @@ var _ = Describe("BackupSchedule controller", func() {
 
 		if aINS != nil {
 			Expect(k8sClient.Create(ctx, aINS)).Should(Succeed())
-
 		}
 		if clusterPoolNS != nil {
 			Expect(k8sClient.Create(ctx, clusterPoolNS)).Should(Succeed())
@@ -435,8 +433,10 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			createdVeleroNamespace := corev1.Namespace{}
 			Eventually(func() bool {
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: veleroNamespaceName,
-					Namespace: ""}, &createdVeleroNamespace); err != nil {
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      veleroNamespaceName,
+					Namespace: "",
+				}, &createdVeleroNamespace); err != nil {
 					return false
 				}
 				if createdVeleroNamespace.Status.Phase == "Active" {
@@ -447,8 +447,10 @@ var _ = Describe("BackupSchedule controller", func() {
 
 			createdACMNamespace := corev1.Namespace{}
 			Eventually(func() bool {
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: acmNamespaceName,
-					Namespace: ""}, &createdACMNamespace); err != nil {
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      acmNamespaceName,
+					Namespace: "",
+				}, &createdACMNamespace); err != nil {
 					return false
 				}
 				if createdACMNamespace.Status.Phase == "Active" {
@@ -600,7 +602,6 @@ var _ = Describe("BackupSchedule controller", func() {
 				}
 
 				return schedulesCreated
-
 			}, timeout, interval).Should(BeTrue())
 
 			Expect(
@@ -651,12 +652,10 @@ var _ = Describe("BackupSchedule controller", func() {
 				if veleroSchedulesList.Items[i].Name == veleroScheduleNames[Resources] {
 					Expect(findValue(veleroSchedulesList.Items[i].Spec.Template.IncludedResources,
 						"clusterpool.other.hive.openshift.io")).Should(BeFalse())
-
 				}
 				if veleroSchedulesList.Items[i].Name == veleroScheduleNames[ManagedClusters] {
 					Expect(findValue(veleroSchedulesList.Items[i].Spec.Template.IncludedResources,
 						"clusterpool.other.hive.openshift.io")).Should(BeTrue())
-
 				}
 			}
 
@@ -923,7 +922,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
 						"clusterdeployment.hive.openshift.io")).Should(BeFalse())
 					Expect(findValue(
-						veleroSchedule.Spec.Template.IncludedResources, //excludedGroup
+						veleroSchedule.Spec.Template.IncludedResources, // excludedGroup
 						"managedclustermutators.proxy.open-cluster-management.io",
 					)).ShouldNot(BeTrue())
 					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
@@ -933,14 +932,15 @@ var _ = Describe("BackupSchedule controller", func() {
 				// generic resources, using backup label
 				if veleroSchedule.Name == "acm-resources-generic-schedule" {
 
-					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, //secrets are in the creds backup
+					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, // secrets are in the creds backup
 						"secret")).Should(BeTrue())
 
-					// resources excluded from backup should still be allowed to be backed up by the generic backup, if they have a backup label
+					// resources excluded from backup should still be allowed to be backed up by the generic backup,
+					// if they have a backup label
 					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources,
 						"clustermanagementaddon.addon.open-cluster-management.io")).ShouldNot(BeTrue())
 
-					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, //already in cluster resources backup
+					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, // already in cluster resources backup
 						"klusterletaddonconfig.agent.open-cluster-management.io")).Should(BeTrue())
 					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, // exclude this, part of mannged cluster
 						"clusterpool.other.hive.openshift.io")).Should(BeTrue())
@@ -973,15 +973,13 @@ var _ = Describe("BackupSchedule controller", func() {
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 			Expect(len(acmSchedulesList.Items)).To(BeNumerically("==", 0))
-
 		})
-
 	})
 
 	Context("When BackupStorageLocation without OwnerReference is invalid", func() {
-		var newVeleroNamespace = "velero-ns-new"
-		var newAcmNamespace = "acm-ns-new"
-		var newChartsv1NSName = "acm-channel-ns-new"
+		newVeleroNamespace := "velero-ns-new"
+		newAcmNamespace := "acm-ns-new"
+		newChartsv1NSName := "acm-channel-ns-new"
 
 		oneHourAgo := metav1.NewTime(time.Now().Add(-1 * time.Hour))
 
@@ -1035,7 +1033,8 @@ var _ = Describe("BackupSchedule controller", func() {
 				Expect(
 					createdSchedule.Status.LastMessage,
 				).Should(BeIdenticalTo("velero.io.BackupStorageLocation resources not found. " +
-					"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."))
+					"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications " +
+					"resource."))
 
 				// create the storage location now but in the wrong ns
 				Expect(k8sClient.Create(ctx, backupStorageLocation)).Should(Succeed())
@@ -1072,5 +1071,4 @@ var _ = Describe("BackupSchedule controller", func() {
 			},
 		)
 	})
-
 })

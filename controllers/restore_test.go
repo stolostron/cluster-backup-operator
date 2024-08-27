@@ -417,7 +417,7 @@ func Test_setRestorePhase(t *testing.T) {
 
 				restoreList: &veleroapi.RestoreList{
 					Items: []veleroapi.Restore{
-						veleroapi.Restore{
+						{
 							TypeMeta: metav1.TypeMeta{
 								APIVersion: "velero/v1",
 								Kind:       "Restore",
@@ -442,15 +442,16 @@ func Test_setRestorePhase(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if phase, cleanupOnEnabled := setRestorePhase(tt.args.restoreList, tt.args.restore); phase != tt.wantPhase || cleanupOnEnabled != tt.wantCleanupOnEnabled {
-				t.Errorf("setRestorePhase() phase = %v, want %v, cleanupOnEnabled = %v, want %v", phase, tt.wantPhase, cleanupOnEnabled, tt.wantCleanupOnEnabled)
+			phase, cleanupOnEnabled := setRestorePhase(tt.args.restoreList, tt.args.restore)
+			if phase != tt.wantPhase || cleanupOnEnabled != tt.wantCleanupOnEnabled {
+				t.Errorf("setRestorePhase() phase = %v, want %v, cleanupOnEnabled = %v, want %v",
+					phase, tt.wantPhase, cleanupOnEnabled, tt.wantCleanupOnEnabled)
 			}
 		})
 	}
 }
 
 func Test_getVeleroBackupName(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -660,7 +661,6 @@ func Test_getVeleroBackupName(t *testing.T) {
 }
 
 func Test_isNewBackupAvailable(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -750,7 +750,6 @@ func Test_isNewBackupAvailable(t *testing.T) {
 		args args
 		want bool
 	}{
-
 		{
 			name: "no kind is registered for the type v1.BackupList",
 			args: args{
@@ -884,7 +883,7 @@ func Test_isBackupScheduleRunning(t *testing.T) {
 			name: "backup without backupcollision running",
 			args: args{
 				backupSchedules: []v1beta1.BackupSchedule{
-					v1beta1.BackupSchedule{
+					{
 						TypeMeta: metav1.TypeMeta{
 							APIVersion: "cluster.open-cluster-management.io/v1beta1",
 							Kind:       "BackupSchedule",
@@ -1014,15 +1013,14 @@ func Test_setOptionalProperties(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			setOptionalProperties(tt.args.restype, tt.args.acmRestore, tt.args.veleroRestore)
 			if !findValue(tt.args.veleroRestore.Spec.ExcludedResources, "CustomResourceDefinition") {
-				t.Errorf("CustomResourceDefinition should be excluded from restore and be part of veleroRestore.Spec.ExcludedResources")
+				t.Errorf("CustomResourceDefinition should be excluded from restore and be part of " +
+					"veleroRestore.Spec.ExcludedResources")
 			}
-
 		})
 	}
 }
 
 func Test_retrieveRestoreDetails(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -1086,7 +1084,6 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 		args args
 		want bool
 	}{
-
 		{
 			name: "retrieveRestoreDetails has error, no backups found",
 			args: args{
@@ -1133,11 +1130,9 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 			}
 		}
 	}
-
 }
 
 func Test_isOtherResourcesRunning(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -1226,7 +1221,8 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 				c:       k8sClient1,
 				restore: &restore,
 			},
-			want: "This resource is ignored because BackupSchedule resource backup-name-failed is currently active, before creating another resource verify that any active resources are removed.",
+			want: "This resource is ignored because BackupSchedule resource backup-name-failed is currently active, " +
+				"before creating another resource verify that any active resources are removed.",
 		},
 		{
 			name: "isOtherResourcesRunning has no errors, no another restore is running",
@@ -1244,14 +1240,15 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 				c:       k8sClient1,
 				restore: &restore,
 			},
-			want: "This resource is ignored because Restore resource other-restore-backup-name is currently active, before creating another resource verify that any active resources are removed.",
+			want: "This resource is ignored because Restore resource other-restore-backup-name is currently active, " +
+				"before creating another resource verify that any active resources are removed.",
 		},
 	}
 
 	for index, tt := range tests {
 
 		if index == 1 {
-			//create CRD
+			// create CRD
 			if err := v1beta1.AddToScheme(scheme1); err != nil {
 				t.Errorf("Error adding api to scheme: %s", err.Error())
 			}
@@ -1261,14 +1258,15 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 
 		}
 		if index == 2 {
-			//create backup in collission state
+			// create backup in collission state
 			err := k8sClient1.Create(tt.args.ctx, &backupCollision, &client.CreateOptions{})
 			if err != nil {
 				t.Errorf("Error creating backupschedule: %s", err.Error())
 			}
 			err = k8sClient1.Get(tt.args.ctx, types.NamespacedName{
 				Name:      backupCollision.Name,
-				Namespace: backupCollision.Namespace}, &backupCollision)
+				Namespace: backupCollision.Namespace,
+			}, &backupCollision)
 			if err != nil {
 				t.Errorf("Error getting backupschedule: %s", err.Error())
 			}
@@ -1321,7 +1319,8 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 		name        string
 		args        args
 		want        bool
-		wantResName string // the name of the restore after parsing the current state; could vahe suffix -active if on the activation step
+		wantResName string // the name of the restore after parsing the current state;
+		// could have suffix -active if on the activation step
 	}{
 		{
 			name: "Credentials restore with no ManagedCluster, should return false",
@@ -1425,9 +1424,9 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 				t.Errorf("error updating labels for: %s", tt.name)
 			}
 			if tt.wantResName != tt.args.veleroRestoresToCreate[tt.args.restype].Name {
-				t.Errorf("The restore resource name should be  %v, but got %v", tt.wantResName, tt.args.veleroRestoresToCreate[tt.args.restype].Name)
+				t.Errorf("The restore resource name should be  %v, but got %v",
+					tt.wantResName, tt.args.veleroRestoresToCreate[tt.args.restype].Name)
 			}
-
 		})
 	}
 }
@@ -1542,7 +1541,8 @@ func Test_isPVCInitializationStep(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "no sync restore with ManagedCluster, and credentials plus generic and managedcls restored, should return false",
+			name: "no sync restore with ManagedCluster, and credentials plus generic and managedcls restored, " +
+				"should return false",
 			args: args{
 				acmRestore: createACMRestore("acm-restore", "ns").
 					syncRestoreWithNewBackups(false).
@@ -1604,7 +1604,6 @@ func Test_isPVCInitializationStep(t *testing.T) {
 }
 
 func Test_processRestoreWait(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -1715,12 +1714,10 @@ func Test_processRestoreWait(t *testing.T) {
 
 		if err := k8sClient1.Create(context.Background(), &tt.args.pvMap); err != nil {
 			t.Errorf("cannot create resource %v", err.Error())
-
 		}
 
 		if err := k8sClient1.Create(context.Background(), &tt.args.pvc); err != nil {
 			t.Errorf("cannot create resource %v", err.Error())
-
 		}
 
 		t.Run(tt.name, func(t *testing.T) {
@@ -1739,13 +1736,11 @@ func Test_processRestoreWait(t *testing.T) {
 func hasOrActivationLabel(
 	restore veleroapi.Restore,
 ) bool {
-
 	hasActivationOrSelector := false
 	if len(restore.Spec.OrLabelSelectors) > 0 {
 		for i := range restore.Spec.OrLabelSelectors {
 			requirements := restore.Spec.OrLabelSelectors[i].MatchExpressions
 			for idx := range requirements {
-
 				if requirements[idx].Key == backupCredsClusterLabel {
 					hasActivationOrSelector = true
 					break
@@ -1759,12 +1754,10 @@ func hasOrActivationLabel(
 func hasActivationLabel(
 	restore veleroapi.Restore,
 ) bool {
-
 	hasActivationSelector := false
 	if restore.Spec.LabelSelector != nil {
 		requirements := restore.Spec.LabelSelector.MatchExpressions
 		for idx := range requirements {
-
 			if requirements[idx].Key == backupCredsClusterLabel {
 				hasActivationSelector = true
 				break
@@ -1775,7 +1768,6 @@ func hasActivationLabel(
 }
 
 func Test_actLabelNotOnManagedClsRestore(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -1863,7 +1855,7 @@ func Test_actLabelNotOnManagedClsRestore(t *testing.T) {
 							"restorelabel": "value",
 						},
 						MatchExpressions: []metav1.LabelSelectorRequirement{
-							metav1.LabelSelectorRequirement{
+							{
 								Key:      "foo",
 								Operator: metav1.LabelSelectorOperator("In"),
 								Values:   []string{"bar"},

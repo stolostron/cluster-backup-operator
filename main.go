@@ -48,7 +48,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	//operatorapiv1 "open-cluster-management.io/api/operator/v1"
+	// operatorapiv1 "open-cluster-management.io/api/operator/v1"
 
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	//+kubebuilder:scaffold:imports
@@ -60,7 +60,6 @@ var (
 )
 
 func init() {
-
 	utilruntime.Must(backupv1beta1.AddToScheme(scheme))
 	utilruntime.Must(chnv1.AddToScheme(scheme))
 	utilruntime.Must(certsv1.AddToScheme(scheme))
@@ -69,7 +68,7 @@ func init() {
 	utilruntime.Must(workv1.AddToScheme(scheme))
 	utilruntime.Must(addonv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(ocinfrav1.AddToScheme(scheme))
-	//utilruntime.Must(operatorapiv1.AddToScheme(scheme)) Not adding since client it's remote
+	// utilruntime.Must(operatorapiv1.AddToScheme(scheme)) Not adding since client it's remote
 	utilruntime.Must(veleroapi.AddToScheme(scheme))
 	utilruntime.Must(hivev1.AddToScheme(scheme))
 	utilruntime.Must(corev1.AddToScheme(scheme))
@@ -161,8 +160,8 @@ func main() {
 		}
 
 		if !crdCheckSuccessful {
-			setupLog.Info("Velero CRDs are not installed, not starting BackupScheduleReconciler or RestoreReconciler controllers",
-				"crdCheckSuccessful", crdCheckSuccessful)
+			setupLog.Info("Velero CRDs are not installed, not starting BackupScheduleReconciler "+
+				"or RestoreReconciler controllers", "crdCheckSuccessful", crdCheckSuccessful)
 			time.Sleep(30 * time.Second)
 			continue
 		}

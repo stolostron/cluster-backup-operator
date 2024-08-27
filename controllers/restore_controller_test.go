@@ -57,7 +57,6 @@ var _ = Describe("Basic Restore controller", func() {
 	)
 
 	JustBeforeEach(func() {
-
 		existingChannels := &chnv1.ChannelList{}
 		Expect(k8sClient.List(ctx, existingChannels, &client.ListOptions{})).To(Succeed())
 		if len(existingChannels.Items) == 0 {
@@ -232,7 +231,7 @@ var _ = Describe("Basic Restore controller", func() {
 				IncludedResources: []string{"webhook"},
 			}).
 			hookResources([]veleroapi.RestoreResourceHookSpec{
-				veleroapi.RestoreResourceHookSpec{Name: "hookName"},
+				{Name: "hookName"},
 			}).
 			excludedResources([]string{"res1", "res2"}).
 			includedResources([]string{"res3", "res4"}).
@@ -284,7 +283,7 @@ var _ = Describe("Basic Restore controller", func() {
 			// Velero CRD doesn't have status subresource set, so simply update the
 			// status with a normal update() call.
 			Expect(k8sClient.Update(ctx, veleroCredentialsRestore)).To(Succeed())
-			//Expect(k8sClient.Status().Update(ctx, veleroCredentialsRestore)).To(Succeed())
+			// Expect(k8sClient.Status().Update(ctx, veleroCredentialsRestore)).To(Succeed())
 
 			// Now that the credentials restore is done (we faked it was complete in the
 			// velero restore status), other restores should be created
@@ -402,7 +401,7 @@ var _ = Describe("Basic Restore controller", func() {
 						// Velero restore CRD doesn't have status subresource set, so simply update the
 						// status with a normal update() call.
 						err = k8sClient.Update(ctx, veleroRestore)
-						//err = k8sClient.Status().Update(ctx, veleroRestore)
+						// err = k8sClient.Status().Update(ctx, veleroRestore)
 						if err != nil {
 							return err
 						}
@@ -411,7 +410,7 @@ var _ = Describe("Basic Restore controller", func() {
 				return nil
 			}, timeout, interval).Should(Succeed())
 
-			//TODO: there's a lot more steps in the restore that could be
+			// TODO: there's a lot more steps in the restore that could be
 			// tested here
 
 			// Now the acm restore should proceed to Finished phase
@@ -465,7 +464,7 @@ var _ = Describe("Basic Restore controller", func() {
 					phase(veleroapi.BackupPhaseCompleted).
 					errors(10).startTimestamp(fourHoursAgo).
 					object,
-				//acm-resources backups
+				// acm-resources backups
 				*createBackup("acm-resources-schedule-good-old-backup", veleroNamespace.Name).
 					includedResources(includedResources).
 					phase(veleroapi.BackupPhaseCompleted).
@@ -588,7 +587,6 @@ var _ = Describe("Basic Restore controller", func() {
 				),
 			).ShouldNot(HaveOccurred())
 		})
-
 	})
 
 	Context("When creating a Restore with sync option enabled and new backups available", func() {
@@ -788,7 +786,8 @@ var _ = Describe("Basic Restore controller", func() {
 			).ShouldNot(HaveOccurred())
 
 			// create a restore resource to test the collision path when trying to create the same restore
-			restoreResourceCollision := *createRestore("rhacm-restore-1-acm-resources-generic-schedule-good-old-backup", veleroNamespace.Name).
+			restoreResourceCollision := *createRestore(
+				"rhacm-restore-1-acm-resources-generic-schedule-good-old-backup", veleroNamespace.Name).
 				backupName("acm-resources-schedule-good-old-backup").
 				phase("Completed").
 				object
@@ -818,7 +817,6 @@ var _ = Describe("Basic Restore controller", func() {
 				createdRestore.Spec.VeleroManagedClustersBackupName = &latestBackup
 				Expect(k8sClient.Update(ctx, &createdRestore)).Should(Succeed())
 			}
-
 		})
 	})
 
@@ -980,7 +978,8 @@ var _ = Describe("Basic Restore controller", func() {
 			}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
 			Expect(
 				createdRestore.Status.LastMessage,
-			).Should(BeIdenticalTo("cannot find invalid-backup-name Velero Backup: Backup.velero.io \"invalid-backup-name\" not found"))
+			).Should(BeIdenticalTo("cannot find invalid-backup-name Velero Backup: " +
+				"Backup.velero.io \"invalid-backup-name\" not found"))
 
 			// createdRestore above is has RestorePhaseError status
 			// the following restore should be ignored
@@ -1029,7 +1028,6 @@ var _ = Describe("Basic Restore controller", func() {
 					errors(0).startTimestamp(oneHourAgo).
 					object,
 			}
-
 		})
 		It(
 			"Should not create any velero restore resources, restore object created in the wrong ns",
@@ -1053,7 +1051,8 @@ var _ = Describe("Basic Restore controller", func() {
 				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseError))
 				Expect(
 					createdRestore.Status.LastMessage,
-				).Should(BeIdenticalTo("Backup storage location not available in namespace acm-ns-1. Check velero.io.BackupStorageLocation and validate storage credentials."))
+				).Should(BeIdenticalTo("Backup storage location not available in namespace acm-ns-1. " +
+					"Check velero.io.BackupStorageLocation and validate storage credentials."))
 			},
 		)
 	})
@@ -1137,7 +1136,6 @@ var _ = Describe("Basic Restore controller", func() {
 		})
 
 		It("Should track the status evolution", func() {
-
 			// should be able to  create a paused schedule, even if a restore is running
 			rhacmBackupPaused := *createBackupSchedule("backup-sch-paused", veleroNamespace.Name).
 				schedule("0 */1 * * *").
@@ -1302,9 +1300,7 @@ var _ = Describe("Basic Restore controller", func() {
 			}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseFinishedWithErrors))
 			Expect(k8sClient.Delete(ctx, &restoreFailing)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, &rhacmBackupScheduleErr)).Should(Succeed())
-
 		})
-
 	})
 
 	Context("When creating a Restore and skip resources", func() {
@@ -1372,11 +1368,10 @@ var _ = Describe("Basic Restore controller", func() {
 						}
 						return createdRestore.Status.LastMessage
 					}, timeout, interval).Should(BeIdenticalTo("velero.io.BackupStorageLocation resources not found. " +
-						"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."))
+						"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications " +
+						"resource."))
 				})
-
 			},
 		)
-
 	})
 })

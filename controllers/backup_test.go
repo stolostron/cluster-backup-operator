@@ -37,7 +37,6 @@ func RandStringBytesMask(n int) string {
 }
 
 var _ = Describe("Backup", func() {
-
 	var (
 		backupName                      string = "the-backup-name"
 		veleroNamespaceName                    = "velero"
@@ -53,11 +52,10 @@ var _ = Describe("Backup", func() {
 
 	Context("For utility functions of Backup", func() {
 		It("isBackupFinished should return correct value based on the status", func() {
-
-			//returns the concatenated strings, no trimming
+			// returns the concatenated strings, no trimming
 			Expect(getValidKsRestoreName("a", "b")).Should(Equal("a-b"))
 
-			//returns substring of length 252
+			// returns substring of length 252
 			longName := RandStringBytesMask(260)
 			Expect(getValidKsRestoreName(longName, "b")).Should(Equal(longName[:252]))
 
@@ -183,12 +181,10 @@ var _ = Describe("Backup", func() {
 			Expect(shouldBackupAPIGroup("discovery.open-cluster-management.io")).Should(BeTrue())
 			Expect(shouldBackupAPIGroup("argoproj.io")).Should(BeTrue())
 		})
-
 	})
 })
 
 func Test_deleteBackup(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -289,7 +285,8 @@ func Test_deleteBackup(t *testing.T) {
 			if err := k8sClient1.Create(tt.args.ctx, createNamespace("ns1"), &client.CreateOptions{}); err != nil {
 				t.Errorf("failed to create %s", err.Error())
 			}
-			if err := k8sClient1.Create(tt.args.ctx, createBackup("backup1", "ns1").object, &client.CreateOptions{}); err != nil {
+			if err := k8sClient1.Create(tt.args.ctx,
+				createBackup("backup1", "ns1").object, &client.CreateOptions{}); err != nil {
 				t.Errorf("failed to create %s", err.Error())
 			}
 		}
@@ -298,7 +295,8 @@ func Test_deleteBackup(t *testing.T) {
 			if err := k8sClient1.Create(tt.args.ctx, createNamespace("ns2"), &client.CreateOptions{}); err != nil {
 				t.Errorf("failed to create %s", err.Error())
 			}
-			if err := k8sClient1.Create(tt.args.ctx, createBackup("backup2", "ns1").object, &client.CreateOptions{}); err != nil {
+			if err := k8sClient1.Create(tt.args.ctx,
+				createBackup("backup2", "ns1").object, &client.CreateOptions{}); err != nil {
 				t.Errorf("failed to create %s", err.Error())
 			}
 		}
