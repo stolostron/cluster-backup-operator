@@ -196,9 +196,15 @@ func Test_deleteBackup(t *testing.T) {
 		},
 		ErrorIfCRDPathMissing: true,
 	}
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error starting client: %s", err.Error())
+	}
 
 	backup := *createBackup("backup1", "ns1").object
 
@@ -317,6 +323,6 @@ func Test_deleteBackup(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }

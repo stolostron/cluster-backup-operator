@@ -56,37 +56,37 @@ func Test_createMSA(t *testing.T) {
 
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	scheme1 := runtime.NewScheme()
 	if err := corev1.AddToScheme(scheme1); err != nil {
-		t.Errorf("Error adding core apis to scheme: %s", err.Error())
+		t.Fatalf("Error adding core apis to scheme: %s", err.Error())
 	}
 	if err := workv1.AddToScheme(scheme1); err != nil {
-		t.Errorf("Error adding workv1 apis to scheme: %s", err.Error())
+		t.Fatalf("Error adding workv1 apis to scheme: %s", err.Error())
 	}
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 
 	namespace := "managed1"
 	if err := k8sClient1.Create(context.Background(), createNamespace(namespace)); err != nil {
-		t.Errorf("cannot create ns %s", err.Error())
+		t.Fatalf("cannot create ns %s", err.Error())
 	}
 	if err := k8sClient1.Create(context.Background(),
 		createSecret(msa_service_name, namespace, nil, nil, nil)); err != nil {
-		t.Errorf("cannot create secret %s", err.Error())
+		t.Fatalf("cannot create secret %s", err.Error())
 	}
 
 	if err := k8sClient1.Create(context.Background(),
 		createMWork(manifest_work_name+mwork_custom_282, namespace)); err != nil {
-		t.Errorf("cannot create mwork %s", err.Error())
+		t.Fatalf("cannot create mwork %s", err.Error())
 	}
 
 	if err := k8sClient1.Create(context.Background(),
 		createMWork(manifest_work_name_pair+mwork_custom_282, namespace)); err != nil {
-		t.Errorf("cannot create mwork %s", err.Error())
+		t.Fatalf("cannot create mwork %s", err.Error())
 	}
 
 	obj1 := &unstructured.Unstructured{}
@@ -779,36 +779,36 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: unstructuredScheme})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 	e1 := clusterv1.AddToScheme(unstructuredScheme)
 	e2 := workv1.AddToScheme(unstructuredScheme)
 	e3 := corev1.AddToScheme(unstructuredScheme)
 	e4 := addonv1alpha1.AddToScheme(unstructuredScheme)
 	if err := errors.Join(e1, e2, e3, e4); err != nil {
-		t.Errorf("Error adding apis to scheme: %s", err.Error())
+		t.Fatalf("Error adding apis to scheme: %s", err.Error())
 	}
 
 	backupNS := "velero-ns"
 	backupSchedule := *createBackupSchedule("acm-schedule", backupNS).object
 
 	if err := k8sClient1.Create(context.Background(), createNamespace("managed1")); err != nil {
-		t.Errorf("cannot create ns %s ", err.Error())
+		t.Fatalf("cannot create ns %s ", err.Error())
 	}
 	if err := k8sClient1.Create(context.Background(), createManagedCluster("managed1", false).object); err != nil {
-		t.Errorf("cannot create %s ", err.Error())
+		t.Fatalf("cannot create %s ", err.Error())
 	}
 
 	// Create a "hive" managedcluster
 	if err := k8sClient1.Create(context.Background(), createNamespace("managed2-hive")); err != nil {
-		t.Errorf("cannot create ns %s ", err.Error())
+		t.Fatalf("cannot create ns %s ", err.Error())
 	}
 	if err := k8sClient1.Create(context.Background(), createManagedCluster("managed2-hive", false).object); err != nil {
-		t.Errorf("cannot create %s ", err.Error())
+		t.Fatalf("cannot create %s ", err.Error())
 	}
 	// For hive cluster, we need a secret in the namespace with the hive label on it
 	hiveLabels := map[string]string{
@@ -816,15 +816,15 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 	}
 	if err := k8sClient1.Create(context.Background(), createSecret("managed-hive-secret", "managed2-hive",
 		hiveLabels, nil, nil)); err != nil {
-		t.Errorf("cannot create %s ", err.Error())
+		t.Fatalf("cannot create %s ", err.Error())
 	}
 
 	// Create a local managedcluster
 	if err := k8sClient1.Create(context.Background(), createNamespace("loc")); err != nil {
-		t.Errorf("cannot create ns %s ", err.Error())
+		t.Fatalf("cannot create ns %s ", err.Error())
 	}
 	if err := k8sClient1.Create(context.Background(), createManagedCluster("loc", true /* local cluster */).object); err != nil {
-		t.Errorf("cannot create %s ", err.Error())
+		t.Fatalf("cannot create %s ", err.Error())
 	}
 
 	obj1 := &unstructured.Unstructured{}
@@ -938,7 +938,7 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 		}
 	}
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -959,7 +959,7 @@ func Test_updateSecretsLabels(t *testing.T) {
 	e3 := clusterv1.AddToScheme(scheme1)
 	e4 := corev1.AddToScheme(scheme1)
 	if err := errors.Join(e1, e2, e3, e4); err != nil {
-		t.Errorf("Error setting up testenv: %s", err.Error())
+		t.Fatalf("Error setting up testenv: %s", err.Error())
 	}
 
 	labelName := backupCredsClusterLabel
@@ -967,7 +967,7 @@ func Test_updateSecretsLabels(t *testing.T) {
 	clsName := "managed1"
 
 	if err := k8sClient1.Create(context.Background(), createNamespace(clsName)); err != nil {
-		t.Errorf("cannot create ns %s ", err.Error())
+		t.Fatalf("cannot create ns %s ", err.Error())
 	}
 
 	hiveSecrets := corev1.SecretList{
@@ -1045,7 +1045,7 @@ func Test_updateSecretsLabels(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 

@@ -73,16 +73,16 @@ func Test_postRestoreActivation(t *testing.T) {
 	e1 := corev1.AddToScheme(scheme1)
 	e2 := clusterv1.AddToScheme(scheme1)
 	if err := errors.Join(e1, e2); err != nil {
-		t.Errorf("Error adding apis to scheme: %s", err.Error())
+		t.Fatalf("Error adding apis to scheme: %s", err.Error())
 	}
 
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 	errs := []error{}
 	errs = append(errs, k8sClient1.Create(context.Background(), &ns1))
@@ -90,7 +90,7 @@ func Test_postRestoreActivation(t *testing.T) {
 	errs = append(errs, k8sClient1.Create(context.Background(), &autoImporSecretWithLabel))
 	errs = append(errs, k8sClient1.Create(context.Background(), &autoImporSecretWithoutLabel))
 	if err := errors.Join(errs...); err != nil {
-		t.Errorf("Error creating objects for test setup: %s", err.Error())
+		t.Fatalf("Error creating objects for test setup: %s", err.Error())
 	}
 
 	fourHoursAgo := "2022-07-26T11:25:34Z"
@@ -250,7 +250,7 @@ func Test_postRestoreActivation(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -266,7 +266,7 @@ func Test_executePostRestoreTasks(t *testing.T) {
 
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testenv: %s", err.Error())
+		t.Fatalf("Error starting testenv: %s", err.Error())
 	}
 	scheme1 := runtime.NewScheme()
 	schemeErrs := []error{}
@@ -274,20 +274,20 @@ func Test_executePostRestoreTasks(t *testing.T) {
 	schemeErrs = append(schemeErrs, clusterv1.AddToScheme(scheme1))
 	schemeErrs = append(schemeErrs, corev1.AddToScheme(scheme1))
 	if err := errors.Join(schemeErrs...); err != nil {
-		t.Errorf("Error adding api(s) to scheme: %s", err.Error())
+		t.Fatalf("Error adding api(s) to scheme: %s", err.Error())
 	}
 
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error creating new client: %s", err.Error())
+		t.Fatalf("Error creating new client: %s", err.Error())
 	}
 
 	if err := k8sClient1.Create(context.Background(), createNamespace(obs_addon_ns)); err != nil {
-		t.Errorf("failed to create secret %s ", err.Error())
+		t.Fatalf("failed to create secret %s ", err.Error())
 	}
 	if err := k8sClient1.Create(context.Background(), createSecret(obs_secret_name,
 		obs_addon_ns, map[string]string{}, nil, nil)); err != nil {
-		t.Errorf("failed to create secret %s ", err.Error())
+		t.Fatalf("failed to create secret %s ", err.Error())
 	}
 
 	type args struct {
@@ -346,7 +346,7 @@ func Test_executePostRestoreTasks(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -484,7 +484,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 	unstructuredScheme := runtime.NewScheme()
 	err := chnv1.AddToScheme(unstructuredScheme)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 
 	dynClient := dynamicfake.NewSimpleDynamicClient(unstructuredScheme,
@@ -508,19 +508,19 @@ func Test_deleteDynamicResource(t *testing.T) {
 	// create resources which should be found
 	_, err = resInterface.Namespace("default").Create(context.Background(), res_default, v1.CreateOptions{})
 	if err != nil {
-		t.Errorf("Err creating: %s", err.Error())
+		t.Fatalf("Err creating: %s", err.Error())
 	}
 	_, err = resInterface.Namespace("default").Create(context.Background(), res_default_with_finalizer, v1.CreateOptions{})
 	if err != nil {
-		t.Errorf("Err creating: %s", err.Error())
+		t.Fatalf("Err creating: %s", err.Error())
 	}
 	_, err = resInterface.Create(context.Background(), res_global, v1.CreateOptions{})
 	if err != nil {
-		t.Errorf("Err creating: %s", err.Error())
+		t.Fatalf("Err creating: %s", err.Error())
 	}
 	_, err = resInterface.Create(context.Background(), res_global_with_finalizer, v1.CreateOptions{})
 	if err != nil {
-		t.Errorf("Err creating: %s", err.Error())
+		t.Fatalf("Err creating: %s", err.Error())
 	}
 
 	deletePolicy := metav1.DeletePropagationForeground
@@ -741,16 +741,16 @@ func Test_cleanupDeltaResources(t *testing.T) {
 
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	scheme1 := runtime.NewScheme()
 	err = veleroapi.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error creating new client: %s", err.Error())
+		t.Fatalf("Error creating new client: %s", err.Error())
 	}
 
 	type args struct {
@@ -842,7 +842,7 @@ func Test_cleanupDeltaResources(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -864,20 +864,20 @@ func Test_getBackupInfoFromRestore(t *testing.T) {
 	scheme1 := runtime.NewScheme()
 	err := veleroapi.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	err = corev1.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error creating new client: %s", err.Error())
+		t.Fatalf("Error creating new client: %s", err.Error())
 	}
 
 	type args struct {
@@ -975,7 +975,7 @@ func Test_getBackupInfoFromRestore(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -994,26 +994,26 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 	scheme1 := runtime.NewScheme()
 	err := veleroapi.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	err = corev1.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error creating new client: %s", err.Error())
+		t.Fatalf("Error creating new client: %s", err.Error())
 	}
 
 	ns1 := *createNamespace(namespace)
 	err = k8sClient1.Create(context.Background(), &ns1)
 	if err != nil {
-		t.Errorf("Error creating ns: %s", err.Error())
+		t.Fatalf("Error creating ns: %s", err.Error())
 	}
 
 	hiveCredsLabel, _ := labels.NewRequirement(backupCredsHiveLabel,
@@ -1219,7 +1219,7 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -1238,20 +1238,20 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 	scheme1 := runtime.NewScheme()
 	err := veleroapi.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	err = corev1.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error creating new client: %s", err.Error())
+		t.Fatalf("Error creating new client: %s", err.Error())
 	}
 
 	ns1 := *createNamespace(namespace)
@@ -1309,7 +1309,7 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 	errs = append(errs, k8sClient1.Create(ctx, &deleteSecretFromOldBackup))
 	errs = append(errs, k8sClient1.Create(ctx, &secretDelete))
 	if err := errors.Join(errs...); err != nil {
-		t.Errorf("Error creating objs for test setup: %s", err.Error())
+		t.Fatalf("Error creating objs for test setup: %s", err.Error())
 	}
 
 	relatedCredentialsBackup := *createBackup("acm-credentials-schedule-"+currentTime, namespace).
@@ -1321,7 +1321,7 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 
 	err = k8sClient1.Create(ctx, &relatedCredentialsBackup)
 	if err != nil {
-		t.Errorf("Error creating: %s", err.Error())
+		t.Fatalf("Error creating: %s", err.Error())
 	}
 
 	hiveCredsLabel, _ := labels.NewRequirement(backupCredsHiveLabel,
@@ -1480,7 +1480,7 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -1496,16 +1496,16 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	scheme1 := runtime.NewScheme()
 	err = veleroapi.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 
 	type args struct {
@@ -1570,7 +1570,7 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -1587,24 +1587,24 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	scheme1 := runtime.NewScheme()
 	err = veleroapi.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	err = clusterv1.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	err = corev1.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 
 	namespaceName := "open-cluster-management-backup"
@@ -1628,10 +1628,10 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 	// Create a local cluster managedcluster object
 	if err := k8sClient1.Create(context.Background(), createNamespace("myhub1")); err != nil {
-		t.Errorf("cannot create ns %s ", err.Error())
+		t.Fatalf("cannot create ns %s ", err.Error())
 	}
 	if err := k8sClient1.Create(context.Background(), createManagedCluster("myhub1", true /* local cluster */).object); err != nil {
-		t.Errorf("cannot create %s ", err.Error())
+		t.Fatalf("cannot create %s ", err.Error())
 	}
 
 	// create a resources backup
@@ -2286,63 +2286,63 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	testRequest := "authentication.open-cluster-management.io/v1beta1"
 	_, err = fakeDiscovery.ServerResourcesForGroupVersion(testRequest)
 	if err != nil {
-		t.Errorf("Unexpected error: %s", err.Error())
+		t.Fatalf("Unexpected error: %s", err.Error())
 	}
 
 	//create some channel resources
 	_, err = dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
 		channel_with_backup_label_same, v1.CreateOptions{})
 	if client.IgnoreAlreadyExists(err) != nil {
-		t.Errorf("Error creating: %s", err.Error())
+		t.Fatalf("Error creating: %s", err.Error())
 	}
 	_, err = dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
 		channel_with_backup_label_diff, v1.CreateOptions{})
 	if client.IgnoreAlreadyExists(err) != nil {
-		t.Errorf("Error creating: %s", err.Error())
+		t.Fatalf("Error creating: %s", err.Error())
 	}
 	_, err = dyn.Resource(chGVKList).Namespace("local-cluster").Create(context.Background(),
 		channel_with_backup_label_diff_excl_ns, v1.CreateOptions{})
 	if client.IgnoreAlreadyExists(err) != nil {
-		t.Errorf("Error creating: %s", err.Error())
+		t.Fatalf("Error creating: %s", err.Error())
 	}
 	_, err = dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
 		channel_with_backup_label_generic, v1.CreateOptions{})
 	if client.IgnoreAlreadyExists(err) != nil {
-		t.Errorf("Error creating: %s", err.Error())
+		t.Fatalf("Error creating: %s", err.Error())
 	}
 	_, err = dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
 		channel_with_no_backup_label, v1.CreateOptions{})
 	if client.IgnoreAlreadyExists(err) != nil {
-		t.Errorf("Error creating: %s", err.Error())
+		t.Fatalf("Error creating: %s", err.Error())
 	}
 
 	//create some cluster resources
 	_, err = dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
 		cls_with_backup_label_diff, v1.CreateOptions{})
 	if err != nil {
-		t.Errorf("Error creating: %s", err.Error())
+		t.Fatalf("Error creating: %s", err.Error())
 	}
 	_, err = dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
 		cls_with_backup_label_same, v1.CreateOptions{})
 	if err != nil {
-		t.Errorf("Error creating: %s", err.Error())
+		t.Fatalf("Error creating: %s", err.Error())
 	}
 	_, err = dyn.Resource(clsGVKList).Namespace("local-cluster").Create(context.Background(),
 		cls_with_backup_label_diff_excl_ns, v1.CreateOptions{})
 	if err != nil {
-		t.Errorf("Error creating: %s", err.Error())
+		t.Fatalf("Error creating: %s", err.Error())
 	}
 	_, err = dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
 		cls_with_no_backup_label, v1.CreateOptions{})
 	if err != nil {
-		t.Errorf("Error creating: %s", err.Error())
+		t.Fatalf("Error creating: %s", err.Error())
 	}
 
 	//
 	_, err = dyn.Resource(msaGVRList).Namespace("managed1").Create(context.Background(),
 		msaObj, v1.CreateOptions{})
 	if err != nil {
-		t.Errorf("Error creating: %s", err.Error())
+		t.Fatalf("Error creating: %s", err.Error())
 	}
 
 	reconcileArgs := DynamicStruct{
@@ -2613,7 +2613,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	}
 
 	if err := k8sClient1.Create(context.Background(), createNamespace(genericBackup.GetNamespace())); err != nil {
-		t.Errorf("cannot create ns %s ", err.Error())
+		t.Fatalf("cannot create ns %s ", err.Error())
 	}
 
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
@@ -2636,7 +2636,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	}
 	for i := range createRestores {
 		if err := k8sClient1.Create(context.Background(), &createRestores[i]); err != nil {
-			t.Errorf("cannot create restore %s ", err.Error())
+			t.Fatalf("cannot create restore %s ", err.Error())
 		}
 	}
 	////////
@@ -2749,6 +2749,6 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }

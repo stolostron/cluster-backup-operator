@@ -668,9 +668,15 @@ func Test_isNewBackupAvailable(t *testing.T) {
 		},
 		ErrorIfCRDPathMissing: true,
 	}
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error starting client: %s", err.Error())
+	}
 
 	skipRestore := "skip"
 	latestBackup := "latest"
@@ -854,7 +860,7 @@ func Test_isNewBackupAvailable(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -1052,20 +1058,20 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	scheme1 := runtime.NewScheme()
 	err = veleroapi.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 	err = k8sClient1.Create(context.Background(), &backup, &client.CreateOptions{})
 	if err != nil {
-		t.Errorf("Error creating backup: %s", err.Error())
+		t.Fatalf("Error creating backup: %s", err.Error())
 	}
 
 	type args struct {
@@ -1168,12 +1174,12 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	scheme1 := runtime.NewScheme()
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 
 	type args struct {
@@ -1300,7 +1306,7 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 	}
 	// clean up
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -1607,8 +1613,14 @@ func Test_processRestoreWait(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	if err != nil {
+		t.Fatalf("Error starting client: %s", err.Error())
+	}
 
 	type args struct {
 		ctx              context.Context
@@ -1720,7 +1732,7 @@ func Test_processRestoreWait(t *testing.T) {
 	}
 	// clean up
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -1774,20 +1786,20 @@ func Test_actLabelNotOnManagedClsRestore(t *testing.T) {
 
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	scheme1 := runtime.NewScheme()
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 	err = veleroapi.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	err = v1beta1.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 
 	orLabelSelector := []*metav1.LabelSelector{
@@ -1933,6 +1945,6 @@ func Test_actLabelNotOnManagedClsRestore(t *testing.T) {
 	}
 	// clean up
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }

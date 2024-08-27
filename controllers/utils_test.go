@@ -557,12 +557,12 @@ func Test_getHubIdentification(t *testing.T) {
 	}
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	scheme1 := runtime.NewScheme()
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 
 	type args struct {
@@ -649,7 +649,7 @@ func Test_getHubIdentification(t *testing.T) {
 	}
 	// clean up
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -658,26 +658,26 @@ func Test_VeleroCRDsPresent_NotPresent(t *testing.T) {
 	testEnv := &envtest.Environment{ErrorIfCRDPathMissing: true}
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 
 	// clean up after
 	defer func() {
 		if err := testEnv.Stop(); err != nil {
-			t.Errorf("Error stopping testenv: %s", err.Error())
+			t.Fatalf("Error stopping testenv: %s", err.Error())
 		}
 	}()
 
 	scheme1 := runtime.NewScheme()
 	err = veleroapi.AddToScheme(scheme1) // for velero types
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 
 	// test client to testEnv above with no velero CRDs
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 
 	t.Run("velero CRDs not present", func(t *testing.T) {
@@ -699,26 +699,26 @@ func Test_VeleroCRDsPresent(t *testing.T) {
 	}
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 
 	// clean up after
 	defer func() {
 		if err := testEnv.Stop(); err != nil {
-			t.Errorf("Error stopping testenv: %s", err.Error())
+			t.Fatalf("Error stopping testenv: %s", err.Error())
 		}
 	}()
 
 	scheme1 := runtime.NewScheme()
 	err = veleroapi.AddToScheme(scheme1) // for velero types
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 
 	// test client to testEnv above with no velero CRDs
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 
 	// Rely on testEnv setup in suite_test.go (this will have all the CRDs)
@@ -1124,12 +1124,12 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 	}
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	scheme1 := runtime.NewScheme()
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 
 	creds := *createSchedule(veleroBackupNames[Credentials], "default").object
@@ -1386,6 +1386,6 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 	}
 	// clean up
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }

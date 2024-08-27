@@ -257,8 +257,14 @@ func Test_getSchedulesWithUpdatedResources(t *testing.T) {
 		},
 		ErrorIfCRDPathMissing: true,
 	}
-	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	if err != nil {
+		t.Fatalf("Error starting client: %s", err.Error())
+	}
 
 	type args struct {
 		resourcesToBackup []string
@@ -355,7 +361,7 @@ func Test_getSchedulesWithUpdatedResources(t *testing.T) {
 	}
 	// clean up
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -448,25 +454,25 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 	}
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	unstructuredScheme := runtime.NewScheme()
 
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: unstructuredScheme})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 	err = veleroapi.AddToScheme(unstructuredScheme)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	err = corev1.AddToScheme(unstructuredScheme)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 
 	if err := k8sClient1.Create(context.Background(), &veleroNamespace); err != nil {
-		t.Errorf("cannot create ns %s ", err.Error())
+		t.Fatalf("cannot create ns %s ", err.Error())
 	}
 
 	rhacmBackupSchedule := *createBackupSchedule("backup-sch-to-error-restore", veleroNamespaceName).
@@ -714,7 +720,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -732,20 +738,20 @@ func Test_isRestoreRunning(t *testing.T) {
 	}
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	scheme2 := runtime.NewScheme()
 	err = veleroapi.AddToScheme(scheme2)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	err = corev1.AddToScheme(scheme2)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme2})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 
 	rhacmBackupSchedule := *createBackupSchedule("backup-sch-to-error-restore", veleroNamespaceName).
@@ -836,7 +842,7 @@ func Test_isRestoreRunning(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -866,20 +872,20 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 	}
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	scheme1 := runtime.NewScheme()
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 	err = corev1.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	err = veleroapi.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 
 	type args struct {
@@ -956,7 +962,7 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 
 	// clean up
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -973,11 +979,11 @@ func Test_createFailedValidationResponse(t *testing.T) {
 	}
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	k8sClient2, err := client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 
 	rhacmBackupSchedule := *createBackupSchedule("backup-sch-v", veleroNamespaceName).
@@ -1031,7 +1037,7 @@ func Test_createFailedValidationResponse(t *testing.T) {
 	}
 	// clean up
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -1047,16 +1053,16 @@ func Test_verifyMSAOptione(t *testing.T) {
 
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	scheme1 := runtime.NewScheme()
 	err = veleroapi.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 
 	appsInfo := metav1.APIResourceList{
@@ -1161,7 +1167,7 @@ func Test_verifyMSAOptione(t *testing.T) {
 	// create resources which should be found
 	_, err = resInterface.Namespace("default").Create(context.Background(), res_local_ns, v1.CreateOptions{})
 	if err != nil {
-		t.Errorf("Error creating resource: %s", err.Error())
+		t.Fatalf("Error creating resource: %s", err.Error())
 	}
 
 	fakeDiscovery := discoveryclient.NewDiscoveryClientForConfigOrDie(
@@ -1216,7 +1222,7 @@ func Test_verifyMSAOptione(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -1233,16 +1239,16 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 	}
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	scheme1 := runtime.NewScheme()
 	err = veleroapi.AddToScheme(scheme1)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 
 	velero_schedule := *createSchedule(veleroScheduleNames[Resources], veleroNamespaceName).
@@ -1334,7 +1340,7 @@ func Test_scheduleOwnsLatestStorageBackups(t *testing.T) {
 	}
 	// clean up
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 
@@ -1349,41 +1355,41 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 	}
 	cfg, err := testEnv.Start()
 	if err != nil {
-		t.Errorf("Error starting testEnv: %s", err.Error())
+		t.Fatalf("Error starting testEnv: %s", err.Error())
 	}
 	scheme2 := runtime.NewScheme()
 	err = corev1.AddToScheme(scheme2)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	err = backupv1beta1.AddToScheme(scheme2)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	err = ocinfrav1.AddToScheme(scheme2)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 	err = veleroapi.AddToScheme(scheme2)
 	if err != nil {
-		t.Errorf("Error adding api to scheme: %s", err.Error())
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
 
 	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme2})
 	if err != nil {
-		t.Errorf("Error starting client: %s", err.Error())
+		t.Fatalf("Error starting client: %s", err.Error())
 	}
 
 	veleroNamespaceName := "backup-ns"
 	veleroNamespace := *createNamespace(veleroNamespaceName)
 	err = k8sClient1.Create(context.Background(), &veleroNamespace)
 	if err != nil {
-		t.Errorf("Error creating ns: %s", err.Error())
+		t.Fatalf("Error creating ns: %s", err.Error())
 	}
 
 	crWithVersion := createClusterVersion("version", "cluster1", nil)
 	if err := k8sClient1.Create(context.Background(), crWithVersion); err != nil {
-		t.Errorf("cannot create cluster version  %s ", err.Error())
+		t.Fatalf("cannot create cluster version  %s ", err.Error())
 	}
 
 	type args struct {
@@ -1536,6 +1542,6 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 	}
 
 	if err := testEnv.Stop(); err != nil {
-		t.Errorf("Error stopping testenv: %s", err.Error())
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
