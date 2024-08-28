@@ -184,6 +184,7 @@ var _ = Describe("Backup", func() {
 	})
 })
 
+//nolint:funlen
 func Test_deleteBackup(t *testing.T) {
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{

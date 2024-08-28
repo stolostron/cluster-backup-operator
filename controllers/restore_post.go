@@ -568,6 +568,8 @@ func getBackupInfoFromRestore(
 }
 
 // activate managed clusters by creating auto-import-secret
+//
+//nolint:funlen
 func postRestoreActivation(
 	ctx context.Context,
 	c client.Client,
@@ -716,6 +718,8 @@ func isValidCleanupOption(
 // delete resource
 // returns bool - resource was processed
 // exception during execution
+//
+//nolint:funlen
 func deleteDynamicResource(
 	ctx context.Context,
 	mapping *meta.RESTMapping,

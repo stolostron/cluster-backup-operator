@@ -95,6 +95,8 @@ type RestoreReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
+//
+//nolint:funlen
 func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	restoreLogger := log.FromContext(ctx)
 	restore := &v1beta1.Restore{}
@@ -375,6 +377,8 @@ func (backups mostRecent) Less(i, j int) bool {
 }
 
 // create velero.io.Restore resource for each resource type
+//
+//nolint:funlen
 func (r *RestoreReconciler) initVeleroRestores(
 	ctx context.Context,
 	restore *v1beta1.Restore,

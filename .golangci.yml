@@ -11,3 +11,18 @@ linters:
     - misspell
     - lll
     - unparam
+    - funlen
+
+linters-settings:
+  funlen:
+    #  Checks the number of lines in a function.
+    #  If lower than 0, disable the check.
+    #  Default: 60
+    # lines: 60
+    #  Checks the number of statements in a function.
+    #  If lower than 0, disable the check.
+    #  Default: 40
+    statements: -1
+    #  Ignore comments when counting lines.
+    #  Default false
+    ignore-comments: true

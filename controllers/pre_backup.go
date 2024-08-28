@@ -152,6 +152,8 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 
 // if UseManagedServiceAccount is not set, clean up all MSA accounts
 // created by the backup controller
+//
+//nolint:funlen
 func cleanupMSAForImportedClusters(
 	ctx context.Context,
 	c client.Client,
@@ -247,6 +249,8 @@ func cleanupMSAForImportedClusters(
 // create a managedserviceaccount token to be used to communicate with the managed clusters
 // when moved to the passive hub; the token is used to build the auto-import-secret
 // which will trigger the auto import of the cluster on the new hub
+//
+//nolint:funlen
 func prepareImportedClusters(ctx context.Context,
 	c client.Client,
 	dr dynamic.NamespaceableResourceInterface,
@@ -410,6 +414,8 @@ func shouldGeneratePairToken(
 }
 
 // create ManagedServiceAccount
+//
+//nolint:funlen
 func createMSA(
 	ctx context.Context,
 	c client.Client,
@@ -589,6 +595,8 @@ func deleteCustomManifestWork(
 }
 
 // create manifest work to push the import user role binding to the managed cluster
+//
+//nolint:funlen
 func createManifestWork(
 	ctx context.Context,
 	c client.Client,

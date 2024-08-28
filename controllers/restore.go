@@ -171,6 +171,8 @@ func updateRestoreStatus(
 }
 
 // set cumulative status of restores
+//
+//nolint:funlen
 func setRestorePhase(
 	veleroRestoreList *veleroapi.RestoreList,
 	restore *v1beta1.Restore,
@@ -342,6 +344,7 @@ func isOtherRestoresRunning(
 	return ""
 }
 
+//nolint:funlen
 func isNewBackupAvailable(
 	ctx context.Context,
 	c client.Client,
@@ -444,7 +447,7 @@ func validateStorageSettings(
 	// don't create restores if backup storage location doesn't exist or is not avaialable
 	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
 	if err := c.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
-		veleroStorageLocations == nil || len(veleroStorageLocations.Items) == 0 {
+		len(veleroStorageLocations.Items) == 0 {
 
 		msg = "velero.io.BackupStorageLocation resources not found. " +
 			"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."
@@ -471,6 +474,8 @@ func validateStorageSettings(
 }
 
 // getVeleroBackupName returns the name of velero backup will be restored
+//
+//nolint:funlen
 func getVeleroBackupName(
 	ctx context.Context,
 	c client.Client,
@@ -612,6 +617,7 @@ func retrieveRestoreDetails(
 	return restoreKeys, restoreMap, err
 }
 
+//nolint:funlen
 func processRetrieveRestoreDetails(
 	ctx context.Context,
 	c client.Client,

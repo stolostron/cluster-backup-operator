@@ -110,6 +110,8 @@ type BackupScheduleReconciler struct {
 // move the current state of the cluster closer to the desired state.
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
+//
+//nolint:funlen
 func (r *BackupScheduleReconciler) Reconcile(
 	ctx context.Context,
 	req ctrl.Request,
@@ -315,6 +317,8 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 }
 
 // create velero.io.Schedule resource for each resource type that needs backup
+//
+//nolint:funlen
 func (r *BackupScheduleReconciler) initVeleroSchedules(
 	ctx context.Context,
 	mapper *restmapper.DeferredDiscoveryRESTMapper,
