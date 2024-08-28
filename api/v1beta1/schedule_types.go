@@ -62,7 +62,8 @@ type BackupScheduleSpec struct {
 	// +kubebuilder:validation:Optional
 	VeleroTTL metav1.Duration `json:"veleroTtl,omitempty"`
 	// +kubebuilder:validation:Optional
-	// Set this to true if you want to use the ManagedServiceAccount token to auto connect imported clusters on the restored hub.
+	// Set this to true if you want to use the ManagedServiceAccount token to auto connect imported clusters on the
+	// restored hub.
 	// For this option to work, the user must first enable the managedserviceaccount component on the MultiClusterHub
 	// If not defined, the value is set to false.
 	// If this option is set to true, the backup controller will create ManagedServiceAccount
@@ -123,7 +124,8 @@ type BackupScheduleStatus struct {
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.lastMessage`
 
 // BackupSchedule is an ACM resource that you can use to schedule cluster backups at specified intervals.
-// The backupschedule resource creates a set of schedule.velero.io resources to periodically generate backups for resources on your ACM hub cluster.
+// The backupschedule resource creates a set of schedule.velero.io resources to periodically generate backups for
+// resources on your ACM hub cluster.
 type BackupSchedule struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

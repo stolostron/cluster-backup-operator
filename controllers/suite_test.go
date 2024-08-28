@@ -17,7 +17,6 @@ limitations under the License.
 package controllers
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -48,7 +47,6 @@ import (
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -304,7 +302,10 @@ var _ = BeforeSuite(func() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write(output)
+		_, err = w.Write(output)
+		if err != nil {
+			return
+		}
 	}))
 
 	fakeDiscovery = discoveryclient.NewDiscoveryClientForConfigOrDie(
@@ -378,6 +379,7 @@ var _ = BeforeSuite(func() {
 	}
 	test := tests[1]
 	_, err := fakeDiscovery.ServerResourcesForGroupVersion(test.request)
+	Expect(err).NotTo(HaveOccurred())
 
 	fakeDiscovery := discoveryclient.NewDiscoveryClientForConfigOrDie(
 		&restclient.Config{Host: server.URL},
@@ -669,15 +671,22 @@ var _ = BeforeSuite(func() {
 		msaObj, msaObj2, clsvObj, res_channel_default, clsHiveObj)
 
 	//create some resources
-	dynR.Resource(chGVKList).Namespace("default").Create(context.Background(),
-		res_channel_default, v1.CreateOptions{})
-	//
-	dynR.Resource(msaGVRList).Namespace("managed1").Create(context.Background(),
-		msaObj, v1.CreateOptions{})
-	dynR.Resource(msaGVRList).Namespace("app").Create(context.Background(),
-		msaObj2, v1.CreateOptions{})
-	dynR.Resource(cpVKList).Namespace("managed1").Create(context.Background(),
-		clsHiveObj, v1.CreateOptions{})
+	/* These creates all come back with an "already exists" error - are they being faked out
+	   already by the addKnownTypes calls above?
+
+		_, err = dynR.Resource(chGVKList).Namespace("default").Create(context.Background(),
+			res_channel_default, v1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = dynR.Resource(msaGVRList).Namespace("managed1").Create(context.Background(),
+			msaObj, v1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = dynR.Resource(msaGVRList).Namespace("app").Create(context.Background(),
+			msaObj2, v1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = dynR.Resource(cpVKList).Namespace("managed1").Create(context.Background(),
+			clsHiveObj, v1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+	*/
 
 	err = (&RestoreReconciler{
 		KubeClient:      nil,

@@ -1,5 +1,6 @@
 // Copyright Contributors to the Open Cluster Management project
 
+//nolint:funlen
 package controllers
 
 import (
@@ -160,7 +161,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 			args: args{
 				veleroStorageLocations: &veleroapi.BackupStorageLocationList{
 					Items: []veleroapi.BackupStorageLocation{
-						veleroapi.BackupStorageLocation{
+						{
 							TypeMeta: metav1.TypeMeta{
 								APIVersion: "velero/v1",
 								Kind:       "BackupStorageLocation",
@@ -184,7 +185,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 			args: args{
 				veleroStorageLocations: &veleroapi.BackupStorageLocationList{
 					Items: []veleroapi.BackupStorageLocation{
-						veleroapi.BackupStorageLocation{
+						{
 							TypeMeta: metav1.TypeMeta{
 								APIVersion: "velero/v1",
 								Kind:       "BackupStorageLocation",
@@ -193,7 +194,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 								Name:      "valid-storage",
 								Namespace: "default",
 								OwnerReferences: []v1.OwnerReference{
-									v1.OwnerReference{
+									{
 										Kind: "DataProtectionApplication",
 									},
 								},
@@ -213,7 +214,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 			args: args{
 				veleroStorageLocations: &veleroapi.BackupStorageLocationList{
 					Items: []veleroapi.BackupStorageLocation{
-						veleroapi.BackupStorageLocation{
+						{
 							TypeMeta: metav1.TypeMeta{
 								APIVersion: "velero/v1",
 								Kind:       "BackupStorageLocation",
@@ -222,7 +223,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 								Name:      "valid-storage",
 								Namespace: "default1",
 								OwnerReferences: []v1.OwnerReference{
-									v1.OwnerReference{
+									{
 										Kind: "DataProtectionApplication",
 									},
 								},
@@ -231,7 +232,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 								Phase: veleroapi.BackupStorageLocationPhaseAvailable,
 							},
 						},
-						veleroapi.BackupStorageLocation{
+						{
 							TypeMeta: metav1.TypeMeta{
 								APIVersion: "velero/v1",
 								Kind:       "BackupStorageLocation",
@@ -240,7 +241,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 								Name:      "valid-storage",
 								Namespace: "default",
 								OwnerReferences: []v1.OwnerReference{
-									v1.OwnerReference{
+									{
 										Kind: "DataProtectionApplication",
 									},
 								},
@@ -256,7 +257,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isValidStorageLocationDefined(*&tt.args.veleroStorageLocations.Items,
+			if got := isValidStorageLocationDefined(tt.args.veleroStorageLocations.Items,
 				tt.args.preferredNS); got != tt.want {
 				t.Errorf("isValidStorageLocationDefined() = %v, want %v", got, tt.want)
 			}
@@ -293,7 +294,7 @@ func Test_getResourceDetails(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotname, gotkind := getResourceDetails(*&tt.args.resourceName)
+			gotname, gotkind := getResourceDetails(tt.args.resourceName)
 			if gotname != tt.wantname || gotkind != tt.wantkind {
 				t.Errorf("getResourceDetails() = %v,%v, want %v,%v", gotname, gotkind, tt.wantname, tt.wantkind)
 			}
@@ -302,7 +303,6 @@ func Test_getResourceDetails(t *testing.T) {
 }
 
 func Test_findValidMSAToken(t *testing.T) {
-
 	current, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
 	nextHour := "2022-07-26T16:25:34Z"
 	fourHoursAgo := "2022-07-26T11:25:34Z"
@@ -338,7 +338,8 @@ func Test_findValidMSAToken(t *testing.T) {
 						nil, map[string]string{
 							"expirationTimestamp": "aaa",
 						}, nil),
-				}},
+				},
+			},
 			want: "",
 		},
 		{
@@ -350,7 +351,8 @@ func Test_findValidMSAToken(t *testing.T) {
 						nil, map[string]string{
 							"expirationTimestamp": fourHoursAgo,
 						}, nil),
-				}},
+				},
+			},
 			want: "",
 		},
 		{
@@ -364,7 +366,8 @@ func Test_findValidMSAToken(t *testing.T) {
 						}, map[string][]byte{
 							"token1": []byte("aaa"),
 						}),
-				}},
+				},
+			},
 			want: "",
 		},
 		{
@@ -384,7 +387,8 @@ func Test_findValidMSAToken(t *testing.T) {
 						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
 						}),
-				}},
+				},
+			},
 			want: "YWRtaW4=",
 		},
 		{
@@ -398,7 +402,8 @@ func Test_findValidMSAToken(t *testing.T) {
 						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
 						}),
-				}},
+				},
+			},
 			want: "YWRtaW4=",
 		},
 	}
@@ -410,11 +415,9 @@ func Test_findValidMSAToken(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func Test_managedClusterShouldReimport(t *testing.T) {
-
 	managedClusters1 := []clusterv1.ManagedCluster{
 		*createManagedCluster("local-cluster", true).object,
 		// Just testing should Reimport func, run a test to make sure mgd clusters that are local
@@ -540,11 +543,9 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func Test_getHubIdentification(t *testing.T) {
-
 	crNoVersion := createClusterVersion("version", "", nil)
 	crWithVersion := createClusterVersion("version", "aaa", nil)
 
@@ -555,9 +556,15 @@ func Test_getHubIdentification(t *testing.T) {
 		},
 		ErrorIfCRDPathMissing: true,
 	}
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error starting client: %s", err.Error())
+	}
 
 	type args struct {
 		ctx context.Context
@@ -610,43 +617,70 @@ func Test_getHubIdentification(t *testing.T) {
 
 	for index, tt := range tests {
 		if index == 1 {
-			//add clusterversion scheme
-			ocinfrav1.AddToScheme(scheme1)
+			// add clusterversion scheme
+			err := ocinfrav1.AddToScheme(scheme1)
+			if err != nil {
+				t.Errorf("Error adding api to scheme: %s", err.Error())
+			}
 		}
 		if index == len(tests)-2 {
 			// add a cr with no id
-			k8sClient1.Create(tt.args.ctx, crNoVersion, &client.CreateOptions{})
+			err := k8sClient1.Create(tt.args.ctx, crNoVersion, &client.CreateOptions{})
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
 		}
 		if index == len(tests)-1 {
 			// add a cr with id
-			k8sClient1.Delete(tt.args.ctx, crNoVersion) // so that this is not picked up here
-			k8sClient1.Create(tt.args.ctx, crWithVersion, &client.CreateOptions{})
+			err := k8sClient1.Delete(tt.args.ctx, crNoVersion) // so that this is not picked up here
+			if err != nil {
+				t.Errorf("Error deleting: %s", err.Error())
+			}
+			err = k8sClient1.Create(tt.args.ctx, crWithVersion, &client.CreateOptions{})
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
 		}
 		t.Run(tt.name, func(t *testing.T) {
 			if version, err := getHubIdentification(tt.args.ctx, tt.args.c); (err == nil) != tt.err_nil ||
 				version != tt.want_msg {
-				t.Errorf("getHubIdentification() returns no error = %v, want %v and version=%v want=%v", err == nil, tt.err_nil, version, tt.want_msg)
+				t.Errorf("getHubIdentification() returns no error = %v, want %v and version=%v want=%v",
+					err == nil, tt.err_nil, version, tt.want_msg)
 			}
 		})
 	}
 	// clean up
-	testEnv.Stop()
-
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_VeleroCRDsPresent_NotPresent(t *testing.T) {
 	// Test env with no additional CRDs (velero crds will not be present)
 	testEnv := &envtest.Environment{ErrorIfCRDPathMissing: true}
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
 
 	// clean up after
-	defer testEnv.Stop()
+	defer func() {
+		if err := testEnv.Stop(); err != nil {
+			t.Fatalf("Error stopping testenv: %s", err.Error())
+		}
+	}()
 
 	scheme1 := runtime.NewScheme()
-	_ = veleroapi.AddToScheme(scheme1) // for velero types
+	err = veleroapi.AddToScheme(scheme1) // for velero types
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
 
 	// test client to testEnv above with no velero CRDs
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error starting client: %s", err.Error())
+	}
 
 	t.Run("velero CRDs not present", func(t *testing.T) {
 		crdsPresent, err := VeleroCRDsPresent(context.Background(), k8sClient1)
@@ -665,16 +699,29 @@ func Test_VeleroCRDsPresent(t *testing.T) {
 		CRDDirectoryPaths:     []string{filepath.Join("..", "hack", "crds")},
 		ErrorIfCRDPathMissing: true,
 	}
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
 
 	// clean up after
-	defer testEnv.Stop()
+	defer func() {
+		if err := testEnv.Stop(); err != nil {
+			t.Fatalf("Error stopping testenv: %s", err.Error())
+		}
+	}()
 
 	scheme1 := runtime.NewScheme()
-	_ = veleroapi.AddToScheme(scheme1) // for velero types
+	err = veleroapi.AddToScheme(scheme1) // for velero types
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
 
 	// test client to testEnv above with no velero CRDs
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error starting client: %s", err.Error())
+	}
 
 	// Rely on testEnv setup in suite_test.go (this will have all the CRDs)
 	// (use k8sClient setup in BeforeSuite that talks to the testEnv)
@@ -702,7 +749,6 @@ func labelSelectorArrayEqual(a []*v1.LabelSelector, b []v1.LabelSelector) bool {
 }
 
 func labelSelectorEqual(a *v1.LabelSelector, b *v1.LabelSelector) bool {
-
 	if a == nil && b == nil {
 		return true
 	}
@@ -733,7 +779,6 @@ func labelSelectorEqual(a *v1.LabelSelector, b *v1.LabelSelector) bool {
 }
 
 func requirementsEqual(ma []metav1.LabelSelectorRequirement, mb []metav1.LabelSelectorRequirement) bool {
-
 	if ma == nil && mb == nil {
 		return true
 	}
@@ -818,13 +863,13 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 			args: args{
 				veleroRestore: createRestore("restore", "restore-ns").
 					orLabelSelector([]*metav1.LabelSelector{
-						&metav1.LabelSelector{
+						{
 							MatchExpressions: []metav1.LabelSelectorRequirement{
 								req1,
 								req2,
 							},
 						},
-						&metav1.LabelSelector{
+						{
 							MatchExpressions: []metav1.LabelSelectorRequirement{
 								req3,
 							},
@@ -834,14 +879,14 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 				labelSelector: clusterActivationReq,
 			},
 			wantOrLabelSelector: []metav1.LabelSelector{
-				metav1.LabelSelector{
+				{
 					MatchExpressions: []metav1.LabelSelectorRequirement{
 						req1,
 						req2,
 						clusterActivationReq,
 					},
 				},
-				metav1.LabelSelector{
+				{
 					MatchExpressions: []metav1.LabelSelectorRequirement{
 						req3,
 						clusterActivationReq,
@@ -855,13 +900,13 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 			args: args{
 				veleroRestore: createRestore("restore", "restore-ns").
 					orLabelSelector([]*metav1.LabelSelector{
-						&metav1.LabelSelector{
+						{
 							MatchExpressions: []metav1.LabelSelectorRequirement{
 								req1,
 								req2,
 							},
 						},
-						&metav1.LabelSelector{
+						{
 							MatchExpressions: []metav1.LabelSelectorRequirement{
 								req3,
 							},
@@ -871,13 +916,13 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 				labelSelector: metav1.LabelSelectorRequirement{},
 			},
 			wantOrLabelSelector: []metav1.LabelSelector{
-				metav1.LabelSelector{
+				{
 					MatchExpressions: []metav1.LabelSelectorRequirement{
 						req1,
 						req2,
 					},
 				},
-				metav1.LabelSelector{
+				{
 					MatchExpressions: []metav1.LabelSelectorRequirement{
 						req3,
 					},
@@ -934,18 +979,20 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 		},
 		{
 			// this is is going to be flagged as a validation error by velero so this is not really a valid usecase
-			// the user can set both, still, so verifing that the cluster activation LabelSelector goes to the orLabelSelector in this case
-			name: "using both user defined orLabelSelector and LabelSelector, add cluster activation LabelSelector to orLabelSelector",
+			// the user can set both, still, so verifing that the cluster activation LabelSelector goes to the
+			// orLabelSelector in this case
+			name: "using both user defined orLabelSelector and LabelSelector, " +
+				"add cluster activation LabelSelector to orLabelSelector",
 			args: args{
 				veleroRestore: createRestore("restore", "restore-ns").
 					orLabelSelector([]*metav1.LabelSelector{
-						&metav1.LabelSelector{
+						{
 							MatchExpressions: []metav1.LabelSelectorRequirement{
 								req1,
 								req2,
 							},
 						},
-						&metav1.LabelSelector{
+						{
 							MatchExpressions: []metav1.LabelSelectorRequirement{
 								req3,
 							},
@@ -962,14 +1009,14 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 				labelSelector: clusterActivationReq,
 			},
 			wantOrLabelSelector: []metav1.LabelSelector{
-				metav1.LabelSelector{
+				{
 					MatchExpressions: []metav1.LabelSelectorRequirement{
 						req1,
 						req2,
 						clusterActivationReq,
 					},
 				},
-				metav1.LabelSelector{
+				{
 					MatchExpressions: []metav1.LabelSelectorRequirement{
 						req3,
 						clusterActivationReq,
@@ -989,13 +1036,14 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 			addRestoreLabelSelector(tt.args.veleroRestore, tt.args.labelSelector)
 
 			if !labelSelectorArrayEqual(tt.args.veleroRestore.Spec.OrLabelSelectors, tt.wantOrLabelSelector) {
-				t.Errorf("OrLabelSelectors not as expected  = %v, want %v got=%v", tt.name, tt.wantOrLabelSelector, tt.args.veleroRestore.Spec.OrLabelSelectors)
+				t.Errorf("OrLabelSelectors not as expected  = %v, want %v got=%v",
+					tt.name, tt.wantOrLabelSelector, tt.args.veleroRestore.Spec.OrLabelSelectors)
 			}
 
 			if !labelSelectorEqual(tt.args.veleroRestore.Spec.LabelSelector, &tt.wantLabelSelector) {
-				t.Errorf("LabelSelector not as expected  = %v, want %v got=%v", tt.name, tt.wantLabelSelector, tt.args.veleroRestore.Spec.LabelSelector)
+				t.Errorf("LabelSelector not as expected  = %v, want %v got=%v",
+					tt.name, tt.wantLabelSelector, tt.args.veleroRestore.Spec.LabelSelector)
 			}
-
 		})
 	}
 }
@@ -1055,7 +1103,6 @@ func Test_appendUniqueReq(t *testing.T) {
 			if !requirementsEqual(tt.args.requirements, tt.wantRequirements) {
 				t.Errorf("reqs not as expected  = %v, want %v got=%v", tt.name, tt.wantRequirements, tt.args.requirements)
 			}
-
 		})
 	}
 }
@@ -1077,9 +1124,15 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 		},
 		ErrorIfCRDPathMissing: true,
 	}
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error starting client: %s", err.Error())
+	}
 
 	creds := *createSchedule(veleroBackupNames[Credentials], "default").object
 	cls := *createSchedule(veleroBackupNames[ManagedClusters], "default").object
@@ -1232,7 +1285,6 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			if i == 1 {
 				// create the scheme now, to have the delete resource fail
 				_ = veleroapi.AddToScheme(scheme1) // for velero types
@@ -1245,17 +1297,16 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 						tt.args.backupSchedule.Name,
 						tt.args.backupSchedule.Namespace,
 						err.Error())
-
 				}
 
 				// create resources
 				for i := range tt.args.veleroScheduleList.Items {
-					if err := k8sClient1.Create(tt.args.ctx, &tt.args.veleroScheduleList.Items[i], &client.CreateOptions{}); err != nil {
+					if err := k8sClient1.Create(
+						tt.args.ctx, &tt.args.veleroScheduleList.Items[i], &client.CreateOptions{}); err != nil {
 						t.Errorf("Failed to create schedule name =%v ns =%v , err=%v",
 							tt.args.veleroScheduleList.Items[i].Name,
 							tt.args.veleroScheduleList.Items[i].Namespace,
 							err.Error())
-
 					}
 				}
 			}
@@ -1312,19 +1363,29 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 
 				if err := k8sClient1.Get(tt.args.ctx, lookupKey, &schedule); err == nil {
 					t.Errorf(" schedule should not be found = %v", lookupKey.Name)
-
 				}
 			}
 
-			// clean up
-			k8sClient1.Delete(tt.args.ctx, tt.args.backupSchedule)
+			// first test (i=0) will not create velero schedules, it intentionally doesn't add the api to the
+			// client scheme - so no cleanup required
+			if i > 0 {
+				// clean up
+				err = k8sClient1.Delete(tt.args.ctx, tt.args.backupSchedule)
+				if client.IgnoreNotFound(err) != nil {
+					t.Errorf("Error deleting: %s", err.Error())
+				}
 
-			for i := range tt.args.veleroScheduleList.Items {
-				k8sClient1.Delete(tt.args.ctx, &tt.args.veleroScheduleList.Items[i])
+				for i := range tt.args.veleroScheduleList.Items {
+					err := k8sClient1.Delete(tt.args.ctx, &tt.args.veleroScheduleList.Items[i])
+					if client.IgnoreNotFound(err) != nil {
+						t.Errorf("Error deleting: %s", err.Error())
+					}
+				}
 			}
-
 		})
 	}
 	// clean up
-	testEnv.Stop()
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
 }

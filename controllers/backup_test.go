@@ -37,7 +37,6 @@ func RandStringBytesMask(n int) string {
 }
 
 var _ = Describe("Backup", func() {
-
 	var (
 		backupName                      string = "the-backup-name"
 		veleroNamespaceName                    = "velero"
@@ -53,11 +52,10 @@ var _ = Describe("Backup", func() {
 
 	Context("For utility functions of Backup", func() {
 		It("isBackupFinished should return correct value based on the status", func() {
-
-			//returns the concatenated strings, no trimming
+			// returns the concatenated strings, no trimming
 			Expect(getValidKsRestoreName("a", "b")).Should(Equal("a-b"))
 
-			//returns substring of length 252
+			// returns substring of length 252
 			longName := RandStringBytesMask(260)
 			Expect(getValidKsRestoreName(longName, "b")).Should(Equal(longName[:252]))
 
@@ -183,12 +181,11 @@ var _ = Describe("Backup", func() {
 			Expect(shouldBackupAPIGroup("discovery.open-cluster-management.io")).Should(BeTrue())
 			Expect(shouldBackupAPIGroup("argoproj.io")).Should(BeTrue())
 		})
-
 	})
 })
 
+//nolint:funlen
 func Test_deleteBackup(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -196,9 +193,15 @@ func Test_deleteBackup(t *testing.T) {
 		},
 		ErrorIfCRDPathMissing: true,
 	}
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error starting client: %s", err.Error())
+	}
 
 	backup := *createBackup("backup1", "ns1").object
 
@@ -271,26 +274,38 @@ func Test_deleteBackup(t *testing.T) {
 	for index, tt := range tests {
 		if index == 1 {
 			// create ns so create calls pass through
-			veleroapi.AddToScheme(scheme1)
+			if err := veleroapi.AddToScheme(scheme1); err != nil {
+				t.Errorf("err adding veleroapis to scheme: %s", err.Error())
+			}
 		}
 		if index == 2 {
 			// create ns so create calls pass through
-			corev1.AddToScheme(scheme1)
-			k8sClient1.Create(tt.args.ctx, createNamespace("ns1"), &client.CreateOptions{})
-			if err := k8sClient1.Create(tt.args.ctx, createBackup("backup1", "ns1").object, &client.CreateOptions{}); err != nil {
+			if err := corev1.AddToScheme(scheme1); err != nil {
+				t.Errorf("err adding core apis to scheme: %s", err.Error())
+			}
+			if err := k8sClient1.Create(tt.args.ctx, createNamespace("ns1"), &client.CreateOptions{}); err != nil {
+				t.Errorf("failed to create %s", err.Error())
+			}
+			if err := k8sClient1.Create(tt.args.ctx,
+				createBackup("backup1", "ns1").object, &client.CreateOptions{}); err != nil {
 				t.Errorf("failed to create %s", err.Error())
 			}
 		}
 		if index == len(tests)-2 {
 			// create the delete request to find one already
-			k8sClient1.Create(tt.args.ctx, createNamespace("ns2"), &client.CreateOptions{})
-			if err := k8sClient1.Create(tt.args.ctx, createBackup("backup2", "ns1").object, &client.CreateOptions{}); err != nil {
+			if err := k8sClient1.Create(tt.args.ctx, createNamespace("ns2"), &client.CreateOptions{}); err != nil {
+				t.Errorf("failed to create %s", err.Error())
+			}
+			if err := k8sClient1.Create(tt.args.ctx,
+				createBackup("backup2", "ns1").object, &client.CreateOptions{}); err != nil {
 				t.Errorf("failed to create %s", err.Error())
 			}
 		}
 		if index == len(tests)-1 {
 			// create the delete request to find one already
-			k8sClient1.Create(tt.args.ctx, createNamespace("ns3"), &client.CreateOptions{})
+			if err := k8sClient1.Create(tt.args.ctx, createNamespace("ns3"), &client.CreateOptions{}); err != nil {
+				t.Errorf("failed to create %s", err.Error())
+			}
 			if err := k8sClient1.Create(tt.args.ctx,
 				createBackupDeleteRequest("backup-does-not-exist", "ns3", "backup-does-not-exist").
 					errors([]string{"err1", "err2"}).
@@ -305,6 +320,8 @@ func Test_deleteBackup(t *testing.T) {
 		}
 
 	}
-	testEnv.Stop()
 
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
 }

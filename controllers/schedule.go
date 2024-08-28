@@ -539,7 +539,7 @@ func isVeleroSchedulesUpdateRequired(
 
 	// update backup resources on velero schedules if any changes in hub resources
 	schedulesToBeUpdated := getSchedulesWithUpdatedResources(resourcesToBackup, &veleroScheduleList)
-	if schedulesToBeUpdated != nil && len(schedulesToBeUpdated) > 0 {
+	if len(schedulesToBeUpdated) > 0 {
 		for i := range schedulesToBeUpdated {
 			scheduleLogger.Info(
 				fmt.Sprintf(

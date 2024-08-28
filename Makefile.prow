@@ -1,4 +1,5 @@
 -include /opt/build-harness/Makefile.prow
+-include Makefile
 
 .PHONY: push-prow
 push-prow: build-prow
@@ -10,7 +11,9 @@ push-prow: build-prow
 build-prow: 
 	docker build -f Dockerfile . -t ${REPO_URL}/cluster-backup-operator:${VERSION}
 
+# Runs test target from Makefile
 .PHONY: unit-tests
-unit-tests:
-	GOFLAGS="" go test -timeout 500s -v -short ./controllers
+unit-tests: test
+	@echo "Run unit-tests"
+#	GOFLAGS="" go test -timeout 500s -v -short ./controllers
 	

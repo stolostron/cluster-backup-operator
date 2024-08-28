@@ -94,6 +94,7 @@ type BackupScheduleReconciler struct {
 	Scheme          *runtime.Scheme
 }
 
+//nolint:lll
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules/finalizers,verbs=update
@@ -109,6 +110,8 @@ type BackupScheduleReconciler struct {
 // move the current state of the cluster closer to the desired state.
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
+//
+//nolint:funlen
 func (r *BackupScheduleReconciler) Reconcile(
 	ctx context.Context,
 	req ctrl.Request,
@@ -154,7 +157,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 
 	if backupSchedule.Spec.Paused {
-		//backup schedule is paused
+		// backup schedule is paused
 		msg := "BackupSchedule is paused."
 		return updateBackupSchedulePhaseWhenPaused(ctx, r.Client, veleroScheduleList,
 			backupSchedule, v1beta1.SchedulePhasePaused, msg)
@@ -195,7 +198,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 
 	if collisionMsg != "" {
-		//collision found
+		// collision found
 		return updateBackupSchedulePhaseWhenPaused(ctx, r.Client, veleroScheduleList,
 			backupSchedule, v1beta1.SchedulePhaseBackupCollision, collisionMsg)
 	}
@@ -260,7 +263,6 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	req ctrl.Request,
 	backupSchedule *v1beta1.BackupSchedule,
 ) (ctrl.Result, bool, error) {
-
 	validConfiguration := false
 	scheduleLogger := log.FromContext(ctx)
 
@@ -283,7 +285,7 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 			msg, true)
 	}
 
-	// don't create schedules if backup storage location doesn't exist or is not avaialble
+	// don't create schedules if backup storage location doesn't exist or is not avaialable
 	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
 	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
 		len(veleroStorageLocations.Items) == 0 {
@@ -312,10 +314,11 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 
 	// check MSA status for backup schedules
 	return verifyMSAOption(ctx, r.Client, mapper, backupSchedule)
-
 }
 
 // create velero.io.Schedule resource for each resource type that needs backup
+//
+//nolint:funlen
 func (r *BackupScheduleReconciler) initVeleroSchedules(
 	ctx context.Context,
 	mapper *restmapper.DeferredDiscoveryRESTMapper,

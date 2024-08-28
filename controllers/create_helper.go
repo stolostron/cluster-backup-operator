@@ -14,8 +14,10 @@ import (
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 )
 
-const acmApiVersion = "cluster.open-cluster-management.io/v1beta1"
-const veleroApiVersion = "velero.io/v1"
+const (
+	acmApiVersion    = "cluster.open-cluster-management.io/v1beta1"
+	veleroApiVersion = "velero.io/v1"
+)
 
 func createNamespace(name string) *corev1.Namespace {
 	return &corev1.Namespace{
@@ -32,7 +34,8 @@ func createNamespace(name string) *corev1.Namespace {
 func createSecret(name string, ns string,
 	labels map[string]string,
 	annotations map[string]string,
-	data map[string][]byte) *corev1.Secret {
+	data map[string][]byte,
+) *corev1.Secret {
 	secret := &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -54,7 +57,6 @@ func createSecret(name string, ns string,
 	}
 
 	return secret
-
 }
 
 func createMWork(name string, ns string) *workv1.ManifestWork {
@@ -70,11 +72,11 @@ func createMWork(name string, ns string) *workv1.ManifestWork {
 	}
 
 	return mwork
-
 }
 
 func createConfigMap(name string, ns string,
-	labels map[string]string) *corev1.ConfigMap {
+	labels map[string]string,
+) *corev1.ConfigMap {
 	cmap := &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -90,11 +92,10 @@ func createConfigMap(name string, ns string,
 	}
 
 	return cmap
-
 }
 
+//nolint:unparam
 func createPVC(name string, ns string) *corev1.PersistentVolumeClaim {
-
 	pvc := &corev1.PersistentVolumeClaim{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -116,11 +117,11 @@ func createPVC(name string, ns string) *corev1.PersistentVolumeClaim {
 		},
 	}
 	return pvc
-
 }
 
 func createClusterVersion(name string, cid ocinfrav1.ClusterID,
-	labels map[string]string) *ocinfrav1.ClusterVersion {
+	labels map[string]string,
+) *ocinfrav1.ClusterVersion {
 	clusterVersion := &ocinfrav1.ClusterVersion{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "config.openshift.io/v1",
@@ -589,7 +590,7 @@ func createManagedCluster(name string, isLocalCluster bool) *ManagedHelper {
 
 func (b *ManagedHelper) clusterUrl(curl string) *ManagedHelper {
 	b.object.Spec.ManagedClusterClientConfigs = []clusterv1.ClientConfig{
-		clusterv1.ClientConfig{
+		{
 			URL: curl,
 		},
 	}
@@ -598,7 +599,7 @@ func (b *ManagedHelper) clusterUrl(curl string) *ManagedHelper {
 
 func (b *ManagedHelper) emptyClusterUrl() *ManagedHelper {
 	b.object.Spec.ManagedClusterClientConfigs = []clusterv1.ClientConfig{
-		clusterv1.ClientConfig{},
+		{},
 	}
 	return b
 }
@@ -636,6 +637,7 @@ func (b *ChannelHelper) channelLabels(labels map[string]string) *ChannelHelper {
 	b.object.Labels = labels
 	return b
 }
+
 func (b *ChannelHelper) channelFinalizers(finalizers []string) *ChannelHelper {
 	b.object.Finalizers = finalizers
 	return b
