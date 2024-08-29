@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -707,6 +708,8 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	go func() {
+
+		defer GinkgoRecover()
 		err = mgr.Start(ctrl.SetupSignalHandler())
 		Expect(err).ToNot(HaveOccurred())
 	}()
@@ -716,7 +719,14 @@ var _ = BeforeSuite(func() {
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
 
-	Expect(testEnv.Stop()).To(Succeed())
-	Expect(testEnvManagedCluster.Stop()).To(Succeed())
-	server.Close()
+	Eventually(func() bool {
+		err := testEnv.Stop()
+		return err == nil
+	}, time.Minute*1, time.Millisecond*250).Should(BeTrue())
+
+	Eventually(func() bool {
+		err := testEnvManagedCluster.Stop()
+		return err == nil
+	}, time.Minute*1, time.Millisecond*250).Should(BeTrue())
+
 })
