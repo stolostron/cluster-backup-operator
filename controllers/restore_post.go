@@ -499,8 +499,6 @@ func invokeDynamicDelete(
 	veleroBackup *veleroapi.Backup,
 	mapping *meta.RESTMapping,
 ) error {
-	logger := log.FromContext(ctx)
-
 	backupName := veleroBackup.Name
 	if dr := restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource); dr != nil {
 		localClusterName, err := getLocalClusterName(ctx, c)
