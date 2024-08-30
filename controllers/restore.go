@@ -234,7 +234,9 @@ func setRestorePhase(
 			)
 			return restore.Status.Phase, cleanupOnEnabled
 		}
-		if veleroRestore.Status.Phase == veleroapi.RestorePhasePartiallyFailed {
+		if strings.Contains(string(veleroRestore.Status.Phase), string(veleroapi.RestorePhasePartiallyFailed)) {
+			// check if restore status contains the PartiallyFailed string to catch
+			// all variations such as FinalizingPartiallyFailed
 			partiallyFailed = true
 			continue
 		}
