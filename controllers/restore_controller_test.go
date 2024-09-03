@@ -425,7 +425,10 @@ var _ = Describe("Basic Restore controller", func() {
 			//}, timeout, interval).Should(BeIdenticalTo(v1beta1.RestoreComplete))
 			// When acm restore is finished CompletionTimestamp should be set
 			Eventually(func() *metav1.Time {
-				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+				err := k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+				if err != nil {
+					return nil
+				}
 				return createdRestore.Status.CompletionTimestamp
 			}, timeout, interval).ShouldNot(BeNil())
 		})
