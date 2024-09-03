@@ -185,6 +185,10 @@ type RestoreStatus struct {
 	// +optional
 	// +nullable
 	Messages []string `json:"messages,omitempty"`
+	// CompletionTimestamp records the time the restore operation was completed.
+	// +optional
+	// +nullable
+	CompletionTimestamp *metav1.Time `json:"completionTimestamp,omitempty"`
 }
 
 // +kubebuilder:object:root=true

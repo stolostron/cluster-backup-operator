@@ -297,6 +297,7 @@ var _ = Describe("Basic Restore controller", func() {
 				// issue and have incorrectly upated the status before all restores are done
 				Expect(createdRestore.Status.Phase).NotTo(Equal(v1beta1.RestorePhaseFinished))
 				Expect(createdRestore.Status.Phase).NotTo(Equal(v1beta1.RestoreComplete))
+				Expect(createdRestore.Status.CompletionTimestamp).Should(BeNil())
 
 				return createdRestore.Status.VeleroGenericResourcesRestoreName != "" &&
 					createdRestore.Status.VeleroResourcesRestoreName != "" &&
@@ -422,6 +423,11 @@ var _ = Describe("Basic Restore controller", func() {
 				return string(createdRestore.Status.Phase)
 			}, timeout, interval).Should(BeIdenticalTo(v1beta1.RestorePhaseFinished))
 			//}, timeout, interval).Should(BeIdenticalTo(v1beta1.RestoreComplete))
+			// When acm restore is finished CompletionTimestamp should be set
+			Eventually(func() *metav1.Time {
+				k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+				return createdRestore.Status.CompletionTimestamp
+			}, timeout, interval).ShouldNot(BeNil())
 		})
 	})
 

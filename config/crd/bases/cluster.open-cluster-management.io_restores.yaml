@@ -1783,6 +1783,12 @@ spec:
           status:
             description: RestoreStatus defines the observed state of Restore
             properties:
+              completionTimestamp:
+                description: CompletionTimestamp records the time the restore operation
+                  was completed.
+                format: date-time
+                nullable: true
+                type: string
               lastMessage:
                 description: Message on the last operation
                 type: string

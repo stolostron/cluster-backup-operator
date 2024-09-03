@@ -310,7 +310,17 @@ func (r *RestoreReconciler) cleanupOnRestore(
 		cleanupType: acmRestore.Spec.CleanupBeforeRestore,
 		mapper:      restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(r.DiscoveryClient)),
 	}
+
 	cleanupDeltaResources(ctx, r.Client, acmRestore, cleanupOnRestore, restoreOptions)
+
+	// set CompletionTimestamp when cleanupOnRestore is completed or restore is finished
+	restoreCompleted := (cleanupOnRestore || acmRestore.Status.Phase == v1beta1.RestorePhaseFinished ||
+		acmRestore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors)
+	if restoreCompleted {
+		rightNow := metav1.Now()
+		acmRestore.Status.CompletionTimestamp = &rightNow
+	}
+
 	executePostRestoreTasks(ctx, r.Client, acmRestore)
 }
 
