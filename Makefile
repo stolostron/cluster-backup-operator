@@ -8,6 +8,7 @@ VERSION ?= 0.0.1
 # Helper software versions
 GOLANGCI_VERSION := v1.60.3
 CONTROLLER_TOOLS_VERSION := v0.16.1
+ENVTEST_K8S_VERSION = 1.30
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
@@ -92,11 +93,8 @@ LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
-ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
-test: manifests generate fmt vet lint ## Run tests.
-	mkdir -p ${ENVTEST_ASSETS_DIR}
-	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.8.3/hack/setup-envtest.sh
-	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./controllers/... -coverprofile cover.out
+test: manifests generate fmt vet lint envtest ## Run tests.
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./controllers/... -coverprofile cover.out
 
 ##@ Build
 
@@ -142,6 +140,12 @@ GOLANGCI_URL := https://raw.githubusercontent.com/golangci/golangci-lint/master/
 golangci-lint: $(GOLANGCILINT) ## Download golangci-lint
 $(GOLANGCILINT): $(LOCALBIN)
 	test -s $@ || { curl -sSfL $(GOLANGCI_URL) | sh -s -- -b $(LOCALBIN) $(GOLANGCI_VERSION); }
+
+.PHONY: envtest
+ENVTEST = $(LOCALBIN)/setup-envtest
+envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
+$(ENVTEST): $(LOCALBIN)
+	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
 
 # go-get-tool will 'go get' any package $2 and install it to $1.
