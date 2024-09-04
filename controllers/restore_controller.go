@@ -312,16 +312,17 @@ func (r *RestoreReconciler) cleanupOnRestore(
 	}
 
 	cleanupDeltaResources(ctx, r.Client, acmRestore, cleanupOnRestore, restoreOptions)
+	executePostRestoreTasks(ctx, r.Client, acmRestore)
 
-	// set CompletionTimestamp when cleanupOnRestore is completed or restore is finished
-	restoreCompleted := (cleanupOnRestore || acmRestore.Status.Phase == v1beta1.RestorePhaseFinished ||
-		acmRestore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors)
-	if restoreCompleted {
+	// set CompletionTimestamp when cleanupOnRestore is true or restore is completed
+	// the CompletionTimestamp must be set after cleanupDeltaResources and executePostRestoreTasks are completed
+	restoreCompleted := (acmRestore.Status.Phase == v1beta1.RestorePhaseFinished ||
+		acmRestore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors ||
+		acmRestore.Status.Phase == v1beta1.RestorePhaseError)
+	if cleanupOnRestore || restoreCompleted {
 		rightNow := metav1.Now()
 		acmRestore.Status.CompletionTimestamp = &rightNow
 	}
-
-	executePostRestoreTasks(ctx, r.Client, acmRestore)
 }
 
 func sendResult(restore *v1beta1.Restore, err error) (ctrl.Result, error) {
@@ -427,8 +428,12 @@ func (r *RestoreReconciler) initVeleroRestores(
 		return false, "", err
 	}
 	if len(veleroRestoresToCreate) == 0 {
-		restore.Status.Phase = v1beta1.RestorePhaseFinished
-		restore.Status.LastMessage = fmt.Sprintf(noopMsg, restore.Name)
+		updateRestoreStatus(
+			restoreLogger,
+			v1beta1.RestorePhaseFinished,
+			fmt.Sprintf(noopMsg, restore.Name),
+			restore,
+		)
 		return false, "", nil
 	}
 
@@ -505,8 +510,12 @@ func (r *RestoreReconciler) initVeleroRestores(
 		restore.Status.Phase = v1beta1.RestorePhaseStarted
 		restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
 	} else {
-		restore.Status.Phase = v1beta1.RestorePhaseFinished
-		restore.Status.LastMessage = fmt.Sprintf("Restore %s completed", restore.Name)
+		updateRestoreStatus(
+			restoreLogger,
+			v1beta1.RestorePhaseFinished,
+			fmt.Sprintf("Restore %s completed", restore.Name),
+			restore,
+		)
 	}
 	return false, "", nil
 }
