@@ -509,13 +509,6 @@ func (r *RestoreReconciler) initVeleroRestores(
 	if newVeleroRestoreCreated {
 		restore.Status.Phase = v1beta1.RestorePhaseStarted
 		restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
-	} else {
-		updateRestoreStatus(
-			restoreLogger,
-			v1beta1.RestorePhaseFinished,
-			fmt.Sprintf("Restore %s completed", restore.Name),
-			restore,
-		)
 	}
 	return false, "", nil
 }
