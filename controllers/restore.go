@@ -25,6 +25,7 @@ import (
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -168,6 +169,15 @@ func updateRestoreStatus(
 
 	restore.Status.Phase = status
 	restore.Status.LastMessage = msg
+
+	// set CompletionTimestamp when restore is completed
+	restoreCompleted := (restore.Status.Phase == v1beta1.RestorePhaseFinished ||
+		restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors ||
+		restore.Status.Phase == v1beta1.RestorePhaseError)
+	if restoreCompleted {
+		rightNow := metav1.Now()
+		restore.Status.CompletionTimestamp = &rightNow
+	}
 }
 
 // set cumulative status of restores

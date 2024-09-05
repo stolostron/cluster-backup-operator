@@ -211,8 +211,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			restoreLogger.Error(err, msg)
 
 			// set error status for all errors from initVeleroRestores
-			restore.Status.Phase = v1beta1.RestorePhaseError
-			restore.Status.LastMessage = err.Error()
+			updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseError, err.Error(), restore)
 			return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
 				r.Client.Status().Update(ctx, restore),
 				msg,
@@ -310,8 +309,19 @@ func (r *RestoreReconciler) cleanupOnRestore(
 		cleanupType: acmRestore.Spec.CleanupBeforeRestore,
 		mapper:      restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(r.DiscoveryClient)),
 	}
+
 	cleanupDeltaResources(ctx, r.Client, acmRestore, cleanupOnRestore, restoreOptions)
 	executePostRestoreTasks(ctx, r.Client, acmRestore)
+
+	// set CompletionTimestamp when cleanupOnRestore is true or restore is completed
+	// the CompletionTimestamp must be set after cleanupDeltaResources and executePostRestoreTasks are completed
+	restoreCompleted := (acmRestore.Status.Phase == v1beta1.RestorePhaseFinished ||
+		acmRestore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors ||
+		acmRestore.Status.Phase == v1beta1.RestorePhaseError)
+	if cleanupOnRestore || restoreCompleted {
+		rightNow := metav1.Now()
+		acmRestore.Status.CompletionTimestamp = &rightNow
+	}
 }
 
 func sendResult(restore *v1beta1.Restore, err error) (ctrl.Result, error) {
@@ -417,8 +427,12 @@ func (r *RestoreReconciler) initVeleroRestores(
 		return false, "", err
 	}
 	if len(veleroRestoresToCreate) == 0 {
-		restore.Status.Phase = v1beta1.RestorePhaseFinished
-		restore.Status.LastMessage = fmt.Sprintf(noopMsg, restore.Name)
+		updateRestoreStatus(
+			restoreLogger,
+			v1beta1.RestorePhaseFinished,
+			fmt.Sprintf(noopMsg, restore.Name),
+			restore,
+		)
 		return false, "", nil
 	}
 
