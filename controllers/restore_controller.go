@@ -211,8 +211,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			restoreLogger.Error(err, msg)
 
 			// set error status for all errors from initVeleroRestores
-			restore.Status.Phase = v1beta1.RestorePhaseError
-			restore.Status.LastMessage = err.Error()
+			updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseError, err.Error(), restore)
 			return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
 				r.Client.Status().Update(ctx, restore),
 				msg,
@@ -509,6 +508,9 @@ func (r *RestoreReconciler) initVeleroRestores(
 	if newVeleroRestoreCreated {
 		restore.Status.Phase = v1beta1.RestorePhaseStarted
 		restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
+	} else {
+		restore.Status.Phase = v1beta1.RestorePhaseFinished
+		restore.Status.LastMessage = fmt.Sprintf("Restore %s completed", restore.Name)
 	}
 	return false, "", nil
 }
