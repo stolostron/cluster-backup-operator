@@ -545,6 +545,13 @@ var _ = Describe("BackupSchedule controller", func() {
 					})
 				}
 			}
+			localClusterName := ""
+			Eventually(func() bool {
+				localCls, err := getLocalClusterName(ctx, k8sClient)
+				localClusterName = localCls
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
+
 			Eventually(func() error {
 				for i := range managedSvcAccountMCAOs {
 					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(&managedSvcAccountMCAOs[i]),
@@ -652,6 +659,10 @@ var _ = Describe("BackupSchedule controller", func() {
 				if veleroSchedulesList.Items[i].Name == veleroScheduleNames[Resources] {
 					Expect(findValue(veleroSchedulesList.Items[i].Spec.Template.IncludedResources,
 						"clusterpool.other.hive.openshift.io")).Should(BeFalse())
+					// expect to find the local cluster ns in the ExcludedNamespaces list
+					Expect(findValue(veleroSchedulesList.Items[i].Spec.Template.ExcludedNamespaces,
+						localClusterName)).Should(BeTrue())
+
 				}
 				if veleroSchedulesList.Items[i].Name == veleroScheduleNames[ManagedClusters] {
 					Expect(findValue(veleroSchedulesList.Items[i].Spec.Template.IncludedResources,

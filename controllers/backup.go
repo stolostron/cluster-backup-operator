@@ -154,10 +154,6 @@ func setResourcesBackupInfo(
 ) {
 	var clusterResource bool = true
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
-	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
-		veleroBackupTemplate.ExcludedNamespaces,
-		"local-cluster",
-	)
 
 	// exclude backup chart NS
 	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
@@ -291,11 +287,6 @@ func setManagedClustersBackupInfo(
 ) {
 	var clusterResource bool = true // include cluster level resources
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
-
-	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
-		veleroBackupTemplate.ExcludedNamespaces,
-		"local-cluster",
-	)
 
 	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
 		veleroBackupTemplate.ExcludedNamespaces,

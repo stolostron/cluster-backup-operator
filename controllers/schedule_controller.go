@@ -351,6 +351,13 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 	// use this when generating the backups so all have the same timestamp
 	currentTime := time.Now().Format("20060102150405")
 
+	// get local cluster name
+	localClusterName, err := getLocalClusterName(ctx, r.Client)
+	if err != nil || localClusterName == "" {
+		// if not found, or error, set to the default local-cluster
+		localClusterName = localClusterLabel
+	}
+
 	// loop through schedule names to create a Velero schedule per type
 	for _, scheduleKey := range scheduleKeys {
 		veleroScheduleIdentity := types.NamespacedName{
@@ -376,6 +383,12 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 
 		// create backup based on resource type
 		veleroBackupTemplate := &veleroapi.BackupSpec{}
+		if scheduleKey == ManagedClusters || scheduleKey == Resources {
+			veleroBackupTemplate.ExcludedNamespaces = appendUnique(
+				veleroBackupTemplate.ExcludedNamespaces,
+				localClusterName,
+			)
+		}
 
 		switch scheduleKey {
 		case ManagedClusters:
