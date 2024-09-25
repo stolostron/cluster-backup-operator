@@ -61,6 +61,9 @@ Cluster Back up and Restore Operator
   - [Testing](#testing)
     - [Schedule  a backup](#schedule--a-backup)
     - [Restore a backup](#restore-a-backup)
+- [ACM Backup and Restore Performance in a Large-Scale Environment](#acm-backup-and-restore-performance-in-a-large-scale-environment)
+  - [First attempt with cleanupBeforeRestore set to None:](#first-attempt-with-cleanupbeforerestore-set-to-none)
+  - [Second attempt with cleanupBeforeRestore set to CleanupRestored:](#second-attempt-with-cleanupbeforerestore-set-to-cleanuprestored)
 - [OADP Version Relationship](#oadp-version-relationship)
 - [Using custom OADP Version](#using-custom-oadp-version)
 
@@ -851,6 +854,180 @@ spec:
   veleroManagedClustersBackupName: acm-managed-clusters-schedule-20210902205438
   veleroCredentialsBackupName: skip
   veleroResourcesBackupName: skip
+```
+
+## ACM Backup and Restore Performance in a Large-Scale Environment
+
+The following performance results are from ACM backup and restore operations conducted in a large-scale environment, where a central hub manages 3,500 Single Node OpenShift (SNO) clusters.
+
+ACM version: 2.11.0-DOWNSTREAM-2024-07-10-21-49-48 (RC3)
+
+### First attempt with cleanupBeforeRestore set to None:
+
+1. Backup
+
+```
+# oc get backup -n open-cluster-management-backup  -ojson | jq '.items[] | .metadata.name,.status.phase, .status.startTimestamp, .status.completionTimestamp,.status.progress.itemsBackedUp'
+"acm-credentials-schedule-20240715173125"
+"Completed"
+"2024-07-15T17:31:25Z"
+"2024-07-15T17:32:33Z"
+18220
+"acm-managed-clusters-schedule-20240715173125"
+"Completed"
+"2024-07-15T17:32:33Z"
+"2024-07-15T17:34:33Z"
+58304
+"acm-resources-generic-schedule-20240715173125"
+"Completed"
+"2024-07-15T17:34:33Z"
+"2024-07-15T17:36:37Z"
+1
+"acm-resources-schedule-20240715173125"
+"Completed"
+"2024-07-15T17:36:37Z"
+"2024-07-15T17:37:14Z"
+7466
+"acm-validation-policy-schedule-20240715173125"
+"Completed"
+"2024-07-15T17:37:14Z"
+"2024-07-15T17:37:15Z"
+1 
+
+
+# mc ls  minio/dr4hub/velero/backups
+[2024-07-15 17:53:17 UTC]     0B acm-credentials-schedule-20240715173125/
+[2024-07-15 17:53:17 UTC]     0B acm-managed-clusters-schedule-20240715173125/
+[2024-07-15 17:53:17 UTC]     0B acm-resources-generic-schedule-20240715173125/
+[2024-07-15 17:53:17 UTC]     0B acm-resources-schedule-20240715173125/
+[2024-07-15 17:53:17 UTC]     0B acm-validation-policy-schedule-20240715173125/
+
+
+# for i in $(mc ls  minio/dr4hub/velero/backups | awk '{print $5}' ); do echo $i $(mc ls  minio/dr4hub/velero/backups/"$i" --json | jq -s 'map(.size) | add' | numfmt --to=iec-i --suffix=B --padding=7); done
+acm-credentials-schedule-20240715173125/ 64MiB
+acm-managed-clusters-schedule-20240715173125/ 39MiB
+acm-resources-generic-schedule-20240715173125/ 21KiB
+acm-resources-schedule-20240715173125/ 3.0MiB
+acm-validation-policy-schedule-20240715173125/ 16KiB
+```
+2. Restore passive - cleanupBeforeRestore=None
+   
+```
+# oc get restore -A
+NAMESPACE                        NAME                  PHASE      MESSAGE
+open-cluster-management-backup   restore-acm-passive   Finished   All Velero restores have run successfully
+
+
+# oc get restore.velero -n open-cluster-management-backup -ojson | jq -r '.items[] | .metadata.name,.status.phase, .status.startTimestamp, .status.completionTimestamp,.status.progress.itemsRestored'
+restore-acm-passive-acm-credentials-schedule-20240715173125
+Completed
+2024-07-15T17:59:10Z
+2024-07-15T18:04:47Z
+18220
+restore-acm-passive-acm-resources-generic-schedule-20240715173125
+Completed
+2024-07-15T18:07:16Z
+2024-07-15T18:07:16Z
+1
+restore-acm-passive-acm-resources-schedule-20240715173125
+Completed
+2024-07-15T18:04:47Z
+2024-07-15T18:07:16Z
+7451
+```
+
+### Second attempt with cleanupBeforeRestore set to CleanupRestored:
+1. Backup:
+   
+```
+# oc get backup -n open-cluster-management-backup  -ojson | jq '.items[] | .metadata.name,.status.phase, .status.startTimestamp, .status.completionTimestamp,.status.progress.itemsBackedUp'
+"acm-credentials-schedule-20240724203526"
+"Completed"
+"2024-07-24T20:35:27Z"
+"2024-07-24T20:36:35Z"
+17678
+"acm-managed-clusters-schedule-20240724203526"
+"Completed"
+"2024-07-24T20:36:34Z"
+"2024-07-24T20:38:37Z"
+56556
+"acm-resources-generic-schedule-20240724203526"
+"PartiallyFailed"
+"2024-07-24T20:38:37Z"
+"2024-07-24T20:40:51Z"
+1
+"acm-resources-schedule-20240724203526"
+"Completed"
+"2024-07-24T20:40:51Z"
+"2024-07-24T20:41:23Z"
+7299
+"acm-validation-policy-schedule-20240724203526"
+"Completed"
+"2024-07-24T20:41:23Z"
+"2024-07-24T20:41:24Z"
+1 
+
+
+# ./mc ls minio/dr4hub/velero/backups
+[2024-07-24 20:45:23 UTC]     0B acm-credentials-schedule-20240724203526/
+[2024-07-24 20:45:23 UTC]     0B acm-managed-clusters-schedule-20240724203526/
+[2024-07-24 20:45:23 UTC]     0B acm-resources-generic-schedule-20240724203526/
+[2024-07-24 20:45:23 UTC]     0B acm-resources-schedule-20240724203526/
+[2024-07-24 20:45:23 UTC]     0B acm-validation-policy-schedule-20240724203526/
+
+
+# for i in $(./mc ls minio/dr4hub/velero/backups | awk '{print $5}' ); do echo $i $(./mc ls minio/dr4hub/velero/backups/"$i" --json | jq -s 'map(.size) | add' | numfmt --to=iec-i --suffix=B --padding=7); done
+acm-credentials-schedule-20240724203526/ 62MiB
+acm-managed-clusters-schedule-20240724203526/ 38MiB
+acm-resources-generic-schedule-20240724203526/ 21KiB
+acm-resources-schedule-20240724203526/ 2.9MiB
+acm-validation-policy-schedule-20240724203526/ 16KiB
+```
+
+2. Restore passive - cleanupBeforeRestore=CleanupRestored
+```
+# oc get restore -n open-cluster-management-backup restore-acm-passive -oyaml 
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"cluster.open-cluster-management.io/v1beta1","kind":"Restore","metadata":{"annotations":{},"name":"restore-acm-passive","namespace":"open-cluster-management-backup"},"spec":{"cleanupBeforeRestore":"CleanupRestored","veleroCredentialsBackupName":"latest","veleroManagedClustersBackupName":"skip","veleroResourcesBackupName":"latest"}}
+  creationTimestamp: "2024-07-24T20:48:16Z"
+  generation: 1
+  name: restore-acm-passive
+  namespace: open-cluster-management-backup
+  resourceVersion: "30421543"
+  uid: d9f6b3f3-98df-44b2-be6d-0c024317790d
+spec:
+  cleanupBeforeRestore: CleanupRestored
+  veleroCredentialsBackupName: latest
+  veleroManagedClustersBackupName: skip
+  veleroResourcesBackupName: latest
+status:
+  lastMessage: All Velero restores have run successfully
+  phase: Finished
+  veleroCredentialsRestoreName: restore-acm-passive-acm-credentials-schedule-20240724203526
+  veleroGenericResourcesRestoreName: restore-acm-passive-acm-resources-generic-schedule-20240724203526
+  veleroResourcesRestoreName: restore-acm-passive-acm-resources-schedule-20240724203526
+
+
+# oc get restore.velero -n open-cluster-management-backup -ojson | jq -r '.items[] | .metadata.name,.status.phase, .status.startTimestamp, .status.completionTimestamp,.status.progress.itemsRestored'
+restore-acm-passive-acm-credentials-schedule-20240724203526
+Completed
+2024-07-24T20:48:16Z
+2024-07-24T20:53:52Z
+17678
+restore-acm-passive-acm-resources-generic-schedule-20240724203526
+Completed
+2024-07-24T20:56:29Z
+2024-07-24T20:56:30Z
+1
+restore-acm-passive-acm-resources-schedule-20240724203526
+Completed
+2024-07-24T20:53:52Z
+2024-07-24T20:56:29Z
+7284
 ```
 
 ## OADP Version Relationship
