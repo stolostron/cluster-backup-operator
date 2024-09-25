@@ -892,16 +892,7 @@ ACM version: 2.11.0-DOWNSTREAM-2024-07-10-21-49-48 (RC3)
 "Completed"
 "2024-07-15T17:37:14Z"
 "2024-07-15T17:37:15Z"
-1 
-
-
-# mc ls  minio/dr4hub/velero/backups
-[2024-07-15 17:53:17 UTC]     0B acm-credentials-schedule-20240715173125/
-[2024-07-15 17:53:17 UTC]     0B acm-managed-clusters-schedule-20240715173125/
-[2024-07-15 17:53:17 UTC]     0B acm-resources-generic-schedule-20240715173125/
-[2024-07-15 17:53:17 UTC]     0B acm-resources-schedule-20240715173125/
-[2024-07-15 17:53:17 UTC]     0B acm-validation-policy-schedule-20240715173125/
-
+1
 
 # for i in $(mc ls  minio/dr4hub/velero/backups | awk '{print $5}' ); do echo $i $(mc ls  minio/dr4hub/velero/backups/"$i" --json | jq -s 'map(.size) | add' | numfmt --to=iec-i --suffix=B --padding=7); done
 acm-credentials-schedule-20240715173125/ 64MiB
@@ -910,6 +901,7 @@ acm-resources-generic-schedule-20240715173125/ 21KiB
 acm-resources-schedule-20240715173125/ 3.0MiB
 acm-validation-policy-schedule-20240715173125/ 16KiB
 ```
+
 2. Restore passive - cleanupBeforeRestore=None
    
 ```
@@ -937,6 +929,7 @@ Completed
 ```
 
 ### Second attempt with cleanupBeforeRestore set to CleanupRestored:
+
 1. Backup:
    
 ```
@@ -965,16 +958,7 @@ Completed
 "Completed"
 "2024-07-24T20:41:23Z"
 "2024-07-24T20:41:24Z"
-1 
-
-
-# ./mc ls minio/dr4hub/velero/backups
-[2024-07-24 20:45:23 UTC]     0B acm-credentials-schedule-20240724203526/
-[2024-07-24 20:45:23 UTC]     0B acm-managed-clusters-schedule-20240724203526/
-[2024-07-24 20:45:23 UTC]     0B acm-resources-generic-schedule-20240724203526/
-[2024-07-24 20:45:23 UTC]     0B acm-resources-schedule-20240724203526/
-[2024-07-24 20:45:23 UTC]     0B acm-validation-policy-schedule-20240724203526/
-
+1
 
 # for i in $(./mc ls minio/dr4hub/velero/backups | awk '{print $5}' ); do echo $i $(./mc ls minio/dr4hub/velero/backups/"$i" --json | jq -s 'map(.size) | add' | numfmt --to=iec-i --suffix=B --padding=7); done
 acm-credentials-schedule-20240724203526/ 62MiB
@@ -985,6 +969,7 @@ acm-validation-policy-schedule-20240724203526/ 16KiB
 ```
 
 2. Restore passive - cleanupBeforeRestore=CleanupRestored
+
 ```
 # oc get restore -n open-cluster-management-backup restore-acm-passive -oyaml 
 apiVersion: cluster.open-cluster-management.io/v1beta1
