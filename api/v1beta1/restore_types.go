@@ -117,17 +117,52 @@ type RestoreSpec struct {
 	// +optional
 	Hooks veleroapi.RestoreHooks `json:"hooks,omitempty"`
 
-	// ExcludedNamespaces contains a list of namespaces that are not
+	// velero option - IncludedNamespaces is a slice of namespace names to include objects
+	// from. If empty, all namespaces are included.
+	// +optional
+	// +nullable
+	IncludedNamespaces []string `json:"includedNamespaces,omitempty"`
+
+	// velero option - ExcludedNamespaces contains a list of namespaces that are not
 	// included in the restore.
 	// +optional
 	// +nullable
 	ExcludedNamespaces []string `json:"excludedNamespaces,omitempty"`
 
-	// ExcludedResources is a slice of resource names that are not
+	// velero option - IncludedResources is a slice of resource names to include
+	// in the restore. If empty, all resources in the backup are included.
+	// +optional
+	// +nullable
+	IncludedResources []string `json:"includedResources,omitempty"`
+
+	// velero option - ExcludedResources is a slice of resource names that are not
 	// included in the restore.
 	// +optional
 	// +nullable
 	ExcludedResources []string `json:"excludedResources,omitempty"`
+
+	// velero option - LabelSelector is a metav1.LabelSelector to filter with
+	// when restoring individual objects from the backup. If empty
+	// or nil, all objects are included. Optional.
+	// +optional
+	// +nullable
+	LabelSelector *metav1.LabelSelector `json:"labelSelector,omitempty"`
+
+	// velero option - OrLabelSelectors is list of metav1.LabelSelector to filter with
+	// when restoring individual objects from the backup. If multiple provided
+	// they will be joined by the OR operator. LabelSelector as well as
+	// OrLabelSelectors cannot co-exist in restore request, only one of them
+	// can be used
+	// +optional
+	// +nullable
+	OrLabelSelectors []*metav1.LabelSelector `json:"orLabelSelectors,omitempty"`
+
+	// velero option - NamespaceMapping is a map of source namespace names
+	// to target namespace names to restore into. Any source
+	// namespaces not included in the map will be restored into
+	// namespaces of the same name.
+	// +optional
+	NamespaceMapping map[string]string `json:"namespaceMapping,omitempty"`
 }
 
 // RestoreStatus defines the observed state of Restore
@@ -150,6 +185,10 @@ type RestoreStatus struct {
 	// +optional
 	// +nullable
 	Messages []string `json:"messages,omitempty"`
+	// CompletionTimestamp records the time the restore operation was completed.
+	// +optional
+	// +nullable
+	CompletionTimestamp *metav1.Time `json:"completionTimestamp,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -160,8 +199,10 @@ type RestoreStatus struct {
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.lastMessage`
 
 // Restore is an ACM resource that you can use to restore resources from a cluster backup to a target cluster.
-// The restore resource has properties that you can use to restore only passive data or to restore managed cluster activation resources.
-// Additionally, it has a property that you can use to periodically check for new backups and automatically restore them on the target cluster.
+// The restore resource has properties that you can use to restore only passive data or to restore managed cluster
+// activation resources.
+// Additionally, it has a property that you can use to periodically check for new backups and automatically restore
+// them on the target cluster.
 type Restore struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

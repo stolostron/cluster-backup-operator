@@ -24,18 +24,27 @@ import (
 	"time"
 
 	ocinfrav1 "github.com/openshift/api/config/v1"
+	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/discovery"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+)
+
+const (
+	localClusterLabel  = "local-cluster"
+	managedClusterKind = "ManagedCluster"
 )
 
 func findSuffix(slice []string, val string) (int, bool) {
@@ -59,7 +68,6 @@ func find(slice []string, val string) (int, bool) {
 }
 
 func findValue(slice []string, val string) bool {
-
 	_, ok := find(slice, val)
 
 	return ok
@@ -109,7 +117,7 @@ func sortCompare(a, b []string) bool {
 // returns a valid name for the velero restore kubernetes resource
 // by trimming the concatenated cluster restore and backup names
 func getValidKsRestoreName(clusterRestoreName string, backupName string) string {
-	//max name for ns or resources is 253 chars
+	// max name for ns or resources is 253 chars
 	fullName := clusterRestoreName + "-" + backupName
 
 	if len(fullName) > 252 {
@@ -118,7 +126,7 @@ func getValidKsRestoreName(clusterRestoreName string, backupName string) string 
 	return fullName
 }
 
-// Velero uses TimestampedName for backups using the follwoing format
+// Velero uses TimestampedName for backups using the following format
 // by setting the default backup name format based on the schedule
 // fmt.Sprintf("%s-%s", s.Name, timestamp.Format("20060102150405"))
 // this function parses Velero backupName and returns the timestamp
@@ -164,7 +172,6 @@ func isValidStorageLocationDefined(
 
 // having a resourceKind.resourceGroup string, return (resourceKind, resourceGroup)
 func getResourceDetails(resourceName string) (string, string) {
-
 	indexOfName := strings.Index(resourceName, ".")
 	if indexOfName > -1 {
 		return resourceName[:indexOfName], resourceName[indexOfName+1:]
@@ -180,14 +187,13 @@ func getGenericCRDFromAPIGroups(
 	ctx context.Context,
 	dc discovery.DiscoveryInterface,
 	veleroBackup *veleroapi.Backup,
-) ([]string, error) {
-
+) []string {
 	resources := []string{}
 	if groupList, err := dc.ServerGroups(); err == nil && groupList != nil {
 		resources = processGenericCRDFromAPIGroups(ctx, dc, veleroBackup, *groupList)
 	}
 
-	return resources, nil
+	return resources
 }
 
 func processGenericCRDFromAPIGroups(
@@ -196,13 +202,12 @@ func processGenericCRDFromAPIGroups(
 	veleroBackup *veleroapi.Backup,
 	groupList v1.APIGroupList,
 ) []string {
-
 	logger := log.FromContext(ctx)
 
 	resources := []string{}
 	for _, group := range groupList.Groups {
 		for _, version := range group.Versions {
-			//get all resources for each group version
+			// get all resources for each group version
 			resourceList, err := dc.ServerResourcesForGroupVersion(version.GroupVersion)
 			if err != nil {
 				logger.Error(err, "failed to get server resources")
@@ -235,7 +240,6 @@ func getHubIdentification(
 	ctx context.Context,
 	c client.Client,
 ) (string, error) {
-
 	clusterId := "unknown"
 	clusterVersions := &ocinfrav1.ClusterVersionList{}
 	if err := c.List(ctx, clusterVersions, &client.ListOptions{}); err != nil {
@@ -254,8 +258,8 @@ func getHubIdentification(
 func isHiveCreatedCluster(
 	ctx context.Context,
 	c client.Client,
-	clusterName string) bool {
-
+	clusterName string,
+) bool {
 	nbOfSecrets := 0
 	hiveSecrets := &corev1.SecretList{}
 	if hiveLabel, err := labels.NewRequirement(backupCredsHiveLabel,
@@ -264,8 +268,8 @@ func isHiveCreatedCluster(
 		selector = selector.Add(*hiveLabel)
 		if err := c.List(ctx, hiveSecrets, &client.ListOptions{
 			Namespace:     clusterName,
-			LabelSelector: selector}); err == nil {
-
+			LabelSelector: selector,
+		}); err == nil {
 			nbOfSecrets = len(hiveSecrets.Items)
 		}
 	}
@@ -274,8 +278,8 @@ func isHiveCreatedCluster(
 
 func findValidMSAToken(
 	secrets []corev1.Secret,
-	currentTime time.Time) string {
-
+	currentTime time.Time,
+) string {
 	accessToken := ""
 
 	// find MSA secrets in this namespace
@@ -317,14 +321,9 @@ func managedClusterShouldReimport(
 	managedClusters []clusterv1.ManagedCluster,
 	clusterName string,
 ) (bool, string, string) {
-
 	logger := log.FromContext(ctx)
 
 	url := ""
-	if clusterName == "local-cluster" {
-		// skip local-cluster
-		return false, url, ""
-	}
 
 	for i := range managedClusters {
 
@@ -333,6 +332,11 @@ func managedClusterShouldReimport(
 		if clusterName != managedCluster.Name {
 			// find the cluster by name
 			continue
+		}
+
+		if isLocalCluster(&managedCluster) {
+			// skip local-cluster
+			return false, url, ""
 		}
 
 		// skip available managed clusters
@@ -372,8 +376,8 @@ func managedClusterShouldReimport(
 
 func VeleroCRDsPresent(
 	ctx context.Context,
-	c client.Client) (bool, error) {
-
+	c client.Client,
+) (bool, error) {
 	veleroScheduleList := veleroapi.ScheduleList{}
 	veleroScheduleCRDPresent, err := isCRDPresent(ctx, c, &veleroScheduleList)
 	if err != nil {
@@ -409,4 +413,156 @@ func isCRDNotPresentError(err error) bool {
 		return true
 	}
 	return false
+}
+
+// append requirement if it doesn't exist
+func appendUniqueReq(requirements []metav1.LabelSelectorRequirement,
+	req metav1.LabelSelectorRequirement,
+) []metav1.LabelSelectorRequirement {
+	exists := false
+	for idx := range requirements {
+		if requirements[idx].Key == req.Key {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		requirements = append(requirements, req)
+	}
+
+	return requirements
+}
+
+// add any restore label selector requirement (like cluster activation label requirement,
+// for credentials and generic resources restore files)
+// This will be appended to any user defined restore filters with the following rule:
+// 1. if the user defines a set of OrLabelSelectors rules, the req LabelSelectorRequirement will be injected
+// to each OrLabelSelectors MatchExpression (will run as an AND rule on each MatchExpression).
+// 2. if the user defines a LabelSelector, the req LabelSelectorRequirement
+// will be appeded to each of the OR MatchExpressions (ANDed)
+// 3. If the user doesn't define a LabelSelector or a OrLabelSelectors, the req Requirement
+// will be created as a LabelSelector option
+func addRestoreLabelSelector(
+	restoreObj *veleroapi.Restore,
+	req metav1.LabelSelectorRequirement,
+) {
+	if len(restoreObj.Spec.OrLabelSelectors) > 0 {
+		// LabelSelector and OrLabelSelectors are mutually exclusive
+		// if restoreObj.Spec.OrLabelSelectors is not null,
+		// add LabelSelectors match expressions ( which are ANDed ) to each of the
+		// OrLabelSelectors expressions ( which are also ANDed )
+		for i := range restoreObj.Spec.OrLabelSelectors {
+			restoreObj.Spec.OrLabelSelectors[i].MatchExpressions = appendUniqueReq(
+				restoreObj.Spec.OrLabelSelectors[i].MatchExpressions, req)
+		}
+	} else {
+		// if no OrLabelSelector, add the MatchExpression to the LabelSelector
+		if restoreObj.Spec.LabelSelector == nil {
+			labels := &metav1.LabelSelector{}
+			restoreObj.Spec.LabelSelector = labels
+
+			requirements := make([]metav1.LabelSelectorRequirement, 0)
+			restoreObj.Spec.LabelSelector.MatchExpressions = requirements
+		}
+		restoreObj.Spec.LabelSelector.MatchExpressions = appendUniqueReq(
+			restoreObj.Spec.LabelSelector.MatchExpressions,
+			req,
+		)
+	}
+}
+
+// update BackupSchedule status and remove velero schedules
+// when the BackupSchedule is paused or in BackupCollision
+func updateBackupSchedulePhaseWhenPaused(
+	ctx context.Context,
+	c client.Client,
+	veleroScheduleList veleroapi.ScheduleList,
+	backupSchedule *v1beta1.BackupSchedule,
+	phase v1beta1.SchedulePhase,
+	msg string,
+) (ctrl.Result, error) {
+	scheduleLogger := log.FromContext(ctx)
+
+	if phase != v1beta1.SchedulePhasePaused && phase != v1beta1.SchedulePhaseBackupCollision {
+		// do not process any other type of schedule here
+		return ctrl.Result{}, nil
+	}
+
+	// delete schedules, so we don't generate new backups
+	for i := range veleroScheduleList.Items {
+		scheduleLogger.Info(
+			"Attempt to delete schedule " + veleroScheduleList.Items[i].Name,
+		)
+
+		if err := c.Delete(ctx, &veleroScheduleList.Items[i]); err == nil {
+			scheduleLogger.Info(
+				"Schedule deleted successfully " + veleroScheduleList.Items[i].Name,
+			)
+		} else {
+			// ignore not found errors
+			if !kerrors.IsNotFound(err) {
+				errMsg := "Failed to delete schedule " + veleroScheduleList.Items[i].Name
+				scheduleLogger.Error(err,
+					errMsg,
+				)
+				return ctrl.Result{}, err
+			}
+		}
+	}
+
+	// update status
+	backupSchedule.Status.Phase = phase
+	backupSchedule.Status.LastMessage = msg
+
+	backupSchedule.Status.VeleroScheduleCredentials = nil
+	backupSchedule.Status.VeleroScheduleManagedClusters = nil
+	backupSchedule.Status.VeleroScheduleResources = nil
+
+	err := c.Status().Update(ctx, backupSchedule)
+
+	return ctrl.Result{}, err
+}
+
+// Return true if the managedCluster object has label "local-cluster": "true"
+func isLocalCluster(managedCluster *clusterv1.ManagedCluster) bool {
+	return hasLocalClusterLabel(managedCluster)
+}
+
+func hasLocalClusterLabel(obj client.Object) bool {
+	return obj.GetLabels()[localClusterLabel] == "true"
+}
+
+func isResourceLocalCluster(resource *unstructured.Unstructured) bool {
+	return resource.GetKind() == managedClusterKind && hasLocalClusterLabel(resource)
+}
+
+// Will return "" if no managed cluster represents the local-cluster
+func getLocalClusterName(ctx context.Context, c client.Client) (string, error) {
+	logger := log.FromContext(ctx)
+
+	locClusterLabelMatchOption := []client.ListOption{
+		client.MatchingLabels{
+			localClusterLabel: "true",
+		},
+	}
+	localMgdClusterList := &clusterv1.ManagedClusterList{}
+	err := c.List(ctx, localMgdClusterList, locClusterLabelMatchOption...)
+	if err != nil {
+		logger.Error(err, "Error querying managedclusters to find local-cluster")
+		return "", err
+	}
+
+	if len(localMgdClusterList.Items) == 0 {
+		logger.Info("No local managed cluster found")
+		return "", nil // Valid scenario, no local managed cluster
+	}
+	if len(localMgdClusterList.Items) > 1 {
+		logger.Info("Warning - multiple managedclusters are labeled as the local-cluster",
+			"localMgdClusterList.Items", localMgdClusterList.Items)
+		// If we ever get more than 1 managed cluster with the label, this will be problem - returning 1st in list
+		// This code assumes that there should only ever be 1 managed cluster with the 'local-cluster': 'true' label
+		// and just logs the above warning if we find more than 1
+	}
+
+	return localMgdClusterList.Items[0].Name, nil
 }

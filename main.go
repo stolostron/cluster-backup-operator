@@ -47,8 +47,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	//operatorapiv1 "open-cluster-management.io/api/operator/v1"
+	// operatorapiv1 "open-cluster-management.io/api/operator/v1"
 
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	//+kubebuilder:scaffold:imports
@@ -60,7 +62,6 @@ var (
 )
 
 func init() {
-
 	utilruntime.Must(backupv1beta1.AddToScheme(scheme))
 	utilruntime.Must(chnv1.AddToScheme(scheme))
 	utilruntime.Must(certsv1.AddToScheme(scheme))
@@ -69,7 +70,7 @@ func init() {
 	utilruntime.Must(workv1.AddToScheme(scheme))
 	utilruntime.Must(addonv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(ocinfrav1.AddToScheme(scheme))
-	//utilruntime.Must(operatorapiv1.AddToScheme(scheme)) Not adding since client it's remote
+	// utilruntime.Must(operatorapiv1.AddToScheme(scheme)) Not adding since client it's remote
 	utilruntime.Must(veleroapi.AddToScheme(scheme))
 	utilruntime.Must(hivev1.AddToScheme(scheme))
 	utilruntime.Must(corev1.AddToScheme(scheme))
@@ -77,6 +78,7 @@ func init() {
 	//+kubebuilder:scaffold:scheme
 }
 
+//nolint:funlen
 func main() {
 	var metricsAddr string
 	var probeAddr string
@@ -129,9 +131,13 @@ func main() {
 		"retryPeriod", retryPeriod)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
+		Scheme: scheme,
+		Metrics: metricsserver.Options{
+			BindAddress: metricsAddr,
+		},
+		WebhookServer: webhook.NewServer(webhook.Options{
+			Port: 9443,
+		}),
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "58497677.cluster.management.io",
@@ -161,8 +167,8 @@ func main() {
 		}
 
 		if !crdCheckSuccessful {
-			setupLog.Info("Velero CRDs are not installed, not starting BackupScheduleReconciler or RestoreReconciler controllers",
-				"crdCheckSuccessful", crdCheckSuccessful)
+			setupLog.Info("Velero CRDs are not installed, not starting BackupScheduleReconciler "+
+				"or RestoreReconciler controllers", "crdCheckSuccessful", crdCheckSuccessful)
 			time.Sleep(30 * time.Second)
 			continue
 		}

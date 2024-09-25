@@ -154,10 +154,6 @@ func setResourcesBackupInfo(
 ) {
 	var clusterResource bool = true
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
-	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
-		veleroBackupTemplate.ExcludedNamespaces,
-		"local-cluster",
-	)
 
 	// exclude backup chart NS
 	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
@@ -291,11 +287,6 @@ func setManagedClustersBackupInfo(
 ) {
 	var clusterResource bool = true // include cluster level resources
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
-
-	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
-		veleroBackupTemplate.ExcludedNamespaces,
-		"local-cluster",
-	)
 
 	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
 		veleroBackupTemplate.ExcludedNamespaces,
@@ -568,7 +559,7 @@ func cleanupExpiredValidationBackups(
 			backup := veleroBackupList.Items[i]
 			if backup.Status.Expiration != nil &&
 				v1.Now().Time.After(backup.Status.Expiration.Time) {
-				backupLogger.Info(fmt.Sprintf("validation backup %s expired, attepmpt to delete it",
+				backupLogger.Info(fmt.Sprintf("validation backup %s expired, attempt to delete it",
 					backup.Name))
 				if err = deleteBackup(ctx, &backup, c); err == nil {
 					backupLogger.Info(fmt.Sprintf("Delete completed for %s",

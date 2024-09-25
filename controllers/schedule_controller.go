@@ -94,6 +94,7 @@ type BackupScheduleReconciler struct {
 	Scheme          *runtime.Scheme
 }
 
+//nolint:lll
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=backupschedules/finalizers,verbs=update
@@ -109,6 +110,8 @@ type BackupScheduleReconciler struct {
 // move the current state of the cluster closer to the desired state.
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
+//
+//nolint:funlen
 func (r *BackupScheduleReconciler) Reconcile(
 	ctx context.Context,
 	req ctrl.Request,
@@ -153,6 +156,13 @@ func (r *BackupScheduleReconciler) Reconcile(
 		return ctrl.Result{}, err
 	}
 
+	if backupSchedule.Spec.Paused {
+		// backup schedule is paused
+		msg := "BackupSchedule is paused."
+		return updateBackupSchedulePhaseWhenPaused(ctx, r.Client, veleroScheduleList,
+			backupSchedule, v1beta1.SchedulePhasePaused, msg)
+	}
+
 	collisionMsg := ""
 	// enforce backup collision only if this schedule was NOT created now ( current time - creation > 5)
 	// in this case ignore any collisions since the user had initiated this backup
@@ -160,8 +170,11 @@ func (r *BackupScheduleReconciler) Reconcile(
 		metav1.Now().Sub(veleroScheduleList.Items[0].CreationTimestamp.Time).Seconds() > 5 &&
 		backupSchedule.Status.Phase != "" &&
 		backupSchedule.Status.Phase != v1beta1.SchedulePhaseNew {
-		if isThisTheOwner, lastBackup := scheduleOwnsLatestStorageBackups(ctx, r.Client,
-			&veleroScheduleList.Items[0]); !isThisTheOwner {
+		isThisTheOwner, lastBackup, err := scheduleOwnsLatestStorageBackups(ctx, r.Client, &veleroScheduleList.Items[0])
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if !isThisTheOwner {
 			// set exception status, because another cluster is creating backups
 			// and storing them at the same location
 			// we risk a backup collision, as more then one cluster seems to be
@@ -173,32 +186,21 @@ func (r *BackupScheduleReconciler) Reconcile(
 			)
 			scheduleLogger.Info(collisionMsg)
 		} else {
-			// check if an existing hub restore was found  created after this backup schedule and report collision
-			_, collisionMsg = isRestoreHubAfterSchedule(ctx, r.Client, backupSchedule)
+			// check if an existing hub restore was created
+			// after this backup schedule and report a collision
+			_, collisionMsg = isRestoreHubAfterSchedule(ctx, r.Client, &veleroScheduleList.Items[0])
 		}
 		// add any missing labels and create any resources required by the backup and restore process
-		r.prepareForBackup(ctx, mapper, backupSchedule)
+		err = r.prepareForBackup(ctx, mapper, backupSchedule)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	if collisionMsg != "" {
-		//collision found
-		backupSchedule.Status.Phase = v1beta1.SchedulePhaseBackupCollision
-		backupSchedule.Status.LastMessage = collisionMsg
-
-		err := r.Client.Status().Update(ctx, backupSchedule)
-
-		// delete schedules, don't generate new backups
-		for i := range veleroScheduleList.Items {
-			scheduleLogger.Info(
-				"Attempt to delete schedule " + veleroScheduleList.Items[i].Name,
-			)
-			if err := r.Delete(ctx, &veleroScheduleList.Items[i]); err == nil {
-				scheduleLogger.Info(
-					"Schedule deleted successfully " + veleroScheduleList.Items[i].Name,
-				)
-			}
-		}
-		return ctrl.Result{}, errors.Wrap(err, collisionMsg)
+		// collision found
+		return updateBackupSchedulePhaseWhenPaused(ctx, r.Client, veleroScheduleList,
+			backupSchedule, v1beta1.SchedulePhaseBackupCollision, collisionMsg)
 	}
 	// no velero schedules, so create them
 	if len(veleroScheduleList.Items) == 0 {
@@ -213,10 +215,11 @@ func (r *BackupScheduleReconciler) Reconcile(
 			backupSchedule.Status.LastMessage = NewPhaseMsg
 			backupSchedule.Status.Phase = v1beta1.SchedulePhaseNew
 		}
-		return ctrl.Result{RequeueAfter: collisionControlInterval}, errors.Wrap(
-			r.Client.Status().Update(ctx, backupSchedule),
-			updateStatusFailedMsg,
-		)
+		statusUpdateErr := r.Client.Status().Update(ctx, backupSchedule)
+		if err == nil { // Don't mask previous error
+			err = statusUpdateErr
+		}
+		return ctrl.Result{RequeueAfter: collisionControlInterval}, err
 	}
 
 	// if any velero schedule is deleted manually, recreate them all to have the same backup due time
@@ -260,7 +263,6 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	req ctrl.Request,
 	backupSchedule *v1beta1.BackupSchedule,
 ) (ctrl.Result, bool, error) {
-
 	validConfiguration := false
 	scheduleLogger := log.FromContext(ctx)
 
@@ -274,17 +276,19 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 	}
 
 	// don't create schedule if an active restore exists
-	if restoreName := isRestoreRunning(ctx, r.Client, backupSchedule); restoreName != "" {
+	// allow to create paused schedules even if a restore is running
+	if restoreName := isRestoreRunning(ctx, r.Client, backupSchedule); restoreName != "" &&
+		!backupSchedule.Spec.Paused {
 		msg := "Restore resource " + restoreName + " is currently active, " +
 			"verify that any active restores are removed."
 		return createFailedValidationResponse(ctx, r.Client, backupSchedule,
 			msg, true)
 	}
 
-	// don't create schedules if backup storage location doesn't exist or is not avaialble
+	// don't create schedules if backup storage location doesn't exist or is not avaialable
 	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
 	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
-		veleroStorageLocations == nil || len(veleroStorageLocations.Items) == 0 {
+		len(veleroStorageLocations.Items) == 0 {
 
 		msg := "velero.io.BackupStorageLocation resources not found. " +
 			"Verify you have created a konveyor.openshift.io.Velero or oadp.openshift.io.DataProtectionApplications resource."
@@ -310,10 +314,11 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 
 	// check MSA status for backup schedules
 	return verifyMSAOption(ctx, r.Client, mapper, backupSchedule)
-
 }
 
 // create velero.io.Schedule resource for each resource type that needs backup
+//
+//nolint:funlen
 func (r *BackupScheduleReconciler) initVeleroSchedules(
 	ctx context.Context,
 	mapper *restmapper.DeferredDiscoveryRESTMapper,
@@ -338,10 +343,20 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 	}
 
 	// add any missing labels and create any resources required by the backup and restore process
-	r.prepareForBackup(ctx, mapper, backupSchedule)
+	err := r.prepareForBackup(ctx, mapper, backupSchedule)
+	if err != nil {
+		return err
+	}
 
 	// use this when generating the backups so all have the same timestamp
 	currentTime := time.Now().Format("20060102150405")
+
+	// get local cluster name
+	localClusterName, err := getLocalClusterName(ctx, r.Client)
+	if err != nil || localClusterName == "" {
+		// if not found, or error, set to the default local-cluster
+		localClusterName = localClusterLabel
+	}
 
 	// loop through schedule names to create a Velero schedule per type
 	for _, scheduleKey := range scheduleKeys {
@@ -368,6 +383,12 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 
 		// create backup based on resource type
 		veleroBackupTemplate := &veleroapi.BackupSpec{}
+		if scheduleKey == ManagedClusters || scheduleKey == Resources {
+			veleroBackupTemplate.ExcludedNamespaces = appendUnique(
+				veleroBackupTemplate.ExcludedNamespaces,
+				localClusterName,
+			)
+		}
 
 		switch scheduleKey {
 		case ManagedClusters:

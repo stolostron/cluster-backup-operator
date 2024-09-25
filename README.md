@@ -61,6 +61,8 @@ Cluster Back up and Restore Operator
   - [Testing](#testing)
     - [Schedule  a backup](#schedule--a-backup)
     - [Restore a backup](#restore-a-backup)
+- [OADP Version Relationship](#oadp-version-relationship)
+- [Using custom OADP Version](#using-custom-oadp-version)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -851,6 +853,57 @@ spec:
   veleroResourcesBackupName: skip
 ```
 
+## OADP Version Relationship
+
+The Cluster Back up and Restore Operator chart automatically installs the [OADP Operator](https://github.com/openshift/oadp-operator/blob/master/docs/install_olm.md), in the `open-cluster-management-backup` namespace, which is the namespace where the chart is installed. Here is the default mapping of versions:
+
+| ACM Version | OADP Version |
+|:------------| -----------: |
+| 2.11        | 1.4          |
+| 2.10.4      | 1.4          |
+| 2.10        | 1.3          |
+| 2.9.3       | 1.3          |
+| 2.9         | 1.2          |
+| 2.8.5       | 1.3          |
+| 2.8.4       | 1.2          |
+| 2.8         | 1.1          |
+
+## Using custom OADP Version
+
+The OADP version installed by the backup and restore operator may be overridden using this annotation on the MultiClusterHub resource:
+
+  `installer.open-cluster-management.io/oadp-subscription-spec: '{"channel": "stable-1.4"}'`
+
+
+You set this annotation on the MultiClusterHub before enabling the `cluster-backup` option on the MultiClusterHub resource. Below is an example of the annotation used to install the OADP 1.5 version. 
+
+```yaml
+apiVersion: operator.open-cluster-management.io/v1
+kind: MultiClusterHub
+metadata:
+  annotations:
+    installer.open-cluster-management.io/oadp-subscription-spec: '{"channel": "stable-1.5","installPlanApproval": "Automatic","name":
+      "redhat-oadp-operator","source": "redhat-operators","sourceNamespace": "openshift-marketplace"}'
+  name: multiclusterhub
+spec: {}
+```
+
+Note that if you use this option to get a different OADP version than the one installed by default by the backup and restore operator, you need to make sure this version is supported on the OpenShift version used by the hub cluster. Use this override option with caution as it may result in unsupported configurations.
+
+Below is a list of ACM versions supporting to install a custom OADP version using this annotation:
+
+| ACM Version   | Support different OADP version |
+|:--------------| -----------: |
+| 2.11 and up   | <b>Yes</b>   |
+| 2.10.5        | <b>Yes</b>   |
+| 2.10 - 2.10.4 | No           |
+| 2.9.5         | <b>Yes</b>   |
+| 2.9 - 2.9.4   | No           |
+| 2.8.8*        | <b>Yes</b>   |
+| 2.8 - 2.8.7   | No           |
+| 2.7           | No           |
+
+
 <!---
-Date: May/10/2023
+Date: Sept/9/2024
 -->

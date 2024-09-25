@@ -14,11 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+//nolint:funlen
 package controllers
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -41,17 +43,17 @@ import (
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
-	"k8s.io/client-go/kubernetes/scheme"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
 func Test_postRestoreActivation(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -67,12 +69,29 @@ func Test_postRestoreActivation(t *testing.T) {
 	autoImporSecretWithoutLabel := *createSecret(autoImportSecretName, "managed2",
 		nil, nil, nil)
 
-	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme.Scheme})
-	k8sClient1.Create(context.Background(), &ns1)
-	k8sClient1.Create(context.Background(), &ns2)
-	k8sClient1.Create(context.Background(), &autoImporSecretWithLabel)
-	k8sClient1.Create(context.Background(), &autoImporSecretWithoutLabel)
+	scheme1 := runtime.NewScheme()
+	e1 := corev1.AddToScheme(scheme1)
+	e2 := clusterv1.AddToScheme(scheme1)
+	if err := errors.Join(e1, e2); err != nil {
+		t.Fatalf("Error adding apis to scheme: %s", err.Error())
+	}
+
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error starting client: %s", err.Error())
+	}
+	errs := []error{}
+	errs = append(errs, k8sClient1.Create(context.Background(), &ns1))
+	errs = append(errs, k8sClient1.Create(context.Background(), &ns2))
+	errs = append(errs, k8sClient1.Create(context.Background(), &autoImporSecretWithLabel))
+	errs = append(errs, k8sClient1.Create(context.Background(), &autoImporSecretWithoutLabel))
+	if err := errors.Join(errs...); err != nil {
+		t.Fatalf("Error creating objects for test setup: %s", err.Error())
+	}
 
 	fourHoursAgo := "2022-07-26T11:25:34Z"
 	nextTenHours := "2022-07-27T04:25:34Z"
@@ -96,9 +115,9 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					*createManagedCluster("local-cluster").object,
-					*createManagedCluster("test1").object,
-					*createManagedCluster("managed1").clusterUrl("someurl").
+					*createManagedCluster("local-cluster", true).object,
+					*createManagedCluster("test1", false).object,
+					*createManagedCluster("managed1", false).clusterUrl("someurl").
 						conditions([]metav1.Condition{
 							v1.Condition{
 								Status: v1.ConditionTrue,
@@ -120,7 +139,8 @@ func Test_postRestoreActivation(t *testing.T) {
 						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
 						}),
-				}},
+				},
+			},
 			want: []string{},
 		},
 		{
@@ -129,9 +149,9 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					*createManagedCluster("local-cluster").object,
-					*createManagedCluster("test1").object,
-					*createManagedCluster("managed1").emptyClusterUrl().
+					*createManagedCluster("local-cluster", true).object,
+					*createManagedCluster("test1", false).object,
+					*createManagedCluster("managed1", false).emptyClusterUrl().
 						conditions([]metav1.Condition{
 							v1.Condition{
 								Status: v1.ConditionFalse,
@@ -165,7 +185,8 @@ func Test_postRestoreActivation(t *testing.T) {
 						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
 						}),
-				}},
+				},
+			},
 			want: []string{},
 		},
 		{
@@ -174,9 +195,9 @@ func Test_postRestoreActivation(t *testing.T) {
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
-					*createManagedCluster("local-cluster").object,
-					*createManagedCluster("test1").object,
-					*createManagedCluster("managed1").
+					*createManagedCluster("local-cluster", true).object,
+					*createManagedCluster("test1", false).object,
+					*createManagedCluster("managed1", false).
 						clusterUrl("someurl").
 						conditions([]metav1.Condition{
 							v1.Condition{
@@ -184,7 +205,7 @@ func Test_postRestoreActivation(t *testing.T) {
 							},
 						}).
 						object,
-					*createManagedCluster("managed2").clusterUrl("someurl").
+					*createManagedCluster("managed2", false).clusterUrl("someurl").
 						conditions([]metav1.Condition{
 							v1.Condition{
 								Status: v1.ConditionFalse,
@@ -216,7 +237,8 @@ func Test_postRestoreActivation(t *testing.T) {
 						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
 						}),
-				}},
+				},
+			},
 			want: []string{"managed1"},
 		},
 	}
@@ -224,16 +246,18 @@ func Test_postRestoreActivation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got, _ := postRestoreActivation(tt.args.ctx, k8sClient1,
-				tt.args.secrets, tt.args.managedClusters, tt.args.currentTime); len(got) != len(tt.want) {
+				tt.args.secrets, tt.args.managedClusters, "local-cluster", tt.args.currentTime); len(got) != len(tt.want) {
 				t.Errorf("postRestoreActivation() returns = %v, want %v", got, tt.want)
 			}
 		})
 	}
-	testEnv.Stop()
+
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_executePostRestoreTasks(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -242,22 +266,30 @@ func Test_executePostRestoreTasks(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testenv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	veleroapi.AddToScheme(scheme1)
-	clusterv1.AddToScheme(scheme1)
-	corev1.AddToScheme(scheme1)
+	schemeErrs := []error{}
+	schemeErrs = append(schemeErrs, veleroapi.AddToScheme(scheme1))
+	schemeErrs = append(schemeErrs, clusterv1.AddToScheme(scheme1))
+	schemeErrs = append(schemeErrs, corev1.AddToScheme(scheme1))
+	if err := errors.Join(schemeErrs...); err != nil {
+		t.Fatalf("Error adding api(s) to scheme: %s", err.Error())
+	}
 
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error creating new client: %s", err.Error())
+	}
 
 	if err := k8sClient1.Create(context.Background(), createNamespace(obs_addon_ns)); err != nil {
-		t.Errorf("failed to create secret %s ", err.Error())
-
+		t.Fatalf("failed to create secret %s ", err.Error())
 	}
 	if err := k8sClient1.Create(context.Background(), createSecret(obs_secret_name,
 		obs_addon_ns, map[string]string{}, nil, nil)); err != nil {
-		t.Errorf("failed to create secret %s ", err.Error())
-
+		t.Fatalf("failed to create secret %s ", err.Error())
 	}
 
 	type args struct {
@@ -305,22 +337,24 @@ func Test_executePostRestoreTasks(t *testing.T) {
 				t.Errorf("executePostRestoreTasks() returns = %v, want %v", got, tt.want)
 			}
 		})
-
 	}
 
 	// this should be deleted
 	secret := corev1.Secret{}
-	if err := k8sClient1.Get(context.Background(), types.NamespacedName{Name: obs_secret_name,
-		Namespace: obs_addon_ns}, &secret); err == nil {
+	if err := k8sClient1.Get(context.Background(), types.NamespacedName{
+		Name:      obs_secret_name,
+		Namespace: obs_addon_ns,
+	}, &secret); err == nil {
 		t.Errorf("this secret should no longer exist ! %v ", obs_secret_name)
 	}
 
-	testEnv.Stop()
-
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_deleteDynamicResource(t *testing.T) {
-
+	// Channel resource in the local-cluster namespace
 	res_local_ns := &unstructured.Unstructured{}
 	res_local_ns.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "apps.open-cluster-management.io/v1",
@@ -328,6 +362,21 @@ func Test_deleteDynamicResource(t *testing.T) {
 		"metadata": map[string]interface{}{
 			"name":      "channel-new",
 			"namespace": "local-cluster",
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+
+	// Channel resource in local-cluster namespace (where local cluster is named "hub1ns")
+	res_local_ns_uniquename := &unstructured.Unstructured{}
+	res_local_ns_uniquename.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":      "channel-new",
+			"namespace": "hub1ns", /* this will be the local-cluster when we call deleteDynamicResource() below */
 		},
 		"spec": map[string]interface{}{
 			"type":     "Git",
@@ -436,7 +485,10 @@ func Test_deleteDynamicResource(t *testing.T) {
 	})
 
 	unstructuredScheme := runtime.NewScheme()
-	chnv1.AddToScheme(unstructuredScheme)
+	err := chnv1.AddToScheme(unstructuredScheme)
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
 
 	dynClient := dynamicfake.NewSimpleDynamicClient(unstructuredScheme,
 		res_default,
@@ -448,19 +500,35 @@ func Test_deleteDynamicResource(t *testing.T) {
 
 	targetGVK := schema.GroupVersionKind{Group: "apps.open-cluster-management.io", Version: "v1", Kind: "Channel"}
 	targetGVR := targetGVK.GroupVersion().WithResource("channel")
-	targetMapping := meta.RESTMapping{Resource: targetGVR, GroupVersionKind: targetGVK,
-		Scope: meta.RESTScopeNamespace}
+	targetMapping := meta.RESTMapping{
+		Resource: targetGVR, GroupVersionKind: targetGVK,
+		Scope: meta.RESTScopeNamespace,
+	}
 
-	targetMappingGlobal := meta.RESTMapping{Resource: targetGVR, GroupVersionKind: targetGVK,
-		Scope: meta.RESTScopeRoot}
+	targetMappingGlobal := meta.RESTMapping{
+		Resource: targetGVR, GroupVersionKind: targetGVK,
+		Scope: meta.RESTScopeRoot,
+	}
 
 	resInterface := dynClient.Resource(targetGVR)
 
 	// create resources which should be found
-	resInterface.Namespace("default").Create(context.Background(), res_default, v1.CreateOptions{})
-	resInterface.Namespace("default").Create(context.Background(), res_default_with_finalizer, v1.CreateOptions{})
-	resInterface.Create(context.Background(), res_global, v1.CreateOptions{})
-	resInterface.Create(context.Background(), res_global_with_finalizer, v1.CreateOptions{})
+	_, err = resInterface.Namespace("default").Create(context.Background(), res_default, v1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Err creating: %s", err.Error())
+	}
+	_, err = resInterface.Namespace("default").Create(context.Background(), res_default_with_finalizer, v1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Err creating: %s", err.Error())
+	}
+	_, err = resInterface.Create(context.Background(), res_global, v1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Err creating: %s", err.Error())
+	}
+	_, err = resInterface.Create(context.Background(), res_global_with_finalizer, v1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Err creating: %s", err.Error())
+	}
 
 	deletePolicy := metav1.DeletePropagationForeground
 	delOptions := metav1.DeleteOptions{
@@ -472,6 +540,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 		mapping                 *meta.RESTMapping
 		dr                      dynamic.NamespaceableResourceInterface
 		resource                unstructured.Unstructured
+		localClusterName        string
 		deleteOptions           v1.DeleteOptions
 		excludedNamespaces      []string
 		skipExcludedBackupLabel bool
@@ -483,12 +552,28 @@ func Test_deleteDynamicResource(t *testing.T) {
 		errMsgEmpty bool
 	}{
 		{
-			name: "Delete local cluster resource",
+			name: "Delete local cluster resource (local-cluster named 'local-cluster')",
 			args: args{
 				ctx:                     context.Background(),
 				mapping:                 &targetMapping,
 				dr:                      resInterface,
 				resource:                *res_local_ns,
+				localClusterName:        "local-cluster",
+				deleteOptions:           delOptions,
+				excludedNamespaces:      []string{"abc"},
+				skipExcludedBackupLabel: false,
+			},
+			want:        false,
+			errMsgEmpty: true,
+		},
+		{
+			name: "Delete local cluster resource (local-cluster named 'hub1ns')",
+			args: args{
+				ctx:                     context.Background(),
+				mapping:                 &targetMapping,
+				dr:                      resInterface,
+				resource:                *res_local_ns_uniquename,
+				localClusterName:        "hub1ns",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{"abc"},
 				skipExcludedBackupLabel: false,
@@ -503,6 +588,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMapping,
 				dr:                      resInterface,
 				resource:                *res_default,
+				localClusterName:        "local-cluster",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{"abc"},
 				skipExcludedBackupLabel: false,
@@ -511,12 +597,14 @@ func Test_deleteDynamicResource(t *testing.T) {
 			errMsgEmpty: true,
 		},
 		{
-			name: "Delete default resource with finalizer, should throw error since resource was deleted before finalizers patch",
+			name: "Delete default resource with finalizer, should throw error since resource was deleted before " +
+				"finalizers patch",
 			args: args{
 				ctx:                     context.Background(),
 				mapping:                 &targetMapping,
 				dr:                      resInterface,
 				resource:                *res_default_with_finalizer,
+				localClusterName:        "",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{"abc"},
 				skipExcludedBackupLabel: true,
@@ -531,6 +619,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMapping,
 				dr:                      resInterface,
 				resource:                *res_default_notfound,
+				localClusterName:        "",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{"abc"},
 				skipExcludedBackupLabel: true,
@@ -545,6 +634,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMapping,
 				dr:                      resInterface,
 				resource:                *res_default_notfound,
+				localClusterName:        "",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{"default"},
 				skipExcludedBackupLabel: true,
@@ -559,6 +649,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMapping,
 				dr:                      resInterface,
 				resource:                *res_exclude_from_backup,
+				localClusterName:        "local-cluster",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{"abc"},
 				skipExcludedBackupLabel: true,
@@ -573,6 +664,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMapping,
 				dr:                      resInterface,
 				resource:                *res_exclude_from_backup,
+				localClusterName:        "local-cluster",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{"abc"},
 				skipExcludedBackupLabel: false,
@@ -587,6 +679,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMappingGlobal,
 				dr:                      resInterface,
 				resource:                *res_global,
+				localClusterName:        "local-cluster",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{},
 				skipExcludedBackupLabel: true,
@@ -601,6 +694,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMappingGlobal,
 				dr:                      resInterface,
 				resource:                *res_global_with_finalizer,
+				localClusterName:        "local-cluster",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{},
 				skipExcludedBackupLabel: true,
@@ -615,6 +709,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				mapping:                 &targetMappingGlobal,
 				dr:                      resInterface,
 				resource:                *res_global_notfound,
+				localClusterName:        "local-cluster",
 				deleteOptions:           delOptions,
 				excludedNamespaces:      []string{},
 				skipExcludedBackupLabel: true,
@@ -630,6 +725,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 				tt.args.dr,
 				tt.args.resource,
 				tt.args.excludedNamespaces,
+				tt.args.localClusterName,
 				tt.args.skipExcludedBackupLabel); got != tt.want ||
 				(tt.errMsgEmpty && len(msg) != 0) ||
 				(!tt.errMsgEmpty && len(msg) == 0) {
@@ -638,11 +734,9 @@ func Test_deleteDynamicResource(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func Test_cleanupDeltaResources(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -651,10 +745,19 @@ func Test_cleanupDeltaResources(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	veleroapi.AddToScheme(scheme1)
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	err = veleroapi.AddToScheme(scheme1)
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error creating new client: %s", err.Error())
+	}
 
 	type args struct {
 		ctx              context.Context
@@ -741,14 +844,14 @@ func Test_cleanupDeltaResources(t *testing.T) {
 				t.Errorf("cleanupDeltaResources() returns = %v, want %v", got, tt.want)
 			}
 		})
-
 	}
-	testEnv.Stop()
 
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_getBackupInfoFromRestore(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -763,11 +866,23 @@ func Test_getBackupInfoFromRestore(t *testing.T) {
 	validRestoreNameWBackup := "restore-acm-" + backupName
 
 	scheme1 := runtime.NewScheme()
-	veleroapi.AddToScheme(scheme1)
-	corev1.AddToScheme(scheme1)
+	err := veleroapi.AddToScheme(scheme1)
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
+	err = corev1.AddToScheme(scheme1)
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
 
-	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error creating new client: %s", err.Error())
+	}
 
 	type args struct {
 		ctx         context.Context
@@ -845,10 +960,14 @@ func Test_getBackupInfoFromRestore(t *testing.T) {
 
 			veleroBackup := *createBackup(backupName, namespace).object
 
-			k8sClient1.Create(tt.args.ctx, &ns1)
-			k8sClient1.Create(tt.args.ctx, &veleroRestore)
-			k8sClient1.Create(tt.args.ctx, &veleroRestoreWBackup)
-			k8sClient1.Create(tt.args.ctx, &veleroBackup)
+			errs := []error{}
+			errs = append(errs, k8sClient1.Create(tt.args.ctx, &ns1))
+			errs = append(errs, k8sClient1.Create(tt.args.ctx, &veleroRestore))
+			errs = append(errs, k8sClient1.Create(tt.args.ctx, &veleroRestoreWBackup))
+			errs = append(errs, k8sClient1.Create(tt.args.ctx, &veleroBackup))
+			if err := errors.Join(errs...); err != nil {
+				t.Errorf("Error creating objs to setup for test: %s", err.Error())
+			}
 		}
 		t.Run(tt.name, func(t *testing.T) {
 			if got, _ := getBackupInfoFromRestore(tt.args.ctx, tt.args.c,
@@ -858,12 +977,13 @@ func Test_getBackupInfoFromRestore(t *testing.T) {
 		})
 
 	}
-	testEnv.Stop()
 
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_deleteSecretsWithLabelSelector(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -875,14 +995,29 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 	namespace := "ns"
 
 	scheme1 := runtime.NewScheme()
-	veleroapi.AddToScheme(scheme1)
-	corev1.AddToScheme(scheme1)
+	err := veleroapi.AddToScheme(scheme1)
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
+	err = corev1.AddToScheme(scheme1)
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
 
-	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error creating new client: %s", err.Error())
+	}
 
 	ns1 := *createNamespace(namespace)
-	k8sClient1.Create(context.Background(), &ns1)
+	err = k8sClient1.Create(context.Background(), &ns1)
+	if err != nil {
+		t.Fatalf("Error creating ns: %s", err.Error())
+	}
 
 	hiveCredsLabel, _ := labels.NewRequirement(backupCredsHiveLabel,
 		selection.Exists, []string{})
@@ -914,7 +1049,7 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 				otherLabels: []labels.Requirement{*hiveCredsLabel},
 			},
 			secretsToKeep: []string{
-				"aws-creds-1", //has the same backup label as the backup
+				"aws-creds-1", // has the same backup label as the backup
 				"aws-creds-2", // this is not an ACM secret, no ACM label
 				"aws-creds-3", // this is not an ACM secret, no ACM label
 
@@ -943,7 +1078,7 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 				}, nil, nil),
 			},
 			mapsToKeep: []string{
-				"aws-map-1", //has the same backup label as the backup
+				"aws-map-1", // has the same backup label as the backup
 				"aws-map-2", // this is not an ACM map, no ACM label
 				"aws-map-3", // this is not an ACM map, no ACM label
 
@@ -982,7 +1117,7 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 				otherLabels: []labels.Requirement{*hiveCredsLabel},
 			},
 			secretsToKeep: []string{
-				"aws-creds-1", //has the same backup label as the backup
+				"aws-creds-1", // has the same backup label as the backup
 				"aws-creds-2", // this is not an ACM secret, no ACM label
 				"aws-creds-3", // this is not an ACM secret, no ACM label
 				"aws-creds-5", // user created secret, not deleted when CleanupTypeRestored
@@ -1000,7 +1135,7 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 				}, nil, nil),
 			},
 			mapsToKeep: []string{
-				"aws-map-1", //has the same backup label as the backup
+				"aws-map-1", // has the same backup label as the backup
 				"aws-map-2", // this is not an ACM map, no ACM label
 				"aws-map-3", // this is not an ACM map, no ACM label
 				"aws-map-5", // user created map, not deleted when CleanupTypeRestored
@@ -1025,14 +1160,12 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 		for i := range tt.secretsToCreate {
 			if err := k8sClient1.Create(context.Background(), &tt.secretsToCreate[i]); err != nil {
 				t.Errorf("failed to create secret %s ", err.Error())
-
 			}
 		}
 
 		for i := range tt.mapsToCreate {
 			if err := k8sClient1.Create(context.Background(), &tt.mapsToCreate[i]); err != nil {
 				t.Errorf("failed to create map %s ", err.Error())
-
 			}
 		}
 
@@ -1044,7 +1177,8 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 			for i := range tt.secretsToDelete {
 				secret := corev1.Secret{}
 				if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
-					Name: tt.secretsToDelete[i], Namespace: namespace},
+					Name: tt.secretsToDelete[i], Namespace: namespace,
+				},
 					&secret); err == nil {
 					t.Errorf("deleteSecretsWithLabelSelector() secret %s should be deleted",
 						tt.secretsToDelete[i])
@@ -1055,7 +1189,8 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 			for i := range tt.secretsToKeep {
 				secret := corev1.Secret{}
 				if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
-					Name: tt.secretsToKeep[i], Namespace: namespace},
+					Name: tt.secretsToKeep[i], Namespace: namespace,
+				},
 					&secret); err != nil {
 					t.Errorf("deleteSecretsWithLabelSelector() %s should be found",
 						tt.secretsToKeep[i])
@@ -1065,7 +1200,8 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 			for i := range tt.mapsToDelete {
 				maps := corev1.ConfigMap{}
 				if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
-					Name: tt.mapsToDelete[i], Namespace: namespace},
+					Name: tt.mapsToDelete[i], Namespace: namespace,
+				},
 					&maps); err == nil {
 					t.Errorf("deleteSecretsWithLabelSelector() map %s should be deleted",
 						tt.mapsToDelete[i])
@@ -1076,7 +1212,8 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 			for i := range tt.mapsToKeep {
 				maps := corev1.ConfigMap{}
 				if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
-					Name: tt.mapsToKeep[i], Namespace: namespace},
+					Name: tt.mapsToKeep[i], Namespace: namespace,
+				},
 					&maps); err != nil {
 					t.Errorf("deleteSecretsWithLabelSelector()map  %s should be found",
 						tt.mapsToKeep[i])
@@ -1085,12 +1222,13 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 		})
 
 	}
-	testEnv.Stop()
 
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_deleteSecretsForBackupType(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -1102,11 +1240,23 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 	namespace := "ns"
 
 	scheme1 := runtime.NewScheme()
-	veleroapi.AddToScheme(scheme1)
-	corev1.AddToScheme(scheme1)
+	err := veleroapi.AddToScheme(scheme1)
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
+	err = corev1.AddToScheme(scheme1)
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
 
-	cfg, _ := testEnv.Start()
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error creating new client: %s", err.Error())
+	}
 
 	ns1 := *createNamespace(namespace)
 
@@ -1124,9 +1274,10 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 		BackupNameVeleroLabel: "acm-credentials-hive-schedule-" + aFewSecondsAgoTime,
 	}, nil, nil) // matches backup label from hive backup and it has the hive backup; keep it
 
-	secretKeepIgnoredCloseToCredsBackup := *createSecret("secret-keep-ignored-close-to-creds-backup", namespace, map[string]string{
-		BackupNameVeleroLabel: "acm-credentials-hive-schedule-" + aFewSecondsAgoTime,
-	}, nil, nil) // matches backup label from hive backup and it DOES NOT have the hive backup; keep it, ignore it
+	secretKeepIgnoredCloseToCredsBackup := *createSecret("secret-keep-ignored-close-to-creds-backup", namespace,
+		map[string]string{
+			BackupNameVeleroLabel: "acm-credentials-hive-schedule-" + aFewSecondsAgoTime,
+		}, nil, nil) // matches backup label from hive backup and it DOES NOT have the hive backup; keep it, ignore it
 
 	secretKeep2 := *createSecret("aws-creds-keep2", namespace, map[string]string{
 		"velero.io/backup-name-dummy": "name2",
@@ -1151,25 +1302,34 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 	}, nil, nil)
 
 	ctx := context.Background()
-	k8sClient1.Create(ctx, &ns1)
+	errs := []error{}
+	errs = append(errs, k8sClient1.Create(ctx, &ns1))
 	// keep secrets
-	k8sClient1.Create(ctx, &secretKeepCloseToCredsBackup)
-	k8sClient1.Create(ctx, &secretKeepIgnoredCloseToCredsBackup)
-	k8sClient1.Create(ctx, &secretKeep2)
-	k8sClient1.Create(ctx, &keepSecretNoHiveLabel)
-	k8sClient1.Create(ctx, &ignoreSecretFromOldBackup)
+	errs = append(errs, k8sClient1.Create(ctx, &secretKeepCloseToCredsBackup))
+	errs = append(errs, k8sClient1.Create(ctx, &secretKeepIgnoredCloseToCredsBackup))
+	errs = append(errs, k8sClient1.Create(ctx, &secretKeep2))
+	errs = append(errs, k8sClient1.Create(ctx, &keepSecretNoHiveLabel))
+	errs = append(errs, k8sClient1.Create(ctx, &ignoreSecretFromOldBackup))
 	// delete secrets
-	k8sClient1.Create(ctx, &deleteSecretFromOldBackup)
-	k8sClient1.Create(ctx, &secretDelete)
+	errs = append(errs, k8sClient1.Create(ctx, &deleteSecretFromOldBackup))
+	errs = append(errs, k8sClient1.Create(ctx, &secretDelete))
+	if err := errors.Join(errs...); err != nil {
+		t.Fatalf("Error creating objs for test setup: %s", err.Error())
+	}
 
 	relatedCredentialsBackup := *createBackup("acm-credentials-schedule-"+currentTime, namespace).
-		labels(map[string]string{BackupScheduleTypeLabel: string(Credentials),
-			BackupScheduleNameLabel: "acm-credentials-hive-schedule-" + currentTime}).
+		labels(map[string]string{
+			BackupScheduleTypeLabel: string(Credentials),
+			BackupScheduleNameLabel: "acm-credentials-hive-schedule-" + currentTime,
+		}).
 		phase(veleroapi.BackupPhaseCompleted).
 		startTimestamp(rightNow).
 		object
 
-	k8sClient1.Create(ctx, &relatedCredentialsBackup)
+	err = k8sClient1.Create(ctx, &relatedCredentialsBackup)
+	if err != nil {
+		t.Fatalf("Error creating: %s", err.Error())
+	}
 
 	hiveCredsLabel, _ := labels.NewRequirement(backupCredsHiveLabel,
 		selection.Exists, []string{})
@@ -1199,7 +1359,6 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 		name string
 		args args
 	}{
-
 		{
 			name: "keep secrets with no backup or backup matching",
 			args: args{
@@ -1239,26 +1398,34 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 
 		if index == 1 {
 			hiveOldBackup := *createBackup("acm-credentials-hive-schedule-"+tenHourAgoTime, namespace).
-				labels(map[string]string{BackupScheduleTypeLabel: string(CredentialsHive),
-					BackupScheduleNameLabel: "acm-credentials-hive-schedule-" + tenHourAgoTime}).
+				labels(map[string]string{
+					BackupScheduleTypeLabel: string(CredentialsHive),
+					BackupScheduleNameLabel: "acm-credentials-hive-schedule-" + tenHourAgoTime,
+				}).
 				phase(veleroapi.BackupPhaseCompleted).
 				startTimestamp(v1.NewTime(tenHourAgo)).
 				object
 
-			k8sClient1.Create(ctx, &hiveOldBackup)
-
+			err := k8sClient1.Create(ctx, &hiveOldBackup)
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
 		}
 
 		if index == 2 {
 			hiveCloseToCredsBackup := *createBackup("acm-credentials-hive-schedule-"+aFewSecondsAgoTime, namespace).
-				labels(map[string]string{BackupScheduleTypeLabel: string(CredentialsHive),
-					BackupScheduleNameLabel: "acm-credentials-hive-schedule-" + aFewSecondsAgoTime}).
+				labels(map[string]string{
+					BackupScheduleTypeLabel: string(CredentialsHive),
+					BackupScheduleNameLabel: "acm-credentials-hive-schedule-" + aFewSecondsAgoTime,
+				}).
 				phase(veleroapi.BackupPhaseCompleted).
 				startTimestamp(v1.NewTime(aFewSecondsAgo)).
 				object
 
-			k8sClient1.Create(ctx, &hiveCloseToCredsBackup)
-
+			err := k8sClient1.Create(ctx, &hiveCloseToCredsBackup)
+			if err != nil {
+				t.Errorf("Error creating: %s", err.Error())
+			}
 		}
 
 		t.Run(tt.name, func(t *testing.T) {
@@ -1270,8 +1437,10 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 				// no matching backups so non secrets should be deleted
 				secret := corev1.Secret{}
 				if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
-					Name: deleteSecretFromOldBackup.Name, Namespace: namespace}, &secret); err != nil {
-					t.Errorf("deleteSecretsForBackupType() deleteSecretFromOldBackup should be found, there was no hive backup matching the related backup  !")
+					Name: deleteSecretFromOldBackup.Name, Namespace: namespace,
+				}, &secret); err != nil {
+					t.Errorf("deleteSecretsForBackupType() deleteSecretFromOldBackup should be found, there was no hive backup " +
+						"matching the related backup  !")
 				}
 			}
 
@@ -1280,7 +1449,8 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 				for i := range secretsToBeDeleted {
 					secret := corev1.Secret{}
 					if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
-						Name: secretsToBeDeleted[i], Namespace: namespace}, &secret); err != nil {
+						Name: secretsToBeDeleted[i], Namespace: namespace,
+					}, &secret); err != nil {
 						t.Errorf("deleteSecretsForBackupType() index=%v, secret %s should be found",
 							index, secretsToBeDeleted[i])
 					}
@@ -1290,7 +1460,8 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 				for i := range secretsToKeep {
 					secret := corev1.Secret{}
 					if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
-						Name: secretsToKeep[i], Namespace: namespace}, &secret); err != nil {
+						Name: secretsToKeep[i], Namespace: namespace,
+					}, &secret); err != nil {
 						t.Errorf("deleteSecretsForBackupType() index=%v, %s should be found",
 							index, secretsToKeep[i])
 					}
@@ -1301,7 +1472,8 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 				for i := range secretsToBeDeleted {
 					secret := corev1.Secret{}
 					if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
-						Name: secretsToBeDeleted[i], Namespace: namespace}, &secret); err == nil {
+						Name: secretsToBeDeleted[i], Namespace: namespace,
+					}, &secret); err == nil {
 						t.Errorf("deleteSecretsForBackupType() index=%v, secret %s should NOT be found",
 							index, secretsToBeDeleted[i])
 					}
@@ -1311,7 +1483,8 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 				for i := range secretsToKeep {
 					secret := corev1.Secret{}
 					if err := k8sClient1.Get(tt.args.ctx, types.NamespacedName{
-						Name: secretsToKeep[i], Namespace: namespace}, &secret); err != nil {
+						Name: secretsToKeep[i], Namespace: namespace,
+					}, &secret); err != nil {
 						t.Errorf("deleteSecretsForBackupType() index=%v, %s should be found",
 							index, secretsToKeep[i])
 					}
@@ -1321,12 +1494,13 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 		})
 
 	}
-	testEnv.Stop()
 
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_cleanupDeltaForCredentials(t *testing.T) {
-
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -1335,10 +1509,19 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	veleroapi.AddToScheme(scheme1)
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	err = veleroapi.AddToScheme(scheme1)
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error starting client: %s", err.Error())
+	}
 
 	type args struct {
 		ctx          context.Context
@@ -1382,7 +1565,7 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 				backupName:  "acm-credentials-hive-schedule-20220726152532",
 				veleroBackup: createBackup("acm-credentials-hive-schedule-20220726152532", "veleroNamespace").
 					orLabelSelectors([]*metav1.LabelSelector{
-						&metav1.LabelSelector{
+						{
 							MatchLabels: map[string]string{
 								"test": "test",
 							},
@@ -1398,13 +1581,15 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 			cleanupDeltaForCredentials(tt.args.ctx, tt.args.c,
 				tt.args.backupName, tt.args.veleroBackup, tt.args.cleanupType, false)
 		})
-
 	}
-	testEnv.Stop()
 
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
+	log.SetLogger(zap.New())
 
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
@@ -1414,11 +1599,27 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	cfg, _ := testEnv.Start()
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
 	scheme1 := runtime.NewScheme()
-	veleroapi.AddToScheme(scheme1)
-	corev1.AddToScheme(scheme1)
-	k8sClient1, _ := client.New(cfg, client.Options{Scheme: scheme1})
+	err = veleroapi.AddToScheme(scheme1)
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
+	err = clusterv1.AddToScheme(scheme1)
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
+	err = corev1.AddToScheme(scheme1)
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error starting client: %s", err.Error())
+	}
 
 	namespaceName := "open-cluster-management-backup"
 	timeNow, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
@@ -1438,6 +1639,15 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 	veleroClustersBackupNameOlder := veleroScheduleNames[ManagedClusters] + "-" + tenHourAgoTime
 	veleroClustersBackupName := veleroScheduleNames[ManagedClusters] + "-" + aFewSecondsAgoTime
+
+	// Create a local cluster managedcluster object
+	if err := k8sClient1.Create(context.Background(), createNamespace("myhub1")); err != nil {
+		t.Fatalf("cannot create ns %s ", err.Error())
+	}
+	err = k8sClient1.Create(context.Background(), createManagedCluster("myhub1", true /* local cluster */).object)
+	if err != nil {
+		t.Fatalf("cannot create %s ", err.Error())
+	}
 
 	// create a resources backup
 	resources := []string{
@@ -1734,90 +1944,154 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		},
 	})
 
-	msaGVK := schema.GroupVersionKind{Group: "authentication.open-cluster-management.io",
-		Version: "v1beta1", Kind: "ManagedServiceAccount"}
-	msaGVRList := schema.GroupVersionResource{Group: "authentication.open-cluster-management.io",
-		Version: "v1beta1", Resource: "managedserviceaccounts"}
+	msaGVK := schema.GroupVersionKind{
+		Group:   "authentication.open-cluster-management.io",
+		Version: "v1beta1", Kind: "ManagedServiceAccount",
+	}
+	msaGVRList := schema.GroupVersionResource{
+		Group:   "authentication.open-cluster-management.io",
+		Version: "v1beta1", Resource: "managedserviceaccounts",
+	}
 
 	// cluster deployments
-	clsDGVK := schema.GroupVersionKind{Group: "hive.openshift.io",
-		Version: "v1", Kind: "ClusterDeployment"}
-	clsDGVKList := schema.GroupVersionResource{Group: "hive.openshift.io",
-		Version: "v1", Resource: "clusterdeployments"}
+	clsDGVK := schema.GroupVersionKind{
+		Group:   "hive.openshift.io",
+		Version: "v1", Kind: "ClusterDeployment",
+	}
+	clsDGVKList := schema.GroupVersionResource{
+		Group:   "hive.openshift.io",
+		Version: "v1", Resource: "clusterdeployments",
+	}
 
 	// placements
-	plsGVK := schema.GroupVersionKind{Group: "cluster.open-cluster-management.io",
-		Version: "v1beta1", Kind: "Placement"}
-	plsGVKGVKList := schema.GroupVersionResource{Group: "cluster.open-cluster-management.io",
-		Version: "v1beta1", Resource: "placements"}
-	//curators
-	crGVK := schema.GroupVersionKind{Group: "cluster.open-cluster-management.io",
-		Version: "v1beta1", Kind: "ClusterCurator"}
-	crGVKGVKList := schema.GroupVersionResource{Group: "cluster.open-cluster-management.io",
-		Version: "v1beta1", Resource: "clustercurators"}
-	//channels
-	chGVK := schema.GroupVersionKind{Group: "apps.open-cluster-management.io",
-		Version: "v1beta1", Kind: "Channel"}
-	chGVKList := schema.GroupVersionResource{Group: "apps.open-cluster-management.io",
-		Version: "v1beta1", Resource: "channels"}
-	//subs
-	subsGVK := schema.GroupVersionKind{Group: "apps.open-cluster-management.io",
-		Version: "v1beta1", Kind: "Subscription"}
-	subsGVKList := schema.GroupVersionResource{Group: "apps.open-cluster-management.io",
-		Version: "v1beta1", Resource: "subscriptions"}
+	plsGVK := schema.GroupVersionKind{
+		Group:   "cluster.open-cluster-management.io",
+		Version: "v1beta1", Kind: "Placement",
+	}
+	plsGVKGVKList := schema.GroupVersionResource{
+		Group:   "cluster.open-cluster-management.io",
+		Version: "v1beta1", Resource: "placements",
+	}
+	// curators
+	crGVK := schema.GroupVersionKind{
+		Group:   "cluster.open-cluster-management.io",
+		Version: "v1beta1", Kind: "ClusterCurator",
+	}
+	crGVKGVKList := schema.GroupVersionResource{
+		Group:   "cluster.open-cluster-management.io",
+		Version: "v1beta1", Resource: "clustercurators",
+	}
+	// channels
+	chGVK := schema.GroupVersionKind{
+		Group:   "apps.open-cluster-management.io",
+		Version: "v1beta1", Kind: "Channel",
+	}
+	chGVKList := schema.GroupVersionResource{
+		Group:   "apps.open-cluster-management.io",
+		Version: "v1beta1", Resource: "channels",
+	}
+	// subs
+	subsGVK := schema.GroupVersionKind{
+		Group:   "apps.open-cluster-management.io",
+		Version: "v1beta1", Kind: "Subscription",
+	}
+	subsGVKList := schema.GroupVersionResource{
+		Group:   "apps.open-cluster-management.io",
+		Version: "v1beta1", Resource: "subscriptions",
+	}
 
-	//managed clusters
-	clsGVK := schema.GroupVersionKind{Group: "cluster.open-cluster-management.io",
-		Version: "v1beta1", Kind: "ManagedCluster"}
-	clsGVKList := schema.GroupVersionResource{Group: "cluster.open-cluster-management.io",
-		Version: "v1beta1", Resource: "managedclusters"}
-	//managed clusters sets
-	clsSGVK := schema.GroupVersionKind{Group: "cluster.open-cluster-management.io",
-		Version: "v1beta1", Kind: "ManagedClusterSet"}
-	clsSGVKList := schema.GroupVersionResource{Group: "cluster.open-cluster-management.io",
-		Version: "v1beta1", Resource: "managedclustersets"}
-	//backups
-	bsSGVK := schema.GroupVersionKind{Group: "cluster.open-cluster-management.io",
-		Version: "v1beta1", Kind: "BackupSchedule"}
-	bsSGVKList := schema.GroupVersionResource{Group: "cluster.open-cluster-management.io",
-		Version: "v1beta1", Resource: "backupschedules"}
-	//mutators
-	mGVK := schema.GroupVersionKind{Group: "proxy.open-cluster-management.io",
-		Version: "v1beta1", Kind: "AdmissionReview"}
-	mVKList := schema.GroupVersionResource{Group: "proxy.open-cluster-management.io",
-		Version: "v1beta1", Resource: "managedclustermutators"}
-	//pools
-	cpGVK := schema.GroupVersionKind{Group: "hive.openshift.io",
-		Version: "v1", Kind: "ClusterPool"}
-	cpVKList := schema.GroupVersionResource{Group: "hive.openshift.io",
-		Version: "v1", Resource: "clusterpools"}
-	//dns
-	dnsGVK := schema.GroupVersionKind{Group: "hive.openshift.io",
-		Version: "v1", Kind: "DNSZone"}
-	dnsVKList := schema.GroupVersionResource{Group: "hive.openshift.io",
-		Version: "v1", Resource: "dnszones"}
-	//image set
-	imgGVK := schema.GroupVersionKind{Group: "hive.openshift.io",
-		Version: "v1", Kind: "ClusterImageSet"}
-	imgVKList := schema.GroupVersionResource{Group: "hive.openshift.io",
-		Version: "v1", Resource: "clusterimageset"}
-	//hive config
-	hGVK := schema.GroupVersionKind{Group: "hive.openshift.io",
-		Version: "v1", Kind: "HiveConfig"}
-	hVKList := schema.GroupVersionResource{Group: "hive.openshift.io",
-		Version: "v1", Resource: "hiveconfig"}
+	// managed clusters
+	clsGVK := schema.GroupVersionKind{
+		Group:   "cluster.open-cluster-management.io",
+		Version: "v1beta1", Kind: "ManagedCluster",
+	}
+	clsGVKList := schema.GroupVersionResource{
+		Group:   "cluster.open-cluster-management.io",
+		Version: "v1beta1", Resource: "managedclusters",
+	}
+	// managed clusters sets
+	clsSGVK := schema.GroupVersionKind{
+		Group:   "cluster.open-cluster-management.io",
+		Version: "v1beta1", Kind: "ManagedClusterSet",
+	}
+	clsSGVKList := schema.GroupVersionResource{
+		Group:   "cluster.open-cluster-management.io",
+		Version: "v1beta1", Resource: "managedclustersets",
+	}
+	// backups
+	bsSGVK := schema.GroupVersionKind{
+		Group:   "cluster.open-cluster-management.io",
+		Version: "v1beta1", Kind: "BackupSchedule",
+	}
+	bsSGVKList := schema.GroupVersionResource{
+		Group:   "cluster.open-cluster-management.io",
+		Version: "v1beta1", Resource: "backupschedules",
+	}
+	// mutators
+	mGVK := schema.GroupVersionKind{
+		Group:   "proxy.open-cluster-management.io",
+		Version: "v1beta1", Kind: "AdmissionReview",
+	}
+	mVKList := schema.GroupVersionResource{
+		Group:   "proxy.open-cluster-management.io",
+		Version: "v1beta1", Resource: "managedclustermutators",
+	}
+	// pools
+	cpGVK := schema.GroupVersionKind{
+		Group:   "hive.openshift.io",
+		Version: "v1", Kind: "ClusterPool",
+	}
+	cpVKList := schema.GroupVersionResource{
+		Group:   "hive.openshift.io",
+		Version: "v1", Resource: "clusterpools",
+	}
+	// dns
+	dnsGVK := schema.GroupVersionKind{
+		Group:   "hive.openshift.io",
+		Version: "v1", Kind: "DNSZone",
+	}
+	dnsVKList := schema.GroupVersionResource{
+		Group:   "hive.openshift.io",
+		Version: "v1", Resource: "dnszones",
+	}
+	// image set
+	imgGVK := schema.GroupVersionKind{
+		Group:   "hive.openshift.io",
+		Version: "v1", Kind: "ClusterImageSet",
+	}
+	imgVKList := schema.GroupVersionResource{
+		Group:   "hive.openshift.io",
+		Version: "v1", Resource: "clusterimageset",
+	}
+	// hive config
+	hGVK := schema.GroupVersionKind{
+		Group:   "hive.openshift.io",
+		Version: "v1", Kind: "HiveConfig",
+	}
+	hVKList := schema.GroupVersionResource{
+		Group:   "hive.openshift.io",
+		Version: "v1", Resource: "hiveconfig",
+	}
 
-	//addon
-	aoGVK := schema.GroupVersionKind{Group: "addon.open-cluster-management.io",
-		Version: "v1alpha1", Kind: "ManagedClusterAddOn"}
-	aoVKList := schema.GroupVersionResource{Group: "addon.open-cluster-management.io",
-		Version: "v1alpha1", Resource: "managedclusteraddons"}
+	// addon
+	aoGVK := schema.GroupVersionKind{
+		Group:   "addon.open-cluster-management.io",
+		Version: "v1alpha1", Kind: "ManagedClusterAddOn",
+	}
+	aoVKList := schema.GroupVersionResource{
+		Group:   "addon.open-cluster-management.io",
+		Version: "v1alpha1", Resource: "managedclusteraddons",
+	}
 
-	//cluster version
-	clsVGVK := schema.GroupVersionKind{Group: "config.openshift.io",
-		Version: "v1", Kind: "ClusterVersion"}
-	clsVGVKList := schema.GroupVersionResource{Group: "config.openshift.io",
-		Version: "v1", Resource: "clusterversions"}
+	// cluster version
+	clsVGVK := schema.GroupVersionKind{
+		Group:   "config.openshift.io",
+		Version: "v1", Kind: "ClusterVersion",
+	}
+	clsVGVKList := schema.GroupVersionResource{
+		Group:   "config.openshift.io",
+		Version: "v1", Resource: "clusterversions",
+	}
 
 	///
 	gvrToListKind := map[schema.GroupVersionResource]string{
@@ -1886,13 +2160,12 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			{Name: "argocds", Namespaced: true, Kind: "Argocd"},
 		},
 	}
-	openshiftv1Info :=
-		metav1.APIResourceList{
-			GroupVersion: "config.openshift.io/v1",
-			APIResources: []metav1.APIResource{
-				{Name: "clusterversions", Namespaced: false, Kind: "ClusterVersion"},
-			},
-		}
+	openshiftv1Info := metav1.APIResourceList{
+		GroupVersion: "config.openshift.io/v1",
+		APIResources: []metav1.APIResource{
+			{Name: "clusterversions", Namespaced: false, Kind: "ClusterVersion"},
+		},
+	}
 	appsInfo := metav1.APIResourceList{
 		GroupVersion: "apps.open-cluster-management.io/v1beta1",
 		APIResources: []metav1.APIResource{
@@ -2067,18 +2340,21 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 				},
 			}
 		default:
-			//t.Logf("unexpected request: %s", req.URL.Path)
+			// t.Logf("unexpected request: %s", req.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		output, err := json.Marshal(list)
 		if err != nil {
-			//t.Errorf("unexpected encoding error: %v", err)
+			// t.Errorf("unexpected encoding error: %v", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write(output)
+		_, err = w.Write(output)
+		if err != nil {
+			return
+		}
 	}))
 
 	fakeDiscovery := discoveryclient.NewDiscoveryClientForConfigOrDie(
@@ -2086,33 +2362,66 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	)
 
 	testRequest := "authentication.open-cluster-management.io/v1beta1"
-	fakeDiscovery.ServerResourcesForGroupVersion(testRequest)
+	_, err = fakeDiscovery.ServerResourcesForGroupVersion(testRequest)
+	if err != nil {
+		t.Fatalf("Unexpected error: %s", err.Error())
+	}
 
-	//create some channel resources
-	dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
+	// create some channel resources
+	_, err = dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
 		channel_with_backup_label_same, v1.CreateOptions{})
-	dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
+	if client.IgnoreAlreadyExists(err) != nil {
+		t.Fatalf("Error creating: %s", err.Error())
+	}
+	_, err = dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
 		channel_with_backup_label_diff, v1.CreateOptions{})
-	dyn.Resource(chGVKList).Namespace("local-cluster").Create(context.Background(),
+	if client.IgnoreAlreadyExists(err) != nil {
+		t.Fatalf("Error creating: %s", err.Error())
+	}
+	_, err = dyn.Resource(chGVKList).Namespace("local-cluster").Create(context.Background(),
 		channel_with_backup_label_diff_excl_ns, v1.CreateOptions{})
-	dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
+	if client.IgnoreAlreadyExists(err) != nil {
+		t.Fatalf("Error creating: %s", err.Error())
+	}
+	_, err = dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
 		channel_with_backup_label_generic, v1.CreateOptions{})
-	dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
+	if client.IgnoreAlreadyExists(err) != nil {
+		t.Fatalf("Error creating: %s", err.Error())
+	}
+	_, err = dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
 		channel_with_no_backup_label, v1.CreateOptions{})
+	if client.IgnoreAlreadyExists(err) != nil {
+		t.Fatalf("Error creating: %s", err.Error())
+	}
 
-	//create some cluster resources
-	dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
+	// create some cluster resources
+	_, err = dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
 		cls_with_backup_label_diff, v1.CreateOptions{})
-	dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
+	if err != nil {
+		t.Fatalf("Error creating: %s", err.Error())
+	}
+	_, err = dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
 		cls_with_backup_label_same, v1.CreateOptions{})
-	dyn.Resource(clsGVKList).Namespace("local-cluster").Create(context.Background(),
+	if err != nil {
+		t.Fatalf("Error creating: %s", err.Error())
+	}
+	_, err = dyn.Resource(clsGVKList).Namespace("local-cluster").Create(context.Background(),
 		cls_with_backup_label_diff_excl_ns, v1.CreateOptions{})
-	dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
+	if err != nil {
+		t.Fatalf("Error creating: %s", err.Error())
+	}
+	_, err = dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
 		cls_with_no_backup_label, v1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Error creating: %s", err.Error())
+	}
 
 	//
-	dyn.Resource(msaGVRList).Namespace("managed1").Create(context.Background(),
+	_, err = dyn.Resource(msaGVRList).Namespace("managed1").Create(context.Background(),
 		msaObj, v1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Error creating: %s", err.Error())
+	}
 
 	reconcileArgs := DynamicStruct{
 		dc:  fakeDiscovery,
@@ -2382,7 +2691,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	}
 
 	if err := k8sClient1.Create(context.Background(), createNamespace(genericBackup.GetNamespace())); err != nil {
-		t.Errorf("cannot create ns %s ", err.Error())
+		t.Fatalf("cannot create ns %s ", err.Error())
 	}
 
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(
@@ -2405,14 +2714,14 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	}
 	for i := range createRestores {
 		if err := k8sClient1.Create(context.Background(), &createRestores[i]); err != nil {
-			t.Errorf("cannot create restore %s ", err.Error())
+			t.Fatalf("cannot create restore %s ", err.Error())
 		}
 	}
 	////////
 
 	for _, tt := range testsResources {
+		_ = k8sClient1.Create(tt.args.ctx, tt.args.veleroBackup)
 
-		k8sClient1.Create(tt.args.ctx, tt.args.veleroBackup)
 		// create extra backups for this test
 		for i := range tt.extraBackups {
 			if err := k8sClient1.Create(tt.args.ctx, &tt.extraBackups[i]); err != nil {
@@ -2429,7 +2738,6 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		}
 
 		t.Run(tt.name, func(t *testing.T) {
-
 			cleanupDeltaForResourcesBackup(tt.args.ctx,
 				tt.args.c,
 				tt.args.restoreOptions,
@@ -2442,7 +2750,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		}
 
 		mapping, _ := mapper.RESTMapping(groupKind, "")
-		var dr = tt.args.restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource)
+		dr := tt.args.restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource)
 
 		for i := range tt.resourcesToBeDeleted {
 			if _, err := dr.Namespace(tt.resourcesToBeDeleted[i].GetNamespace()).
@@ -2464,7 +2772,9 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 	for _, tt := range testsClusters {
 
-		k8sClient1.Create(tt.args.ctx, tt.args.veleroBackup)
+		if err := k8sClient1.Create(tt.args.ctx, tt.args.veleroBackup); err != nil {
+			t.Errorf("Error creating veleroBackup: %s", err.Error())
+		}
 		// create extra backups for this test
 		for i := range tt.extraBackups {
 			if err := k8sClient1.Create(tt.args.ctx, &tt.extraBackups[i]); err != nil {
@@ -2481,7 +2791,6 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		}
 
 		t.Run(tt.name, func(t *testing.T) {
-
 			cleanupDeltaForClustersBackup(tt.args.ctx,
 				tt.args.c,
 				tt.args.restoreOptions,
@@ -2495,7 +2804,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 			Kind:  clsGVK.Kind,
 		}
 		mapping, _ := mapper.RESTMapping(groupKind, "")
-		var dr = tt.args.restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource)
+		dr := tt.args.restoreOptions.dynamicArgs.dyn.Resource(mapping.Resource)
 
 		for i := range tt.resourcesToBeDeleted {
 			if _, err := dr.Namespace(tt.resourcesToBeDeleted[i].GetNamespace()).
@@ -2514,5 +2823,8 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		}
 
 	}
-	testEnv.Stop()
+
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
 }

@@ -2,7 +2,6 @@ package controllers
 
 import (
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -14,8 +13,10 @@ import (
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 )
 
-const acmApiVersion = "cluster.open-cluster-management.io/v1beta1"
-const veleroApiVersion = "velero.io/v1"
+const (
+	acmApiVersion    = "cluster.open-cluster-management.io/v1beta1"
+	veleroApiVersion = "velero.io/v1"
+)
 
 func createNamespace(name string) *corev1.Namespace {
 	return &corev1.Namespace{
@@ -32,7 +33,8 @@ func createNamespace(name string) *corev1.Namespace {
 func createSecret(name string, ns string,
 	labels map[string]string,
 	annotations map[string]string,
-	data map[string][]byte) *corev1.Secret {
+	data map[string][]byte,
+) *corev1.Secret {
 	secret := &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -54,7 +56,6 @@ func createSecret(name string, ns string,
 	}
 
 	return secret
-
 }
 
 func createMWork(name string, ns string) *workv1.ManifestWork {
@@ -70,11 +71,11 @@ func createMWork(name string, ns string) *workv1.ManifestWork {
 	}
 
 	return mwork
-
 }
 
 func createConfigMap(name string, ns string,
-	labels map[string]string) *corev1.ConfigMap {
+	labels map[string]string,
+) *corev1.ConfigMap {
 	cmap := &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -90,11 +91,10 @@ func createConfigMap(name string, ns string,
 	}
 
 	return cmap
-
 }
 
+//nolint:unparam
 func createPVC(name string, ns string) *corev1.PersistentVolumeClaim {
-
 	pvc := &corev1.PersistentVolumeClaim{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -108,19 +108,19 @@ func createPVC(name string, ns string) *corev1.PersistentVolumeClaim {
 			AccessModes: []corev1.PersistentVolumeAccessMode{
 				"ReadWriteOnce",
 			},
-			Resources: corev1.ResourceRequirements{
-				Requests: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): resource.MustParse("10Gi"),
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceName(corev1.ResourceStorage): resource.MustParse("10Gi"),
 				},
 			},
 		},
 	}
 	return pvc
-
 }
 
 func createClusterVersion(name string, cid ocinfrav1.ClusterID,
-	labels map[string]string) *ocinfrav1.ClusterVersion {
+	labels map[string]string,
+) *ocinfrav1.ClusterVersion {
 	clusterVersion := &ocinfrav1.ClusterVersion{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "config.openshift.io/v1",
@@ -291,6 +291,16 @@ func createRestore(name string, ns string) *RestoreHelper {
 	}
 }
 
+func (b *RestoreHelper) labelSelector(selector *metav1.LabelSelector) *RestoreHelper {
+	b.object.Spec.LabelSelector = selector
+	return b
+}
+
+func (b *RestoreHelper) orLabelSelector(selectors []*metav1.LabelSelector) *RestoreHelper {
+	b.object.Spec.OrLabelSelectors = selectors
+	return b
+}
+
 func (b *RestoreHelper) backupName(name string) *RestoreHelper {
 	b.object.Spec.BackupName = name
 	return b
@@ -371,6 +381,16 @@ func (b *ACMRestoreHelper) preserveNodePorts(preserve bool) *ACMRestoreHelper {
 	return b
 }
 
+func (b *ACMRestoreHelper) restoreLabelSelector(selector *metav1.LabelSelector) *ACMRestoreHelper {
+	b.object.Spec.LabelSelector = selector
+	return b
+}
+
+func (b *ACMRestoreHelper) restoreORLabelSelector(selectors []*metav1.LabelSelector) *ACMRestoreHelper {
+	b.object.Spec.OrLabelSelectors = selectors
+	return b
+}
+
 func (b *ACMRestoreHelper) restorePVs(restorePV bool) *ACMRestoreHelper {
 	b.object.Spec.RestorePVs = &restorePV
 	return b
@@ -397,8 +417,23 @@ func (b *ACMRestoreHelper) excludedResources(resources []string) *ACMRestoreHelp
 	return b
 }
 
+func (b *ACMRestoreHelper) includedResources(resources []string) *ACMRestoreHelper {
+	b.object.Spec.IncludedResources = resources
+	return b
+}
+
 func (b *ACMRestoreHelper) excludedNamespaces(nspaces []string) *ACMRestoreHelper {
 	b.object.Spec.ExcludedNamespaces = nspaces
+	return b
+}
+
+func (b *ACMRestoreHelper) includedNamespaces(nspaces []string) *ACMRestoreHelper {
+	b.object.Spec.IncludedNamespaces = nspaces
+	return b
+}
+
+func (b *ACMRestoreHelper) namespaceMapping(nspaces map[string]string) *ACMRestoreHelper {
+	b.object.Spec.NamespaceMapping = nspaces
 	return b
 }
 
@@ -427,6 +462,11 @@ func (b *BackupScheduleHelper) veleroTTL(ttl metav1.Duration) *BackupScheduleHel
 	return b
 }
 
+func (b *BackupScheduleHelper) paused(isPaused bool) *BackupScheduleHelper {
+	b.object.Spec.Paused = isPaused
+	return b
+}
+
 func (b *BackupScheduleHelper) schedule(sch string) *BackupScheduleHelper {
 	b.object.Spec.VeleroSchedule = sch
 	return b
@@ -444,6 +484,20 @@ func (b *BackupScheduleHelper) managedServiceAccountTTL(ttl metav1.Duration) *Ba
 
 func (b *BackupScheduleHelper) phase(ph v1beta1.SchedulePhase) *BackupScheduleHelper {
 	b.object.Status.Phase = ph
+	return b
+}
+
+func (b *BackupScheduleHelper) scheduleStatus(scheduleType ResourceType, sch veleroapi.Schedule) *BackupScheduleHelper {
+	if scheduleType == Credentials {
+		b.object.Status.VeleroScheduleCredentials = sch.DeepCopy()
+	}
+	if scheduleType == ManagedClusters {
+		b.object.Status.VeleroScheduleManagedClusters = sch.DeepCopy()
+	}
+	if scheduleType == Resources {
+		b.object.Status.VeleroScheduleResources = sch.DeepCopy()
+	}
+
 	return b
 }
 
@@ -509,26 +563,33 @@ type ManagedHelper struct {
 	object *clusterv1.ManagedCluster
 }
 
-func createManagedCluster(name string) *ManagedHelper {
-	return &ManagedHelper{
-		&clusterv1.ManagedCluster{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cluster.open-cluster-management.io/v1",
-				Kind:       "ManagedCluster",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: name,
-			},
-			Spec: clusterv1.ManagedClusterSpec{
-				HubAcceptsClient: true,
-			},
+func createManagedCluster(name string, isLocalCluster bool) *ManagedHelper {
+	mgdCluster := &clusterv1.ManagedCluster{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cluster.open-cluster-management.io/v1",
+			Kind:       "ManagedCluster",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: clusterv1.ManagedClusterSpec{
+			HubAcceptsClient: true,
 		},
 	}
+
+	if isLocalCluster {
+		// Add local-cluster label
+		mgdCluster.Labels = map[string]string{
+			"local-cluster": "true",
+		}
+	}
+
+	return &ManagedHelper{mgdCluster}
 }
 
 func (b *ManagedHelper) clusterUrl(curl string) *ManagedHelper {
 	b.object.Spec.ManagedClusterClientConfigs = []clusterv1.ClientConfig{
-		clusterv1.ClientConfig{
+		{
 			URL: curl,
 		},
 	}
@@ -537,7 +598,7 @@ func (b *ManagedHelper) clusterUrl(curl string) *ManagedHelper {
 
 func (b *ManagedHelper) emptyClusterUrl() *ManagedHelper {
 	b.object.Spec.ManagedClusterClientConfigs = []clusterv1.ClientConfig{
-		clusterv1.ClientConfig{},
+		{},
 	}
 	return b
 }
@@ -575,6 +636,7 @@ func (b *ChannelHelper) channelLabels(labels map[string]string) *ChannelHelper {
 	b.object.Labels = labels
 	return b
 }
+
 func (b *ChannelHelper) channelFinalizers(finalizers []string) *ChannelHelper {
 	b.object.Finalizers = finalizers
 	return b
