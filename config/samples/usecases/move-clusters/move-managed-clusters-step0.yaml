@@ -5,8 +5,11 @@
 ########################################
 
 # This is step 0 of the process, apply move-managed-clusters-step0 on Hub2
+# This is an optional step, run it only if you want to move to Hub2 all user data, not only the vb-managed-cls-2 managed cluster.
 
-# Before applying the move-managed-clusters-step0 resource on Hub2:
+
+# Run these steps before applying the move-managed-clusters-step0 resource on Hub2 ( if you skip move-managed-clusters-step0 and go directly to 
+# move-managed-clusters-step1 to move just the managed cluster, run these steps before aplying the move-managed-clusters-step1.yaml):
 # 1. Pause BackupSchedule on Hub1
 # 2. After BackupSchedule is set to paused on Hub1, set this label annotation on the vb-managed-cls-2 ManagedCluster
 #    on Hub1 :  import.open-cluster-management.io/disable-auto-import: ''
@@ -27,7 +30,9 @@ spec:
   cleanupBeforeRestore: None # don't clean up anything, just apply the restore
   veleroCredentialsBackupName: latest # move hub credential resources
   veleroResourcesBackupName: latest  # move hub resources, such as apps, policies
-  veleroManagedClustersBackupName: skip  # skip
+  veleroManagedClustersBackupName: latest  # move activation resources
+  excludedResources:
+    - ManagedCluster # skip any ManagedCluster global resource
   orLabelSelectors:  # skip ALL managed cluster namespaces
     - matchExpressions:
         - values:
