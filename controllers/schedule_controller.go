@@ -410,7 +410,12 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		if len(backupSchedule.Spec.VolumeSnapshotLocations) > 0 {
 			veleroBackupTemplate.VolumeSnapshotLocations = backupSchedule.Spec.VolumeSnapshotLocations
 		}
-
+		if backupSchedule.Spec.UseOwnerReferencesInBackup {
+			veleroSchedule.Spec.UseOwnerReferencesInBackup = &backupSchedule.Spec.UseOwnerReferencesInBackup
+		}
+		if backupSchedule.Spec.SkipImmediately {
+			veleroSchedule.Spec.SkipImmediately = &backupSchedule.Spec.SkipImmediately
+		}
 		veleroSchedule.Spec.Template = *veleroBackupTemplate
 		veleroSchedule.Spec.Schedule = backupSchedule.Spec.VeleroSchedule
 		if backupSchedule.Spec.VeleroTTL.Duration != 0 && scheduleKey != ValidationSchedule {
@@ -438,7 +443,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 			// set veleroSchedule in backupSchedule status
 			setVeleroScheduleInStatus(scheduleKey, veleroSchedule, backupSchedule)
 			// if initial backup needs to be created, process it here
-			createInitialBackupForSchedule(ctx, r.Client,
+			createInitialBackupForSchedule(ctx, r.Client, r.Scheme,
 				veleroSchedule, backupSchedule, currentTime)
 		}
 	}
