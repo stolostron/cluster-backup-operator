@@ -132,7 +132,7 @@ controller-gen: ## Download controller-gen locally if necessary.
 
 KUSTOMIZE = $(LOCALBIN)/kustomize
 kustomize: ## Download kustomize locally if necessary.
-	$(call go-get-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v3@v3.8.7)
+	$(call go-get-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v4@v4.5.2)
 
 .PHONY: golangci-lint
 GOLANGCILINT := $(LOCALBIN)/golangci-lint

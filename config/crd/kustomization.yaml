@@ -4,11 +4,6 @@
 resources:
 - bases/cluster.open-cluster-management.io_restores.yaml
 - bases/cluster.open-cluster-management.io_backupschedules.yaml
-- bases/velero.io_backups.yaml
-- bases/velero.io_backupstoragelocations.yaml
-- bases/velero.io_restores.yaml
-- bases/velero.io_schedules.yaml
-- bases/velero.io_deletebackuprequests.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:
