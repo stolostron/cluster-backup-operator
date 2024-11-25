@@ -948,7 +948,7 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 			}
 		}
 		t.Run(tt.name, func(t *testing.T) {
-			if got_backup := createInitialBackupForSchedule(tt.args.ctx, tt.args.c, tt.args.veleroSchedule,
+			if got_backup := createInitialBackupForSchedule(tt.args.ctx, tt.args.c, scheme1, tt.args.veleroSchedule,
 				tt.args.backupSchedule, timeStr); got_backup != tt.want_veleroBackup {
 				t.Errorf("createInitialBackupForSchedule() backupName is %v, want %v",
 					got_backup, tt.want_veleroBackup)

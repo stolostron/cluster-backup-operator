@@ -95,6 +95,18 @@ type BackupScheduleSpec struct {
 	// Setting this option to false results in recreating the velero Schedules.
 	// If not defined, the value is set to false.
 	Paused bool `json:"paused,omitempty"`
+	// +kubebuilder:validation:Optional
+	// UseOwnerReferencesBackup specifies whether to use
+	// OwnerReferences on backups created by this Schedule.
+	UseOwnerReferencesInBackup bool `json:"useOwnerReferencesInBackup,omitempty"`
+	// +kubebuilder:validation:Optional
+	// SkipImmediately specifies whether to skip backup if schedule is due immediately
+	// from `schedule.status.lastBackup` timestamp when schedule is unpaused or if schedule is new.
+	// If true, backup will be skipped immediately when schedule is unpaused if it is due
+	// based on .Status.LastBackupTimestamp or schedule is new, and will run at next schedule time.
+	// If false, backup will not be skipped immediately when schedule is unpaused, but will run at next schedule time.
+	// If not defined, the value is set to false.
+	SkipImmediately bool `json:"skipImmediately,omitempty"`
 }
 
 // BackupScheduleStatus defines the observed state of BackupSchedule

@@ -511,6 +511,16 @@ func (b *BackupScheduleHelper) setVolumeSnapshotLocation(locations []string) *Ba
 	return b
 }
 
+func (b *BackupScheduleHelper) useOwnerReferencesInBackup(useOwnerReferences bool) *BackupScheduleHelper {
+	b.object.Spec.UseOwnerReferencesInBackup = useOwnerReferences
+	return b
+}
+
+func (b *BackupScheduleHelper) skipImmediately(skipImmediately bool) *BackupScheduleHelper {
+	b.object.Spec.SkipImmediately = skipImmediately
+	return b
+}
+
 // storage location
 type StorageLocationHelper struct {
 	object *veleroapi.BackupStorageLocation

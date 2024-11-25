@@ -464,6 +464,8 @@ var _ = Describe("BackupSchedule controller", func() {
 				useManagedServiceAccount(true).
 				managedServiceAccountTTL(metav1.Duration{Duration: time.Hour * 90}).
 				setVolumeSnapshotLocation([]string{"dpa-1"}).
+				useOwnerReferencesInBackup(true).
+				skipImmediately(true).
 				object
 			Expect(k8sClient.Create(ctx, &rhacmBackupSchedule)).Should(Succeed())
 
@@ -653,6 +655,14 @@ var _ = Describe("BackupSchedule controller", func() {
 			Expect(
 				veleroSchedulesList.Items[1].Spec.Template.VolumeSnapshotLocations,
 			).Should(Equal([]string{"dpa-1"}))
+			// check the UseOwnerReferencesInBackup property
+			Expect(
+				*veleroSchedulesList.Items[1].Spec.UseOwnerReferencesInBackup,
+			).Should(BeTrue())
+			// check the SkipImmediately property
+			Expect(
+				*veleroSchedulesList.Items[1].Spec.SkipImmediately,
+			).Should(BeTrue())
 			// verify clusterpool.other.hive.openshift.io to be in the managed cluster schedule and not in resources backup
 			// because the includedActivationAPIGroupsByName contains other.hive.openshift.io
 			for i := range veleroSchedulesList.Items {

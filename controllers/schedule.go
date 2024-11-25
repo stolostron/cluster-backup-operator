@@ -25,6 +25,7 @@ import (
 	"github.com/robfig/cron/v3"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -399,6 +400,7 @@ func isRestoreRunning(
 func createInitialBackupForSchedule(
 	ctx context.Context,
 	c client.Client,
+	sch *runtime.Scheme,
 	schedule *veleroapi.Schedule,
 	backupSchedue *v1beta1.BackupSchedule,
 	timeStr string,
@@ -407,9 +409,13 @@ func createInitialBackupForSchedule(
 	scheduleLogger := log.FromContext(ctx)
 	veleroBackup := &veleroapi.Backup{}
 
-	if backupSchedue.Spec.NoBackupOnStart {
+	if backupSchedue.Spec.NoBackupOnStart || backupSchedue.Spec.SkipImmediately {
 		// do not generate backups, exit now
-		scheduleLogger.Info("skip backup creation, backupSchedue.Spec.NoBackupOnStart set to true")
+		scheduleLogger.Info(
+			"skip initial backup creation",
+			"NoBackupOnStart", backupSchedue.Spec.NoBackupOnStart,
+			"SkipImmediately", backupSchedue.Spec.SkipImmediately,
+		)
 		return ""
 	}
 
@@ -427,6 +433,18 @@ func createInitialBackupForSchedule(
 	veleroBackup.SetLabels(labels)
 	// set spec from schedule spec
 	veleroBackup.Spec = schedule.Spec.Template
+
+	if schedule.Spec.UseOwnerReferencesInBackup != nil && *schedule.Spec.UseOwnerReferencesInBackup {
+		if err := ctrl.SetControllerReference(schedule, veleroBackup, sch); err != nil {
+			scheduleLogger.Error(
+				err,
+				"Error in SetControllerReference for velero.io.Backup",
+				"name", veleroBackup.Name,
+				"namespace", veleroBackup.Namespace,
+			)
+			return ""
+		}
+	}
 
 	// now create the backup
 	if err := c.Create(ctx, veleroBackup, &client.CreateOptions{}); err != nil {
