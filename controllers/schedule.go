@@ -411,7 +411,11 @@ func createInitialBackupForSchedule(
 
 	if backupSchedue.Spec.NoBackupOnStart || backupSchedue.Spec.SkipImmediately {
 		// do not generate backups, exit now
-		scheduleLogger.Info("skip backup creation, backupSchedue.Spec.NoBackupOnStart set to true")
+		scheduleLogger.Info(
+			"skip initial backup creation",
+			"NoBackupOnStart", backupSchedue.Spec.NoBackupOnStart,
+			"SkipImmediately", backupSchedue.Spec.SkipImmediately,
+		)
 		return ""
 	}
 
