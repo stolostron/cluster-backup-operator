@@ -5,7 +5,7 @@ go 1.22.0
 require (
 	github.com/go-logr/logr v1.4.2
 	github.com/onsi/ginkgo/v2 v2.21.0
-	github.com/onsi/gomega v1.34.2
+	github.com/onsi/gomega v1.36.1
 	github.com/openshift/api v0.0.0-20230414143018-3367bc7e6ac7 // release 4.13
 	github.com/openshift/hive/apis v0.0.0-20220707224401-0c5e2fb547fe
 	github.com/pkg/errors v0.9.1
@@ -66,7 +66,7 @@ require (
 	golang.org/x/tools v0.26.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/protobuf v1.34.1 // indirect
+	google.golang.org/protobuf v1.35.1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiextensions-apiserver v0.30.4 // indirect
