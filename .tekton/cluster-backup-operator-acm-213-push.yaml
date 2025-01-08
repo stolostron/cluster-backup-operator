@@ -16,6 +16,8 @@ metadata:
   namespace: crt-redhat-acm-tenant
 spec:
   params:
+  - name: hermetic
+    value: "true"
   - name: git-url
     value: '{{source_url}}'
   - name: revision
