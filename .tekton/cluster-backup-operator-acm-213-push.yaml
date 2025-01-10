@@ -84,10 +84,6 @@ spec:
       description: Build dependencies to be prefetched by Cachi2
       name: prefetch-input
       type: string
-    - default: "true"
-      description: Enable dev-package-managers in prefetch task
-      name: prefetch-dev-package-managers-enabled
-      type: string
     - default: ""
       description: Image tag expiration time, time values could be something like 1h, 2d, 3w for hours, days, and weeks, respectively.
       name: image-expires-after
@@ -213,8 +209,6 @@ spec:
         value: $(params.path-context)
       - name: HERMETIC
         value: $(params.hermetic)
-      - name: dev-package-managers
-        value: $(params.prefetch-dev-package-managers-enabled)
       - name: PREFETCH_INPUT
         value: $(params.prefetch-input)
       - name: IMAGE_EXPIRES_AFTER
