@@ -12,7 +12,7 @@ COPY controllers/ controllers/
 
 # Copy the go source
 RUN  CGO_ENABLED=1 GOFLAGS='-mod=readonly' GOOS=linux GOARCH=amd64 go mod vendor
-RUN  CGO_ENABLED=1 GOFLAGS='-mod=readonly' GOOS=linux GOARCH=amd64 go mod tidy
+# RUN  CGO_ENABLED=1 GOFLAGS='-mod=readonly' GOOS=linux GOARCH=amd64 go mod tidy
 
 # Build
 RUN CGO_ENABLED=1 GOFLAGS='-mod=readonly' GOOS=linux GOARCH=amd64 go build -a -o manager main.go
