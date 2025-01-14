@@ -94,7 +94,7 @@ spec:
     - default: ""
       description: Image tag expiration time, time values could be something like 1h, 2d, 3w for hours, days, and weeks, respectively.
       name: image-expires-after
-    - default: "false"
+    - default: "true"
       description: Build a source image.
       name: build-source-image
       type: string
@@ -240,7 +240,7 @@ spec:
         - name: name
           value: buildah-remote-oci-ta
         - name: bundle
-          value: quay.io/konflux-ci/tekton-catalog/task-buildah-remote-oci-ta:0.2@sha256:d582f95f21735f44947c62c2976972dc062cba20e6a3694990bafd5827665bb7
+          value: quay.io/konflux-ci/tekton-catalog/task-buildah-remote-oci-ta:0.3@sha256:6c2c433ef94187e9aa73575004029cd6e2bbbdeefc7f90070595fb20f77bc121
         - name: kind
           value: task
         resolver: bundles
