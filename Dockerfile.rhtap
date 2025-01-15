@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM brew.registry.redhat.io/rh-osbs/openshift-golang-builder:rhel_9_1.22 AS builder
+FROM brew.registry.redhat.io/rh-osbs/openshift-golang-builder:rhel_9_1.23 AS builder
 
 WORKDIR /workspace
 # Copy the source files
@@ -11,15 +11,25 @@ COPY config/. config/
 COPY controllers/ controllers/
 
 # Copy the go source
-RUN  CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go mod vendor
-RUN  CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go mod tidy
+RUN  CGO_ENABLED=1 GOFLAGS='-mod=readonly' GOOS=linux GOARCH=amd64 go mod vendor
+# RUN  CGO_ENABLED=1 GOFLAGS='-mod=readonly' GOOS=linux GOARCH=amd64 go mod tidy
 
 # Build
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o manager main.go
+RUN CGO_ENABLED=1 GOFLAGS='-mod=readonly' GOOS=linux GOARCH=amd64 go build -a -o manager main.go
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM registry.redhat.io/ubi9/ubi-minimal:latest
+LABEL \
+    name="cluster-backup-operator" \
+    com.redhat.component="cluster-backup-operator" \
+    description="The Cluster Backup and Restore Operator runs on the hub cluster, providing disaster recovery \
+    solutions for Red Hat Advanced Cluster Management in the event of hub cluster failures." \
+    io.k8s.description="The Cluster Backup and Restore Operator runs on the hub cluster, providing disaster recovery \
+    solutions for Red Hat Advanced Cluster Management in the event of hub cluster failures." \
+    summary="An ACM operator that delivers disaster recovery solutions for hub cluster failures." \
+    io.k8s.display-name="Red Hat Advanced Cluster Management Cluster Backup and Restore Operator" \
+    io.openshift.tags="acm cluster-backup-operator"
 WORKDIR /
 COPY --from=builder /workspace/manager .
 USER 65532:65532
