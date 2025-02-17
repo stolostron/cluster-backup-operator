@@ -13,8 +13,8 @@ require (
 	github.com/vmware-tanzu/velero v1.13.2
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.32.1
-	k8s.io/apimachinery v0.32.1
+	k8s.io/api v0.32.2
+	k8s.io/apimachinery v0.32.2
 	k8s.io/client-go v0.32.1
 	open-cluster-management.io/api v0.15.0
 	open-cluster-management.io/multicloud-operators-channel v0.15.0
