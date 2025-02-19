@@ -78,4 +78,3 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace github.com/ulikunitz/xz => github.com/ulikunitz/xz v0.5.12
