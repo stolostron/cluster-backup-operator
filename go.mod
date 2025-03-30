@@ -3,7 +3,7 @@ module github.com/stolostron/cluster-backup-operator
 go 1.23.0
 
 require (
-	github.com/go-logr/logr v1.4.1
+	github.com/go-logr/logr v1.4.2
 	github.com/onsi/ginkgo/v2 v2.17.2
 	github.com/onsi/gomega v1.33.0
 	github.com/openshift/api v0.0.0-20230414143018-3367bc7e6ac7 // release 4.13
