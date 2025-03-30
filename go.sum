@@ -75,10 +75,10 @@ github.com/onsi/ginkgo/v2 v2.23.3 h1:edHxnszytJ4lD9D5Jjc4tiDkPBZ3siDeJJkUZJJVkp0
 github.com/onsi/ginkgo/v2 v2.23.3/go.mod h1:zXTP6xIp3U8aVuXN8ENK9IXRaTjFnpVB9mGmaSRvxnM=
 github.com/onsi/gomega v1.36.2 h1:koNYke6TVk6ZmnyHrCXba/T/MoLBXFjeC1PtvYgw0A8=
 github.com/onsi/gomega v1.36.2/go.mod h1:DdwyADRjrc825LhMEkD76cHR5+pUnjhUN8GlHlRPHzY=
-github.com/openshift/api v0.0.0-20230414143018-3367bc7e6ac7 h1:rncLxJBpFGqBztyxCMwNRnMjhhIDOWHJowi6q8G6koI=
-github.com/openshift/api v0.0.0-20230414143018-3367bc7e6ac7/go.mod h1:ctXNyWanKEjGj8sss1KjjHQ3ENKFm33FFnS5BKaIPh4=
-github.com/openshift/hive/apis v0.0.0-20220707224401-0c5e2fb547fe h1:QBPra1hoFAV+MUqcZ/gQiHRYrkWOWDzDw4NEAtND37I=
-github.com/openshift/hive/apis v0.0.0-20220707224401-0c5e2fb547fe/go.mod h1:XWo9dsulk75E9xkfxS/GNpJrL5UHgn3wuSyPeO39NME=
+github.com/openshift/api v0.0.0-20250224185818-544b3ca4e8f5 h1:23Dw8Zv4oHwRjfwMY/OpPnc+WUMrc+/EVuSdjx/+ILc=
+github.com/openshift/api v0.0.0-20250224185818-544b3ca4e8f5/go.mod h1:yk60tHAmHhtVpJQo3TwVYq2zpuP70iJIFDCmeKMIzPw=
+github.com/openshift/hive/apis v0.0.0-20250327230102-bd97bef1d05e h1:q7gw5l+7Z7fr1LvYwI9PkG+DIiTKS/DY2De06kxhMVM=
+github.com/openshift/hive/apis v0.0.0-20250327230102-bd97bef1d05e/go.mod h1:k0JDHhmSOuRMa9nRRXmWxoRzv1ySA2FAePwiacvO/bo=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
