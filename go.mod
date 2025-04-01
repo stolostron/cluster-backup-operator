@@ -2,6 +2,8 @@ module github.com/stolostron/cluster-backup-operator
 
 go 1.23.0
 
+toolchain go1.24.1
+
 require (
 	github.com/go-logr/logr v1.4.2
 	github.com/onsi/ginkgo/v2 v2.23.3
@@ -13,9 +15,9 @@ require (
 	github.com/vmware-tanzu/velero v1.14.0
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.32.2
-	k8s.io/apimachinery v0.32.2
-	k8s.io/client-go v0.32.2
+	k8s.io/api v0.32.3
+	k8s.io/apimachinery v0.32.3
+	k8s.io/client-go v0.32.3
 	open-cluster-management.io/api v0.16.1
 	open-cluster-management.io/multicloud-operators-channel v0.15.0
 	sigs.k8s.io/controller-runtime v0.20.2
