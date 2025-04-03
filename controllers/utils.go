@@ -31,7 +31,6 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -200,7 +199,7 @@ func processGenericCRDFromAPIGroups(
 	ctx context.Context,
 	dc discovery.DiscoveryInterface,
 	veleroBackup *veleroapi.Backup,
-	groupList v1.APIGroupList,
+	groupList metav1.APIGroupList,
 ) []string {
 	logger := log.FromContext(ctx)
 
@@ -343,7 +342,7 @@ func managedClusterShouldReimport(
 		isManagedClusterAvailable := false
 		for _, condition := range managedCluster.Status.Conditions {
 			if condition.Type == "ManagedClusterConditionAvailable" &&
-				condition.Status == v1.ConditionTrue {
+				condition.Status == metav1.ConditionTrue {
 				isManagedClusterAvailable = true
 				break
 			}
