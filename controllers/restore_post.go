@@ -26,7 +26,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -506,9 +505,9 @@ func invokeDynamicDelete(
 			return err
 		}
 
-		listOptions := v1.ListOptions{}
+		listOptions := metav1.ListOptions{}
 		if labelSelector != "" {
-			listOptions = v1.ListOptions{LabelSelector: labelSelector}
+			listOptions = metav1.ListOptions{LabelSelector: labelSelector}
 		}
 		if dynamiclist, err := dr.List(ctx, listOptions); err == nil {
 			// get all items and delete them
@@ -789,7 +788,7 @@ func deleteDynamicResource(
 				logger.Info(nsScopedPatchMsg)
 				// delete finalizers and delete resource in this way
 				if _, err := dr.Namespace(resource.GetNamespace()).Patch(ctx, resource.GetName(),
-					types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
+					types.JSONPatchType, []byte(patch), metav1.PatchOptions{}); err != nil {
 					errMsg = err.Error()
 				}
 			}
@@ -804,7 +803,7 @@ func deleteDynamicResource(
 				// delete finalizers and delete resource in this way
 				logger.Info(globalResourcePatchMsg)
 				if _, err := dr.Patch(ctx, resource.GetName(),
-					types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
+					types.JSONPatchType, []byte(patch), metav1.PatchOptions{}); err != nil {
 					errMsg = err.Error()
 				}
 			}

@@ -300,10 +300,10 @@ func scheduleOwnsLatestStorageBackups(
 		var timeA int64
 		var timeB int64
 		if sliceBackups[i].Status.StartTimestamp != nil {
-			timeA = sliceBackups[i].Status.StartTimestamp.Time.Unix()
+			timeA = sliceBackups[i].Status.StartTimestamp.Unix()
 		}
 		if sliceBackups[j].Status.StartTimestamp != nil {
-			timeB = sliceBackups[j].Status.StartTimestamp.Time.Unix()
+			timeB = sliceBackups[j].Status.StartTimestamp.Unix()
 		}
 		return timeA < timeB
 	})
