@@ -2,8 +2,6 @@ module github.com/stolostron/cluster-backup-operator
 
 go 1.23.0
 
-toolchain go1.24.1
-
 require (
 	github.com/go-logr/logr v1.4.2
 	github.com/onsi/ginkgo/v2 v2.23.3
