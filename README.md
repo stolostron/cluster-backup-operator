@@ -64,6 +64,15 @@ Cluster Back up and Restore Operator
 - [ACM Backup and Restore Performance in a Large-Scale Environment](#acm-backup-and-restore-performance-in-a-large-scale-environment)
   - [First attempt with cleanupBeforeRestore set to None:](#first-attempt-with-cleanupbeforerestore-set-to-none)
   - [Second attempt with cleanupBeforeRestore set to CleanupRestored:](#second-attempt-with-cleanupbeforerestore-set-to-cleanuprestored)
+- [Virtual Machine Backup and Restore Performance in a Large-Scale Environment](#virtual-machine-backup-and-restore-performance-in-a-large-scale-environment)
+  - [Test Environment](#test-environment)
+  - [Test Scenarios and Results](#test-scenarios-and-results)
+    - [Scenario 1](#scenario-1)
+    - [Scenario 2](#scenario-2)
+    - [Scenario 3](#scenario-3)
+    - [Scenario 4](#scenario-4)
+    - [Scenario 5](#scenario-5)
+  - [Notes](#notes)
 - [OADP Version Relationship](#oadp-version-relationship)
 - [Using custom OADP Version](#using-custom-oadp-version)
 
@@ -1014,6 +1023,94 @@ Completed
 2024-07-24T20:56:29Z
 7284
 ```
+
+## Virtual Machine Backup and Restore Performance in a Large-Scale Environment
+
+This document summarizes backup and restore performance results for virtual machines (VMs) in a large-scale environment. Tests were conducted on sizeable VMs within a dedicated test cluster.
+
+### Test Environment
+
+- **Platform:** Bare Metal (KVM) – OpenShift Container Platform (OCP) 4.17.17  
+- **Storage:** OpenShift Data Foundation (ODF)  
+  - **Raw Capacity:** 1.46 TiB  
+- **Backup Target:** AWS S3  
+- **ACM Version:** 2.13.2  
+
+---
+
+### Test Scenarios and Results
+
+#### Scenario 1
+
+- **VM Count:** 1  
+- **Disk Size:** 100 GiB  
+- **Backup Time:** ~7 minutes  
+  - **Start:** `2025-03-27T19:42:02Z`  
+  - **End:** `2025-03-27T19:49:24Z`  
+- **Restore Time:** ~15 minutes  
+  - **Start:** `2025-03-27T19:53:20Z`  
+  - **End:** `2025-03-27T20:08:33Z`
+
+---
+
+#### Scenario 2
+
+- **VM Count:** 1  
+- **Disk Size:** 200 GiB  
+- **Backup Time:** ~13 minutes  
+  - **Start:** `2025-03-27T20:50:08Z`  
+  - **End:** `2025-03-27T21:03:10Z`  
+- **Restore Time:** ~22 minutes  
+  - **Start:** `2025-03-27T21:15:02Z`  
+  - **End:** `2025-03-27T21:42:49Z`
+
+---
+
+#### Scenario 3
+
+- **VM Count:** 1  
+- **Disk Size:** 300 GiB  
+- **Backup Time:** ~20 minutes  
+  - **Start:** `2025-03-27T18:11:08Z`  
+  - **End:** `2025-03-27T18:30:20Z`  
+- **Restore Time:** ~50 minutes  
+  - **Start:** `2025-03-27T18:46:50Z`  
+  - **End:** `2025-03-27T19:26:49Z`
+
+---
+
+#### Scenario 4
+
+- **VM Count:** 3  
+- **Disk Size:** 100 GiB (each)  
+- **Backup Time:** ~8 minutes  
+  - **Start:** `2025-04-07T13:37:06Z`  
+  - **End:** `2025-04-07T13:45:04Z`  
+- **Restore Time:** ~28 minutes  
+  - **Start:** `2025-04-07T14:48:48Z`  
+  - **End:** `2025-04-07T15:16:35Z`
+
+---
+
+#### Scenario 5
+
+- **VM Count:** 2  
+- **Disk Size:** 200 GiB (each)  
+- **Backup Time:** ~13 minutes  
+  - **Start:** `2025-04-07T15:31:04Z`  
+  - **End:** `2025-04-07T15:44:36Z`  
+- **Restore Time:** ~55 minutes  
+  - **Start:** `2025-04-07T15:52:59Z`  
+  - **End:** `2025-04-07T16:43:05Z`
+
+---
+
+### Notes
+
+- **Storage Requirement for Restore:**
+  Ensure that free/raw storage capacity is **greater than three times** the total size of the VM disks being restored.  
+  ODF’s default `full ratio` threshold is **85%**, so available storage must stay below this threshold for restore operations to complete successfully.
+
 
 ## OADP Version Relationship
 
