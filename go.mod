@@ -7,7 +7,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.37.0
 	github.com/openshift/api v0.0.0-20250224185818-544b3ca4e8f5 // release 4.13
-	github.com/openshift/hive/apis v0.0.0-20250327230102-bd97bef1d05e
+	github.com/openshift/hive/apis v0.0.0-20250412004227-87bff5947f6f
 	github.com/pkg/errors v0.9.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/vmware-tanzu/velero v1.14.0
@@ -56,7 +56,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/net v0.37.0 // indirect
+	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/oauth2 v0.28.0 // indirect
 	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/sys v0.32.0 // indirect
