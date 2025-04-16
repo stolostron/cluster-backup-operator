@@ -702,7 +702,7 @@ func (r *RestoreReconciler) finalizeRestore(
 					// Remove restoreFinalizer to delete the object
 					reqLogger.Info("Removing velero finalizer for " + veleroRestore.GetName())
 					controllerutil.RemoveFinalizer(&veleroRestore, restoreFinalizer)
-					err := r.Client.Update(ctx, &veleroRestore)
+					err := r.Update(ctx, &veleroRestore)
 					if err != nil {
 						reqLogger.Error(err, fmt.Sprintf("Error removing finalizer for restore: %s", veleroRestore.GetName()))
 						return err
