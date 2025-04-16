@@ -133,7 +133,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			// removed, the object will be deleted.
 			controllerutil.RemoveFinalizer(restore, acmRestoreFinalizer)
 
-			err := r.Client.Update(ctx, restore)
+			err := r.Update(ctx, restore)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
