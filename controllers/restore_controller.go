@@ -143,7 +143,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	} else {
 		// Add finalizer for this CR
 		if controllerutil.AddFinalizer(restore, acmRestoreFinalizer) {
-			err := r.Client.Update(ctx, restore)
+			err := r.Update(ctx, restore)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
