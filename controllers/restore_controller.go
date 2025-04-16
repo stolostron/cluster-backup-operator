@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 
 	v1 "k8s.io/api/core/v1"
@@ -39,6 +40,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
@@ -60,6 +62,9 @@ const (
 
 	backupPVCLabel  = "cluster.open-cluster-management.io/backup-pvc"
 	pvcWaitInterval = time.Second * 10
+
+	acmRestoreFinalizer = "restores.cluster.open-cluster-management.io/finalizer"
+	restoreFinalizer    = "restores.velero.io/external-resources-finalizer"
 )
 
 type DynamicStruct struct {
@@ -107,6 +112,42 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	if err := r.Get(ctx, req.NamespacedName, restore); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// Check if the restore instance is marked to be deleted, which is
+	// indicated by the deletion timestamp being set.
+	isMarkedToBeDeleted := restore.GetDeletionTimestamp() != nil
+	if isMarkedToBeDeleted {
+
+		if controllerutil.ContainsFinalizer(restore, acmRestoreFinalizer) {
+			// Run finalization logic. If the finalization
+			// logic fails, don't remove the finalizer so
+			// that we can retry during the next reconciliation.
+			if err := r.finalizeRestore(ctx, restoreLogger, restore); err != nil {
+				// Logging err and returning nil to ensure wait
+				restoreLogger.Info(fmt.Sprintf("Finalizing: %s", err.Error()))
+				return ctrl.Result{RequeueAfter: pvcWaitInterval}, nil
+			}
+
+			// Remove hubFinalizer. Once all finalizers have been
+			// removed, the object will be deleted.
+			controllerutil.RemoveFinalizer(restore, acmRestoreFinalizer)
+
+			err := r.Client.Update(ctx, restore)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+
+		return ctrl.Result{}, nil
+	} else {
+		// Add finalizer for this CR
+		if controllerutil.AddFinalizer(restore, acmRestoreFinalizer) {
+			err := r.Client.Update(ctx, restore)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		}
 	}
 
 	if restore.Status.Phase == v1beta1.RestorePhaseFinished ||
@@ -625,4 +666,57 @@ func processRestoreWait(
 	restoreLogger.Info("Exit processRestoreWait with no wait")
 
 	return false, ""
+}
+
+// delete all velero restores created by the acmRestore object and remove finalizers
+func (r *RestoreReconciler) finalizeRestore(
+	ctx context.Context,
+	reqLogger logr.Logger,
+	acmRestore *v1beta1.Restore,
+) error {
+
+	// get the list of velero restore resources created by this acm restore
+	veleroRestoreList := veleroapi.RestoreList{}
+	err := r.List(
+		ctx,
+		&veleroRestoreList,
+		client.InNamespace(acmRestore.GetNamespace()),
+		client.MatchingFields{restoreOwnerKey: acmRestore.GetName()},
+	)
+	if err != nil {
+		msg := "unable to list velero restores for acm restore" +
+			"namespace:" + acmRestore.GetNamespace() +
+			"name:" + acmRestore.GetName()
+		reqLogger.Error(err, msg)
+		return err
+	}
+
+	if len(veleroRestoreList.Items) > 0 {
+		reqLogger.Info("Terminating velero restore for " + acmRestore.GetName())
+		for _, veleroRestore := range veleroRestoreList.Items {
+
+			// Check if the velero restore instance is marked to be deleted, and remove the restore finalizer
+			isMarkedToBeDeleted := veleroRestore.GetDeletionTimestamp() != nil
+			if isMarkedToBeDeleted {
+				if controllerutil.ContainsFinalizer(&veleroRestore, restoreFinalizer) {
+					// Remove restoreFinalizer to delete the object
+					reqLogger.Info("Removing velero finalizer for " + veleroRestore.GetName())
+					controllerutil.RemoveFinalizer(&veleroRestore, restoreFinalizer)
+					err := r.Client.Update(ctx, &veleroRestore)
+					if err != nil {
+						reqLogger.Error(err, fmt.Sprintf("Error removing finalizer for restore: %s", veleroRestore.GetName()))
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	if len(veleroRestoreList.Items) != 0 {
+		reqLogger.Info("Waiting for velero restores to be terminated")
+		return fmt.Errorf("waiting for velero restores to be terminated")
+	}
+
+	reqLogger.Info("Successfully finalized Restore " + acmRestore.GetName())
+	return nil
 }
