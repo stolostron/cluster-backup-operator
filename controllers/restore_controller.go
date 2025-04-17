@@ -39,6 +39,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
@@ -60,6 +61,9 @@ const (
 
 	backupPVCLabel  = "cluster.open-cluster-management.io/backup-pvc"
 	pvcWaitInterval = time.Second * 10
+
+	acmRestoreFinalizer = "restores.cluster.open-cluster-management.io/finalizer"
+	restoreFinalizer    = "restores.velero.io/external-resources-finalizer"
 )
 
 type DynamicStruct struct {
@@ -107,6 +111,47 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	if err := r.Get(ctx, req.NamespacedName, restore); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// retrieve the velero restore (if any)
+	veleroRestoreList := veleroapi.RestoreList{}
+	if err := r.List(
+		ctx,
+		&veleroRestoreList,
+		client.InNamespace(req.Namespace),
+		client.MatchingFields{restoreOwnerKey: req.Name},
+	); err != nil {
+		msg := "unable to list velero restores for restore" +
+			"namespace:" + req.Namespace +
+			"name:" + req.Name
+		restoreLogger.Error(err, msg)
+
+		return ctrl.Result{}, err
+	}
+
+	// Check if the restore instance is marked to be deleted, which is
+	// indicated by the deletion timestamp being set.
+	isMarkedToBeDeleted := restore.GetDeletionTimestamp() != nil
+	if isMarkedToBeDeleted && controllerutil.ContainsFinalizer(restore, acmRestoreFinalizer) {
+
+		// Run finalization logic. If the finalization
+		// logic fails, don't remove the finalizer so
+		// that we can retry during the next reconciliation.
+		// finalize velero restore resources created by this acm restore
+		if err := finalizeRestore(ctx, r.Client, restore, veleroRestoreList); err != nil {
+			// Logging err and returning nil to ensure wait
+			restoreLogger.Info(fmt.Sprintf("Finalizing: %s", err.Error()))
+			return ctrl.Result{RequeueAfter: pvcWaitInterval}, nil
+		}
+		// Remove restore finalizer. Once all finalizers have been
+		// removed, the object will be deleted.
+		controllerutil.RemoveFinalizer(restore, acmRestoreFinalizer)
+
+		if err := r.Update(ctx, restore); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		return ctrl.Result{}, nil
 	}
 
 	if restore.Status.Phase == v1beta1.RestorePhaseFinished ||
@@ -178,22 +223,6 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	}
 
-	// retrieve the velero restore (if any)
-	veleroRestoreList := veleroapi.RestoreList{}
-	if err := r.List(
-		ctx,
-		&veleroRestoreList,
-		client.InNamespace(req.Namespace),
-		client.MatchingFields{restoreOwnerKey: req.Name},
-	); err != nil {
-		msg := "unable to list velero restores for restore" +
-			"namespace:" + req.Namespace +
-			"name:" + req.Name
-		restoreLogger.Error(err, msg)
-
-		return ctrl.Result{}, err
-	}
-
 	isValidSync, msg := isValidSyncOptions(restore)
 	sync := isValidSync && restore.Status.Phase == v1beta1.RestorePhaseEnabled
 	isPVCStep := isPVCInitializationStep(restore, veleroRestoreList)
@@ -237,6 +266,14 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	err = r.Client.Status().Update(ctx, restore)
+
+	if !isMarkedToBeDeleted && controllerutil.AddFinalizer(restore, acmRestoreFinalizer) {
+		// Add finalizer for this CR
+		if err := r.Update(ctx, restore); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	return sendResult(restore, err)
 }
 
@@ -625,4 +662,50 @@ func processRestoreWait(
 	restoreLogger.Info("Exit processRestoreWait with no wait")
 
 	return false, ""
+}
+
+// delete all velero restores created by the acmRestore object
+// and remove finalizers
+func finalizeRestore(
+	ctx context.Context,
+	c client.Client,
+	acmRestore *v1beta1.Restore,
+	veleroRestoreList veleroapi.RestoreList,
+) error {
+
+	reqLogger := log.FromContext(ctx)
+
+	for _, veleroRestore := range veleroRestoreList.Items {
+
+		veleroName := veleroRestore.GetName()
+
+		isMarkedToBeDeleted := veleroRestore.GetDeletionTimestamp() != nil
+
+		if !isMarkedToBeDeleted {
+			if err := c.Delete(ctx, &veleroRestore); err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Error terminating restore: %s", veleroName))
+				return err
+			}
+		}
+
+		// remove the restore finalizer
+		if isMarkedToBeDeleted && controllerutil.ContainsFinalizer(&veleroRestore, restoreFinalizer) {
+			// Remove restoreFinalizer to delete the object
+			reqLogger.Info("Removing velero finalizer for " + veleroName)
+			controllerutil.RemoveFinalizer(&veleroRestore, restoreFinalizer)
+			err := c.Update(ctx, &veleroRestore)
+			if err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Error removing finalizer for restore: %s", veleroName))
+				return err
+			}
+		}
+	}
+
+	if len(veleroRestoreList.Items) != 0 {
+		reqLogger.Info("Waiting for velero restores to be terminated")
+		return fmt.Errorf("waiting for velero restores to be terminated")
+	}
+
+	reqLogger.Info("Successfully finalized Restore " + acmRestore.GetName())
+	return nil
 }
