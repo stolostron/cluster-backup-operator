@@ -446,6 +446,15 @@ func (b *ACMRestoreHelper) namespaceMapping(nspaces map[string]string) *ACMResto
 	b.object.Spec.NamespaceMapping = nspaces
 	return b
 }
+func (b *ACMRestoreHelper) setDeleteTimestamp(deletionTimestamp metav1.Time) *ACMRestoreHelper {
+	b.object.SetDeletionTimestamp(&deletionTimestamp)
+	return b
+}
+
+func (b *ACMRestoreHelper) setFinalizer(values []string) *ACMRestoreHelper {
+	b.object.SetFinalizers(values)
+	return b
+}
 
 // backup schedule
 type BackupScheduleHelper struct {

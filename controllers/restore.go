@@ -26,10 +26,17 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -838,4 +845,120 @@ func setUserRestoreFilters(
 				acmRestore.Spec.IncludedResources[i])
 		}
 	}
+}
+
+// delete all velero restores created by the acmRestore object
+// and remove finalizers
+func finalizeRestore(
+	ctx context.Context,
+	c client.Client,
+	acmRestore *v1beta1.Restore,
+	veleroRestoreList veleroapi.RestoreList,
+) error {
+
+	reqLogger := log.FromContext(ctx)
+
+	for _, veleroRestore := range veleroRestoreList.Items {
+
+		veleroName := veleroRestore.GetName()
+
+		isMarkedToBeDeleted := veleroRestore.GetDeletionTimestamp() != nil
+
+		if !isMarkedToBeDeleted {
+			if err := c.Delete(ctx, &veleroRestore); err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Error terminating restore: %s", veleroName))
+				return err
+			}
+		}
+
+		// remove the restore finalizer
+		if isMarkedToBeDeleted && controllerutil.ContainsFinalizer(&veleroRestore, restoreFinalizer) {
+			// Remove restoreFinalizer to delete the object
+			reqLogger.Info("Removing velero finalizer for " + veleroName)
+			controllerutil.RemoveFinalizer(&veleroRestore, restoreFinalizer)
+			err := c.Update(ctx, &veleroRestore)
+			if err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Error removing finalizer for restore: %s", veleroName))
+				return err
+			}
+		}
+	}
+
+	if len(veleroRestoreList.Items) != 0 {
+		reqLogger.Info("Waiting for velero restores to be terminated")
+		return fmt.Errorf("waiting for velero restores to be terminated")
+	}
+
+	reqLogger.Info("Successfully finalized Restore " + acmRestore.GetName())
+	return nil
+}
+
+// when the restore if first created add finalizer for the acm restore resource
+// add the same finalizer to the backup InternalHubComponent
+// if the InternalHubComponent is deleted, remove all restore resources
+// and remove the InternalHubComponent finalizer
+func processRestoreFinalizer(
+	ctx context.Context,
+	c client.Client,
+	acmRestore *v1beta1.Restore,
+	internalHubResource unstructured.Unstructured,
+) error {
+
+	if !controllerutil.AddFinalizer(acmRestore, acmRestoreFinalizer) {
+		//nothing to do, finalizer already exists
+		return nil
+	}
+
+	if acmRestore.GetDeletionTimestamp() != nil {
+		//nothing to do, resource is set to be deleted or finalizer already exists
+		return nil
+	}
+
+	reqLogger := log.FromContext(ctx)
+	reqLogger.Info("add Restore finalizer " + acmRestore.GetName())
+
+	// Add finalizer to the backup InternalHubComponent
+	groupKind := schema.GroupKind{
+		Group: "operator.open-cluster-management.io",
+		Kind:  "internalhubcomponent",
+	}
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(disc))
+	mapping, err := mapper.RESTMapping(groupKind, "")
+	if err != nil {
+		reqLogger.Info(fmt.Sprintf("Failed to get dynamic mapper for group=%s, error : %s",
+			groupKind, err.Error()))
+		return err
+	}
+
+	if internalHubResource.GetName() == "cluster-backup" {
+
+	}
+
+	if dr := dyn.Resource(mapping.Resource); dr != nil {
+
+		dynamiclist, err := dr.List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return err
+		}
+		for i := range dynamiclist.Items {
+			item := dynamiclist.Items[i]
+
+			if item.GetName() == "cluster-backup" {
+				// add restore finalizer
+				item.SetFinalizers([]string{acmRestoreFinalizer})
+				//save resource
+				_, err = dr.Namespace(item.GetNamespace()).Update(ctx, &item, metav1.UpdateOptions{})
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	// Add finalizer for this CR
+	if err := c.Update(ctx, acmRestore); err != nil {
+		return err
+	}
+
+	return nil
 }
