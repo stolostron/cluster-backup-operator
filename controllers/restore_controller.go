@@ -265,12 +265,10 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	err = r.Client.Status().Update(ctx, restore)
-
-	if !isMarkedToBeDeleted && controllerutil.AddFinalizer(restore, acmRestoreFinalizer) {
-		// Add finalizer for this CR
-		if err := r.Update(ctx, restore); err != nil {
-			return ctrl.Result{}, err
-		}
+	if err == nil {
+		err = processRestoreFinalizer(ctx, r.Client, restore,
+			r.DynamicClient,
+			r.DiscoveryClient)
 	}
 
 	return sendResult(restore, err)

@@ -26,7 +26,6 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -901,7 +900,8 @@ func processRestoreFinalizer(
 	ctx context.Context,
 	c client.Client,
 	acmRestore *v1beta1.Restore,
-	internalHubResource unstructured.Unstructured,
+	dyn dynamic.Interface,
+	disc discovery.DiscoveryInterface,
 ) error {
 
 	if !controllerutil.AddFinalizer(acmRestore, acmRestoreFinalizer) {
@@ -928,10 +928,6 @@ func processRestoreFinalizer(
 		reqLogger.Info(fmt.Sprintf("Failed to get dynamic mapper for group=%s, error : %s",
 			groupKind, err.Error()))
 		return err
-	}
-
-	if internalHubResource.GetName() == "cluster-backup" {
-
 	}
 
 	if dr := dyn.Resource(mapping.Resource); dr != nil {
