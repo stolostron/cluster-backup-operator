@@ -171,6 +171,13 @@ var _ = BeforeSuite(func() {
 			{Name: "managedserviceaccounts", Namespaced: true, Kind: "ManagedServiceAccount"},
 		},
 	}
+	mchV1 := metav1.APIResourceList{
+		GroupVersion: "operator.open-cluster-management.io/v1",
+		APIResources: []metav1.APIResource{
+			{Name: "internalhubcomponents", Namespaced: true, Kind: "InternalHubComponent"},
+		},
+	}
+
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var list interface{}
 		switch req.URL.Path {
@@ -188,6 +195,8 @@ var _ = BeforeSuite(func() {
 			list = &hiveInfo
 		case "/apis/authentication.open-cluster-management.io/v1beta1":
 			list = authAlpha1
+		case "/apis/operator.open-cluster-management.io/v1":
+			list = mchV1
 		case "/apis/apps.open-cluster-management.io/v1beta1":
 			list = &appsInfo
 		case "/apis/apps.open-cluster-management.io/v1":
@@ -284,6 +293,12 @@ var _ = BeforeSuite(func() {
 						},
 					},
 					{
+						Name: "operator.open-cluster-management.io",
+						Versions: []metav1.GroupVersionForDiscovery{
+							{GroupVersion: "operator.open-cluster-management.io/v1", Version: "v1"},
+						},
+					},
+					{
 						Name: "addon.open-cluster-management.io",
 						Versions: []metav1.GroupVersionForDiscovery{
 							{GroupVersion: "addon.open-cluster-management.io/v1alpha1", Version: "v1alpha1"},
@@ -323,6 +338,12 @@ var _ = BeforeSuite(func() {
 			resourcesList: &authAlpha1,
 			path:          "/apis/authentication.open-cluster-management.io/v1beta1",
 			request:       "authentication.open-cluster-management.io/v1beta1",
+			expectErr:     false,
+		},
+		{
+			resourcesList: &mchV1,
+			path:          "/apis/operator.open-cluster-management.io/v1",
+			request:       "operator.open-cluster-management.io/v1",
 			expectErr:     false,
 		},
 		{
@@ -479,6 +500,17 @@ var _ = BeforeSuite(func() {
 		},
 	})
 
+	mchObj := &unstructured.Unstructured{}
+	mchObj.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "operator.open-cluster-management.io/v1",
+		"kind":       "InternalHubComponent",
+		"metadata": map[string]interface{}{
+			"name":      "cluster-backup",
+			"namespace": "managed1",
+			"spec":      map[string]interface{}{},
+		},
+	})
+
 	msaObj := &unstructured.Unstructured{}
 	msaObj.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
@@ -519,6 +551,11 @@ var _ = BeforeSuite(func() {
 			},
 		},
 	})
+
+	mchGVK := schema.GroupVersionKind{Group: "operator.open-cluster-management.io",
+		Version: "v1beta1", Kind: "InternalHubComponent"}
+	mchGVRList := schema.GroupVersionResource{Group: "operator.open-cluster-management.io",
+		Version: "v1beta1", Resource: "internalhubcomponents"}
 
 	msaGVK := schema.GroupVersionKind{Group: "authentication.open-cluster-management.io",
 		Version: "v1beta1", Kind: "ManagedServiceAccount"}
@@ -630,6 +667,7 @@ var _ = BeforeSuite(func() {
 
 	///
 	gvrToListKindR := map[schema.GroupVersionResource]string{
+		mchGVRList:    "InternalHubComponentList",
 		msaGVRList:    "ManagedServiceAccountList",
 		clsVGVKList:   "ClusterVersionList",
 		clsDGVKList:   "ClusterDeploymentList",
@@ -649,6 +687,7 @@ var _ = BeforeSuite(func() {
 	}
 
 	unstructuredSchemeR := runtime.NewScheme()
+	unstructuredSchemeR.AddKnownTypes(mchGVK.GroupVersion(), mchObj)
 	unstructuredSchemeR.AddKnownTypes(msaGVK.GroupVersion(), msaObj)
 	unstructuredSchemeR.AddKnownTypes(msaGVK.GroupVersion(), msaObj2)
 	unstructuredSchemeR.AddKnownTypes(clsVGVK.GroupVersion(), clsvObj)

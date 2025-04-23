@@ -149,7 +149,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 		{
 			name: "Skip all",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(skipRestore).
@@ -160,7 +160,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 		{
 			name: "No backup name",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).object,
 			},
 			want: false,
@@ -168,7 +168,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 		{
 			name: "Credentials should be set to skip or latest",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeAll).syncRestoreWithNewBackups(true).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(backupName).
@@ -179,7 +179,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 		{
 			name: "Resources should be set to latest",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).syncRestoreWithNewBackups(true).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(latestBackup).
@@ -190,7 +190,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 		{
 			name: "InValid config, no sync",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(latestBackup).
@@ -201,7 +201,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 		{
 			name: "Valid config",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					syncRestoreWithNewBackups(true).
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestore).
@@ -234,7 +234,7 @@ func Test_isSkipAllRestores(t *testing.T) {
 		{
 			name: "Skip all",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(skipRestore).
@@ -245,7 +245,7 @@ func Test_isSkipAllRestores(t *testing.T) {
 		{
 			name: "No backup name",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					object,
 			},
 			want: true,
@@ -253,7 +253,7 @@ func Test_isSkipAllRestores(t *testing.T) {
 		{
 			name: "Do not skip all",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(latestBackup).
@@ -264,7 +264,7 @@ func Test_isSkipAllRestores(t *testing.T) {
 		{
 			name: "Managed clusters name is not skip",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(latestBackup).
 					veleroCredentialsBackupName(latestBackup).
@@ -275,7 +275,7 @@ func Test_isSkipAllRestores(t *testing.T) {
 		{
 			name: "Resources is not skip",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(skipRestore).
@@ -307,7 +307,7 @@ func Test_sendResults(t *testing.T) {
 		{
 			name: "Try restore again",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					syncRestoreWithNewBackups(true).
 					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
@@ -323,7 +323,7 @@ func Test_sendResults(t *testing.T) {
 		{
 			name: "Skip restore again",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					syncRestoreWithNewBackups(true).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
 					veleroManagedClustersBackupName(skipRestore).
@@ -361,7 +361,7 @@ func Test_setRestorePhase(t *testing.T) {
 		{
 			name: "Restore list empty and skip all, return finished phase",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					syncRestoreWithNewBackups(true).
 					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
@@ -378,7 +378,7 @@ func Test_setRestorePhase(t *testing.T) {
 		{
 			name: "Restore list empty and NOT skip all, return finished RestorePhaseStarted",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					syncRestoreWithNewBackups(true).
 					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
@@ -395,7 +395,7 @@ func Test_setRestorePhase(t *testing.T) {
 		{
 			name: "Restore phase is RestorePhaseEnabled and sync option, return wantCleanupOnEnabled is false",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					syncRestoreWithNewBackups(true).
 					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
@@ -412,7 +412,7 @@ func Test_setRestorePhase(t *testing.T) {
 		{
 			name: "Restore list empty and NOT skip all, return finished RestorePhaseEnabled and wantCleanupOnEnabled is TRUE",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					syncRestoreWithNewBackups(true).
 					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
@@ -430,7 +430,7 @@ func Test_setRestorePhase(t *testing.T) {
 							},
 							ObjectMeta: metav1.ObjectMeta{
 								Name:      "restore",
-								Namespace: "veleroNamespace",
+								Namespace: "velero-ns",
 							},
 							Spec: veleroapi.RestoreSpec{
 								BackupName: "backup",
@@ -1135,6 +1135,9 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 				t.Errorf("Error stopping testenv: %s", err.Error())
 			}
 		}
+	}
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
 

@@ -61,12 +61,10 @@ func Test_postRestoreActivation(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	ns1 := *createNamespace("managed1")
-	ns2 := *createNamespace("managed2")
-	autoImporSecretWithLabel := *createSecret(autoImportSecretName, "managed1",
+	ns1 := *createNamespace("managed-activ-1")
+	ns2 := *createNamespace("managed-activ-2")
+	autoImporSecretWithLabel := *createSecret(autoImportSecretName, "managed-activ-1",
 		map[string]string{activateLabel: "true"}, nil, nil)
-	autoImporSecretWithoutLabel := *createSecret(autoImportSecretName, "managed2",
-		nil, nil, nil)
 
 	scheme1 := runtime.NewScheme()
 	e1 := corev1.AddToScheme(scheme1)
@@ -87,7 +85,6 @@ func Test_postRestoreActivation(t *testing.T) {
 	errs = append(errs, k8sClient1.Create(context.Background(), &ns1))
 	errs = append(errs, k8sClient1.Create(context.Background(), &ns2))
 	errs = append(errs, k8sClient1.Create(context.Background(), &autoImporSecretWithLabel))
-	errs = append(errs, k8sClient1.Create(context.Background(), &autoImporSecretWithoutLabel))
 	if err := errors.Join(errs...); err != nil {
 		t.Fatalf("Error creating objects for test setup: %s", err.Error())
 	}
@@ -109,14 +106,14 @@ func Test_postRestoreActivation(t *testing.T) {
 		want []string
 	}{
 		{
-			name: "create NO auto import secrets, managed1 is active",
+			name: "create NO auto import secrets, managed-activ-1 is active",
 			args: args{
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
 					*createManagedCluster("local-cluster", true).object,
 					*createManagedCluster("test1", false).object,
-					*createManagedCluster("managed1", false).clusterUrl("someurl").
+					*createManagedCluster("managed-activ-1", false).clusterUrl("someurl").
 						conditions([]metav1.Condition{
 							metav1.Condition{
 								Status: metav1.ConditionTrue,
@@ -131,7 +128,7 @@ func Test_postRestoreActivation(t *testing.T) {
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
 						}, nil),
-					*createSecret("auto-import-account", "managed1",
+					*createSecret("auto-import-account", "managed-activ-1",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
@@ -143,14 +140,20 @@ func Test_postRestoreActivation(t *testing.T) {
 			want: []string{},
 		},
 		{
-			name: "create NO auto import secret for managed1, it has no URL",
+			name: "create NO auto import secret for managed-activ-1, it has no URL",
 			args: args{
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
 					*createManagedCluster("local-cluster", true).object,
 					*createManagedCluster("test1", false).object,
-					*createManagedCluster("managed1", false).emptyClusterUrl().
+					*createManagedCluster("managed-activ-1", false).emptyClusterUrl().
+						conditions([]metav1.Condition{
+							metav1.Condition{
+								Status: metav1.ConditionFalse,
+							},
+						}).object,
+					*createManagedCluster("managed-activ-2", false).emptyClusterUrl().
 						conditions([]metav1.Condition{
 							metav1.Condition{
 								Status: metav1.ConditionFalse,
@@ -163,21 +166,21 @@ func Test_postRestoreActivation(t *testing.T) {
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
 						}, nil),
-					*createSecret("auto-import-account", "managed1",
+					*createSecret("auto-import-account", "managed-activ-1",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
 						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
 						}),
-					*createSecret("auto-import-account", "managed2",
+					*createSecret("auto-import-account", "managed-activ-2",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
 						}, map[string][]byte{
 							"token": []byte("aaa"),
 						}),
-					*createSecret("auto-import-pair", "managed1",
+					*createSecret("auto-import-pair", "managed-activ-1",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
@@ -189,22 +192,21 @@ func Test_postRestoreActivation(t *testing.T) {
 			want: []string{},
 		},
 		{
-			name: "create auto import for managed1 cluster",
+			name: "create auto import for managed-activ-1 cluster",
 			args: args{
 				ctx:         context.Background(),
 				currentTime: current,
 				managedClusters: []clusterv1.ManagedCluster{
 					*createManagedCluster("local-cluster", true).object,
 					*createManagedCluster("test1", false).object,
-					*createManagedCluster("managed1", false).
+					*createManagedCluster("managed-activ-1", false).
 						clusterUrl("someurl").
 						conditions([]metav1.Condition{
 							metav1.Condition{
 								Status: metav1.ConditionFalse,
 							},
-						}).
-						object,
-					*createManagedCluster("managed2", false).clusterUrl("someurl").
+						}).object,
+					*createManagedCluster("managed-activ-2", false).
 						conditions([]metav1.Condition{
 							metav1.Condition{
 								Status: metav1.ConditionFalse,
@@ -213,7 +215,7 @@ func Test_postRestoreActivation(t *testing.T) {
 						object,
 				},
 				secrets: []corev1.Secret{
-					*createSecret("auto-import-ignore-this-one", "managed1",
+					*createSecret("auto-import-ignore-this-one", "managed-activ-1",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 						}, nil),
@@ -222,14 +224,14 @@ func Test_postRestoreActivation(t *testing.T) {
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
 						}, nil),
-					*createSecret("auto-import-account", "managed1",
+					*createSecret("auto-import-account", "managed-activ-1",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
 						}, map[string][]byte{
 							"token": []byte("YWRtaW4="),
 						}),
-					*createSecret("auto-import-account", "managed2",
+					*createSecret("auto-import-account", "managed-activ-2",
 						nil, map[string]string{
 							"lastRefreshTimestamp": fourHoursAgo,
 							"expirationTimestamp":  nextTenHours,
@@ -238,7 +240,7 @@ func Test_postRestoreActivation(t *testing.T) {
 						}),
 				},
 			},
-			want: []string{"managed1"},
+			want: []string{"managed-activ-1"},
 		},
 	}
 
@@ -283,6 +285,9 @@ func Test_executePostRestoreTasks(t *testing.T) {
 		t.Fatalf("Error creating new client: %s", err.Error())
 	}
 
+	if err := k8sClient1.Create(context.Background(), createNamespace("velero-ns")); err != nil {
+		t.Fatalf("failed to create secret %s ", err.Error())
+	}
 	if err := k8sClient1.Create(context.Background(), createNamespace(obs_addon_ns)); err != nil {
 		t.Fatalf("failed to create secret %s ", err.Error())
 	}
@@ -306,7 +311,7 @@ func Test_executePostRestoreTasks(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				c:   k8sClient1,
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					veleroManagedClustersBackupName(skipRestoreStr).
 					veleroCredentialsBackupName(latestBackupStr).
 					veleroResourcesBackupName(latestBackupStr).
@@ -319,7 +324,7 @@ func Test_executePostRestoreTasks(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				c:   k8sClient1,
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					veleroManagedClustersBackupName(latestBackupStr).
 					veleroCredentialsBackupName(latestBackupStr).
 					veleroResourcesBackupName(latestBackupStr).
@@ -776,7 +781,7 @@ func Test_cleanupDeltaResources(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				c:   k8sClient1,
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
 					veleroManagedClustersBackupName(skipRestoreStr).
 					veleroCredentialsBackupName(latestBackupStr).
@@ -792,7 +797,7 @@ func Test_cleanupDeltaResources(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				c:   k8sClient1,
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestoreStr).
 					veleroCredentialsBackupName(latestBackupStr).
@@ -808,7 +813,7 @@ func Test_cleanupDeltaResources(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				c:   k8sClient1,
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestoreStr).
 					veleroCredentialsBackupName(latestBackupStr).
@@ -824,7 +829,7 @@ func Test_cleanupDeltaResources(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				c:   k8sClient1,
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(latestBackupStr).
 					veleroCredentialsBackupName(latestBackupStr).
@@ -1541,7 +1546,7 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 				c:           k8sClient1,
 				cleanupType: v1beta1.CleanupTypeAll,
 				backupName:  "",
-				veleroBackup: createBackup("acm-credentials-hive-schedule-20220726152532", "veleroNamespace").
+				veleroBackup: createBackup("acm-credentials-hive-schedule-20220726152532", "velero-ns").
 					object,
 			},
 		},
@@ -1552,7 +1557,7 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 				c:           k8sClient1,
 				cleanupType: v1beta1.CleanupTypeAll,
 				backupName:  "acm-credentials-hive-schedule-20220726152532",
-				veleroBackup: createBackup("acm-credentials-hive-schedule-20220726152532", "veleroNamespace").
+				veleroBackup: createBackup("acm-credentials-hive-schedule-20220726152532", "velero-ns").
 					object,
 			},
 		},
@@ -1563,7 +1568,7 @@ func Test_cleanupDeltaForCredentials(t *testing.T) {
 				c:           k8sClient1,
 				cleanupType: v1beta1.CleanupTypeAll,
 				backupName:  "acm-credentials-hive-schedule-20220726152532",
-				veleroBackup: createBackup("acm-credentials-hive-schedule-20220726152532", "veleroNamespace").
+				veleroBackup: createBackup("acm-credentials-hive-schedule-20220726152532", "velero-ns").
 					orLabelSelectors([]*metav1.LabelSelector{
 						{
 							MatchLabels: map[string]string{
@@ -1621,6 +1626,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		t.Fatalf("Error starting client: %s", err.Error())
 	}
 
+	clusterNamespace := "managed1"
 	namespaceName := "open-cluster-management-backup"
 	timeNow, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
 	rightNow := metav1.NewTime(timeNow)
@@ -1708,6 +1714,15 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		"kind":       "Namespace",
 		"metadata": map[string]interface{}{
 			"name": namespaceName,
+		},
+	})
+
+	msa_NS := &unstructured.Unstructured{}
+	msa_NS.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "v1",
+		"kind":       "Namespace",
+		"metadata": map[string]interface{}{
+			"name": clusterNamespace,
 		},
 	})
 
@@ -1846,7 +1861,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		"kind":       "ManagedServiceAccount",
 		"metadata": map[string]interface{}{
 			"name":      "auto-import-account",
-			"namespace": "managed1",
+			"namespace": clusterNamespace,
 			"labels": map[string]interface{}{
 				msa_label: msa_service_name,
 			},
@@ -2417,7 +2432,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	}
 
 	//
-	_, err = dyn.Resource(msaGVRList).Namespace("managed1").Create(context.Background(),
+	_, err = dyn.Resource(msaGVRList).Namespace(clusterNamespace).Create(context.Background(),
 		msaObj, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Error creating: %s", err.Error())
