@@ -35,9 +35,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 func Test_isVeleroRestoreFinished(t *testing.T) {
@@ -1610,6 +1612,8 @@ func Test_isPVCInitializationStep(t *testing.T) {
 }
 
 func Test_processRestoreWait(t *testing.T) {
+
+	logf.SetLogger(klog.NewKlogr())
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -1774,6 +1778,7 @@ func hasActivationLabel(
 }
 
 func Test_actLabelNotOnManagedClsRestore(t *testing.T) {
+	logf.SetLogger(klog.NewKlogr())
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -1949,7 +1954,7 @@ func Test_actLabelNotOnManagedClsRestore(t *testing.T) {
 
 //nolint:funlen
 func TestRestoreReconciler_finalizeRestore(t *testing.T) {
-
+	logf.SetLogger(klog.NewKlogr())
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),

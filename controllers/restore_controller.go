@@ -24,8 +24,6 @@ import (
 
 	"github.com/pkg/errors"
 
-	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
-	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	v1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,6 +41,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
+	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 )
 
 var (
@@ -142,20 +143,19 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			restoreLogger.Info(fmt.Sprintf("Finalizing: %s", err.Error()))
 			return ctrl.Result{RequeueAfter: pvcWaitInterval}, nil
 		}
-		// Remove restore finalizer. Once all finalizers have been
-		// removed, the object will be deleted.
-		controllerutil.RemoveFinalizer(restore, acmRestoreFinalizer)
-
-		if err := r.Update(ctx, restore); err != nil {
-			return ctrl.Result{}, err
-		}
-
-		return ctrl.Result{}, nil
+		// Remove restore finalizer for acm restore and internalhub resource if this is the only restore
+		// Once all finalizers have been removed, the object will be deleted.
+		return ctrl.Result{}, removeResourcesFinalizer(ctx, r.Client, r.DynamicClient, r.DiscoveryClient, restore)
 	}
 
 	if restore.Status.Phase == v1beta1.RestorePhaseFinished ||
 		restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors {
 		// don't process a restore resource if it's completed
+		if err := addResourcesFinalizer(ctx, r.Client, r.DynamicClient,
+			r.DiscoveryClient, restore); err != nil {
+			restoreLogger.Info(fmt.Sprintf("addResourcesFinalizer: %s", err.Error()))
+		}
+
 		return ctrl.Result{}, nil
 	}
 
@@ -265,10 +265,9 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	err = r.Client.Status().Update(ctx, restore)
-	if err == nil {
-		err = processRestoreFinalizer(ctx, r.Client, restore,
-			r.DynamicClient,
-			r.DiscoveryClient)
+	if err := addResourcesFinalizer(ctx, r.Client, r.DynamicClient,
+		r.DiscoveryClient, restore); err != nil {
+		restoreLogger.Info(fmt.Sprintf("addResourcesFinalizer: %s", err.Error()))
 	}
 
 	return sendResult(restore, err)
@@ -400,12 +399,84 @@ func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		}); err != nil {
 		return err
 	}
+	/*
+	   // watch InternalHubComponent as an unstructured resource
+	   ihc := &unstructured.Unstructured{}
+
+	   	ihc.SetGroupVersionKind(schema.GroupVersionKind{
+	   		Kind:    "InternalHubComponent",
+	   		Group:   "operator.open-cluster-management.io",
+	   		Version: "v1",
+	   	})
+
+	   return ctrl.NewControllerManagedBy(mgr).
+
+	   	For(&v1beta1.Restore{}).
+	   	Owns(&veleroapi.Restore{}).
+	   	Watches(ihc,
+	   		handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
+	   			return mapFuncTriggerFinalizers(ctx, mgr.GetClient(), o)
+	   		}), builder.WithPredicates(processFinalizersPredicate())).
+	   	Complete(r)
+	*/
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.Restore{}).
 		Owns(&veleroapi.Restore{}).
 		Complete(r)
 }
 
+/*
+// process InternalHubComponent resources and watch for a delete action
+func mapFuncTriggerFinalizers(ctx context.Context, k8sClient client.Client,
+	o client.Object) []reconcile.Request {
+
+	reqs := []reconcile.Request{}
+
+	if o.GetName() != "cluster-backup" {
+		return reqs
+	}
+
+	if o.GetDeletionTimestamp() != nil {
+		// get all acm restore resources
+		rsList := &v1beta1.RestoreList{}
+		err := k8sClient.List(ctx, rsList)
+		if err != nil {
+			return []reconcile.Request{}
+		}
+
+		reqs := []reconcile.Request{}
+		for i := range rsList.Items {
+			rs := rsList.Items[i]
+			reqs = append(reqs, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      rs.GetName(),
+					Namespace: rs.GetNamespace(),
+				},
+			})
+		}
+	}
+
+	return reqs
+}
+
+func processFinalizersPredicate() predicate.Predicate {
+	// Only reconcile acm Restore resources when deleting the InternalHubComponent
+	return predicate.Funcs{
+		CreateFunc: func(_ event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(_ event.DeleteEvent) bool {
+			return true
+		},
+		UpdateFunc: func(_ event.UpdateEvent) bool {
+			return false
+		},
+		GenericFunc: func(_ event.GenericEvent) bool {
+			return false
+		},
+	}
+}
+*/
 // mostRecent defines type and code to sort velero backups
 // according to start timestamp
 type mostRecent []veleroapi.Backup
