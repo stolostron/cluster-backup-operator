@@ -154,6 +154,16 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		// Once all finalizers have been removed, the object will be deleted.
 		return ctrl.Result{}, removeResourcesFinalizer(ctx, r.Client, r.DynamicClient, r.DiscoveryClient, restore)
 	}
+	// check if internalhubcomponent is marked for deletion
+	// delete this resource if that's the case
+	internalHubResource, _, errHub := getInternalHubResource(ctx, r.DynamicClient, r.DiscoveryClient)
+	if errHub != nil {
+		return ctrl.Result{RequeueAfter: pvcWaitInterval}, errHub
+	}
+	if internalHubResource.GetDeletionTimestamp() != nil {
+		// delete this acm resource
+		return ctrl.Result{}, r.Delete(ctx, restore)
+	}
 
 	if restore.Status.Phase == v1beta1.RestorePhaseFinished ||
 		restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors {
@@ -469,7 +479,7 @@ func processFinalizersPredicate() predicate.Predicate {
 			return true
 		},
 		UpdateFunc: func(_ event.UpdateEvent) bool {
-			return false
+			return true
 		},
 		GenericFunc: func(_ event.GenericEvent) bool {
 			return false
