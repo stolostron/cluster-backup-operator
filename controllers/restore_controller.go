@@ -27,8 +27,10 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
@@ -38,9 +40,14 @@ import (
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
@@ -399,33 +406,27 @@ func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		}); err != nil {
 		return err
 	}
-	/*
-	   // watch InternalHubComponent as an unstructured resource
-	   ihc := &unstructured.Unstructured{}
 
-	   	ihc.SetGroupVersionKind(schema.GroupVersionKind{
-	   		Kind:    "InternalHubComponent",
-	   		Group:   "operator.open-cluster-management.io",
-	   		Version: "v1",
-	   	})
+	// watch InternalHubComponent as an unstructured resource
+	ihc := &unstructured.Unstructured{}
 
-	   return ctrl.NewControllerManagedBy(mgr).
+	ihc.SetGroupVersionKind(schema.GroupVersionKind{
+		Kind:    "InternalHubComponent",
+		Group:   "operator.open-cluster-management.io",
+		Version: "v1",
+	})
 
-	   	For(&v1beta1.Restore{}).
-	   	Owns(&veleroapi.Restore{}).
-	   	Watches(ihc,
-	   		handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
-	   			return mapFuncTriggerFinalizers(ctx, mgr.GetClient(), o)
-	   		}), builder.WithPredicates(processFinalizersPredicate())).
-	   	Complete(r)
-	*/
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.Restore{}).
 		Owns(&veleroapi.Restore{}).
+		Watches(ihc,
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
+				return mapFuncTriggerFinalizers(ctx, mgr.GetClient(), o)
+			}), builder.WithPredicates(processFinalizersPredicate())).
 		Complete(r)
+
 }
 
-/*
 // process InternalHubComponent resources and watch for a delete action
 func mapFuncTriggerFinalizers(ctx context.Context, k8sClient client.Client,
 	o client.Object) []reconcile.Request {
@@ -476,7 +477,7 @@ func processFinalizersPredicate() predicate.Predicate {
 		},
 	}
 }
-*/
+
 // mostRecent defines type and code to sort velero backups
 // according to start timestamp
 type mostRecent []veleroapi.Backup
