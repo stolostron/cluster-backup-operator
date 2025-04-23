@@ -1004,28 +1004,35 @@ func addResourcesFinalizer(
 	if controllerutil.AddFinalizer(acmRestore, acmRestoreFinalizer) {
 		// add the finalizer for the internalhubcomponent
 		internalHubResource, dr, err := getInternalHubResource(ctx, dyn, disc)
-		if err == nil {
-			if internalHubResource.GetDeletionTimestamp() == nil {
-				needsUpdate := false
-				resFins := internalHubResource.GetFinalizers()
-				if resFins == nil {
-					internalHubResource.SetFinalizers([]string{acmRestoreFinalizer})
-					needsUpdate = true
-				} else {
-					if !slices.Contains(resFins, acmRestoreFinalizer) {
-						resFins = append(resFins, acmRestoreFinalizer)
-						internalHubResource.SetFinalizers(resFins)
-						needsUpdate = true
-					}
-				}
-				if needsUpdate {
-					//save internal hub resource
-					reqLogger.Info("add finalizer for " + internalHubResource.GetName())
-					if _, err := dr.Namespace(internalHubResource.GetNamespace()).Update(ctx,
-						&internalHubResource, metav1.UpdateOptions{}); err != nil {
-						reqLogger.Info(err.Error())
-					}
-				}
+		if err != nil {
+			reqLogger.Error(err, "failed to add finalizer")
+			return err
+		}
+		if internalHubResource.GetDeletionTimestamp() != nil {
+			// don't process internalhubcomponent, it's marked for deletion
+			reqLogger.Info("internalhubcomponent is marked for deletion, don't add finalizer")
+			return nil
+		}
+
+		reqLogger.Info("adding finalizer to internalhubcomponent")
+		needsUpdate := false
+		resFins := internalHubResource.GetFinalizers()
+		if resFins == nil {
+			internalHubResource.SetFinalizers([]string{acmRestoreFinalizer})
+			needsUpdate = true
+		} else {
+			if !slices.Contains(resFins, acmRestoreFinalizer) {
+				resFins = append(resFins, acmRestoreFinalizer)
+				internalHubResource.SetFinalizers(resFins)
+				needsUpdate = true
+			}
+		}
+		if needsUpdate {
+			//save internal hub resource
+			reqLogger.Info("add finalizer for " + internalHubResource.GetName())
+			if _, err := dr.Namespace(internalHubResource.GetNamespace()).Update(ctx,
+				&internalHubResource, metav1.UpdateOptions{}); err != nil {
+				reqLogger.Info(err.Error())
 			}
 		}
 
