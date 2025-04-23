@@ -445,7 +445,6 @@ func mapFuncTriggerFinalizers(ctx context.Context, k8sClient client.Client,
 			return []reconcile.Request{}
 		}
 
-		reqs := []reconcile.Request{}
 		for i := range rsList.Items {
 			rs := rsList.Items[i]
 			reqs = append(reqs, reconcile.Request{
