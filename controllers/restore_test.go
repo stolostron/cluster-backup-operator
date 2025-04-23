@@ -30,8 +30,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
@@ -2006,12 +2004,10 @@ func TestRestoreReconciler_finalizeRestore(t *testing.T) {
 	}
 
 	type fields struct {
-		Client          client.Client
-		KubeClient      kubernetes.Interface
-		DiscoveryClient discovery.DiscoveryInterface
-		DynamicClient   dynamic.Interface
-		Scheme          *runtime.Scheme
-		Recorder        record.EventRecorder
+		Client     client.Client
+		KubeClient kubernetes.Interface
+		Scheme     *runtime.Scheme
+		Recorder   record.EventRecorder
 	}
 	type args struct {
 		ctx               context.Context

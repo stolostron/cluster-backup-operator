@@ -899,7 +899,7 @@ func getInternalHubResource(
 	ctx context.Context,
 	dyn dynamic.Interface,
 	disc discovery.DiscoveryInterface,
-) (unstructured.Unstructured, dynamic.NamespaceableResourceInterface, error) {
+) (unstructured.Unstructured, dynamic.NamespaceableResourceInterface) {
 
 	reqLogger := log.FromContext(ctx)
 	reqLogger.Info("get cluster-backup  internalhubcomponent")
@@ -914,25 +914,25 @@ func getInternalHubResource(
 	if err != nil {
 		reqLogger.Info(fmt.Sprintf("Failed to get dynamic mapper for group=%s, error : %s",
 			groupKind, err.Error()))
-		return unstructured.Unstructured{}, nil, err
+		return unstructured.Unstructured{}, nil
 	}
 
 	if dr := dyn.Resource(mapping.Resource); dr != nil {
 
 		dynamiclist, err := dr.List(ctx, metav1.ListOptions{})
 		if err != nil {
-			return unstructured.Unstructured{}, dr, err
+			return unstructured.Unstructured{}, dr
 		}
 		for i := range dynamiclist.Items {
 			item := dynamiclist.Items[i]
 
 			if item.GetName() == "cluster-backup" {
-				return item, dr, nil
+				return item, dr
 			}
 		}
 	}
 
-	return unstructured.Unstructured{}, nil, fmt.Errorf("internalhubcomponent for cluster-backup not found")
+	return unstructured.Unstructured{}, nil
 }
 
 // remove the acm finalizer and
@@ -940,8 +940,8 @@ func getInternalHubResource(
 func removeResourcesFinalizer(
 	ctx context.Context,
 	c client.Client,
-	dyn dynamic.Interface,
-	disc discovery.DiscoveryInterface,
+	internalHubResource unstructured.Unstructured,
+	dr dynamic.NamespaceableResourceInterface,
 	acmRestore *v1beta1.Restore,
 ) error {
 
@@ -960,8 +960,7 @@ func removeResourcesFinalizer(
 		len(acmRestoreList.Items) == 1 {
 
 		// remove InternalHubResource restore finalizer if this is the last resource to be deleted
-		internalHubResource, dr, err := getInternalHubResource(ctx, dyn, disc)
-		if err == nil && dr != nil {
+		if dr != nil {
 
 			if fins := internalHubResource.GetFinalizers(); fins != nil && findValue(fins, acmRestoreFinalizer) {
 				fins = remove(fins, acmRestoreFinalizer)
@@ -990,8 +989,8 @@ func removeResourcesFinalizer(
 func addResourcesFinalizer(
 	ctx context.Context,
 	c client.Client,
-	dyn dynamic.Interface,
-	disc discovery.DiscoveryInterface,
+	internalHubResource unstructured.Unstructured,
+	dr dynamic.NamespaceableResourceInterface,
 	acmRestore *v1beta1.Restore,
 ) error {
 
@@ -1003,10 +1002,8 @@ func addResourcesFinalizer(
 
 	if controllerutil.AddFinalizer(acmRestore, acmRestoreFinalizer) {
 		// add the finalizer for the internalhubcomponent
-		internalHubResource, dr, err := getInternalHubResource(ctx, dyn, disc)
-		if err != nil {
-			reqLogger.Error(err, "failed to add finalizer")
-			return err
+		if dr == nil {
+			return nil
 		}
 		if internalHubResource.GetDeletionTimestamp() != nil {
 			// don't process internalhubcomponent, it's marked for deletion
