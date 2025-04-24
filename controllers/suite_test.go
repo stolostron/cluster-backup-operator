@@ -553,9 +553,9 @@ var _ = BeforeSuite(func() {
 	})
 
 	mchGVK := schema.GroupVersionKind{Group: "operator.open-cluster-management.io",
-		Version: "v1beta1", Kind: "InternalHubComponent"}
+		Version: "v1", Kind: "InternalHubComponent"}
 	mchGVRList := schema.GroupVersionResource{Group: "operator.open-cluster-management.io",
-		Version: "v1beta1", Resource: "internalhubcomponents"}
+		Version: "v1", Resource: "internalhubcomponents"}
 
 	msaGVK := schema.GroupVersionKind{Group: "authentication.open-cluster-management.io",
 		Version: "v1beta1", Kind: "ManagedServiceAccount"}
@@ -708,7 +708,7 @@ var _ = BeforeSuite(func() {
 
 	dynR := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredSchemeR,
 		gvrToListKindR,
-		msaObj, msaObj2, clsvObj, res_channel_default, clsHiveObj)
+		mchObj, msaObj, msaObj2, clsvObj, res_channel_default, clsHiveObj)
 
 	//create some resources
 	/* These creates all come back with an "already exists" error - are they being faked out

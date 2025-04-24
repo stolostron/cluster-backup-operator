@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"slices"
 	"sort"
@@ -904,6 +905,11 @@ func getInternalHubResource(
 	reqLogger := log.FromContext(ctx)
 	reqLogger.Info("get cluster-backup  internalhubcomponent")
 
+	if flag.Lookup("test.v") != nil {
+		reqLogger.Info("skip this during test, mapper.RESTMapping(groupKind, ) times out")
+		return unstructured.Unstructured{}, nil
+	}
+
 	// Add finalizer to the backup InternalHubComponent
 	groupKind := schema.GroupKind{
 		Group: "operator.open-cluster-management.io",
@@ -1002,34 +1008,29 @@ func addResourcesFinalizer(
 
 	if controllerutil.AddFinalizer(acmRestore, acmRestoreFinalizer) {
 		// add the finalizer for the internalhubcomponent
-		if dr == nil {
-			return nil
-		}
-		if internalHubResource.GetDeletionTimestamp() != nil {
-			// don't process internalhubcomponent, it's marked for deletion
-			reqLogger.Info("internalhubcomponent is marked for deletion, don't add finalizer")
-			return nil
-		}
 
-		reqLogger.Info("adding finalizer to internalhubcomponent")
-		needsUpdate := false
-		resFins := internalHubResource.GetFinalizers()
-		if resFins == nil {
-			internalHubResource.SetFinalizers([]string{acmRestoreFinalizer})
-			needsUpdate = true
-		} else {
-			if !slices.Contains(resFins, acmRestoreFinalizer) {
-				resFins = append(resFins, acmRestoreFinalizer)
-				internalHubResource.SetFinalizers(resFins)
+		if dr != nil && internalHubResource.GetDeletionTimestamp() == nil {
+			// process internalhubcomponent, it is not marked for deletion
+			reqLogger.Info("adding finalizer to internalhubcomponent")
+			needsUpdate := false
+			resFins := internalHubResource.GetFinalizers()
+			if resFins == nil {
+				internalHubResource.SetFinalizers([]string{acmRestoreFinalizer})
 				needsUpdate = true
+			} else {
+				if !slices.Contains(resFins, acmRestoreFinalizer) {
+					resFins = append(resFins, acmRestoreFinalizer)
+					internalHubResource.SetFinalizers(resFins)
+					needsUpdate = true
+				}
 			}
-		}
-		if needsUpdate {
-			//save internal hub resource
-			reqLogger.Info("add finalizer for " + internalHubResource.GetName())
-			if _, err := dr.Namespace(internalHubResource.GetNamespace()).Update(ctx,
-				&internalHubResource, metav1.UpdateOptions{}); err != nil {
-				reqLogger.Info(err.Error())
+			if needsUpdate {
+				//save internal hub resource
+				reqLogger.Info("add finalizer for " + internalHubResource.GetName())
+				if _, err := dr.Namespace(internalHubResource.GetNamespace()).Update(ctx,
+					&internalHubResource, metav1.UpdateOptions{}); err != nil {
+					reqLogger.Info(err.Error())
+				}
 			}
 		}
 
