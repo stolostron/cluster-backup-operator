@@ -316,6 +316,16 @@ func (b *RestoreHelper) phase(phase veleroapi.RestorePhase) *RestoreHelper {
 	return b
 }
 
+func (b *RestoreHelper) setFinalizer(values []string) *RestoreHelper {
+	b.object.SetFinalizers(values)
+	return b
+}
+
+func (b *RestoreHelper) setDeleteTimestamp(deletionTimestamp metav1.Time) *RestoreHelper {
+	b.object.SetDeletionTimestamp(&deletionTimestamp)
+	return b
+}
+
 // acm restore
 type ACMRestoreHelper struct {
 	object *v1beta1.Restore

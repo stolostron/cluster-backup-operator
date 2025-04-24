@@ -19,6 +19,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -29,9 +30,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 func Test_isVeleroRestoreFinished(t *testing.T) {
@@ -143,7 +149,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 		{
 			name: "Skip all",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(skipRestore).
@@ -154,7 +160,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 		{
 			name: "No backup name",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).object,
 			},
 			want: false,
@@ -162,7 +168,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 		{
 			name: "Credentials should be set to skip or latest",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeAll).syncRestoreWithNewBackups(true).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(backupName).
@@ -173,7 +179,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 		{
 			name: "Resources should be set to latest",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).syncRestoreWithNewBackups(true).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(latestBackup).
@@ -184,7 +190,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 		{
 			name: "InValid config, no sync",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(latestBackup).
@@ -195,7 +201,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 		{
 			name: "Valid config",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					syncRestoreWithNewBackups(true).
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestore).
@@ -228,7 +234,7 @@ func Test_isSkipAllRestores(t *testing.T) {
 		{
 			name: "Skip all",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(skipRestore).
@@ -239,7 +245,7 @@ func Test_isSkipAllRestores(t *testing.T) {
 		{
 			name: "No backup name",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					object,
 			},
 			want: true,
@@ -247,7 +253,7 @@ func Test_isSkipAllRestores(t *testing.T) {
 		{
 			name: "Do not skip all",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(latestBackup).
@@ -258,7 +264,7 @@ func Test_isSkipAllRestores(t *testing.T) {
 		{
 			name: "Managed clusters name is not skip",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(latestBackup).
 					veleroCredentialsBackupName(latestBackup).
@@ -269,7 +275,7 @@ func Test_isSkipAllRestores(t *testing.T) {
 		{
 			name: "Resources is not skip",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(skipRestore).
@@ -301,7 +307,7 @@ func Test_sendResults(t *testing.T) {
 		{
 			name: "Try restore again",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					syncRestoreWithNewBackups(true).
 					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
@@ -317,7 +323,7 @@ func Test_sendResults(t *testing.T) {
 		{
 			name: "Skip restore again",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					syncRestoreWithNewBackups(true).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
 					veleroManagedClustersBackupName(skipRestore).
@@ -355,7 +361,7 @@ func Test_setRestorePhase(t *testing.T) {
 		{
 			name: "Restore list empty and skip all, return finished phase",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					syncRestoreWithNewBackups(true).
 					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
@@ -372,7 +378,7 @@ func Test_setRestorePhase(t *testing.T) {
 		{
 			name: "Restore list empty and NOT skip all, return finished RestorePhaseStarted",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					syncRestoreWithNewBackups(true).
 					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
@@ -389,7 +395,7 @@ func Test_setRestorePhase(t *testing.T) {
 		{
 			name: "Restore phase is RestorePhaseEnabled and sync option, return wantCleanupOnEnabled is false",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					syncRestoreWithNewBackups(true).
 					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
@@ -406,7 +412,7 @@ func Test_setRestorePhase(t *testing.T) {
 		{
 			name: "Restore list empty and NOT skip all, return finished RestorePhaseEnabled and wantCleanupOnEnabled is TRUE",
 			args: args{
-				restore: createACMRestore("Restore", "veleroNamespace").
+				restore: createACMRestore("Restore", "velero-ns").
 					syncRestoreWithNewBackups(true).
 					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
@@ -424,7 +430,7 @@ func Test_setRestorePhase(t *testing.T) {
 							},
 							ObjectMeta: metav1.ObjectMeta{
 								Name:      "restore",
-								Namespace: "veleroNamespace",
+								Namespace: "velero-ns",
 							},
 							Spec: veleroapi.RestoreSpec{
 								BackupName: "backup",
@@ -1130,6 +1136,9 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 			}
 		}
 	}
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
 }
 
 func Test_isOtherResourcesRunning(t *testing.T) {
@@ -1604,6 +1613,8 @@ func Test_isPVCInitializationStep(t *testing.T) {
 }
 
 func Test_processRestoreWait(t *testing.T) {
+
+	logf.SetLogger(klog.NewKlogr())
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -1768,6 +1779,7 @@ func hasActivationLabel(
 }
 
 func Test_actLabelNotOnManagedClsRestore(t *testing.T) {
+	logf.SetLogger(klog.NewKlogr())
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -1936,6 +1948,186 @@ func Test_actLabelNotOnManagedClsRestore(t *testing.T) {
 		}
 	}
 	// clean up
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
+}
+
+//nolint:funlen
+func TestRestoreReconciler_finalizeRestore(t *testing.T) {
+	logf.SetLogger(klog.NewKlogr())
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	ns1 := *createNamespace("backup-ns")
+	acmRestore1 := *createACMRestore("acm-restore", "backup-ns").
+		cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).
+		veleroManagedClustersBackupName(latestBackupStr).
+		veleroCredentialsBackupName(latestBackupStr).
+		veleroResourcesBackupName(latestBackupStr).object
+
+	veleroRestoreFinalizer := *createRestore("velero-res", ns1.Name).
+		backupName("backup").
+		setFinalizer([]string{restoreFinalizer}).
+		object
+	veleroRestoreFinalizerDel := *createRestore("velero-res-terminate", ns1.Name).
+		backupName("backup").
+		setFinalizer([]string{restoreFinalizer}).
+		setDeleteTimestamp(metav1.NewTime(time.Now())).
+		object
+
+	scheme1 := runtime.NewScheme()
+	e1 := corev1.AddToScheme(scheme1)
+	e2 := veleroapi.AddToScheme(scheme1)
+	e3 := v1beta1.AddToScheme(scheme1)
+	if err := errors.Join(e1, e2, e3); err != nil {
+		t.Fatalf("Error adding apis to scheme: %s", err.Error())
+	}
+
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error starting client: %s", err.Error())
+	}
+	errs := []error{}
+	errs = append(errs, k8sClient1.Create(context.Background(), &ns1))
+	errs = append(errs, k8sClient1.Create(context.Background(), &acmRestore1))
+	errs = append(errs, k8sClient1.Create(context.Background(), &veleroRestoreFinalizer))
+	errs = append(errs, k8sClient1.Create(context.Background(), &veleroRestoreFinalizerDel))
+	if err := errors.Join(errs...); err != nil {
+		t.Fatalf("Error creating objects for test setup: %s", err.Error())
+	}
+
+	type fields struct {
+		Client     client.Client
+		KubeClient kubernetes.Interface
+		Scheme     *runtime.Scheme
+		Recorder   record.EventRecorder
+	}
+	type args struct {
+		ctx               context.Context
+		c                 client.Client
+		acmRestore        *v1beta1.Restore
+		veleroRestoreList veleroapi.RestoreList
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "no restores, return nil",
+			args: args{
+				ctx:               context.Background(),
+				c:                 k8sClient1,
+				acmRestore:        &acmRestore1,
+				veleroRestoreList: veleroapi.RestoreList{},
+			},
+			wantErr: false,
+			errMsg:  "",
+		},
+		{
+			name: "has velero restores, but not marked for deletion, finalizer should NOT be removed",
+			args: args{
+				ctx:        context.Background(),
+				c:          k8sClient1,
+				acmRestore: &acmRestore1,
+				veleroRestoreList: veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						veleroRestoreFinalizer,
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "waiting for velero restores to be terminated",
+		},
+		{
+			name: "has velero restores, marked for deletion, but resource not found",
+			args: args{
+				ctx:        context.Background(),
+				c:          k8sClient1,
+				acmRestore: &acmRestore1,
+				veleroRestoreList: veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						*createRestore("velero-1", ns1.Name).
+							backupName("backup").
+							setFinalizer([]string{restoreFinalizer}).
+							setDeleteTimestamp(metav1.NewTime(time.Now())).
+							object,
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  `restores.velero.io "velero-1" not found`,
+		},
+		{
+			name: "has velero restores, not marked for deletion and resource not found, delete must fail",
+			args: args{
+				ctx:        context.Background(),
+				c:          k8sClient1,
+				acmRestore: &acmRestore1,
+				veleroRestoreList: veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						*createRestore("velero-1", ns1.Name).
+							backupName("backup").
+							setFinalizer([]string{restoreFinalizer}).
+							object,
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  `restores.velero.io "velero-1" not found`,
+		},
+		{
+			name: "has velero restores, marked for deletion, finalizer should be removed",
+			args: args{
+				ctx:        context.Background(),
+				c:          k8sClient1,
+				acmRestore: &acmRestore1,
+				veleroRestoreList: veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						veleroRestoreFinalizerDel,
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "waiting for velero restores to be terminated",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			err := finalizeRestore(tt.args.ctx, tt.args.c, tt.args.acmRestore, tt.args.veleroRestoreList)
+
+			if err != nil && err.Error() != tt.errMsg {
+				t.Errorf("got an error but not the one expected error = %v, wantErr %v", err.Error(), tt.errMsg)
+			}
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("RestoreReconciler.finalizeRestore() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			for _, veleroRestore := range tt.args.veleroRestoreList.Items {
+				if controllerutil.ContainsFinalizer(&veleroRestore, restoreFinalizer) &&
+					veleroRestore.GetDeletionTimestamp() != nil &&
+					veleroRestore.Name != "velero-1" {
+					t.Errorf("Velero restore marked for deletion but finalizer not removed name=%v",
+						veleroRestore.Name)
+
+				}
+			}
+		})
+	}
 	if err := testEnv.Stop(); err != nil {
 		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}

@@ -18,7 +18,9 @@ package controllers
 
 import (
 	"context"
+	"flag"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -26,10 +28,17 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -838,4 +847,196 @@ func setUserRestoreFilters(
 				acmRestore.Spec.IncludedResources[i])
 		}
 	}
+}
+
+// delete all velero restores created by the acmRestore object
+// and remove finalizers
+func finalizeRestore(
+	ctx context.Context,
+	c client.Client,
+	acmRestore *v1beta1.Restore,
+	veleroRestoreList veleroapi.RestoreList,
+) error {
+
+	reqLogger := log.FromContext(ctx)
+
+	for _, veleroRestore := range veleroRestoreList.Items {
+
+		veleroName := veleroRestore.GetName()
+
+		isMarkedToBeDeleted := veleroRestore.GetDeletionTimestamp() != nil
+
+		if !isMarkedToBeDeleted {
+			if err := c.Delete(ctx, &veleroRestore); err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Error terminating restore: %s", veleroName))
+				return err
+			}
+		}
+
+		// remove the restore finalizer
+		if isMarkedToBeDeleted && controllerutil.ContainsFinalizer(&veleroRestore, restoreFinalizer) {
+			// Remove restoreFinalizer to delete the object
+			reqLogger.Info("Removing velero finalizer for " + veleroName)
+			controllerutil.RemoveFinalizer(&veleroRestore, restoreFinalizer)
+			err := c.Update(ctx, &veleroRestore)
+			if err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Error removing finalizer for restore: %s", veleroName))
+				return err
+			}
+		}
+	}
+
+	if len(veleroRestoreList.Items) != 0 {
+		reqLogger.Info("Waiting for velero restores to be terminated")
+		return fmt.Errorf("waiting for velero restores to be terminated")
+	}
+
+	reqLogger.Info("Successfully finalized Restore " + acmRestore.GetName())
+	return nil
+}
+
+// return the internalhubcomponent with the cluster-backup name
+func getInternalHubResource(
+	ctx context.Context,
+	dyn dynamic.Interface,
+	disc discovery.DiscoveryInterface,
+) (unstructured.Unstructured, dynamic.NamespaceableResourceInterface) {
+
+	reqLogger := log.FromContext(ctx)
+	reqLogger.Info("get cluster-backup  internalhubcomponent")
+
+	if flag.Lookup("test.v") != nil {
+		reqLogger.Info("skip this during test, mapper.RESTMapping(groupKind, ) times out")
+		return unstructured.Unstructured{}, nil
+	}
+
+	// Add finalizer to the backup InternalHubComponent
+	groupKind := schema.GroupKind{
+		Group: "operator.open-cluster-management.io",
+		Kind:  "internalhubcomponent",
+	}
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(disc))
+	mapping, err := mapper.RESTMapping(groupKind, "")
+	if err != nil {
+		reqLogger.Info(fmt.Sprintf("Failed to get dynamic mapper for group=%s, error : %s",
+			groupKind, err.Error()))
+		return unstructured.Unstructured{}, nil
+	}
+
+	if dr := dyn.Resource(mapping.Resource); dr != nil {
+
+		dynamiclist, err := dr.List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return unstructured.Unstructured{}, dr
+		}
+		for i := range dynamiclist.Items {
+			item := dynamiclist.Items[i]
+
+			if item.GetName() == "cluster-backup" {
+				return item, dr
+			}
+		}
+	}
+
+	return unstructured.Unstructured{}, nil
+}
+
+// remove the acm finalizer and
+// remove internalhubcomponent finalizer if this is the only restore resource found
+func removeResourcesFinalizer(
+	ctx context.Context,
+	c client.Client,
+	internalHubResource unstructured.Unstructured,
+	dr dynamic.NamespaceableResourceInterface,
+	acmRestore *v1beta1.Restore,
+) error {
+
+	reqLogger := log.FromContext(ctx)
+
+	// Remove restore finalizer. Once all finalizers have been
+	// removed, the object will be deleted.
+	controllerutil.RemoveFinalizer(acmRestore, acmRestoreFinalizer)
+
+	// if no other restore resources, remove mch finalizer
+	acmRestoreList := v1beta1.RestoreList{}
+	if err := c.List(
+		ctx,
+		&acmRestoreList,
+		client.InNamespace(acmRestore.GetNamespace())); err == nil &&
+		len(acmRestoreList.Items) == 1 {
+
+		// remove InternalHubResource restore finalizer if this is the last resource to be deleted
+		if dr != nil {
+
+			if fins := internalHubResource.GetFinalizers(); fins != nil && findValue(fins, acmRestoreFinalizer) {
+				fins = remove(fins, acmRestoreFinalizer)
+				internalHubResource.SetFinalizers(fins)
+				//save internal hub resource
+				_, err := dr.Namespace(internalHubResource.GetNamespace()).Update(ctx,
+					&internalHubResource, metav1.UpdateOptions{})
+				if err != nil {
+					// ignore error
+					reqLogger.Info(err.Error())
+				}
+
+			}
+		}
+	}
+
+	if err := c.Update(ctx, acmRestore); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// add the acm finalizer for the restore resource
+// and if needed for the internalhubcomponent
+func addResourcesFinalizer(
+	ctx context.Context,
+	c client.Client,
+	internalHubResource unstructured.Unstructured,
+	dr dynamic.NamespaceableResourceInterface,
+	acmRestore *v1beta1.Restore,
+) error {
+
+	reqLogger := log.FromContext(ctx)
+	if acmRestore.DeletionTimestamp != nil {
+		// already deleted, exit
+		return nil
+	}
+
+	if controllerutil.AddFinalizer(acmRestore, acmRestoreFinalizer) {
+		// add the finalizer for the internalhubcomponent
+
+		if dr != nil && internalHubResource.GetDeletionTimestamp() == nil {
+			// process internalhubcomponent, it is not marked for deletion
+			reqLogger.Info("adding finalizer to internalhubcomponent")
+			needsUpdate := false
+			resFins := internalHubResource.GetFinalizers()
+			if resFins == nil {
+				internalHubResource.SetFinalizers([]string{acmRestoreFinalizer})
+				needsUpdate = true
+			} else {
+				if !slices.Contains(resFins, acmRestoreFinalizer) {
+					resFins = append(resFins, acmRestoreFinalizer)
+					internalHubResource.SetFinalizers(resFins)
+					needsUpdate = true
+				}
+			}
+			if needsUpdate {
+				//save internal hub resource
+				reqLogger.Info("add finalizer for " + internalHubResource.GetName())
+				if _, err := dr.Namespace(internalHubResource.GetNamespace()).Update(ctx,
+					&internalHubResource, metav1.UpdateOptions{}); err != nil {
+					reqLogger.Info(err.Error())
+				}
+			}
+		}
+
+		// save the change for acm resource
+		return c.Update(ctx, acmRestore)
+	}
+	return nil
+
 }

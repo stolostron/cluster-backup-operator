@@ -6,6 +6,7 @@ package controllers
 import (
 	"context"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -1386,5 +1387,41 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 	// clean up
 	if err := testEnv.Stop(); err != nil {
 		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
+}
+
+func Test_remove(t *testing.T) {
+	type args struct {
+		s []string
+		r string
+	}
+	tests := []struct {
+		name string
+		args args
+		want []string
+	}{
+		{
+			name: "string now found",
+			args: args{
+				s: []string{"b", "c"},
+				r: "a",
+			},
+			want: []string{"b", "c"},
+		},
+		{
+			name: "string found and removed",
+			args: args{
+				s: []string{"b", "c", "a", "d"},
+				r: "a",
+			},
+			want: []string{"b", "c", "d"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := remove(tt.args.s, tt.args.r); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("remove() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
