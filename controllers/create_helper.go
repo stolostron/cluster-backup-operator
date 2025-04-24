@@ -346,6 +346,16 @@ func createACMRestore(name string, ns string) *ACMRestoreHelper {
 	}
 }
 
+func (b *ACMRestoreHelper) setFinalizer(values []string) *ACMRestoreHelper {
+	b.object.SetFinalizers(values)
+	return b
+}
+
+func (b *ACMRestoreHelper) setDeleteTimestamp(deletionTimestamp metav1.Time) *ACMRestoreHelper {
+	b.object.SetDeletionTimestamp(&deletionTimestamp)
+	return b
+}
+
 func (b *ACMRestoreHelper) cleanupBeforeRestore(cleanup v1beta1.CleanupType) *ACMRestoreHelper {
 	b.object.Spec.CleanupBeforeRestore = cleanup
 	return b

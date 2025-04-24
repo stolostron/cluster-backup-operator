@@ -955,7 +955,7 @@ func removeResourcesFinalizer(
 
 	// Remove restore finalizer. Once all finalizers have been
 	// removed, the object will be deleted.
-	controllerutil.RemoveFinalizer(acmRestore, acmRestoreFinalizer)
+	needsUpdate := controllerutil.RemoveFinalizer(acmRestore, acmRestoreFinalizer)
 
 	// if no other restore resources, remove mch finalizer
 	acmRestoreList := v1beta1.RestoreList{}
@@ -967,7 +967,6 @@ func removeResourcesFinalizer(
 
 		// remove InternalHubResource restore finalizer if this is the last resource to be deleted
 		if dr != nil {
-
 			if fins := internalHubResource.GetFinalizers(); fins != nil && findValue(fins, acmRestoreFinalizer) {
 				fins = remove(fins, acmRestoreFinalizer)
 				internalHubResource.SetFinalizers(fins)
@@ -983,8 +982,10 @@ func removeResourcesFinalizer(
 		}
 	}
 
-	if err := c.Update(ctx, acmRestore); err != nil {
-		return err
+	if needsUpdate {
+		if err := c.Update(ctx, acmRestore); err != nil {
+			return err
+		}
 	}
 
 	return nil

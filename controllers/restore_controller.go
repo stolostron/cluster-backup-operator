@@ -165,11 +165,8 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if restore.Status.Phase == v1beta1.RestorePhaseFinished ||
 		restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors {
 		// don't process a restore resource if it's completed
-		if err := addResourcesFinalizer(ctx, r.Client, internalHubResource, dr, restore); err != nil {
-			restoreLogger.Info(fmt.Sprintf("addResourcesFinalizer: %s", err.Error()))
-		}
-
-		return ctrl.Result{}, nil
+		// just try to add the finalizer
+		return ctrl.Result{}, addResourcesFinalizer(ctx, r.Client, internalHubResource, dr, restore)
 	}
 
 	// don't create restores if there is any other active resource in this namespace

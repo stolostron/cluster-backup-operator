@@ -28,8 +28,13 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/dynamic"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
@@ -2131,4 +2136,244 @@ func TestRestoreReconciler_finalizeRestore(t *testing.T) {
 	if err := testEnv.Stop(); err != nil {
 		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
+}
+
+func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
+
+	logf.SetLogger(klog.NewKlogr())
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("..", "hack", "crds"),
+		},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	mchObjAdd := &unstructured.Unstructured{}
+	mchObjAdd.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "operator.open-cluster-management.io/v1",
+		"kind":       "InternalHubComponent",
+		"metadata": map[string]interface{}{
+			"name":      "cluster-backup",
+			"namespace": "ns1",
+			"spec":      map[string]interface{}{},
+		},
+	})
+
+	mchObjDel := &unstructured.Unstructured{}
+	mchObjDel.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "operator.open-cluster-management.io/v1",
+		"kind":       "InternalHubComponent",
+		"metadata": map[string]interface{}{
+			"name":      "cluster-backup",
+			"namespace": "default",
+			"spec":      map[string]interface{}{},
+		},
+	})
+
+	mchGVK := schema.GroupVersionKind{Group: "operator.open-cluster-management.io",
+		Version: "v1", Kind: "InternalHubComponent"}
+	mchGVR := mchGVK.GroupVersion().WithResource("internalhubcomponent")
+	mchGVRList := schema.GroupVersionResource{Group: "operator.open-cluster-management.io",
+		Version: "v1", Resource: "internalhubcomponents"}
+
+	gvrToListKindR := map[schema.GroupVersionResource]string{
+		mchGVRList: "InternalHubComponentList",
+	}
+
+	unstructuredScheme := runtime.NewScheme()
+	dynClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredScheme,
+		gvrToListKindR,
+	)
+	_, err := dynClient.Resource(mchGVRList).Namespace("default").Create(context.Background(),
+		mchObjDel, v1.CreateOptions{})
+	_, err = dynClient.Resource(mchGVRList).Namespace("ns1").Create(context.Background(),
+		mchObjAdd, v1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Err creating: %s", err.Error())
+	}
+	resInterface := dynClient.Resource(mchGVR)
+
+	ns1 := *createNamespace("backup-ns")
+	acmRestore1 := *createACMRestore("acm-restore", "backup-ns").
+		cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).
+		veleroManagedClustersBackupName(latestBackupStr).
+		veleroCredentialsBackupName(latestBackupStr).
+		veleroResourcesBackupName(latestBackupStr).object
+
+	acmRestoreWFin := *createACMRestore("acm-restore-deleted", "backup-ns").
+		cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).
+		veleroManagedClustersBackupName(latestBackupStr).
+		veleroCredentialsBackupName(latestBackupStr).
+		veleroResourcesBackupName(latestBackupStr).
+		setFinalizer([]string{acmRestoreFinalizer}).object
+
+	acmRestoreWFin1 := *createACMRestore("acm-restore-deleted-2", "backup-ns").
+		cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).
+		veleroManagedClustersBackupName(latestBackupStr).
+		veleroCredentialsBackupName(latestBackupStr).
+		veleroResourcesBackupName(latestBackupStr).
+		setFinalizer([]string{acmRestoreFinalizer}).object
+
+	acmRestoreWDelFin := *createACMRestore("acm-restore-deleted", "backup-ns").
+		cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).
+		veleroManagedClustersBackupName(latestBackupStr).
+		veleroCredentialsBackupName(latestBackupStr).
+		veleroResourcesBackupName(latestBackupStr).
+		setFinalizer([]string{acmRestoreFinalizer}).
+		setDeleteTimestamp(metav1.NewTime(time.Now())).object
+
+	scheme1 := runtime.NewScheme()
+	e1 := corev1.AddToScheme(scheme1)
+	e2 := veleroapi.AddToScheme(scheme1)
+	e3 := v1beta1.AddToScheme(scheme1)
+	if err := errors.Join(e1, e2, e3); err != nil {
+		t.Fatalf("Error adding apis to scheme: %s", err.Error())
+	}
+
+	cfg, err := testEnv.Start()
+	if err != nil {
+		t.Fatalf("Error starting testEnv: %s", err.Error())
+	}
+	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
+	if err != nil {
+		t.Fatalf("Error starting client: %s", err.Error())
+	}
+	errs := []error{}
+	errs = append(errs, k8sClient1.Create(context.Background(), &ns1))
+	errs = append(errs, k8sClient1.Create(context.Background(), &acmRestore1))
+	errs = append(errs, k8sClient1.Create(context.Background(), &acmRestoreWFin))
+
+	type args struct {
+		ctx                 context.Context
+		c                   client.Client
+		internalHubResource unstructured.Unstructured
+		dr                  dynamic.NamespaceableResourceInterface
+		acmRestore          *v1beta1.Restore
+	}
+
+	remove_tests := []struct {
+		name             string
+		args             args
+		wantErr          bool
+		wantMCHFinalizer bool
+		wantACMFinalizer bool
+	}{
+		{
+			name: "remove test - finalizers",
+			args: args{
+				ctx:                 context.Background(),
+				c:                   k8sClient1,
+				internalHubResource: *mchObjDel,
+				dr:                  resInterface,
+				acmRestore:          &acmRestore1,
+			},
+			wantErr:          false,
+			wantMCHFinalizer: false,
+			wantACMFinalizer: false,
+		},
+		{
+			name: "remove test - acm has finalizers",
+			args: args{
+				ctx:                 context.Background(),
+				c:                   k8sClient1,
+				internalHubResource: *mchObjDel,
+				dr:                  resInterface,
+				acmRestore:          &acmRestoreWFin,
+			},
+			wantErr:          false,
+			wantMCHFinalizer: false,
+			wantACMFinalizer: false,
+		},
+	}
+
+	for _, tt := range remove_tests {
+
+		t.Run(tt.name, func(t *testing.T) {
+
+			if err := removeResourcesFinalizer(tt.args.ctx, tt.args.c, tt.args.internalHubResource, tt.args.dr, tt.args.acmRestore); (err != nil) != tt.wantErr {
+				t.Errorf("removeResourcesFinalizer() error = %v, wantErr %v", err, tt.wantErr)
+			} else {
+				// check finalizers were added
+				if (tt.args.internalHubResource.GetFinalizers() != nil) != tt.wantMCHFinalizer {
+					t.Errorf("removeResourcesFinalizer() internalHubResource should have a finalizer wantMCHFinalizer %v", tt.wantMCHFinalizer)
+				}
+				if (tt.args.acmRestore.GetFinalizers() != nil) != tt.wantACMFinalizer {
+					t.Errorf("removeResourcesFinalizer() acmRestore should have a finalizer , wantACMFinalizer %v", tt.wantACMFinalizer)
+				}
+			}
+		})
+	}
+
+	errs = append(errs, k8sClient1.Create(context.Background(), &acmRestoreWFin1))
+	errs = append(errs, k8sClient1.Create(context.Background(), &acmRestoreWDelFin))
+
+	add_tests := []struct {
+		name             string
+		args             args
+		wantErr          bool
+		wantMCHFinalizer bool
+		wantACMFinalizer bool
+	}{
+		{
+			name: "add test - finalizers must be not be added, acm restore is deleted",
+			args: args{
+				ctx:                 context.Background(),
+				c:                   k8sClient1,
+				internalHubResource: *mchObjAdd,
+				dr:                  resInterface,
+				acmRestore:          &acmRestoreWDelFin,
+			},
+			wantErr:          false,
+			wantMCHFinalizer: false,
+			wantACMFinalizer: true,
+		},
+		{
+			name: "add test - finalizers must be not be added, acm restore already has them",
+			args: args{
+				ctx:                 context.Background(),
+				c:                   k8sClient1,
+				internalHubResource: *mchObjAdd,
+				dr:                  resInterface,
+				acmRestore:          &acmRestoreWFin1,
+			},
+			wantErr:          false,
+			wantMCHFinalizer: false,
+			wantACMFinalizer: true,
+		},
+		{
+			name: "add test - finalizers must be added",
+			args: args{
+				ctx:                 context.Background(),
+				c:                   k8sClient1,
+				internalHubResource: *mchObjAdd,
+				dr:                  resInterface,
+				acmRestore:          &acmRestore1,
+			},
+			wantErr:          false,
+			wantMCHFinalizer: true,
+			wantACMFinalizer: true,
+		},
+	}
+
+	for _, tt := range add_tests {
+
+		t.Run(tt.name, func(t *testing.T) {
+			if err := addResourcesFinalizer(tt.args.ctx, tt.args.c, tt.args.internalHubResource, tt.args.dr, tt.args.acmRestore); (err != nil) != tt.wantErr {
+				t.Errorf("addResourcesFinalizer() error = %v, wantErr %v", err, tt.wantErr)
+			} else {
+				// check finalizers were added
+				if (tt.args.internalHubResource.GetFinalizers() != nil) != tt.wantMCHFinalizer {
+					t.Errorf("addResourcesFinalizer() internalHubResource should have a finalizer wantMCHFinalizer %v", tt.wantMCHFinalizer)
+				}
+				if (tt.args.acmRestore.GetFinalizers() != nil) != tt.wantACMFinalizer {
+					t.Errorf("addResourcesFinalizer() acmRestore should have a finalizer , wantACMFinalizer %v", tt.wantACMFinalizer)
+				}
+			}
+		})
+	}
+	if err := testEnv.Stop(); err != nil {
+		t.Fatalf("Error stopping testenv: %s", err.Error())
+	}
+
 }
