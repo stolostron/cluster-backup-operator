@@ -42,7 +42,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -142,13 +141,10 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	// Check if the restore instance is marked to be deleted, which is
 	// indicated by the deletion timestamp being set.
-	isMarkedToBeDeleted := restore.GetDeletionTimestamp() != nil
-	if isMarkedToBeDeleted && controllerutil.ContainsFinalizer(restore, acmRestoreFinalizer) {
-
+	if restore.GetDeletionTimestamp() != nil {
 		// Run finalization logic. If the finalization
 		// logic fails, don't remove the finalizer so
 		// that we can retry during the next reconciliation.
-		// finalize velero restore resources created by this acm restore
 		if err := finalizeRestore(ctx, r.Client, restore, veleroRestoreList); err != nil {
 			// Logging err and returning nil to ensure wait
 			restoreLogger.Info(fmt.Sprintf("Finalizing: %s", err.Error()))
@@ -169,7 +165,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if restore.Status.Phase == v1beta1.RestorePhaseFinished ||
 		restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors {
 		// don't process a restore resource if it's completed
-		// just try to add the finalizer
+		// try to add the finalizer
 		return ctrl.Result{}, addResourcesFinalizer(ctx, r.Client, r.DynamicClient, internalHubResource, restore)
 	}
 

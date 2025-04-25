@@ -39,7 +39,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -1977,11 +1976,9 @@ func TestRestoreReconciler_finalizeRestore(t *testing.T) {
 
 	veleroRestoreFinalizer := *createRestore("velero-res", ns1.Name).
 		backupName("backup").
-		setFinalizer([]string{restoreFinalizer}).
 		object
 	veleroRestoreFinalizerDel := *createRestore("velero-res-terminate", ns1.Name).
 		backupName("backup").
-		setFinalizer([]string{restoreFinalizer}).
 		setDeleteTimestamp(metav1.NewTime(time.Now())).
 		object
 
@@ -2056,43 +2053,6 @@ func TestRestoreReconciler_finalizeRestore(t *testing.T) {
 			errMsg:  "waiting for velero restores to be terminated",
 		},
 		{
-			name: "has velero restores, marked for deletion, but resource not found",
-			args: args{
-				ctx:        context.Background(),
-				c:          k8sClient1,
-				acmRestore: &acmRestore1,
-				veleroRestoreList: veleroapi.RestoreList{
-					Items: []veleroapi.Restore{
-						*createRestore("velero-1", ns1.Name).
-							backupName("backup").
-							setFinalizer([]string{restoreFinalizer}).
-							setDeleteTimestamp(metav1.NewTime(time.Now())).
-							object,
-					},
-				},
-			},
-			wantErr: true,
-			errMsg:  `restores.velero.io "velero-1" not found`,
-		},
-		{
-			name: "has velero restores, not marked for deletion and resource not found, delete must fail",
-			args: args{
-				ctx:        context.Background(),
-				c:          k8sClient1,
-				acmRestore: &acmRestore1,
-				veleroRestoreList: veleroapi.RestoreList{
-					Items: []veleroapi.Restore{
-						*createRestore("velero-1", ns1.Name).
-							backupName("backup").
-							setFinalizer([]string{restoreFinalizer}).
-							object,
-					},
-				},
-			},
-			wantErr: true,
-			errMsg:  `restores.velero.io "velero-1" not found`,
-		},
-		{
 			name: "has velero restores, marked for deletion, finalizer should be removed",
 			args: args{
 				ctx:        context.Background(),
@@ -2121,15 +2081,6 @@ func TestRestoreReconciler_finalizeRestore(t *testing.T) {
 				t.Errorf("RestoreReconciler.finalizeRestore() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			for _, veleroRestore := range tt.args.veleroRestoreList.Items {
-				if controllerutil.ContainsFinalizer(&veleroRestore, restoreFinalizer) &&
-					veleroRestore.GetDeletionTimestamp() != nil &&
-					veleroRestore.Name != "velero-1" {
-					t.Errorf("Velero restore marked for deletion but finalizer not removed name=%v",
-						veleroRestore.Name)
-
-				}
-			}
 		})
 	}
 	if err := testEnv.Stop(); err != nil {
@@ -2196,14 +2147,6 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 		veleroCredentialsBackupName(latestBackupStr).
 		veleroResourcesBackupName(latestBackupStr).
 		setFinalizer([]string{acmRestoreFinalizer}).object
-
-	acmRestoreWDelFin := *createACMRestore("acm-restore-w-del-fin", "backup-ns").
-		cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).
-		veleroManagedClustersBackupName(latestBackupStr).
-		veleroCredentialsBackupName(latestBackupStr).
-		veleroResourcesBackupName(latestBackupStr).
-		setFinalizer([]string{acmRestoreFinalizer}).
-		setDeleteTimestamp(metav1.NewTime(time.Now())).object
 
 	scheme1 := runtime.NewScheme()
 	e1 := corev1.AddToScheme(scheme1)
@@ -2295,7 +2238,6 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 	}
 
 	errs = append(errs, k8sClient1.Create(context.Background(), &acmRestoreWFin1))
-	errs = append(errs, k8sClient1.Create(context.Background(), &acmRestoreWDelFin))
 	if err := errors.Join(errs...); err != nil {
 		t.Errorf("Error creating objs to setup for test: %s", err.Error())
 	}
@@ -2306,19 +2248,7 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 		wantMCHFinalizer bool
 		wantACMFinalizer bool
 	}{
-		{
-			name: "add test - finalizers must be not be added, acm restore is deleted",
-			args: args{
-				ctx:                 context.Background(),
-				c:                   k8sClient1,
-				internalHubResource: mchObjAdd,
-				dyn:                 dynClient,
-				acmRestore:          &acmRestoreWDelFin,
-			},
-			wantErr:          false,
-			wantMCHFinalizer: false,
-			wantACMFinalizer: true,
-		},
+
 		{
 			name: "add test - finalizers must be not be added, acm restore already has them",
 			args: args{
@@ -2329,7 +2259,7 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 				acmRestore:          &acmRestoreWFin1,
 			},
 			wantErr:          false,
-			wantMCHFinalizer: false,
+			wantMCHFinalizer: true,
 			wantACMFinalizer: true,
 		},
 		{

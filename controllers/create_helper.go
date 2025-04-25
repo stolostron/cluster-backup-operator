@@ -330,11 +330,6 @@ func (b *RestoreHelper) phase(phase veleroapi.RestorePhase) *RestoreHelper {
 	return b
 }
 
-func (b *RestoreHelper) setFinalizer(values []string) *RestoreHelper {
-	b.object.SetFinalizers(values)
-	return b
-}
-
 func (b *RestoreHelper) setDeleteTimestamp(deletionTimestamp metav1.Time) *RestoreHelper {
 	b.object.SetDeletionTimestamp(&deletionTimestamp)
 	return b
@@ -362,11 +357,6 @@ func createACMRestore(name string, ns string) *ACMRestoreHelper {
 
 func (b *ACMRestoreHelper) setFinalizer(values []string) *ACMRestoreHelper {
 	b.object.SetFinalizers(values)
-	return b
-}
-
-func (b *ACMRestoreHelper) setDeleteTimestamp(deletionTimestamp metav1.Time) *ACMRestoreHelper {
-	b.object.SetDeletionTimestamp(&deletionTimestamp)
 	return b
 }
 
