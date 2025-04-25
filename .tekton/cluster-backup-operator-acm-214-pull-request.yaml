@@ -603,7 +603,8 @@ spec:
       optional: true
     - name: netrc
       optional: true
-  taskRunTemplate: {}
+  taskRunTemplate:
+    serviceAccountName: build-pipeline-cluster-backup-operator-acm-214
   workspaces:
   - name: git-auth
     secret:
