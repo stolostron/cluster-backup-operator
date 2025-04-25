@@ -2141,6 +2141,7 @@ func TestRestoreReconciler_finalizeRestore(t *testing.T) {
 func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 
 	logf.SetLogger(klog.NewKlogr())
+
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "config", "crd", "bases"),
@@ -2185,13 +2186,16 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 	dynClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredScheme,
 		gvrToListKindR,
 	)
-	_, err := dynClient.Resource(mchGVRList).Namespace("default").Create(context.Background(),
-		mchObjDel, v1.CreateOptions{})
-	_, err = dynClient.Resource(mchGVRList).Namespace("ns1").Create(context.Background(),
-		mchObjAdd, v1.CreateOptions{})
-	if err != nil {
+
+	if _, err := dynClient.Resource(mchGVRList).Namespace("default").Create(context.Background(),
+		mchObjDel, v1.CreateOptions{}); err != nil {
 		t.Fatalf("Err creating: %s", err.Error())
 	}
+	if _, err := dynClient.Resource(mchGVRList).Namespace("ns1").Create(context.Background(),
+		mchObjAdd, v1.CreateOptions{}); err != nil {
+		t.Fatalf("Err creating: %s", err.Error())
+	}
+
 	resInterface := dynClient.Resource(mchGVR)
 
 	ns1 := *createNamespace("backup-ns")
@@ -2201,21 +2205,21 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 		veleroCredentialsBackupName(latestBackupStr).
 		veleroResourcesBackupName(latestBackupStr).object
 
-	acmRestoreWFin := *createACMRestore("acm-restore-deleted", "backup-ns").
+	acmRestoreWFin := *createACMRestore("acm-restore-w-fin", "backup-ns").
 		cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).
 		veleroManagedClustersBackupName(latestBackupStr).
 		veleroCredentialsBackupName(latestBackupStr).
 		veleroResourcesBackupName(latestBackupStr).
 		setFinalizer([]string{acmRestoreFinalizer}).object
 
-	acmRestoreWFin1 := *createACMRestore("acm-restore-deleted-2", "backup-ns").
+	acmRestoreWFin1 := *createACMRestore("acm-restore-w-fin-1", "backup-ns").
 		cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).
 		veleroManagedClustersBackupName(latestBackupStr).
 		veleroCredentialsBackupName(latestBackupStr).
 		veleroResourcesBackupName(latestBackupStr).
 		setFinalizer([]string{acmRestoreFinalizer}).object
 
-	acmRestoreWDelFin := *createACMRestore("acm-restore-deleted", "backup-ns").
+	acmRestoreWDelFin := *createACMRestore("acm-restore-w-del-fin", "backup-ns").
 		cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).
 		veleroManagedClustersBackupName(latestBackupStr).
 		veleroCredentialsBackupName(latestBackupStr).
@@ -2243,6 +2247,10 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 	errs = append(errs, k8sClient1.Create(context.Background(), &ns1))
 	errs = append(errs, k8sClient1.Create(context.Background(), &acmRestore1))
 	errs = append(errs, k8sClient1.Create(context.Background(), &acmRestoreWFin))
+
+	if err := errors.Join(errs...); err != nil {
+		t.Errorf("Error creating objs to setup for test: %s", err.Error())
+	}
 
 	type args struct {
 		ctx                 context.Context
@@ -2308,7 +2316,9 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 
 	errs = append(errs, k8sClient1.Create(context.Background(), &acmRestoreWFin1))
 	errs = append(errs, k8sClient1.Create(context.Background(), &acmRestoreWDelFin))
-
+	if err := errors.Join(errs...); err != nil {
+		t.Errorf("Error creating objs to setup for test: %s", err.Error())
+	}
 	add_tests := []struct {
 		name             string
 		args             args
