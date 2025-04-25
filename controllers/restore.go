@@ -900,7 +900,7 @@ func getInternalHubResource(
 	reqLogger := log.FromContext(ctx)
 	reqLogger.Info("get cluster-backup  internalhubcomponent")
 
-	mchGVRList := schema.GroupVersionResource{Group: "operator.open-cluster-management.io",
+	mchGVRList := schema.GroupVersionResource{Group: ihcGroup,
 		Version: "v1", Resource: "internalhubcomponents"}
 	mchList, err := dyn.Resource(mchGVRList).Namespace("open-cluster-management").List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -946,7 +946,7 @@ func removeResourcesFinalizer(
 
 		// remove InternalHubResource restore finalizer if this is the last resource to be deleted
 		mchGVRList := schema.GroupVersionResource{
-			Group:   "operator.open-cluster-management.io",
+			Group:   ihcGroup,
 			Version: "v1", Resource: "internalhubcomponents"}
 		if internalHubResource != nil {
 			if fins := internalHubResource.GetFinalizers(); fins != nil && findValue(fins, acmRestoreFinalizer) {
@@ -993,7 +993,7 @@ func addResourcesFinalizer(
 
 		// remove InternalHubResource restore finalizer if this is the last resource to be deleted
 		mchGVRList := schema.GroupVersionResource{
-			Group:   "operator.open-cluster-management.io",
+			Group:   ihcGroup,
 			Version: "v1", Resource: "internalhubcomponents"}
 		if internalHubResource != nil &&
 			internalHubResource.GetDeletionTimestamp() == nil {

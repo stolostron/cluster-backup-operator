@@ -71,6 +71,7 @@ const (
 
 	acmRestoreFinalizer = "restores.cluster.open-cluster-management.io/finalizer"
 	restoreFinalizer    = "restores.velero.io/external-resources-finalizer"
+	ihcGroup            = "operator.open-cluster-management.io"
 )
 
 type DynamicStruct struct {
@@ -414,10 +415,9 @@ func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	// watch InternalHubComponent as an unstructured resource
 	ihc := &unstructured.Unstructured{}
-
 	ihc.SetGroupVersionKind(schema.GroupVersionKind{
 		Kind:    "InternalHubComponent",
-		Group:   "operator.open-cluster-management.io",
+		Group:   ihcGroup,
 		Version: "v1",
 	})
 
@@ -429,7 +429,6 @@ func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				return mapFuncTriggerFinalizers(ctx, mgr.GetClient(), o)
 			}), builder.WithPredicates(processFinalizersPredicate())).
 		Complete(r)
-
 }
 
 // process InternalHubComponent resources and watch for a delete action

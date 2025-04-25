@@ -2223,9 +2223,6 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 	}
 	errs := []error{}
 	errs = append(errs, k8sClient1.Create(context.Background(), &ns1))
-	errs = append(errs, k8sClient1.Create(context.Background(), &acmRestore1))
-	errs = append(errs, k8sClient1.Create(context.Background(), &acmRestoreWFin))
-
 	if err := errors.Join(errs...); err != nil {
 		t.Errorf("Error creating objs to setup for test: %s", err.Error())
 	}
@@ -2277,10 +2274,15 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 
 		t.Run(tt.name, func(t *testing.T) {
 
+			// create resource
+			if err := k8sClient1.Create(context.Background(), tt.args.acmRestore); err != nil {
+				t.Errorf("Error creating objs to setup for test: %s", err.Error())
+			}
 			if err := removeResourcesFinalizer(tt.args.ctx, tt.args.c,
 				tt.args.dyn, tt.args.internalHubResource, tt.args.acmRestore); (err != nil) != tt.wantErr {
 				t.Errorf("removeResourcesFinalizer() error = %v, wantErr %v", err, tt.wantErr)
 			} else {
+
 				// check finalizers were added
 				if (tt.args.internalHubResource.GetFinalizers() != nil) != tt.wantMCHFinalizer {
 					t.Errorf("internalHubResource should have a finalizer wantMCHFinalizer %v", tt.wantMCHFinalizer)
