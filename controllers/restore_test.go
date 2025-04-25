@@ -28,7 +28,6 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -2188,11 +2187,11 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 	)
 
 	if _, err := dynClient.Resource(mchGVRList).Namespace("default").Create(context.Background(),
-		mchObjDel, v1.CreateOptions{}); err != nil {
+		mchObjDel, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("Err creating: %s", err.Error())
 	}
 	if _, err := dynClient.Resource(mchGVRList).Namespace("ns1").Create(context.Background(),
-		mchObjAdd, v1.CreateOptions{}); err != nil {
+		mchObjAdd, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("Err creating: %s", err.Error())
 	}
 
