@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"slices"
 	"sort"
@@ -32,10 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -899,46 +895,29 @@ func finalizeRestore(
 func getInternalHubResource(
 	ctx context.Context,
 	dyn dynamic.Interface,
-	disc discovery.DiscoveryInterface,
-) (unstructured.Unstructured, dynamic.NamespaceableResourceInterface) {
+) (*unstructured.Unstructured, error) {
 
 	reqLogger := log.FromContext(ctx)
 	reqLogger.Info("get cluster-backup  internalhubcomponent")
 
-	if flag.Lookup("test.v") != nil {
-		reqLogger.Info("skip this during test, mapper.RESTMapping(groupKind, ) times out")
-		return unstructured.Unstructured{}, nil
-	}
-
-	// Add finalizer to the backup InternalHubComponent
-	groupKind := schema.GroupKind{
-		Group: "operator.open-cluster-management.io",
-		Kind:  "internalhubcomponent",
-	}
-	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(disc))
-	mapping, err := mapper.RESTMapping(groupKind, "")
+	mchGVRList := schema.GroupVersionResource{Group: "operator.open-cluster-management.io",
+		Version: "v1", Resource: "internalhubcomponents"}
+	mchList, err := dyn.Resource(mchGVRList).Namespace("open-cluster-management").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		reqLogger.Info(fmt.Sprintf("Failed to get dynamic mapper for group=%s, error : %s",
-			groupKind, err.Error()))
-		return unstructured.Unstructured{}, nil
+		return &unstructured.Unstructured{}, err
 	}
+	//
+	reqLogger.Info("get cluster-backup  internalhubcomponent")
+	for i := range mchList.Items {
+		item := mchList.Items[i]
 
-	if dr := dyn.Resource(mapping.Resource); dr != nil {
-
-		dynamiclist, err := dr.List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return unstructured.Unstructured{}, dr
-		}
-		for i := range dynamiclist.Items {
-			item := dynamiclist.Items[i]
-
-			if item.GetName() == "cluster-backup" {
-				return item, dr
-			}
+		if item.GetName() == "cluster-backup" {
+			return &item, nil
 		}
 	}
 
-	return unstructured.Unstructured{}, nil
+	return &unstructured.Unstructured{}, err
+
 }
 
 // remove the acm finalizer and
@@ -946,8 +925,8 @@ func getInternalHubResource(
 func removeResourcesFinalizer(
 	ctx context.Context,
 	c client.Client,
-	internalHubResource unstructured.Unstructured,
-	dr dynamic.NamespaceableResourceInterface,
+	dyn dynamic.Interface,
+	internalHubResource *unstructured.Unstructured,
 	acmRestore *v1beta1.Restore,
 ) error {
 
@@ -966,18 +945,20 @@ func removeResourcesFinalizer(
 		len(acmRestoreList.Items) == 1 {
 
 		// remove InternalHubResource restore finalizer if this is the last resource to be deleted
-		if dr != nil {
+		mchGVRList := schema.GroupVersionResource{
+			Group:   "operator.open-cluster-management.io",
+			Version: "v1", Resource: "internalhubcomponents"}
+		if internalHubResource != nil {
 			if fins := internalHubResource.GetFinalizers(); fins != nil && findValue(fins, acmRestoreFinalizer) {
 				fins = remove(fins, acmRestoreFinalizer)
 				internalHubResource.SetFinalizers(fins)
 				//save internal hub resource
-				_, err := dr.Namespace(internalHubResource.GetNamespace()).Update(ctx,
-					&internalHubResource, metav1.UpdateOptions{})
+				_, err := dyn.Resource(mchGVRList).Namespace(internalHubResource.GetNamespace()).Update(ctx,
+					internalHubResource, metav1.UpdateOptions{})
 				if err != nil {
 					// ignore error
 					reqLogger.Info(err.Error())
 				}
-
 			}
 		}
 	}
@@ -996,8 +977,8 @@ func removeResourcesFinalizer(
 func addResourcesFinalizer(
 	ctx context.Context,
 	c client.Client,
-	internalHubResource unstructured.Unstructured,
-	dr dynamic.NamespaceableResourceInterface,
+	dyn dynamic.Interface,
+	internalHubResource *unstructured.Unstructured,
 	acmRestore *v1beta1.Restore,
 ) error {
 
@@ -1010,7 +991,12 @@ func addResourcesFinalizer(
 	if controllerutil.AddFinalizer(acmRestore, acmRestoreFinalizer) {
 		// add the finalizer for the internalhubcomponent
 
-		if dr != nil && internalHubResource.GetDeletionTimestamp() == nil {
+		// remove InternalHubResource restore finalizer if this is the last resource to be deleted
+		mchGVRList := schema.GroupVersionResource{
+			Group:   "operator.open-cluster-management.io",
+			Version: "v1", Resource: "internalhubcomponents"}
+		if internalHubResource != nil &&
+			internalHubResource.GetDeletionTimestamp() == nil {
 			// process internalhubcomponent, it is not marked for deletion
 			reqLogger.Info("adding finalizer to internalhubcomponent")
 			needsUpdate := false
@@ -1028,8 +1014,8 @@ func addResourcesFinalizer(
 			if needsUpdate {
 				//save internal hub resource
 				reqLogger.Info("add finalizer for " + internalHubResource.GetName())
-				if _, err := dr.Namespace(internalHubResource.GetNamespace()).Update(ctx,
-					&internalHubResource, metav1.UpdateOptions{}); err != nil {
+				if _, err := dyn.Resource(mchGVRList).Namespace(internalHubResource.GetNamespace()).Update(ctx,
+					internalHubResource, metav1.UpdateOptions{}); err != nil {
 					reqLogger.Info(err.Error())
 				}
 			}

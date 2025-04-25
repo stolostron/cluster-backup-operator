@@ -135,7 +135,10 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 		return ctrl.Result{}, err
 	}
-	internalHubResource, dr := getInternalHubResource(ctx, r.DynamicClient, r.DiscoveryClient)
+	internalHubResource, err := getInternalHubResource(ctx, r.DynamicClient)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	// Check if the restore instance is marked to be deleted, which is
 	// indicated by the deletion timestamp being set.
 	isMarkedToBeDeleted := restore.GetDeletionTimestamp() != nil
@@ -153,7 +156,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		// Remove restore finalizer for acm restore and internalhub resource if this is the only restore
 		// Once all finalizers have been removed, the object will be deleted.
 		return ctrl.Result{}, removeResourcesFinalizer(ctx, r.Client,
-			internalHubResource, dr, restore)
+			r.DynamicClient, internalHubResource, restore)
 	}
 	// check if internalhubcomponent is marked for deletion
 	// delete this resource if that's the case
@@ -166,7 +169,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors {
 		// don't process a restore resource if it's completed
 		// just try to add the finalizer
-		return ctrl.Result{}, addResourcesFinalizer(ctx, r.Client, internalHubResource, dr, restore)
+		return ctrl.Result{}, addResourcesFinalizer(ctx, r.Client, r.DynamicClient, internalHubResource, restore)
 	}
 
 	// don't create restores if there is any other active resource in this namespace
@@ -275,7 +278,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	err = r.Client.Status().Update(ctx, restore)
-	if err := addResourcesFinalizer(ctx, r.Client, internalHubResource, dr, restore); err != nil {
+	if err := addResourcesFinalizer(ctx, r.Client, r.DynamicClient, internalHubResource, restore); err != nil {
 		restoreLogger.Info(fmt.Sprintf("addResourcesFinalizer: %s", err.Error()))
 	}
 

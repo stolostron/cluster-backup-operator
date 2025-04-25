@@ -2166,7 +2166,6 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 	dynClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredScheme,
 		gvrToListKindR,
 	)
-	resInterface := dynClient.Resource(mchGVRList)
 
 	if _, err := dynClient.Resource(mchGVRList).Namespace("default").Create(context.Background(),
 		mchObjDel, metav1.CreateOptions{}); err != nil {
@@ -2234,8 +2233,8 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 	type args struct {
 		ctx                 context.Context
 		c                   client.Client
-		internalHubResource unstructured.Unstructured
-		dr                  dynamic.NamespaceableResourceInterface
+		internalHubResource *unstructured.Unstructured
+		dyn                 dynamic.Interface
 		acmRestore          *v1beta1.Restore
 	}
 
@@ -2251,8 +2250,8 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 			args: args{
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
-				internalHubResource: *mchObjDel,
-				dr:                  resInterface,
+				internalHubResource: mchObjDel,
+				dyn:                 dynClient,
 				acmRestore:          &acmRestore1,
 			},
 			wantErr:          false,
@@ -2264,8 +2263,8 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 			args: args{
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
-				internalHubResource: *mchObjDel,
-				dr:                  resInterface,
+				internalHubResource: mchObjDel,
+				dyn:                 dynClient,
 				acmRestore:          &acmRestoreWFin,
 			},
 			wantErr:          false,
@@ -2278,8 +2277,8 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 
 		t.Run(tt.name, func(t *testing.T) {
 
-			if err := removeResourcesFinalizer(tt.args.ctx, tt.args.c, tt.args.internalHubResource,
-				tt.args.dr, tt.args.acmRestore); (err != nil) != tt.wantErr {
+			if err := removeResourcesFinalizer(tt.args.ctx, tt.args.c,
+				tt.args.dyn, tt.args.internalHubResource, tt.args.acmRestore); (err != nil) != tt.wantErr {
 				t.Errorf("removeResourcesFinalizer() error = %v, wantErr %v", err, tt.wantErr)
 			} else {
 				// check finalizers were added
@@ -2310,8 +2309,8 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 			args: args{
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
-				internalHubResource: *mchObjAdd,
-				dr:                  resInterface,
+				internalHubResource: mchObjAdd,
+				dyn:                 dynClient,
 				acmRestore:          &acmRestoreWDelFin,
 			},
 			wantErr:          false,
@@ -2323,8 +2322,8 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 			args: args{
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
-				internalHubResource: *mchObjAdd,
-				dr:                  resInterface,
+				internalHubResource: mchObjAdd,
+				dyn:                 dynClient,
 				acmRestore:          &acmRestoreWFin1,
 			},
 			wantErr:          false,
@@ -2336,8 +2335,8 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 			args: args{
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
-				internalHubResource: *mchObjAdd,
-				dr:                  resInterface,
+				internalHubResource: mchObjAdd,
+				dyn:                 dynClient,
 				acmRestore:          &acmRestore1,
 			},
 			wantErr:          false,
@@ -2349,8 +2348,8 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 	for _, tt := range add_tests {
 
 		t.Run(tt.name, func(t *testing.T) {
-			if err := addResourcesFinalizer(tt.args.ctx, tt.args.c, tt.args.internalHubResource,
-				tt.args.dr, tt.args.acmRestore); (err != nil) != tt.wantErr {
+			if err := addResourcesFinalizer(tt.args.ctx, tt.args.c, tt.args.dyn, tt.args.internalHubResource,
+				tt.args.acmRestore); (err != nil) != tt.wantErr {
 				t.Errorf("addResourcesFinalizer() error = %v, wantErr %v", err, tt.wantErr)
 			} else {
 				// check finalizers were added
