@@ -2291,15 +2291,16 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 
 		t.Run(tt.name, func(t *testing.T) {
 
-			if err := removeResourcesFinalizer(tt.args.ctx, tt.args.c, tt.args.internalHubResource, tt.args.dr, tt.args.acmRestore); (err != nil) != tt.wantErr {
+			if err := removeResourcesFinalizer(tt.args.ctx, tt.args.c, tt.args.internalHubResource,
+				tt.args.dr, tt.args.acmRestore); (err != nil) != tt.wantErr {
 				t.Errorf("removeResourcesFinalizer() error = %v, wantErr %v", err, tt.wantErr)
 			} else {
 				// check finalizers were added
 				if (tt.args.internalHubResource.GetFinalizers() != nil) != tt.wantMCHFinalizer {
-					t.Errorf("removeResourcesFinalizer() internalHubResource should have a finalizer wantMCHFinalizer %v", tt.wantMCHFinalizer)
+					t.Errorf("internalHubResource should have a finalizer wantMCHFinalizer %v", tt.wantMCHFinalizer)
 				}
 				if (tt.args.acmRestore.GetFinalizers() != nil) != tt.wantACMFinalizer {
-					t.Errorf("removeResourcesFinalizer() acmRestore should have a finalizer , wantACMFinalizer %v", tt.wantACMFinalizer)
+					t.Errorf("acmRestore should have a finalizer , wantACMFinalizer %v", tt.wantACMFinalizer)
 				}
 			}
 		})
@@ -2359,15 +2360,16 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 	for _, tt := range add_tests {
 
 		t.Run(tt.name, func(t *testing.T) {
-			if err := addResourcesFinalizer(tt.args.ctx, tt.args.c, tt.args.internalHubResource, tt.args.dr, tt.args.acmRestore); (err != nil) != tt.wantErr {
+			if err := addResourcesFinalizer(tt.args.ctx, tt.args.c, tt.args.internalHubResource,
+				tt.args.dr, tt.args.acmRestore); (err != nil) != tt.wantErr {
 				t.Errorf("addResourcesFinalizer() error = %v, wantErr %v", err, tt.wantErr)
 			} else {
 				// check finalizers were added
 				if (tt.args.internalHubResource.GetFinalizers() != nil) != tt.wantMCHFinalizer {
-					t.Errorf("addResourcesFinalizer() internalHubResource should have a finalizer wantMCHFinalizer %v", tt.wantMCHFinalizer)
+					t.Errorf("internalHubResource should have a finalizer wantMCHFinalizer %v", tt.wantMCHFinalizer)
 				}
 				if (tt.args.acmRestore.GetFinalizers() != nil) != tt.wantACMFinalizer {
-					t.Errorf("addResourcesFinalizer() acmRestore should have a finalizer , wantACMFinalizer %v", tt.wantACMFinalizer)
+					t.Errorf("acmRestore should have a finalizer , wantACMFinalizer %v", tt.wantACMFinalizer)
 				}
 			}
 		})
