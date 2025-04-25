@@ -2149,31 +2149,12 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 		ErrorIfCRDPathMissing: true,
 	}
 
-	mchObjAdd := &unstructured.Unstructured{}
-	mchObjAdd.SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "operator.open-cluster-management.io/v1",
-		"kind":       "InternalHubComponent",
-		"metadata": map[string]interface{}{
-			"name":      "cluster-backup",
-			"namespace": "ns1",
-			"spec":      map[string]interface{}{},
-		},
-	})
+	mchObjAdd := newUnstructured("operator.open-cluster-management.io/v1", "InternalHubComponent",
+		"ns1", "cluster-backup")
 
-	mchObjDel := &unstructured.Unstructured{}
-	mchObjDel.SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "operator.open-cluster-management.io/v1",
-		"kind":       "InternalHubComponent",
-		"metadata": map[string]interface{}{
-			"name":      "cluster-backup",
-			"namespace": "default",
-			"spec":      map[string]interface{}{},
-		},
-	})
+	mchObjDel := newUnstructured("operator.open-cluster-management.io/v1", "InternalHubComponent",
+		"default", "cluster-backup")
 
-	mchGVK := schema.GroupVersionKind{Group: "operator.open-cluster-management.io",
-		Version: "v1", Kind: "InternalHubComponent"}
-	mchGVR := mchGVK.GroupVersion().WithResource("internalhubcomponent")
 	mchGVRList := schema.GroupVersionResource{Group: "operator.open-cluster-management.io",
 		Version: "v1", Resource: "internalhubcomponents"}
 
@@ -2185,6 +2166,7 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 	dynClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(unstructuredScheme,
 		gvrToListKindR,
 	)
+	resInterface := dynClient.Resource(mchGVRList)
 
 	if _, err := dynClient.Resource(mchGVRList).Namespace("default").Create(context.Background(),
 		mchObjDel, metav1.CreateOptions{}); err != nil {
@@ -2194,8 +2176,6 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 		mchObjAdd, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("Err creating: %s", err.Error())
 	}
-
-	resInterface := dynClient.Resource(mchGVR)
 
 	ns1 := *createNamespace("backup-ns")
 	acmRestore1 := *createACMRestore("acm-restore", "backup-ns").
@@ -2383,6 +2363,7 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 			}
 		})
 	}
+
 	if err := testEnv.Stop(); err != nil {
 		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
