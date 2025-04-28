@@ -923,8 +923,12 @@ func removeResourcesFinalizer(
 	if err := c.List(
 		ctx,
 		&acmRestoreList,
-		client.InNamespace(acmRestore.GetNamespace())); err == nil &&
-		len(acmRestoreList.Items) == 1 {
+		client.InNamespace(acmRestore.GetNamespace())); err != nil {
+		// don't continue if restore list fails
+		return err
+	}
+
+	if len(acmRestoreList.Items) == 1 {
 
 		// remove InternalHubResource restore finalizer if this is the last resource to be deleted
 		mchGVRList := schema.GroupVersionResource{

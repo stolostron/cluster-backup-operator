@@ -69,7 +69,6 @@ const (
 	pvcWaitInterval = time.Second * 10
 
 	acmRestoreFinalizer = "restores.cluster.open-cluster-management.io/finalizer"
-	restoreFinalizer    = "restores.velero.io/external-resources-finalizer"
 	ihcGroup            = "operator.open-cluster-management.io"
 )
 
