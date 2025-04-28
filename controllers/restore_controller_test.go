@@ -1150,6 +1150,20 @@ var _ = Describe("Basic Restore controller", func() {
 				paused(true).
 				veleroTTL(metav1.Duration{Duration: time.Hour * 72}).object
 
+			// check if finalizer is set on acm restore resource
+			By("created acm restore should have the finalizer set")
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx,
+					types.NamespacedName{
+						Name:      restoreName,
+						Namespace: veleroNamespace.Name,
+					}, &rhacmRestore)
+				if err != nil {
+					return false
+				}
+				return controllerutil.ContainsFinalizer(&rhacmRestore, acmRestoreFinalizer)
+			}, timeout, interval).Should(BeTrue())
+
 			Expect(k8sClient.Create(ctx, &rhacmBackupPaused)).Should(Succeed())
 			Eventually(func() v1beta1.SchedulePhase {
 				err := k8sClient.Get(ctx,
@@ -1177,20 +1191,6 @@ var _ = Describe("Basic Restore controller", func() {
 				}
 				return createdRestore.Status.VeleroResourcesRestoreName
 			}, timeout, interval).ShouldNot(BeEmpty())
-
-			// check if finalizer is set on acm restore resource
-			By("created acm restore should have the finalizer set")
-			Eventually(func() bool {
-				err := k8sClient.Get(ctx,
-					types.NamespacedName{
-						Name:      restoreName,
-						Namespace: veleroNamespace.Name,
-					}, &createdRestore)
-				if err != nil {
-					return false
-				}
-				return controllerutil.ContainsFinalizer(&createdRestore, acmRestoreFinalizer)
-			}, timeout, interval).Should(BeTrue())
 
 			veleroRestores := veleroapi.RestoreList{
 				TypeMeta: metav1.TypeMeta{

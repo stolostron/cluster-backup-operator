@@ -139,9 +139,13 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	// Check if the restore instance is marked to be deleted, which is
-	// indicated by the deletion timestamp being set.
-	if restore.GetDeletionTimestamp() != nil {
+
+	isMarkedForDeletion := restore.GetDeletionTimestamp() != nil
+	if !isMarkedForDeletion {
+		if err := addResourcesFinalizer(ctx, r.Client, r.DynamicClient, internalHubResource, restore); err != nil {
+			restoreLogger.Info(fmt.Sprintf("addResourcesFinalizer: %s", err.Error()))
+		}
+	} else {
 		// Run finalization logic. If the finalization
 		// logic fails, don't remove the finalizer so
 		// that we can retry during the next reconciliation.
@@ -275,10 +279,6 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	err = r.Client.Status().Update(ctx, restore)
-	if err := addResourcesFinalizer(ctx, r.Client, r.DynamicClient, internalHubResource, restore); err != nil {
-		restoreLogger.Info(fmt.Sprintf("addResourcesFinalizer: %s", err.Error()))
-	}
-
 	return sendResult(restore, err)
 }
 

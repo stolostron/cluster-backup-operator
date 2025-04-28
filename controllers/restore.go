@@ -997,9 +997,9 @@ func addResourcesFinalizer(
 			}
 		}
 
-		if acmRestore.GetDeletionTimestamp() == nil &&
-			controllerutil.AddFinalizer(acmRestore, acmRestoreFinalizer) {
-			// add finalizer if resource not deleted then update the acm resource
+		if !controllerutil.ContainsFinalizer(acmRestore, acmRestoreFinalizer) {
+			controllerutil.AddFinalizer(acmRestore, acmRestoreFinalizer)
+			// add finalizer then update the acm resource
 			return c.Update(ctx, acmRestore)
 		}
 	}
