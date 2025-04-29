@@ -19,7 +19,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 
@@ -962,23 +961,14 @@ func addResourcesFinalizer(
 ) error {
 
 	reqLogger := log.FromContext(ctx)
-
 	// add the finalizer for the internalhubcomponent
 	if internalHubResource != nil &&
 		internalHubResource.GetDeletionTimestamp() == nil {
 		// process internalhubcomponent, it is not marked for deletion
-		reqLogger.Info("adding finalizer to internalhubcomponent")
 		needsUpdate := false
-		resFins := internalHubResource.GetFinalizers()
-		if resFins == nil {
-			internalHubResource.SetFinalizers([]string{acmRestoreFinalizer})
+		if !controllerutil.ContainsFinalizer(internalHubResource, acmRestoreFinalizer) {
+			controllerutil.AddFinalizer(internalHubResource, acmRestoreFinalizer)
 			needsUpdate = true
-		} else {
-			if !slices.Contains(resFins, acmRestoreFinalizer) {
-				resFins = append(resFins, acmRestoreFinalizer)
-				internalHubResource.SetFinalizers(resFins)
-				needsUpdate = true
-			}
 		}
 		if needsUpdate {
 			//save internal hub resource
@@ -988,8 +978,6 @@ func addResourcesFinalizer(
 				Version: "v1", Resource: "internalhubcomponents"}
 			if _, err := dyn.Resource(mchGVRList).Namespace(internalHubResource.GetNamespace()).Update(ctx,
 				internalHubResource, metav1.UpdateOptions{}); err != nil && !errors.IsNotFound(err) {
-				// ignore not found error
-				reqLogger.Info(err.Error())
 				return err
 			}
 		}
