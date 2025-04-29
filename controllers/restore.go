@@ -906,7 +906,6 @@ func getInternalHubResource(
 func removeResourcesFinalizer(
 	ctx context.Context,
 	c client.Client,
-	dyn dynamic.Interface,
 	internalHubResource *unstructured.Unstructured,
 	acmRestore *v1beta1.Restore,
 ) error {
@@ -932,11 +931,7 @@ func removeResourcesFinalizer(
 		// remove finalizer
 		controllerutil.RemoveFinalizer(internalHubResource, acmRestoreFinalizer)
 		//save internal hub resource
-		mchGVRList := schema.GroupVersionResource{
-			Group:   ihcGroup,
-			Version: "v1", Resource: "internalhubcomponents"}
-		if _, err := dyn.Resource(mchGVRList).Namespace(internalHubResource.GetNamespace()).Update(ctx,
-			internalHubResource, metav1.UpdateOptions{}); err != nil && !errors.IsNotFound(err) {
+		if err := c.Update(ctx, internalHubResource); err != nil && !errors.IsNotFound(err) {
 			return err
 		}
 	}
@@ -955,7 +950,6 @@ func removeResourcesFinalizer(
 func addResourcesFinalizer(
 	ctx context.Context,
 	c client.Client,
-	dyn dynamic.Interface,
 	internalHubResource *unstructured.Unstructured,
 	acmRestore *v1beta1.Restore,
 ) error {
@@ -973,11 +967,7 @@ func addResourcesFinalizer(
 		if needsUpdate {
 			//save internal hub resource
 			reqLogger.Info("add finalizer for " + internalHubResource.GetName())
-			mchGVRList := schema.GroupVersionResource{
-				Group:   ihcGroup,
-				Version: "v1", Resource: "internalhubcomponents"}
-			if _, err := dyn.Resource(mchGVRList).Namespace(internalHubResource.GetNamespace()).Update(ctx,
-				internalHubResource, metav1.UpdateOptions{}); err != nil && !errors.IsNotFound(err) {
+			if err := c.Update(ctx, internalHubResource); err != nil && !errors.IsNotFound(err) {
 				return err
 			}
 		}
