@@ -2319,7 +2319,6 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 			}
 		})
 	}
-
 	if err := testEnv.Stop(); err != nil {
 		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
