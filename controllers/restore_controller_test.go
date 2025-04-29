@@ -8,15 +8,14 @@ import (
 	. "github.com/onsi/gomega"
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
-	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
+	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-
-	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
 var _ = Describe("Basic Restore controller", func() {
@@ -1150,6 +1149,20 @@ var _ = Describe("Basic Restore controller", func() {
 				schedule("0 */1 * * *").
 				paused(true).
 				veleroTTL(metav1.Duration{Duration: time.Hour * 72}).object
+
+			// check if finalizer is set on acm restore resource
+			By("created acm restore should have the finalizer set")
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx,
+					types.NamespacedName{
+						Name:      restoreName,
+						Namespace: veleroNamespace.Name,
+					}, &rhacmRestore)
+				if err != nil {
+					return false
+				}
+				return controllerutil.ContainsFinalizer(&rhacmRestore, acmRestoreFinalizer)
+			}, timeout, interval).Should(BeTrue())
 
 			Expect(k8sClient.Create(ctx, &rhacmBackupPaused)).Should(Succeed())
 			Eventually(func() v1beta1.SchedulePhase {

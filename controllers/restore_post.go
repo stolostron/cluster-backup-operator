@@ -174,13 +174,14 @@ func recordClustersRestoreOperation(
 			"namespace", veleroBackup.Namespace,
 		)
 	}
-
 	logger.Info("exit recordClustersRestoreOperation ")
 }
 
 // clean up resources with a restore label
 // but not part of the latest restore
 // these are delta resources that need to be cleaned up
+//
+//nolint:funlen
 func cleanupDeltaResources(
 	ctx context.Context,
 	c client.Client,
@@ -224,6 +225,7 @@ func cleanupDeltaResources(
 	return processed
 }
 
+//nolint:funlen
 func cleanupDeltaForCredentials(
 	ctx context.Context,
 	c client.Client,
@@ -423,6 +425,7 @@ func cleanupDeltaForClustersBackup(
 	deleteDynamicResourcesForBackup(ctx, c, restoreOptions, veleroBackup, "")
 }
 
+//nolint:funlen
 func deleteDynamicResourcesForBackup(
 	ctx context.Context,
 	c client.Client,

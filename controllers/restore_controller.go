@@ -27,8 +27,10 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
@@ -38,8 +40,13 @@ import (
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
@@ -60,6 +67,9 @@ const (
 
 	backupPVCLabel  = "cluster.open-cluster-management.io/backup-pvc"
 	pvcWaitInterval = time.Second * 10
+
+	acmRestoreFinalizer = "restores.cluster.open-cluster-management.io/finalizer"
+	ihcGroup            = "operator.open-cluster-management.io"
 )
 
 type DynamicStruct struct {
@@ -109,9 +119,56 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// retrieve the velero restore (if any)
+	veleroRestoreList := veleroapi.RestoreList{}
+	if err := r.List(
+		ctx,
+		&veleroRestoreList,
+		client.InNamespace(req.Namespace),
+		client.MatchingFields{restoreOwnerKey: req.Name},
+	); err != nil {
+		msg := "unable to list velero restores for restore" +
+			"namespace:" + req.Namespace +
+			"name:" + req.Name
+		restoreLogger.Error(err, msg)
+
+		return ctrl.Result{}, err
+	}
+	internalHubResource, err := getInternalHubResource(ctx, r.DynamicClient)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	isMarkedForDeletion := restore.GetDeletionTimestamp() != nil
+	if !isMarkedForDeletion {
+		if err := addResourcesFinalizer(ctx, r.Client, r.DynamicClient, internalHubResource, restore); err != nil {
+			restoreLogger.Info(fmt.Sprintf("addResourcesFinalizer: %s", err.Error()))
+		}
+	} else {
+		// Run finalization logic. If the finalization
+		// logic fails, don't remove the finalizer so
+		// that we can retry during the next reconciliation.
+		if err := finalizeRestore(ctx, r.Client, restore, veleroRestoreList); err != nil {
+			// Logging err and returning nil to ensure wait
+			restoreLogger.Info(fmt.Sprintf("Finalizing: %s", err.Error()))
+			return ctrl.Result{RequeueAfter: pvcWaitInterval}, nil
+		}
+		// Remove restore finalizer for acm restore and internalhub resource if this is the only restore
+		// Once all finalizers have been removed, the object will be deleted.
+		return ctrl.Result{}, removeResourcesFinalizer(ctx, r.Client,
+			r.DynamicClient, internalHubResource, restore)
+	}
+	// check if internalhubcomponent is marked for deletion
+	// delete this resource if that's the case
+	if internalHubResource.GetDeletionTimestamp() != nil {
+		// delete this acm resource
+		return ctrl.Result{}, r.Delete(ctx, restore)
+	}
+
 	if restore.Status.Phase == v1beta1.RestorePhaseFinished ||
 		restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors {
 		// don't process a restore resource if it's completed
+		// try to add the finalizer
 		return ctrl.Result{}, nil
 	}
 
@@ -176,22 +233,6 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{}, err
 		}
 
-	}
-
-	// retrieve the velero restore (if any)
-	veleroRestoreList := veleroapi.RestoreList{}
-	if err := r.List(
-		ctx,
-		&veleroRestoreList,
-		client.InNamespace(req.Namespace),
-		client.MatchingFields{restoreOwnerKey: req.Name},
-	); err != nil {
-		msg := "unable to list velero restores for restore" +
-			"namespace:" + req.Namespace +
-			"name:" + req.Name
-		restoreLogger.Error(err, msg)
-
-		return ctrl.Result{}, err
 	}
 
 	isValidSync, msg := isValidSyncOptions(restore)
@@ -366,10 +407,73 @@ func (r *RestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		}); err != nil {
 		return err
 	}
+
+	// watch InternalHubComponent as an unstructured resource
+	ihc := &unstructured.Unstructured{}
+	ihc.SetGroupVersionKind(schema.GroupVersionKind{
+		Kind:    "InternalHubComponent",
+		Group:   ihcGroup,
+		Version: "v1",
+	})
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.Restore{}).
 		Owns(&veleroapi.Restore{}).
+		Watches(ihc,
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
+				return mapFuncTriggerFinalizers(ctx, mgr.GetClient(), o)
+			}), builder.WithPredicates(processFinalizersPredicate())).
 		Complete(r)
+}
+
+// process InternalHubComponent resources and watch for a delete action
+func mapFuncTriggerFinalizers(ctx context.Context, k8sClient client.Client,
+	o client.Object) []reconcile.Request {
+
+	reqs := []reconcile.Request{}
+
+	if o.GetName() != "cluster-backup" {
+		return reqs
+	}
+
+	if o.GetDeletionTimestamp() != nil {
+		// get all acm restore resources
+		rsList := &v1beta1.RestoreList{}
+		err := k8sClient.List(ctx, rsList)
+		if err != nil {
+			return []reconcile.Request{}
+		}
+
+		for i := range rsList.Items {
+			rs := rsList.Items[i]
+			reqs = append(reqs, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      rs.GetName(),
+					Namespace: rs.GetNamespace(),
+				},
+			})
+		}
+	}
+
+	return reqs
+}
+
+func processFinalizersPredicate() predicate.Predicate {
+	// Only reconcile acm Restore resources when deleting the InternalHubComponent
+	return predicate.Funcs{
+		CreateFunc: func(_ event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(_ event.DeleteEvent) bool {
+			return true
+		},
+		UpdateFunc: func(_ event.UpdateEvent) bool {
+			return true
+		},
+		GenericFunc: func(_ event.GenericEvent) bool {
+			return false
+		},
+	}
 }
 
 // mostRecent defines type and code to sort velero backups

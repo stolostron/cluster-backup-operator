@@ -25,11 +25,16 @@ import (
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/dynamic"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -838,4 +843,151 @@ func setUserRestoreFilters(
 				acmRestore.Spec.IncludedResources[i])
 		}
 	}
+}
+
+// delete all velero restores created by the acmRestore object
+// and remove finalizers
+func finalizeRestore(
+	ctx context.Context,
+	c client.Client,
+	acmRestore *v1beta1.Restore,
+	veleroRestoreList veleroapi.RestoreList,
+) error {
+
+	reqLogger := log.FromContext(ctx)
+
+	for _, veleroRestore := range veleroRestoreList.Items {
+		if err := c.Delete(ctx, &veleroRestore); err != nil {
+			reqLogger.Error(err, fmt.Sprintf("Error terminating restore: %s", veleroRestore.GetName()))
+		}
+	}
+
+	if len(veleroRestoreList.Items) != 0 {
+		reqLogger.Info("Waiting for velero restores to be terminated")
+		return fmt.Errorf("waiting for velero restores to be terminated")
+	}
+
+	reqLogger.Info("Successfully finalized Restore " + acmRestore.GetName())
+	return nil
+}
+
+// return the internalhubcomponent with the cluster-backup name
+func getInternalHubResource(
+	ctx context.Context,
+	dyn dynamic.Interface,
+) (*unstructured.Unstructured, error) {
+
+	reqLogger := log.FromContext(ctx)
+	reqLogger.Info("get cluster-backup  internalhubcomponent")
+
+	mchGVRList := schema.GroupVersionResource{Group: ihcGroup,
+		Version: "v1", Resource: "internalhubcomponents"}
+
+	mchList, err := dyn.Resource(mchGVRList).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return &unstructured.Unstructured{}, err
+	}
+	//
+	reqLogger.Info("get cluster-backup  internalhubcomponent")
+	for i := range mchList.Items {
+		item := mchList.Items[i]
+
+		if item.GetName() == "cluster-backup" {
+			return &item, nil
+		}
+	}
+
+	return &unstructured.Unstructured{}, err
+
+}
+
+// remove the acm finalizer and
+// remove internalhubcomponent finalizer if this is the only restore resource found
+func removeResourcesFinalizer(
+	ctx context.Context,
+	c client.Client,
+	dyn dynamic.Interface,
+	internalHubResource *unstructured.Unstructured,
+	acmRestore *v1beta1.Restore,
+) error {
+
+	// Remove restore finalizer. Once all finalizers have been
+	// removed, the object will be deleted.
+	needsUpdate := controllerutil.RemoveFinalizer(acmRestore, acmRestoreFinalizer)
+
+	acmRestoreList := v1beta1.RestoreList{}
+	if err := c.List(
+		ctx,
+		&acmRestoreList,
+		client.InNamespace(acmRestore.GetNamespace())); err != nil {
+		// don't continue if restore list fails
+		return err
+	}
+
+	// remove InternalHubResource restore finalizer if this is the last acm resource to be deleted
+	if len(acmRestoreList.Items) == 1 &&
+		internalHubResource != nil &&
+		controllerutil.ContainsFinalizer(internalHubResource, acmRestoreFinalizer) {
+
+		// remove finalizer
+		controllerutil.RemoveFinalizer(internalHubResource, acmRestoreFinalizer)
+		//save internal hub resource
+		mchGVRList := schema.GroupVersionResource{
+			Group:   ihcGroup,
+			Version: "v1", Resource: "internalhubcomponents"}
+		if _, err := dyn.Resource(mchGVRList).Namespace(internalHubResource.GetNamespace()).Update(ctx,
+			internalHubResource, metav1.UpdateOptions{}); err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+	}
+
+	if needsUpdate {
+		if err := c.Update(ctx, acmRestore); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// add the acm finalizer for the restore resource
+// and if needed for the internalhubcomponent
+func addResourcesFinalizer(
+	ctx context.Context,
+	c client.Client,
+	dyn dynamic.Interface,
+	internalHubResource *unstructured.Unstructured,
+	acmRestore *v1beta1.Restore,
+) error {
+
+	reqLogger := log.FromContext(ctx)
+	// add the finalizer for the internalhubcomponent
+	if internalHubResource != nil &&
+		internalHubResource.GetDeletionTimestamp() == nil {
+		// process internalhubcomponent, it is not marked for deletion
+		needsUpdate := false
+		if !controllerutil.ContainsFinalizer(internalHubResource, acmRestoreFinalizer) {
+			controllerutil.AddFinalizer(internalHubResource, acmRestoreFinalizer)
+			needsUpdate = true
+		}
+		if needsUpdate {
+			//save internal hub resource
+			reqLogger.Info("add finalizer for " + internalHubResource.GetName())
+			mchGVRList := schema.GroupVersionResource{
+				Group:   ihcGroup,
+				Version: "v1", Resource: "internalhubcomponents"}
+			if _, err := dyn.Resource(mchGVRList).Namespace(internalHubResource.GetNamespace()).Update(ctx,
+				internalHubResource, metav1.UpdateOptions{}); err != nil && !errors.IsNotFound(err) {
+				return err
+			}
+		}
+
+		if !controllerutil.ContainsFinalizer(acmRestore, acmRestoreFinalizer) {
+			controllerutil.AddFinalizer(acmRestore, acmRestoreFinalizer)
+			// add finalizer then update the acm resource
+			return c.Update(ctx, acmRestore)
+		}
+	}
+
+	return nil
 }
