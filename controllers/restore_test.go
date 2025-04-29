@@ -39,6 +39,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -2106,6 +2107,9 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 	mchObjDel := newUnstructured("operator.open-cluster-management.io/v1", "InternalHubComponent",
 		"default", "cluster-backup")
 
+	mchObjDel2 := newUnstructured("operator.open-cluster-management.io/v1", "InternalHubComponent",
+		"ns2", "cluster-backup")
+
 	mchGVRList := schema.GroupVersionResource{Group: "operator.open-cluster-management.io",
 		Version: "v1", Resource: "internalhubcomponents"}
 
@@ -2122,6 +2126,23 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 		mchObjDel, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("Err creating: %s", err.Error())
 	}
+
+	controllerutil.AddFinalizer(mchObjDel, acmRestoreFinalizer)
+	if _, err := dynClient.Resource(mchGVRList).Namespace("default").Update(context.Background(),
+		mchObjDel, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("Err creating: %s", err.Error())
+	}
+
+	if _, err := dynClient.Resource(mchGVRList).Namespace("ns2").Create(context.Background(),
+		mchObjDel2, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("Err creating: %s", err.Error())
+	}
+	controllerutil.AddFinalizer(mchObjDel2, acmRestoreFinalizer)
+	if _, err := dynClient.Resource(mchGVRList).Namespace("ns2").Update(context.Background(),
+		mchObjDel2, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("Err creating: %s", err.Error())
+	}
+
 	if _, err := dynClient.Resource(mchGVRList).Namespace("ns1").Create(context.Background(),
 		mchObjAdd, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("Err creating: %s", err.Error())
@@ -2184,22 +2205,10 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 		wantErr          bool
 		wantMCHFinalizer bool
 		wantACMFinalizer bool
+		acmRestoreList   []*v1beta1.Restore
 	}{
 		{
-			name: "remove test - finalizers",
-			args: args{
-				ctx:                 context.Background(),
-				c:                   k8sClient1,
-				internalHubResource: mchObjDel,
-				dyn:                 dynClient,
-				acmRestore:          &acmRestore1,
-			},
-			wantErr:          false,
-			wantMCHFinalizer: false,
-			wantACMFinalizer: false,
-		},
-		{
-			name: "remove test - acm has finalizers",
+			name: "remove test - acm has finalizers, remove them",
 			args: args{
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
@@ -2210,6 +2219,26 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 			wantErr:          false,
 			wantMCHFinalizer: false,
 			wantACMFinalizer: false,
+			acmRestoreList: []*v1beta1.Restore{
+				&acmRestoreWFin,
+			},
+		},
+		{
+			name: "remove test - mch finalizers not removed",
+			args: args{
+				ctx:                 context.Background(),
+				c:                   k8sClient1,
+				internalHubResource: mchObjDel2,
+				dyn:                 dynClient,
+				acmRestore:          &acmRestore1,
+			},
+			wantErr:          false,
+			wantMCHFinalizer: true,
+			wantACMFinalizer: false,
+			acmRestoreList: []*v1beta1.Restore{
+				&acmRestore1,
+				&acmRestoreWFin1,
+			},
 		},
 	}
 
@@ -2218,29 +2247,31 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			// create resource
-			if err := k8sClient1.Create(context.Background(), tt.args.acmRestore); err != nil {
-				t.Errorf("Error creating objs to setup for test: %s", err.Error())
+			for i := range tt.acmRestoreList {
+				if err := k8sClient1.Create(context.Background(), tt.acmRestoreList[i]); err != nil {
+					t.Errorf("Error creating objs to setup for test: %s", err.Error())
+				}
 			}
+
 			if err := removeResourcesFinalizer(tt.args.ctx, tt.args.c,
 				tt.args.dyn, tt.args.internalHubResource, tt.args.acmRestore); (err != nil) != tt.wantErr {
-				t.Errorf("removeResourcesFinalizer() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("removeResourcesFinalizer() error = %v, wantErr: %v", err, tt.wantErr)
 			} else {
 
-				// check finalizers were added
-				if (tt.args.internalHubResource.GetFinalizers() != nil) != tt.wantMCHFinalizer {
-					t.Errorf("internalHubResource should have a finalizer wantMCHFinalizer %v", tt.wantMCHFinalizer)
+				// check finalizers were removed
+				if controllerutil.ContainsFinalizer(tt.args.internalHubResource, acmRestoreFinalizer) != tt.wantMCHFinalizer {
+					t.Errorf("internalHubResource wantMCHFinalizer: %v but got %v",
+						tt.wantMCHFinalizer, controllerutil.ContainsFinalizer(tt.args.internalHubResource, acmRestoreFinalizer))
 				}
-				if (tt.args.acmRestore.GetFinalizers() != nil) != tt.wantACMFinalizer {
-					t.Errorf("acmRestore should have a finalizer , wantACMFinalizer %v", tt.wantACMFinalizer)
+				if controllerutil.ContainsFinalizer(tt.args.acmRestore, acmRestoreFinalizer) != tt.wantACMFinalizer {
+					t.Errorf("acmRestore should have a finalizer , wantACMFinalizer: %v but got %v",
+						tt.wantACMFinalizer,
+						controllerutil.ContainsFinalizer(tt.args.acmRestore, acmRestoreFinalizer))
 				}
 			}
 		})
 	}
 
-	errs = append(errs, k8sClient1.Create(context.Background(), &acmRestoreWFin1))
-	if err := errors.Join(errs...); err != nil {
-		t.Errorf("Error creating objs to setup for test: %s", err.Error())
-	}
 	add_tests := []struct {
 		name             string
 		args             args

@@ -912,13 +912,10 @@ func removeResourcesFinalizer(
 	acmRestore *v1beta1.Restore,
 ) error {
 
-	reqLogger := log.FromContext(ctx)
-
 	// Remove restore finalizer. Once all finalizers have been
 	// removed, the object will be deleted.
 	needsUpdate := controllerutil.RemoveFinalizer(acmRestore, acmRestoreFinalizer)
 
-	// if no other restore resources, remove mch finalizer
 	acmRestoreList := v1beta1.RestoreList{}
 	if err := c.List(
 		ctx,
@@ -928,24 +925,20 @@ func removeResourcesFinalizer(
 		return err
 	}
 
-	if len(acmRestoreList.Items) == 1 {
+	// remove InternalHubResource restore finalizer if this is the last acm resource to be deleted
+	if len(acmRestoreList.Items) == 1 &&
+		internalHubResource != nil &&
+		controllerutil.ContainsFinalizer(internalHubResource, acmRestoreFinalizer) {
 
-		// remove InternalHubResource restore finalizer if this is the last resource to be deleted
+		// remove finalizer
+		controllerutil.RemoveFinalizer(internalHubResource, acmRestoreFinalizer)
+		//save internal hub resource
 		mchGVRList := schema.GroupVersionResource{
 			Group:   ihcGroup,
 			Version: "v1", Resource: "internalhubcomponents"}
-		if internalHubResource != nil {
-			if fins := internalHubResource.GetFinalizers(); fins != nil && findValue(fins, acmRestoreFinalizer) {
-				fins = remove(fins, acmRestoreFinalizer)
-				internalHubResource.SetFinalizers(fins)
-				//save internal hub resource
-				if _, err := dyn.Resource(mchGVRList).Namespace(internalHubResource.GetNamespace()).Update(ctx,
-					internalHubResource, metav1.UpdateOptions{}); err != nil && !errors.IsNotFound(err) {
-					// ignore not found error
-					reqLogger.Info(err.Error())
-					return err
-				}
-			}
+		if _, err := dyn.Resource(mchGVRList).Namespace(internalHubResource.GetNamespace()).Update(ctx,
+			internalHubResource, metav1.UpdateOptions{}); err != nil && !errors.IsNotFound(err) {
+			return err
 		}
 	}
 
