@@ -141,7 +141,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	isMarkedForDeletion := restore.GetDeletionTimestamp() != nil
 	if !isMarkedForDeletion {
-		if err := addResourcesFinalizer(ctx, r.Client, r.DynamicClient, internalHubResource, restore); err != nil {
+		if err := addResourcesFinalizer(ctx, r.Client, internalHubResource, restore); err != nil {
 			restoreLogger.Info(fmt.Sprintf("addResourcesFinalizer: %s", err.Error()))
 		}
 	} else {
@@ -155,8 +155,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 		// Remove restore finalizer for acm restore and internalhub resource if this is the only restore
 		// Once all finalizers have been removed, the object will be deleted.
-		return ctrl.Result{}, removeResourcesFinalizer(ctx, r.Client,
-			r.DynamicClient, internalHubResource, restore)
+		return ctrl.Result{}, removeResourcesFinalizer(ctx, r.Client, internalHubResource, restore)
 	}
 	// check if internalhubcomponent is marked for deletion
 	// delete this resource if that's the case

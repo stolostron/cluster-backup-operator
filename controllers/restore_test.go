@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/dynamic"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -2195,7 +2194,6 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 		ctx                 context.Context
 		c                   client.Client
 		internalHubResource *unstructured.Unstructured
-		dyn                 dynamic.Interface
 		acmRestore          *v1beta1.Restore
 	}
 
@@ -2213,7 +2211,6 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
 				internalHubResource: mchObjDel,
-				dyn:                 dynClient,
 				acmRestore:          &acmRestoreWFin,
 			},
 			wantErr:          false,
@@ -2229,7 +2226,6 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
 				internalHubResource: mchObjDel2,
-				dyn:                 dynClient,
 				acmRestore:          &acmRestore1,
 			},
 			wantErr:          false,
@@ -2254,7 +2250,7 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 			}
 
 			if err := removeResourcesFinalizer(tt.args.ctx, tt.args.c,
-				tt.args.dyn, tt.args.internalHubResource, tt.args.acmRestore); (err != nil) != tt.wantErr {
+				tt.args.internalHubResource, tt.args.acmRestore); (err != nil) != tt.wantErr {
 				t.Errorf("removeResourcesFinalizer() error = %v, wantErr: %v", err, tt.wantErr)
 			} else {
 
@@ -2286,7 +2282,6 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
 				internalHubResource: mchObjAdd,
-				dyn:                 dynClient,
 				acmRestore:          &acmRestoreWFin1,
 			},
 			wantErr:          false,
@@ -2299,7 +2294,6 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
 				internalHubResource: mchObjAdd,
-				dyn:                 dynClient,
 				acmRestore:          &acmRestore1,
 			},
 			wantErr:          false,
@@ -2311,7 +2305,7 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 	for _, tt := range add_tests {
 
 		t.Run(tt.name, func(t *testing.T) {
-			if err := addResourcesFinalizer(tt.args.ctx, tt.args.c, tt.args.dyn, tt.args.internalHubResource,
+			if err := addResourcesFinalizer(tt.args.ctx, tt.args.c, tt.args.internalHubResource,
 				tt.args.acmRestore); (err != nil) != tt.wantErr {
 				t.Errorf("addResourcesFinalizer() error = %v, wantErr %v", err, tt.wantErr)
 			} else {
@@ -2325,7 +2319,6 @@ func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
 			}
 		})
 	}
-
 	if err := testEnv.Stop(); err != nil {
 		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
