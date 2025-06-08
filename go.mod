@@ -7,7 +7,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.37.0
 	github.com/openshift/api v0.0.0-20250224185818-544b3ca4e8f5 // release 4.13
-	github.com/openshift/hive/apis v0.0.0-20250327230102-bd97bef1d05e
+	github.com/openshift/hive/apis f2f1c80d2ba1
 	github.com/pkg/errors v0.9.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/vmware-tanzu/velero v1.14.0
