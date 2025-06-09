@@ -18,7 +18,7 @@ require (
 	k8s.io/client-go v0.32.3
 	open-cluster-management.io/api v0.16.2
 	open-cluster-management.io/multicloud-operators-channel v0.16.0
-	sigs.k8s.io/controller-runtime v0.20.4
+	sigs.k8s.io/controller-runtime v0.21.0
 )
 
 require (
