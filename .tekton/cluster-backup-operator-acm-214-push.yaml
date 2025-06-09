@@ -63,7 +63,7 @@ spec:
     - name: slack-webhook-notification
       params:
       - name: message
-        value: ":x: *cluster-backup-operator 2.14* PipelineRun failed: https://konflux-ui.apps.stone-prd-rh01.pg1f.p1.openshiftapps.com/ns/crt-redhat-acm-tenant/applications/release-acm-214/pipelineruns/pipelineruns/$(context.pipelineRun.name)"
+        value: ":x: *cluster-backup-operator 2.14* PipelineRun failed: https://konflux-ui.apps.stone-prd-rh01.pg1f.p1.openshiftapps.com/ns/crt-redhat-acm-tenant/applications/release-acm-214/pipelineruns/$(context.pipelineRun.name)"
       - name: secret-name
         value: backup-team-slack-notification-secret
       - name: key-name
