@@ -5,11 +5,11 @@
   ],
   "baseBranches": [
     "main",
-    "release-0.10",
-    "release-0.11",
-    "release-0.12",
-    "release-0.13",
-    "release-0.14"
+    "release-2.10",
+    "release-2.11",
+    "release-2.12",
+    "release-2.13",
+    "release-2.14"
   ],
   "rebaseWhen": "behind-base-branch",
   "recreateWhen": "never",
