@@ -35,6 +35,11 @@ LABEL \
     io.openshift.tags="acm cluster-backup-operator"
 WORKDIR /
 COPY --from=builder /workspace/manager .
+
+# License
+RUN mkdir licenses/
+COPY LICENSE licenses/
+
 USER 65532:65532
 
 ENTRYPOINT ["/manager"]
