@@ -61,10 +61,20 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
+// Global test environment variables
+// testEnv: Creates a lightweight, local Kubernetes API server for testing controllers
+// without requiring a full cluster. This provides an isolated testing environment
+// with real Kubernetes API behavior.
 var k8sClient client.Client
 var testEnv *envtest.Environment
+
+// Mock components for testing API discovery and resource management
+// fakeDiscovery: Simulates Kubernetes API discovery for testing resource lookups
+// server: HTTP test server that mocks Kubernetes API endpoints
 var fakeDiscovery *discoveryclient.DiscoveryClient
 var server *httptest.Server
+
+// Test configuration variables
 var resourcesToBackup []string
 var cancel context.CancelFunc
 var managerDone chan struct{} // Channel to signal when manager has stopped
@@ -74,12 +84,8 @@ const (
 	testClusterID    = "1234"
 	testNamespace    = "managed1"
 	testAppNamespace = "app"
-	testChannelName  = "channel-new-default"
 	testBackupName   = "backup-name-aa"
-	testMSAName      = "auto-import-account"
-	testMCHName      = "cluster-backup"
-	testHiveName     = "vb-hive-1-worker"
-	testVersionName  = "version"
+	testMCHName      = "cluster-backup" // Used by InternalHubComponent
 	testServiceName  = "auto-import-service"
 )
 
@@ -97,15 +103,18 @@ var _ = BeforeSuite(func() {
 
 	By("setting up test environment")
 
-	// Setup API resource lists and mock server
+	// STEP 1: Setup Mock API Discovery
+	// Create mock API resource lists and HTTP server to simulate Kubernetes API discovery.
+	// This allows tests to query available resources without connecting to a real cluster.
 	resourceLists, apiGroupList := setupAPIResourceLists()
 	server = createMockHTTPServer(resourceLists, apiGroupList)
 
+	// Create a fake discovery client that uses our mock server
 	fakeDiscovery = discoveryclient.NewDiscoveryClientForConfigOrDie(
 		&restclient.Config{Host: server.URL},
 	)
 
-	// Verify discovery client works
+	// Verify discovery client works correctly with mock data
 	By("verifying discovery client")
 	testResourceList := resourceLists["operator.open-cluster-management.io/v1"]
 	got, err := fakeDiscovery.ServerResourcesForGroupVersion("operator.open-cluster-management.io/v1")
@@ -115,17 +124,23 @@ var _ = BeforeSuite(func() {
 	_, err = fakeDiscovery.ServerGroups()
 	Expect(err).NotTo(HaveOccurred())
 
-	// Setup test environments
+	// STEP 2: Setup Test Kubernetes Environment
+	// testEnv creates a local etcd and kube-apiserver for testing.
+	// This provides a real Kubernetes API that controllers can interact with.
 	By("starting test environments")
 	_, err = setupTestEnvironments()
 	Expect(err).NotTo(HaveOccurred())
 
-	// Setup schemes
+	// STEP 3: Register Custom Resource Schemes
+	// Add all the custom resource definitions that our controllers need to work with.
+	// This includes backup schedules, restores, managed clusters, etc.
 	By("registering schemes")
 	err = setupSchemes()
 	Expect(err).NotTo(HaveOccurred())
 
-	// Setup test objects and dynamic client
+	// STEP 4: Create Test Objects and Dynamic Client
+	// Pre-populate the test environment with mock Kubernetes objects that tests can use.
+	// The dynamic client allows runtime manipulation of unstructured objects.
 	By("creating test objects and dynamic client")
 	testObjects, gvks := createTestObjects()
 	gvrMappings := setupGVRMappings()
@@ -135,18 +150,24 @@ var _ = BeforeSuite(func() {
 		unstructuredScheme.AddKnownTypes(gvk.GroupVersion())
 	}
 
+	// Create a fake dynamic client with only the InternalHubComponent (mch) object
+	// This is the only preloaded object actually used by getInternalHubResource()
+	// Other objects are created dynamically by individual tests as needed
 	dynR := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
 		unstructuredScheme,
 		gvrMappings,
-		testObjects["mch"], testObjects["msa"], testObjects["msa2"],
-		testObjects["clusterversion"], testObjects["channel"], testObjects["clusterpool"],
+		testObjects["mch"], // Only include the InternalHubComponent - actually used by restore controller
 	)
 
-	// Setup controller manager and reconcilers
+	// STEP 5: Setup Controller Manager and Reconcilers
+	// Create the controller manager using testEnv's configuration.
+	// This connects our controllers to the test Kubernetes API server.
 	By("setting up controllers")
 	mgr, err := ctrl.NewManager(testEnv.Config, ctrl.Options{Scheme: scheme.Scheme})
 	Expect(err).ToNot(HaveOccurred())
 
+	// Register our backup/restore controllers with the manager
+	// Each controller uses the mock discovery and dynamic clients for testing
 	err = (&RestoreReconciler{
 		KubeClient:      nil,
 		Client:          mgr.GetClient(),
@@ -165,12 +186,13 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(mgr)
 	Expect(err).ToNot(HaveOccurred())
 
-	// Create a context that can be cancelled for proper manager shutdown
+	// STEP 6: Start Controller Manager
+	// Start the controller manager in a separate goroutine to handle reconciliation.
+	// Use a cancellable context for graceful shutdown during test cleanup.
 	var ctx context.Context
 	ctx, cancel = context.WithCancel(context.Background())
 	managerDone = make(chan struct{})
 
-	// Start manager with cancellable context
 	go func() {
 		defer GinkgoRecover()
 		defer close(managerDone) // Signal when manager goroutine exits
@@ -188,12 +210,14 @@ var _ = BeforeSuite(func() {
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
 
-	// First, stop the controller manager gracefully
+	// STEP 1: Gracefully stop the controller manager
+	// Cancel the context to signal controllers to stop processing
 	if cancel != nil {
 		By("stopping controller manager")
 		cancel()
 
-		// Wait for the manager to actually shut down using the done channel
+		// Wait for the manager goroutine to actually finish
+		// This ensures all controller goroutines are properly cleaned up
 		By("waiting for controller manager to stop")
 		Eventually(func() bool {
 			select {
@@ -205,7 +229,9 @@ var _ = AfterSuite(func() {
 		}, time.Second*10, time.Millisecond*100).Should(BeTrue())
 	}
 
-	// Then stop the test environment
+	// STEP 2: Stop the test Kubernetes environment
+	// Clean up the etcd and kube-apiserver processes
+	// Use Eventually to handle any cleanup delays gracefully
 	Eventually(func() bool {
 		err := testEnv.Stop()
 		return err == nil
@@ -509,39 +535,16 @@ func createMockHTTPServer(
 	}))
 }
 
-// createTestObjects creates all the unstructured test objects
+// createTestObjects creates only the test objects that are actually used by the controllers
+// This reduces complexity by only including objects that provide real test coverage
 func createTestObjects() (map[string]*unstructured.Unstructured, []schema.GroupVersionKind) {
 	objects := make(map[string]*unstructured.Unstructured)
 	var gvks []schema.GroupVersionKind
 
-	createChannelObject(objects, &gvks)
+	// Only create the InternalHubComponent - it's actually used by getInternalHubResource()
 	createMCHObject(objects, &gvks)
-	createMSAObjects(objects, &gvks)
-	createClusterVersionObject(objects, &gvks)
-	createClusterPoolObject(objects, &gvks)
 
 	return objects, gvks
-}
-
-// createChannelObject creates the Channel test object
-func createChannelObject(objects map[string]*unstructured.Unstructured, gvks *[]schema.GroupVersionKind) {
-	objects["channel"] = &unstructured.Unstructured{}
-	objects["channel"].SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "apps.open-cluster-management.io/v1beta1",
-		"kind":       "Channel",
-		"metadata": map[string]interface{}{
-			"name":      testChannelName,
-			"namespace": "default",
-			"labels":    map[string]interface{}{"velero.io/backup-name": testBackupName},
-		},
-		"spec": map[string]interface{}{
-			"type":     "Git",
-			"pathname": "https://github.com/test/app-samples",
-		},
-	})
-	*gvks = append(*gvks, schema.GroupVersionKind{
-		Group: "apps.open-cluster-management.io", Version: "v1beta1", Kind: "Channel",
-	})
 }
 
 // createMCHObject creates the MCH test object
@@ -558,72 +561,6 @@ func createMCHObject(objects map[string]*unstructured.Unstructured, gvks *[]sche
 	})
 	*gvks = append(*gvks, schema.GroupVersionKind{
 		Group: "operator.open-cluster-management.io", Version: "v1", Kind: "InternalHubComponent",
-	})
-}
-
-// createMSAObjects creates the MSA test objects
-func createMSAObjects(objects map[string]*unstructured.Unstructured, gvks *[]schema.GroupVersionKind) {
-	// First MSA object
-	objects["msa"] = &unstructured.Unstructured{}
-	objects["msa"].SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
-		"kind":       "ManagedServiceAccount",
-		"metadata": map[string]interface{}{
-			"name":      testMSAName,
-			"namespace": testNamespace,
-			"labels":    map[string]interface{}{msa_label: msa_service_name},
-		},
-		"spec": map[string]interface{}{
-			"somethingelse": "aaa",
-			"rotation":      map[string]interface{}{"validity": "50h", "enabled": true},
-		},
-	})
-
-	// Second MSA object for different namespace
-	objects["msa2"] = &unstructured.Unstructured{}
-	objects["msa2"].SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
-		"kind":       "ManagedServiceAccount",
-		"metadata": map[string]interface{}{
-			"name":      testMSAName,
-			"namespace": testAppNamespace,
-			"labels":    map[string]interface{}{msa_label: msa_service_name},
-		},
-		"spec": map[string]interface{}{
-			"somethingelse": "aaa",
-			"rotation":      map[string]interface{}{"validity": "50h", "enabled": true},
-		},
-	})
-
-	*gvks = append(*gvks, schema.GroupVersionKind{
-		Group: "authentication.open-cluster-management.io", Version: "v1beta1", Kind: "ManagedServiceAccount",
-	})
-}
-
-// createClusterVersionObject creates the ClusterVersion test object
-func createClusterVersionObject(objects map[string]*unstructured.Unstructured, gvks *[]schema.GroupVersionKind) {
-	objects["clusterversion"] = &unstructured.Unstructured{}
-	objects["clusterversion"].SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "config.openshift.io/v1",
-		"kind":       "ClusterVersion",
-		"metadata":   map[string]interface{}{"name": testVersionName},
-		"spec":       map[string]interface{}{"clusterID": testClusterID},
-	})
-	*gvks = append(*gvks, schema.GroupVersionKind{
-		Group: "config.openshift.io", Version: "v1", Kind: "ClusterVersion",
-	})
-}
-
-// createClusterPoolObject creates the ClusterPool test object
-func createClusterPoolObject(objects map[string]*unstructured.Unstructured, gvks *[]schema.GroupVersionKind) {
-	objects["clusterpool"] = &unstructured.Unstructured{}
-	objects["clusterpool"].SetUnstructuredContent(map[string]interface{}{
-		"apiVersion": "other.hive.openshift.io/v1",
-		"kind":       "ClusterPool",
-		"metadata":   map[string]interface{}{"name": testHiveName, "namespace": testNamespace},
-	})
-	*gvks = append(*gvks, schema.GroupVersionKind{
-		Group: "other.hive.openshift.io", Version: "v1", Kind: "ClusterPool",
 	})
 }
 
@@ -691,21 +628,30 @@ func setupSchemes() error {
 	return nil
 }
 
-// setupTestEnvironments creates and configures the test environments
+// setupTestEnvironments creates and configures the test Kubernetes environment
+// This function:
+// 1. Creates a testEnv with paths to CRD files
+// 2. Starts a local etcd and kube-apiserver
+// 3. Creates a Kubernetes client connected to the test server
+// 4. Returns the environment for use by controllers
 func setupTestEnvironments() (*envtest.Environment, error) {
+	// Configure testEnv with CRD paths so custom resources are available
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
-			filepath.Join("..", "config", "crd", "bases"),
-			filepath.Join("..", "hack", "crds"),
+			filepath.Join("..", "config", "crd", "bases"), // Our operator's CRDs
+			filepath.Join("..", "hack", "crds"),           // Third-party CRDs (Velero, etc.)
 		},
-		ErrorIfCRDPathMissing: true,
+		ErrorIfCRDPathMissing: true, // Fail fast if CRDs are missing
 	}
 
+	// Start the test environment (etcd + kube-apiserver)
 	cfg, err := testEnv.Start()
 	if err != nil {
 		return nil, err
 	}
 
+	// Create a Kubernetes client connected to our test API server
+	// This client will be used by individual tests to interact with resources
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	if err != nil {
 		return nil, err
