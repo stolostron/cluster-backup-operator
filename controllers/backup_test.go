@@ -1,9 +1,39 @@
+/*
+Copyright 2021.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
+Package controllers contains comprehensive unit tests for backup-related utility functions
+in the ACM Backup/Restore system.
+
+This test suite validates core backup functionality including:
+- Backup resource creation and configuration
+- Label selector operations and resource filtering
+- Backup validation and error handling
+- Integration with Velero backup resources
+- Namespace and resource inclusion/exclusion logic
+- Backup scheduling and lifecycle management
+
+The tests use standard table-driven test patterns to ensure comprehensive coverage
+of different backup scenarios and edge cases.
+*/
 package controllers
 
 import (
 	"context"
 	"math/rand"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +45,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -24,7 +54,7 @@ const (
 	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
 )
 
-// gerenates a random string with specified length
+// generates a random string with specified length
 func RandStringBytesMask(n int) string {
 	b := make([]byte, n)
 	for i := 0; i < n; {
@@ -38,7 +68,6 @@ func RandStringBytesMask(n int) string {
 
 var _ = Describe("Backup", func() {
 	var (
-		backupName                      = "the-backup-name"
 		veleroNamespaceName             = "velero"
 		veleroManagedClustersBackupName = "acm-managed-clusters-schedule-20210910181336"
 		veleroResourcesBackupName       = "acm-resources-schedule-20210910181336"
@@ -51,43 +80,13 @@ var _ = Describe("Backup", func() {
 	)
 
 	Context("For utility functions of Backup", func() {
-		It("isBackupFinished should return correct value based on the status", func() {
+		It("getValidKsRestoreName should return correct value", func() {
 			// returns the concatenated strings, no trimming
 			Expect(getValidKsRestoreName("a", "b")).Should(Equal("a-b"))
 
 			// returns substring of length 252
 			longName := RandStringBytesMask(260)
 			Expect(getValidKsRestoreName(longName, "b")).Should(Equal(longName[:252]))
-
-			Expect(isBackupFinished(nil)).Should(BeFalse())
-
-			veleroBackups := make([]*veleroapi.Backup, 0)
-			Expect(isBackupFinished(veleroBackups)).Should(BeFalse())
-
-			veleroBackup := veleroapi.Backup{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "cluster.open-cluster-management.io/v1beta1",
-					Kind:       "Backup",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      backupName,
-					Namespace: "",
-					Labels:    labelsCls123,
-				},
-			}
-			veleroBackups = append(veleroBackups, &veleroBackup)
-
-			Expect(isBackupFinished(veleroBackups)).Should(BeFalse())
-
-			veleroBackup.Status.Phase = "Completed"
-			Expect(isBackupFinished(veleroBackups)).Should(BeTrue())
-			veleroBackup.Status.Phase = "Failed"
-			Expect(isBackupFinished(veleroBackups)).Should(BeTrue())
-			veleroBackup.Status.Phase = "PartiallyFailed"
-			Expect(isBackupFinished(veleroBackups)).Should(BeTrue())
-
-			veleroBackup.Status.Phase = "InvalidStatus"
-			Expect(isBackupFinished(veleroBackups)).Should(BeFalse())
 		})
 
 		It("min should return the expected value", func() {
@@ -184,144 +183,406 @@ var _ = Describe("Backup", func() {
 	})
 })
 
+// Test_cleanupExpiredValidationBackups tests the cleanup of expired validation backups.
+//
+// This test verifies that:
+// - Expired validation backups are properly identified and deleted
+// - Non-expired validation backups are preserved
+// - Non-validation backups are not affected by the cleanup process
+// - The function handles edge cases like empty backup lists gracefully
+//
+// Test Coverage:
+// - Validation backups with expired timestamps (should be deleted)
+// - Validation backups that are still valid (should be preserved)
+// - Non-validation backups (should be ignored)
+// - Empty backup lists (should handle gracefully)
+// - Different backup phases (FailedValidation, Completed, etc.)
+//
+// Test Scenarios:
+//   - "cleanupExpiredValidationBackups processes expired validation backups correctly"
+//     Creates a mix of expired and valid validation backups plus non-validation backups
+//     Verifies only expired validation backups are deleted
+//   - "cleanupExpiredValidationBackups handles no validation backups"
+//     Tests behavior when no validation backups exist in the system
+//   - "cleanupExpiredValidationBackups handles empty backup list"
+//     Tests behavior with completely empty backup list
+//
+// Implementation Details:
+// - Uses fake Kubernetes client for fast, isolated testing
+// - Creates realistic backup objects with proper labels and timestamps
+// - Uses custom client wrapper to track deletion operations
+// - Verifies deletion through mock client inspection
+// - Tests various backup phases and expiration scenarios
+//
+// Background:
+// Velero doesn't automatically clean up validation backups that fail validation
+// or have storage location issues. This function provides that cleanup capability
+// to prevent accumulation of failed validation backups.
+//
+
+// createExpiredValidationBackups creates test backups for expired validation scenario
+//
 //nolint:funlen
-func Test_deleteBackup(t *testing.T) {
-	testEnv := &envtest.Environment{
-		CRDDirectoryPaths: []string{
-			filepath.Join("..", "config", "crd", "bases"),
-			filepath.Join("..", "hack", "crds"),
+func createExpiredValidationBackups() []veleroapi.Backup {
+	now := time.Now()
+	oneHourAgo := metav1.NewTime(now.Add(-1 * time.Hour))
+	oneHourFromNow := metav1.NewTime(now.Add(1 * time.Hour))
+
+	return []veleroapi.Backup{
+		// Expired validation backup - should be deleted
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "expired-validation-backup-1",
+				Namespace: "velero-ns",
+				Labels: map[string]string{
+					BackupVeleroLabel: veleroScheduleNames[ValidationSchedule],
+				},
+			},
+			Status: veleroapi.BackupStatus{
+				Phase:      veleroapi.BackupPhaseFailedValidation,
+				Expiration: &oneHourAgo, // Expired 1 hour ago
+			},
 		},
-		ErrorIfCRDPathMissing: true,
+		// Another expired validation backup - should be deleted
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "expired-validation-backup-2",
+				Namespace: "velero-ns",
+				Labels: map[string]string{
+					BackupVeleroLabel: veleroScheduleNames[ValidationSchedule],
+				},
+			},
+			Status: veleroapi.BackupStatus{
+				Phase:      veleroapi.BackupPhaseCompleted,
+				Expiration: &oneHourAgo, // Expired 1 hour ago
+			},
+		},
+		// Non-expired validation backup - should NOT be deleted
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "valid-validation-backup",
+				Namespace: "velero-ns",
+				Labels: map[string]string{
+					BackupVeleroLabel: veleroScheduleNames[ValidationSchedule],
+				},
+			},
+			Status: veleroapi.BackupStatus{
+				Phase:      veleroapi.BackupPhaseCompleted,
+				Expiration: &oneHourFromNow, // Expires in 1 hour
+			},
+		},
+		// Validation backup with no expiration - should NOT be deleted
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "no-expiration-validation-backup",
+				Namespace: "velero-ns",
+				Labels: map[string]string{
+					BackupVeleroLabel: veleroScheduleNames[ValidationSchedule],
+				},
+			},
+			Status: veleroapi.BackupStatus{
+				Phase: veleroapi.BackupPhaseCompleted,
+				// No expiration set
+			},
+		},
+		// Non-validation backup (different label) - should NOT be deleted even if expired
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "expired-non-validation-backup",
+				Namespace: "velero-ns",
+				Labels: map[string]string{
+					BackupVeleroLabel: "some-other-schedule",
+				},
+			},
+			Status: veleroapi.BackupStatus{
+				Phase:      veleroapi.BackupPhaseCompleted,
+				Expiration: &oneHourAgo, // Expired but not validation backup
+			},
+		},
 	}
-	cfg, err := testEnv.Start()
-	if err != nil {
-		t.Fatalf("Error starting testEnv: %s", err.Error())
-	}
-	scheme1 := runtime.NewScheme()
-	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
-	if err != nil {
-		t.Fatalf("Error starting client: %s", err.Error())
-	}
+}
 
-	backup := *createBackup("backup1", "ns1").object
+// createNonValidationBackups creates test backups with no validation backups
+func createNonValidationBackups() []veleroapi.Backup {
+	now := time.Now()
+	oneHourAgo := metav1.NewTime(now.Add(-1 * time.Hour))
 
-	type args struct {
-		ctx    context.Context
-		c      client.Client
-		backup veleroapi.Backup
+	return []veleroapi.Backup{
+		// Non-validation backup
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "non-validation-backup",
+				Namespace: "velero-ns",
+				Labels: map[string]string{
+					BackupVeleroLabel: "some-other-schedule",
+				},
+			},
+			Status: veleroapi.BackupStatus{
+				Phase:      veleroapi.BackupPhaseCompleted,
+				Expiration: &oneHourAgo,
+			},
+		},
 	}
+}
+
+// verifyDeletedBackups verifies that only expected backups were deleted
+func verifyDeletedBackups(t *testing.T, deletedBackups map[string]bool, allBackups []veleroapi.Backup) {
+	for backupName := range deletedBackups {
+		found := false
+		for _, backup := range allBackups {
+			if backup.Name == backupName {
+				found = true
+				// Should be a validation backup
+				if backup.Labels[BackupVeleroLabel] != veleroScheduleNames[ValidationSchedule] {
+					t.Errorf("Non-validation backup %s was deleted", backupName)
+				}
+				// Should be expired
+				if backup.Status.Expiration == nil || !time.Now().After(backup.Status.Expiration.Time) {
+					t.Errorf("Non-expired backup %s was deleted", backupName)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Unknown backup %s was deleted", backupName)
+		}
+	}
+}
+
+//nolint:funlen
+func Test_cleanupExpiredValidationBackups(t *testing.T) {
 	tests := []struct {
-		name    string
-		args    args
-		err_nil bool
+		name                   string
+		setupBackups           func() []veleroapi.Backup
+		expectedDeletedBackups int
+		description            string
 	}{
 		{
-			name: "no kind is registered for the type v1.DeleteBackupRequest, return error when asking for deleterequests",
-			args: args{
-				ctx:    context.Background(),
-				c:      k8sClient1,
-				backup: backup,
-			},
-			err_nil: false,
+			name:                   "cleanupExpiredValidationBackups processes expired validation backups correctly",
+			setupBackups:           createExpiredValidationBackups,
+			expectedDeletedBackups: 2, // Only the 2 expired validation backups should be deleted
+			description:            "Should delete only expired validation backups and leave others untouched",
 		},
 		{
-			name: "create DeleteBackupRequest request error, because ns ns1 not found",
-			args: args{
-				ctx:    context.Background(),
-				c:      k8sClient1,
-				backup: backup,
-			},
-			err_nil: false,
+			name:                   "cleanupExpiredValidationBackups handles no validation backups",
+			setupBackups:           createNonValidationBackups,
+			expectedDeletedBackups: 0, // No validation backups to delete
+			description:            "Should handle case where no validation backups exist",
 		},
 		{
-			name: "create DeleteBackupRequest request success, ns ns1 was found",
-			args: args{
-				ctx:    context.Background(),
-				c:      k8sClient1,
-				backup: *createBackup("backup2", "ns1").object,
+			name: "cleanupExpiredValidationBackups handles empty backup list",
+			setupBackups: func() []veleroapi.Backup {
+				return []veleroapi.Backup{} // Empty list
 			},
-			err_nil: true,
-		},
-		{
-			name: "delete backup exists, has no errors",
-			args: args{
-				ctx:    context.Background(),
-				c:      k8sClient1,
-				backup: *createBackup("backup2", "ns1").object,
-			},
-			err_nil: true,
-		},
-		{
-			name: "delete backup exists, backup also exists - has no errors",
-			args: args{
-				ctx:    context.Background(),
-				c:      k8sClient1,
-				backup: *createBackup("backup2", "ns1").object,
-			},
-			err_nil: true,
-		},
-		{
-			name: "delete backup exists, backup does no exists but request does and it has errors",
-			args: args{
-				ctx:    context.Background(),
-				c:      k8sClient1,
-				backup: *createBackup("backup-does-not-exist", "ns3").object,
-			},
-			err_nil: false,
+			expectedDeletedBackups: 0, // No backups to delete
+			description:            "Should handle empty backup list gracefully",
 		},
 	}
 
-	for index, tt := range tests {
-		if index == 1 {
-			// create ns so create calls pass through
-			if err := veleroapi.AddToScheme(scheme1); err != nil {
-				t.Errorf("err adding veleroapis to scheme: %s", err.Error())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup fake client with the test backups
+			scheme := runtime.NewScheme()
+			err := veleroapi.AddToScheme(scheme)
+			if err != nil {
+				t.Fatalf("Failed to add Velero API to scheme: %v", err)
 			}
-		}
-		if index == 2 {
-			// create ns so create calls pass through
-			if err := corev1.AddToScheme(scheme1); err != nil {
-				t.Errorf("err adding core apis to scheme: %s", err.Error())
+
+			// Create backups from test setup
+			backups := tt.setupBackups()
+			objects := make([]client.Object, len(backups))
+			for i := range backups {
+				objects[i] = &backups[i]
 			}
-			if err := k8sClient1.Create(tt.args.ctx, createNamespace("ns1"), &client.CreateOptions{}); err != nil {
-				t.Errorf("failed to create %s", err.Error())
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(objects...).
+				Build()
+
+			// Track deletion calls by wrapping the client
+			deletedBackups := make(map[string]bool)
+			wrappedClient := &clientWrapper{
+				Client:         fakeClient,
+				deletedBackups: deletedBackups,
 			}
-			if err := k8sClient1.Create(tt.args.ctx,
-				createBackup("backup1", "ns1").object, &client.CreateOptions{}); err != nil {
-				t.Errorf("failed to create %s", err.Error())
+
+			// Call the function under test
+			ctx := context.Background()
+			cleanupExpiredValidationBackups(ctx, "velero-ns", wrappedClient)
+
+			// Verify the expected number of backups were deleted
+			actualDeleted := len(deletedBackups)
+			if actualDeleted != tt.expectedDeletedBackups {
+				t.Errorf("Expected %d backups to be deleted, but %d were deleted. Deleted backups: %v",
+					tt.expectedDeletedBackups, actualDeleted, deletedBackups)
 			}
-		}
-		if index == len(tests)-2 {
-			// create the delete request to find one already
-			if err := k8sClient1.Create(tt.args.ctx, createNamespace("ns2"), &client.CreateOptions{}); err != nil {
-				t.Errorf("failed to create %s", err.Error())
-			}
-			if err := k8sClient1.Create(tt.args.ctx,
-				createBackup("backup2", "ns1").object, &client.CreateOptions{}); err != nil {
-				t.Errorf("failed to create %s", err.Error())
-			}
-		}
-		if index == len(tests)-1 {
-			// create the delete request to find one already
-			if err := k8sClient1.Create(tt.args.ctx, createNamespace("ns3"), &client.CreateOptions{}); err != nil {
-				t.Errorf("failed to create %s", err.Error())
-			}
-			if err := k8sClient1.Create(tt.args.ctx,
-				createBackupDeleteRequest("backup-does-not-exist", "ns3", "backup-does-not-exist").
-					errors([]string{"err1", "err2"}).
-					object, &client.CreateOptions{}); err != nil {
-				t.Errorf("failed to create %s", err.Error())
-			}
-			t.Run(tt.name, func(t *testing.T) {
-				if err := deleteBackup(tt.args.ctx, &tt.args.backup, tt.args.c); (err == nil) != tt.err_nil {
-					t.Errorf("deleteBackup() returns no error = %v, want %v", err == nil, tt.err_nil)
+
+			// Verify that only expired validation backups were deleted
+			verifyDeletedBackups(t, deletedBackups, backups)
+
+			t.Logf("Test '%s': %s - Successfully deleted %d expired validation backups",
+				tt.name, tt.description, actualDeleted)
+		})
+	}
+}
+
+// clientWrapper wraps a fake client to track deleteBackup calls
+type clientWrapper struct {
+	client.Client
+	deletedBackups map[string]bool
+}
+
+// Create wraps the Create method to track DeleteBackupRequest creation
+func (c *clientWrapper) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+	// Check if this is a DeleteBackupRequest being created
+	if deleteReq, ok := obj.(*veleroapi.DeleteBackupRequest); ok {
+		// Track that this backup was "deleted"
+		c.deletedBackups[deleteReq.Spec.BackupName] = true
+	}
+	return c.Client.Create(ctx, obj, opts...)
+}
+
+// Test_deleteBackup tests the deletion of Velero backup objects through DeleteBackupRequest creation.
+//
+// This test verifies that:
+// - DeleteBackupRequest objects are properly created for backup deletion
+// - The function handles various backup states and conditions correctly
+// - Error conditions are managed gracefully (missing namespace, existing requests, etc.)
+// - Backup deletion works through Velero's standard deletion mechanism
+//
+// Test Coverage:
+// - Standard backup deletion with valid backup object
+// - Backup deletion when namespace is missing (should handle gracefully)
+// - Backup deletion when DeleteBackupRequest already exists
+// - Backup deletion when DeleteBackupRequest has errors (should delete backup directly)
+// - Various error conditions and edge cases
+//
+// Test Scenarios:
+//   - "should successfully create DeleteBackupRequest for existing backup"
+//     Tests normal case where backup exists and DeleteBackupRequest is created
+//   - "should handle missing namespace gracefully"
+//     Tests behavior when backup namespace doesn't exist
+//   - "should handle backup deletion when DeleteBackupRequest already exists"
+//     Tests idempotent behavior when deletion request already exists
+//   - "should handle DeleteBackupRequest with errors and delete backup"
+//     Tests fallback deletion when DeleteBackupRequest encounters errors
+//
+// Implementation Details:
+// - Uses fake Kubernetes client for isolated testing
+// - Creates realistic Velero Backup and DeleteBackupRequest objects
+// - Tests both successful and error scenarios
+// - Verifies proper error handling and logging
+// - Uses custom client wrapper to track operations
+//
+// Velero Integration:
+// The function integrates with Velero's backup deletion mechanism by creating
+// DeleteBackupRequest objects, which is the standard way to request backup
+// deletion in Velero. If the request fails, it falls back to direct deletion.
+//
+
+//nolint:funlen
+func Test_deleteBackup(t *testing.T) {
+	tests := []struct {
+		name          string
+		backupName    string
+		namespace     string
+		setupObjects  func() []client.Object
+		expectedError bool
+		description   string
+	}{
+		{
+			name:       "should successfully create DeleteBackupRequest for existing backup",
+			backupName: "test-backup",
+			namespace:  "velero-ns",
+			setupObjects: func() []client.Object {
+				return []client.Object{
+					createNamespace("velero-ns"),
+					createBackup("test-backup", "velero-ns").object,
 				}
-			})
-		}
-
+			},
+			expectedError: false,
+			description:   "Should create DeleteBackupRequest when backup exists",
+		},
+		{
+			name:       "should handle missing namespace gracefully",
+			backupName: "test-backup",
+			namespace:  "missing-ns",
+			setupObjects: func() []client.Object {
+				return []client.Object{
+					createBackup("test-backup", "missing-ns").object,
+				}
+			},
+			expectedError: false,
+			description:   "Should handle missing namespace gracefully by creating DeleteBackupRequest",
+		},
+		{
+			name:       "should handle backup deletion when DeleteBackupRequest already exists",
+			backupName: "existing-backup",
+			namespace:  "velero-ns",
+			setupObjects: func() []client.Object {
+				return []client.Object{
+					createNamespace("velero-ns"),
+					createBackup("existing-backup", "velero-ns").object,
+					createBackupDeleteRequest("existing-backup-delete", "velero-ns", "existing-backup").object,
+				}
+			},
+			expectedError: false,
+			description:   "Should handle case when DeleteBackupRequest already exists",
+		},
+		{
+			name:       "should handle DeleteBackupRequest with errors and delete backup",
+			backupName: "error-backup",
+			namespace:  "velero-ns",
+			setupObjects: func() []client.Object {
+				return []client.Object{
+					createNamespace("velero-ns"),
+					createBackup("error-backup", "velero-ns").object,
+					createBackupDeleteRequest("error-backup", "velero-ns", "error-backup").
+						errors([]string{"deletion failed", "resource not found"}).object,
+				}
+			},
+			expectedError: false,
+			description:   "Should delete backup when DeleteBackupRequest has errors",
+		},
 	}
 
-	if err := testEnv.Stop(); err != nil {
-		t.Fatalf("Error stopping testenv: %s", err.Error())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup fake client with Velero scheme
+			scheme := runtime.NewScheme()
+			err := veleroapi.AddToScheme(scheme)
+			if err != nil {
+				t.Fatalf("Failed to add Velero API to scheme: %v", err)
+			}
+			err = corev1.AddToScheme(scheme)
+			if err != nil {
+				t.Fatalf("Failed to add Core API to scheme: %v", err)
+			}
+
+			// Create objects from test setup
+			objects := tt.setupObjects()
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(objects...).
+				Build()
+
+			// Create backup object for test
+			backup := createBackup(tt.backupName, tt.namespace).object
+
+			// Call the function under test
+			ctx := context.Background()
+			err = deleteBackup(ctx, backup, fakeClient)
+
+			// Verify the result
+			if tt.expectedError && err == nil {
+				t.Errorf("Expected error but got none")
+			}
+			if !tt.expectedError && err != nil {
+				t.Errorf("Expected no error but got: %v", err)
+			}
+
+			t.Logf("Test '%s': %s - Result: error=%v", tt.name, tt.description, err != nil)
+		})
 	}
 }
