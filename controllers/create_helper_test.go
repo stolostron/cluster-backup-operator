@@ -1,3 +1,19 @@
+/*
+Copyright 2021.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package controllers
 
 import (
@@ -24,8 +40,11 @@ import (
 )
 
 const (
-	acmApiVersion    = "cluster.open-cluster-management.io/v1beta1"
-	veleroApiVersion = "velero.io/v1"
+	acmApiVersion         = "cluster.open-cluster-management.io/v1beta1"
+	veleroApiVersion      = "velero.io/v1"
+	localClusterName      = "local-cluster"
+	veleroBackupNameLabel = "velero.io/backup-name"
+	testBackupLabelValue  = "backup-123"
 )
 
 func newUnstructured(apiVersion, kind, namespace, name string) *unstructured.Unstructured {
@@ -593,7 +612,7 @@ func createManagedCluster(name string, isLocalCluster bool) *ManagedHelper {
 	if isLocalCluster {
 		// Add local-cluster label
 		mgdCluster.Labels = map[string]string{
-			"local-cluster": "true",
+			localClusterName: "true",
 		}
 	}
 
@@ -684,7 +703,7 @@ func createDefaultTimestamps(
 func createDefaultClusterVersions() []ocinfrav1.ClusterVersion {
 	return []ocinfrav1.ClusterVersion{
 		*createClusterVersion("version-new-one", "aaa", map[string]string{
-			"velero.io/backup-name": "backup-123",
+			veleroBackupNameLabel: testBackupLabelValue,
 		}),
 	}
 }
@@ -695,12 +714,12 @@ func createDefaultChannels() []chnv1.Channel {
 		*createChannel("channel-from-backup",
 			chnv1.ChannelTypeHelmRepo, "http://test.svc.cluster.local:3000/charts").
 			channelLabels(map[string]string{
-				"velero.io/backup-name": "backup-123",
+				veleroBackupNameLabel: testBackupLabelValue,
 			}).object,
 		*createChannel("channel-from-backup-with-finalizers",
 			chnv1.ChannelTypeHelmRepo, "http://test.svc.cluster.local:3000/charts").
 			channelLabels(map[string]string{
-				"velero.io/backup-name": "backup-123",
+				veleroBackupNameLabel: testBackupLabelValue,
 			}).
 			channelFinalizers([]string{"finalizer1"}).object,
 		*createChannel("channel-not-from-backup",
@@ -711,43 +730,52 @@ func createDefaultChannels() []chnv1.Channel {
 	}
 }
 
+// VeleroBackupConfig holds configuration for creating default Velero backups
+type VeleroBackupConfig struct {
+	VeleroNamespace                    string
+	ManagedClustersBackupName          string
+	ResourcesBackupName                string
+	ResourcesGenericBackupName         string
+	CredentialsBackupName              string
+	CredentialsHiveBackupName          string
+	CredentialsClusterBackupName       string
+	ResourcesStartTime                 metav1.Time
+	ResourcesGenericStartTime          metav1.Time
+	UnrelatedResourcesGenericStartTime metav1.Time
+	IncludedResources                  []string
+}
+
 // createDefaultVeleroBackups creates standard velero backup test data
-func createDefaultVeleroBackups(
-	veleroNamespace string,
-	managedClustersBackupName, resourcesBackupName, resourcesGenericBackupName,
-	credentialsBackupName, credentialsHiveBackupName, credentialsClusterBackupName string,
-	resourcesStartTime, resourcesGenericStartTime, unrelatedResourcesGenericStartTime metav1.Time,
-	includedResources []string,
-) []veleroapi.Backup {
+func createDefaultVeleroBackups(config VeleroBackupConfig) []veleroapi.Backup {
 	return []veleroapi.Backup{
-		*createBackup(managedClustersBackupName, veleroNamespace).
+		*createBackup(config.ManagedClustersBackupName, config.VeleroNamespace).
 			phase(veleroapi.BackupPhaseCompleted).
 			errors(0).includedResources(backupManagedClusterResources).
 			object,
-		*createBackup(resourcesBackupName, veleroNamespace).
-			startTimestamp(resourcesStartTime).
+		*createBackup(config.ResourcesBackupName, config.VeleroNamespace).
+			startTimestamp(config.ResourcesStartTime).
 			phase(veleroapi.BackupPhaseCompleted).
-			errors(0).includedResources(includedResources).
+			errors(0).includedResources(config.IncludedResources).
 			object,
-		*createBackup(resourcesGenericBackupName, veleroNamespace).
-			startTimestamp(resourcesGenericStartTime).
+		*createBackup(config.ResourcesGenericBackupName, config.VeleroNamespace).
+			startTimestamp(config.ResourcesGenericStartTime).
 			phase(veleroapi.BackupPhaseCompleted).
-			errors(0).includedResources(includedResources).
+			errors(0).includedResources(config.IncludedResources).
 			object,
-		*createBackup("acm-resources-generic-schedule-20210910181420", veleroNamespace).
-			startTimestamp(unrelatedResourcesGenericStartTime).
+		*createBackup("acm-resources-generic-schedule-20210910181420", config.VeleroNamespace).
+			startTimestamp(config.UnrelatedResourcesGenericStartTime).
 			phase(veleroapi.BackupPhaseCompleted).
-			errors(0).includedResources(includedResources).
+			errors(0).includedResources(config.IncludedResources).
 			object,
-		*createBackup(credentialsBackupName, veleroNamespace).
-			phase(veleroapi.BackupPhaseCompleted).
-			errors(0).includedResources(backupCredsResources).
-			object,
-		*createBackup(credentialsHiveBackupName, veleroNamespace).
+		*createBackup(config.CredentialsBackupName, config.VeleroNamespace).
 			phase(veleroapi.BackupPhaseCompleted).
 			errors(0).includedResources(backupCredsResources).
 			object,
-		*createBackup(credentialsClusterBackupName, veleroNamespace).
+		*createBackup(config.CredentialsHiveBackupName, config.VeleroNamespace).
+			phase(veleroapi.BackupPhaseCompleted).
+			errors(0).includedResources(backupCredsResources).
+			object,
+		*createBackup(config.CredentialsClusterBackupName, config.VeleroNamespace).
 			phase(veleroapi.BackupPhaseCompleted).
 			errors(0).includedResources(backupCredsResources).
 			object,
@@ -785,23 +813,31 @@ func createDefaultLabelSelectors() ([]metav1.LabelSelectorRequirement, []*metav1
 	return matchExpressions, restoreOrSelector
 }
 
+// ACMRestoreConfig holds configuration for creating default ACM restores
+type ACMRestoreConfig struct {
+	RestoreName                     string
+	VeleroNamespace                 string
+	ManagedClustersBackupName       string
+	CredentialsBackupName           string
+	ResourcesBackupName             string
+	MatchExpressions                []metav1.LabelSelectorRequirement
+	RestoreOrSelector               []*metav1.LabelSelector
+	ExcludedResources               []string
+	IncludedResources               []string
+	ExcludedNamespaces              []string
+	IncludedNamespaces              []string
+	NamespaceMapping                map[string]string
+	RestoreLabelSelectorMatchLabels map[string]string
+}
+
 // createDefaultACMRestore creates a fully configured ACM restore for testing with customizable resource filters
-func createDefaultACMRestore(
-	restoreName, veleroNamespace string,
-	managedClustersBackupName, credentialsBackupName, resourcesBackupName string,
-	matchExpressions []metav1.LabelSelectorRequirement,
-	restoreOrSelector []*metav1.LabelSelector,
-	excludedResources, includedResources []string,
-	excludedNamespaces, includedNamespaces []string,
-	namespaceMapping map[string]string,
-	restoreLabelSelectorMatchLabels map[string]string,
-) *v1beta1.Restore {
-	return createACMRestore(restoreName, veleroNamespace).
+func createDefaultACMRestore(config ACMRestoreConfig) *v1beta1.Restore {
+	return createACMRestore(config.RestoreName, config.VeleroNamespace).
 		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 		syncRestoreWithNewBackups(true).
 		restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
-		veleroManagedClustersBackupName(managedClustersBackupName).
-		veleroCredentialsBackupName(credentialsBackupName).
+		veleroManagedClustersBackupName(config.ManagedClustersBackupName).
+		veleroCredentialsBackupName(config.CredentialsBackupName).
 		restorePVs(true).
 		preserveNodePorts(true).
 		restoreStatus(&veleroapi.RestoreStatusSpec{
@@ -810,17 +846,17 @@ func createDefaultACMRestore(
 		hookResources([]veleroapi.RestoreResourceHookSpec{
 			{Name: "hookName"},
 		}).
-		excludedResources(excludedResources).
-		includedResources(includedResources).
-		excludedNamespaces(excludedNamespaces).
-		namespaceMapping(namespaceMapping).
-		includedNamespaces(includedNamespaces).
+		excludedResources(config.ExcludedResources).
+		includedResources(config.IncludedResources).
+		excludedNamespaces(config.ExcludedNamespaces).
+		namespaceMapping(config.NamespaceMapping).
+		includedNamespaces(config.IncludedNamespaces).
 		restoreLabelSelector(&metav1.LabelSelector{
-			MatchLabels:      restoreLabelSelectorMatchLabels,
-			MatchExpressions: matchExpressions,
+			MatchLabels:      config.RestoreLabelSelectorMatchLabels,
+			MatchExpressions: config.MatchExpressions,
 		}).
-		restoreORLabelSelector(restoreOrSelector).
-		veleroResourcesBackupName(resourcesBackupName).object
+		restoreORLabelSelector(config.RestoreOrSelector).
+		veleroResourcesBackupName(config.ResourcesBackupName).object
 }
 
 // Test Helper Functions for Common Patterns
@@ -1175,7 +1211,7 @@ func createTestBackupSetup() *TestBackupSetup {
 		ResourcesBackup: *createBackup(veleroResourcesBackupName, namespaceName).
 			includedResources(resources).
 			startTimestamp(rightNow).
-			excludedNamespaces([]string{"local-cluster", "open-cluster-management-backup"}).
+			excludedNamespaces([]string{localClusterName, "open-cluster-management-backup"}).
 			labels(map[string]string{BackupScheduleTypeLabel: string(Resources)}).
 			phase(veleroapi.BackupPhaseCompleted).object,
 
@@ -1192,14 +1228,14 @@ func createTestBackupSetup() *TestBackupSetup {
 
 		ClustersBackup: *createBackup(veleroClustersBackupName, namespaceName).
 			includedResources(backupManagedClusterResources).
-			excludedNamespaces([]string{"local-cluster"}).
+			excludedNamespaces([]string{localClusterName}).
 			startTimestamp(metav1.NewTime(aFewSecondsAgo)).
 			labels(map[string]string{BackupScheduleTypeLabel: string(ManagedClusters)}).
 			phase(veleroapi.BackupPhaseCompleted).object,
 
 		ClustersBackupOld: *createBackup(veleroClustersBackupNameOlder, namespaceName).
 			includedResources(backupManagedClusterResources).
-			excludedNamespaces([]string{"local-cluster"}).
+			excludedNamespaces([]string{localClusterName}).
 			startTimestamp(metav1.NewTime(tenHourAgo)).
 			labels(map[string]string{BackupScheduleTypeLabel: string(ManagedClusters)}).object,
 

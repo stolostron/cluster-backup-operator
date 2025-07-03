@@ -234,13 +234,19 @@ var _ = Describe("Basic Restore controller", func() {
 
 		// Create standard Velero backup resources using factory function
 		// These represent the backups that the restore will reference
-		veleroBackups = createDefaultVeleroBackups(
-			veleroNamespace.Name,
-			veleroManagedClustersBackupName, veleroResourcesBackupName, veleroResourcesGenericBackupName,
-			veleroCredentialsBackupName, veleroCredentialsHiveBackupName, veleroCredentialsClusterBackupName,
-			resourcesStartTime, resourcesGenericStartTime, unrelatedResourcesGenericStartTime,
-			includedResources,
-		)
+		veleroBackups = createDefaultVeleroBackups(VeleroBackupConfig{
+			VeleroNamespace:                    veleroNamespace.Name,
+			ManagedClustersBackupName:          veleroManagedClustersBackupName,
+			ResourcesBackupName:                veleroResourcesBackupName,
+			ResourcesGenericBackupName:         veleroResourcesGenericBackupName,
+			CredentialsBackupName:              veleroCredentialsBackupName,
+			CredentialsHiveBackupName:          veleroCredentialsHiveBackupName,
+			CredentialsClusterBackupName:       veleroCredentialsClusterBackupName,
+			ResourcesStartTime:                 resourcesStartTime,
+			ResourcesGenericStartTime:          resourcesGenericStartTime,
+			UnrelatedResourcesGenericStartTime: unrelatedResourcesGenericStartTime,
+			IncludedResources:                  includedResources,
+		})
 
 		// Create standard label selector configurations for restore filtering
 		matchExpressions, restoreOrSelector := createDefaultLabelSelectors()
@@ -250,20 +256,24 @@ var _ = Describe("Basic Restore controller", func() {
 
 		// Create the main ACM Restore resource with comprehensive configuration
 		// This includes resource filtering, namespace mapping, and label selectors
-		rhacmRestore = *createDefaultACMRestore(
-			restoreName, veleroNamespace.Name,
-			veleroManagedClustersBackupName, veleroCredentialsBackupName, veleroResourcesBackupName,
-			matchExpressions, restoreOrSelector,
-			[]string{"res1", "res2"},            // excludedResources - resources to skip
-			[]string{"res3", "res4"},            // includedResources - resources to include
-			[]string{"ns1", "ns2"},              // excludedNamespaces - namespaces to skip
-			[]string{"ns3", "ns4"},              // includedNamespaces - namespaces to include
-			map[string]string{"ns3": "map-ns3"}, // namespaceMapping - namespace renaming
-			map[string]string{ // restoreLabelSelectorMatchLabels - label-based filtering
+		rhacmRestore = *createDefaultACMRestore(ACMRestoreConfig{
+			RestoreName:               restoreName,
+			VeleroNamespace:           veleroNamespace.Name,
+			ManagedClustersBackupName: veleroManagedClustersBackupName,
+			CredentialsBackupName:     veleroCredentialsBackupName,
+			ResourcesBackupName:       veleroResourcesBackupName,
+			MatchExpressions:          matchExpressions,
+			RestoreOrSelector:         restoreOrSelector,
+			ExcludedResources:         []string{"res1", "res2"},            // resources to skip
+			IncludedResources:         []string{"res3", "res4"},            // resources to include
+			ExcludedNamespaces:        []string{"ns1", "ns2"},              // namespaces to skip
+			IncludedNamespaces:        []string{"ns3", "ns4"},              // namespaces to include
+			NamespaceMapping:          map[string]string{"ns3": "map-ns3"}, // namespace renaming
+			RestoreLabelSelectorMatchLabels: map[string]string{ // label-based filtering
 				"restorelabel":  "value",
 				"restorelabel1": "value1",
 			},
-		)
+		})
 	})
 
 	// =============================================================================
