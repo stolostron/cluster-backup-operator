@@ -411,24 +411,6 @@ func getResourcesByBackupType(
 	return filteredResourceNames
 }
 
-func isBackupFinished(backups []*veleroapi.Backup) bool {
-
-	if len(backups) <= 0 {
-		return false
-	}
-
-	// get all backups and check status for each
-	for i := 0; i < len(backups); i++ {
-		if backups[i].Status.Phase != "Completed" &&
-			backups[i].Status.Phase != "Failed" &&
-			backups[i].Status.Phase != "PartiallyFailed" {
-			return false // some backup is not ready
-		}
-	}
-
-	return true
-}
-
 // filter backup list based on a boolean function
 func filterBackups(vs []veleroapi.Backup, f func(veleroapi.Backup) bool) []veleroapi.Backup {
 	filtered := make([]veleroapi.Backup, 0)

@@ -1,28 +1,71 @@
 // Copyright Contributors to the Open Cluster Management project
 
+/*
+Package controllers contains comprehensive unit tests for utility functions used across the ACM Backup/Restore system.
+
+This test suite validates core utility functions including:
+- Hub cluster identification and metadata extraction
+- Velero CRD presence detection and validation
+- Backup timestamp parsing and manipulation
+- Storage location validation and configuration
+- Resource filtering and label selector operations
+- Managed service account token validation
+- Backup schedule phase management and collision detection
+- String manipulation and array operations
+
+The tests use fake Kubernetes clients to simulate various cluster states and configurations,
+ensuring reliable testing without external dependencies. Helper functions from create_helper.go
+are used to reduce setup complexity and maintain consistency across test scenarios.
+*/
+
 //nolint:funlen
 package controllers
 
 import (
 	"context"
-	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
-	ocinfrav1 "github.com/openshift/api/config/v1"
+	"github.com/pkg/errors"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
+// Test_getBackupTimestamp tests extraction of timestamp information from backup names.
+//
+// This test validates the logic that parses backup names to extract embedded
+// timestamp information, which is critical for backup ordering and lifecycle management.
+//
+// Test Coverage:
+// - Timestamp extraction from properly formatted backup names
+// - Error handling for invalid or malformed backup names
+// - Time parsing validation with specific timestamp format
+// - Edge cases with invalid timestamp formats
+//
+// Test Scenarios:
+// - Invalid backup names that don't contain timestamps
+// - Valid backup names with proper timestamp format (20060102150405)
+// - Timestamp parsing accuracy and format compliance
+//
+// Implementation Details:
+// - Uses standard Go time parsing with specific layout format
+// - Returns zero time for invalid or missing timestamps
+// - Validates proper timestamp extraction from backup name suffixes
+//
+// Business Logic:
+// Backup timestamp extraction is essential for backup lifecycle management,
+// enabling proper ordering, retention policies, and temporal operations
+// on backup resources within the disaster recovery system.
 func Test_getBackupTimestamp(t *testing.T) {
 	type args struct {
 		backupName string
@@ -59,6 +102,36 @@ func Test_getBackupTimestamp(t *testing.T) {
 	}
 }
 
+// Test_sortCompare tests slice comparison functionality with order-independent equality.
+//
+// This test validates the logic that compares two string slices for equality
+// regardless of element order, which is essential for resource list comparisons.
+//
+// Test Coverage:
+// - Nil slice handling and comparison
+// - Empty slice comparison scenarios
+// - Different element membership validation
+// - Length difference detection
+// - Order-independent equality verification
+//
+// Test Scenarios:
+// - Both slices are nil (should return true)
+// - One slice is nil, other is not (should return false)
+// - Slices with different elements (should return false)
+// - Slices with different lengths (should return false)
+// - Slices with same elements in same order (should return true)
+// - Slices with same elements in different order (should return true)
+//
+// Implementation Details:
+// - Performs deep comparison of slice contents
+// - Uses sorting internally to enable order-independent comparison
+// - Handles edge cases with nil and empty slices
+// - Returns boolean indicating equality
+//
+// Business Logic:
+// Order-independent slice comparison is crucial for validating resource
+// configurations where element order shouldn't affect equality, such as
+// comparing backup resource lists or schedule configurations.
 func Test_sortCompare(t *testing.T) {
 	type args struct {
 		a []string
@@ -136,6 +209,36 @@ func Test_sortCompare(t *testing.T) {
 	}
 }
 
+// Test_isValidStorageLocationDefined tests validation of backup storage location configurations.
+//
+// This test validates the logic that determines whether valid backup storage
+// locations are properly configured and available for backup operations.
+//
+// Test Coverage:
+// - Empty storage location list handling
+// - Storage location owner reference validation
+// - Storage location phase and availability checking
+// - Namespace preference matching
+// - Default storage location identification
+//
+// Test Scenarios:
+// - No storage locations available (should return false)
+// - Storage locations without proper owner references (should return false)
+// - Storage locations with proper configuration and ownership
+// - Preferred namespace matching and selection
+// - Default storage location validation
+//
+// Implementation Details:
+// - Validates BackupStorageLocation resource presence
+// - Checks storage location phases for availability
+// - Verifies proper owner references for managed resources
+// - Supports namespace preference for multi-namespace deployments
+// - Returns boolean indicating valid storage availability
+//
+// Business Logic:
+// Valid storage location validation is fundamental for backup operations,
+// ensuring that backup schedules and restore operations have access to
+// properly configured and available storage before attempting data operations.
 func Test_isValidStorageLocationDefined(t *testing.T) {
 	type args struct {
 		veleroStorageLocations *veleroapi.BackupStorageLocationList
@@ -265,6 +368,34 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 	}
 }
 
+// Test_getResourceDetails tests extraction of resource information from resource names.
+//
+// This test validates the logic that parses resource names to extract
+// detailed information about Kubernetes resource types and configurations.
+//
+// Test Coverage:
+// - Resource name parsing and decomposition
+// - Resource type identification
+// - Group and version extraction from resource names
+// - Edge cases with malformed or invalid resource names
+// - Resource detail structure validation
+//
+// Test Scenarios:
+// - Valid resource names with proper format
+// - Invalid or malformed resource names
+// - Resource names with different group and version combinations
+// - Edge cases and error handling scenarios
+//
+// Implementation Details:
+// - Parses resource names according to Kubernetes naming conventions
+// - Extracts group, version, and resource type information
+// - Returns structured resource details for further processing
+// - Handles parsing errors and invalid input gracefully
+//
+// Business Logic:
+// Resource detail extraction is essential for dynamic resource management,
+// enabling the backup system to properly handle different resource types
+// and apply appropriate backup strategies based on resource characteristics.
 func Test_getResourceDetails(t *testing.T) {
 	type args struct {
 		resourceName string
@@ -302,6 +433,35 @@ func Test_getResourceDetails(t *testing.T) {
 	}
 }
 
+// Test_findValidMSAToken tests identification and validation of Managed Service Account tokens.
+//
+// This test validates the logic that finds valid MSA tokens from a collection
+// of secrets, ensuring proper authentication for backup operations.
+//
+// Test Coverage:
+// - MSA token discovery from secret collections
+// - Token expiration and validity checking
+// - Secret type filtering and validation
+// - Token metadata parsing and verification
+// - Time-based token validity assessment
+//
+// Test Scenarios:
+// - No secrets available for token discovery
+// - Secrets without valid expirationTimestamp annotations
+// - Secrets with invalid or malformed expiration times
+// - Expired MSA tokens that should be rejected
+// - Valid MSA tokens with proper expiration times and token data
+//
+// Implementation Details:
+// - Filters secrets by type to identify MSA tokens
+// - Parses token metadata for expiration information using RFC3339 format
+// - Compares current time against token expiration timestamps
+// - Validates presence of required token data in secret
+// - Returns the most appropriate valid token or empty string
+//
+// Business Logic:
+// Valid MSA token identification is crucial for authenticated backup operations,
+// ensuring that restore processes have proper credentials to access cluster resources.
 func Test_findValidMSAToken(t *testing.T) {
 	current, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
 	nextHour := "2022-07-26T16:25:34Z"
@@ -417,6 +577,38 @@ func Test_findValidMSAToken(t *testing.T) {
 	}
 }
 
+// Test_managedClusterShouldReimport tests determination of whether managed clusters require reimport.
+//
+// This test validates the logic that determines when managed clusters should be
+// reimported based on their availability status and configuration.
+//
+// Test Coverage:
+// - Local cluster identification and special handling
+// - Managed cluster availability status checking
+// - Cluster URL presence validation
+// - Reimport decision logic based on cluster state
+// - Special case handling for local-cluster vs other local clusters
+//
+// Test Scenarios:
+// - Local cluster named "local-cluster" (should not reimport)
+// - Local cluster with different name (should not reimport)
+// - Cluster not in the managed cluster list (should not reimport)
+// - Cluster without URL configuration (should not reimport)
+// - Available clusters (should not reimport)
+// - Unavailable clusters without URL (should not reimport)
+// - Unavailable clusters with URL (should reimport)
+//
+// Implementation Details:
+// - Uses ManagedCluster custom resources for testing
+// - Checks cluster conditions for availability status
+// - Validates cluster URL presence and configuration
+// - Handles special cases for local vs remote clusters
+// - Returns boolean indicating reimport necessity
+//
+// Business Logic:
+// Managed cluster reimport determination is essential for disaster recovery,
+// ensuring that disconnected or unavailable clusters with proper configuration
+// can be automatically reimported when connectivity is restored.
 func Test_managedClusterShouldReimport(t *testing.T) {
 	managedClusters1 := []clusterv1.ManagedCluster{
 		*createManagedCluster("local-cluster", true).object,
@@ -545,145 +737,123 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 	}
 }
 
+// Test_getHubIdentification tests extraction of hub cluster identification information.
+//
+// This test validates the logic that retrieves and processes hub cluster
+// identification data for backup labeling and cluster tracking purposes.
+//
+// Test Coverage:
+// - Hub cluster identification extraction
+// - ClusterVersion resource processing
+// - Error handling for missing or invalid cluster information
+// - Scheme validation and resource availability checking
+// - Hub ID extraction and formatting
+//
+// Test Scenarios:
+// - No ClusterVersion scheme defined (should handle error)
+// - ClusterVersion scheme defined but no resource present
+// - ClusterVersion resource without cluster ID information
+// - ClusterVersion resource with valid cluster ID
+//
+// Implementation Details:
+// - Uses ClusterVersion custom resources for hub identification
+// - Handles scheme validation and resource discovery
+// - Processes cluster version metadata for ID extraction
+// - Returns hub identification string or default values
+// - Manages error conditions gracefully
+//
+// Business Logic:
+// Hub identification is crucial for multi-cluster backup scenarios,
+// enabling proper labeling and tracking of backups across different
+// hub clusters in complex deployment environments.
 func Test_getHubIdentification(t *testing.T) {
 	crNoVersion := createClusterVersion("version", "", nil)
 	crWithVersion := createClusterVersion("version", "aaa", nil)
 
-	testEnv := &envtest.Environment{
-		CRDDirectoryPaths: []string{
-			filepath.Join("..", "config", "crd", "bases"),
-			filepath.Join("..", "hack", "crds"),
-		},
-		ErrorIfCRDPathMissing: true,
-	}
-	cfg, err := testEnv.Start()
-	if err != nil {
-		t.Fatalf("Error starting testEnv: %s", err.Error())
-	}
-	scheme1 := runtime.NewScheme()
-	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
-	if err != nil {
-		t.Fatalf("Error starting client: %s", err.Error())
-	}
-
-	type args struct {
-		ctx context.Context
-		c   client.Client
-	}
 	tests := []struct {
-		name     string
-		args     args
-		err_nil  bool
-		want_msg string
-		url      string
+		name         string
+		setupScheme  bool
+		setupObjects []client.Object
+		err_nil      bool
+		want_msg     string
 	}{
 		{
-			name: "no clusterversion scheme defined",
-			args: args{
-				ctx: context.Background(),
-				c:   k8sClient1,
-			},
-			err_nil:  false,
-			want_msg: "unknown",
+			name:         "no clusterversion scheme defined",
+			setupScheme:  false,
+			setupObjects: []client.Object{},
+			err_nil:      false,
+			want_msg:     "unknown",
 		},
 		{
-			name: "clusterversion scheme is defined but no resource",
-			args: args{
-				ctx: context.Background(),
-				c:   k8sClient1,
-			},
-			err_nil:  true,
-			want_msg: "unknown",
+			name:         "clusterversion scheme is defined but no resource",
+			setupScheme:  true,
+			setupObjects: []client.Object{},
+			err_nil:      true,
+			want_msg:     "unknown",
 		},
 		{
-			name: "clusterversion resource with no id",
-			args: args{
-				ctx: context.Background(),
-				c:   k8sClient1,
-			},
-			err_nil:  true,
-			want_msg: "",
+			name:         "clusterversion resource with no id",
+			setupScheme:  true,
+			setupObjects: []client.Object{crNoVersion},
+			err_nil:      true,
+			want_msg:     "",
 		},
 		{
-			name: "clusterversion resource with id",
-			args: args{
-				ctx: context.Background(),
-				c:   k8sClient1,
-			},
-			err_nil:  true,
-			want_msg: "aaa",
+			name:         "clusterversion resource with id",
+			setupScheme:  true,
+			setupObjects: []client.Object{crWithVersion},
+			err_nil:      true,
+			want_msg:     "aaa",
 		},
 	}
 
-	for index, tt := range tests {
-		if index == 1 {
-			// add clusterversion scheme
-			err := ocinfrav1.AddToScheme(scheme1)
-			if err != nil {
-				t.Errorf("Error adding api to scheme: %s", err.Error())
-			}
-		}
-		if index == len(tests)-2 {
-			// add a cr with no id
-			err := k8sClient1.Create(tt.args.ctx, crNoVersion, &client.CreateOptions{})
-			if err != nil {
-				t.Errorf("Error creating: %s", err.Error())
-			}
-		}
-		if index == len(tests)-1 {
-			// add a cr with id
-			err := k8sClient1.Delete(tt.args.ctx, crNoVersion) // so that this is not picked up here
-			if err != nil {
-				t.Errorf("Error deleting: %s", err.Error())
-			}
-			err = k8sClient1.Create(tt.args.ctx, crWithVersion, &client.CreateOptions{})
-			if err != nil {
-				t.Errorf("Error creating: %s", err.Error())
-			}
-		}
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if version, err := getHubIdentification(tt.args.ctx, tt.args.c); (err == nil) != tt.err_nil ||
-				version != tt.want_msg {
-				t.Errorf("getHubIdentification() returns no error = %v, want %v and version=%v want=%v",
-					err == nil, tt.err_nil, version, tt.want_msg)
+			fakeClient := CreateHubIdentificationTestClient(tt.setupScheme, tt.setupObjects...)
+
+			version, err := getHubIdentification(context.Background(), fakeClient)
+
+			if (err == nil) != tt.err_nil {
+				t.Errorf("getHubIdentification() error = %v, want error = %v", err, !tt.err_nil)
+			}
+			if version != tt.want_msg {
+				t.Errorf("getHubIdentification() version = %v, want %v", version, tt.want_msg)
 			}
 		})
 	}
-	// clean up
-	if err := testEnv.Stop(); err != nil {
-		t.Fatalf("Error stopping testenv: %s", err.Error())
-	}
 }
 
+// Test_VeleroCRDsPresent_NotPresent tests detection when Velero CRDs are not available.
+//
+// This test validates the logic that determines when Velero Custom Resource
+// Definitions are not present in the cluster, which affects backup functionality.
+//
+// Test Coverage:
+// - CRD presence detection for missing Velero resources
+// - Error handling when Velero is not installed
+// - Proper boolean return value for missing CRDs
+// - Client interaction without Velero scheme support
+//
+// Test Scenarios:
+// - Cluster without Velero CRDs installed (should return false)
+// - Proper error handling without throwing exceptions
+// - Graceful degradation when backup infrastructure is missing
+//
+// Implementation Details:
+// - Uses fake client without Velero scheme to simulate missing CRDs
+// - Tests API discovery and resource availability checking
+// - Validates proper false return when resources are unavailable
+// - Ensures no unexpected errors are thrown
+//
+// Business Logic:
+// Velero CRD presence detection is essential for determining whether
+// backup operations can be performed, enabling graceful fallback
+// when backup infrastructure is not available.
 func Test_VeleroCRDsPresent_NotPresent(t *testing.T) {
-	// Test env with no additional CRDs (velero crds will not be present)
-	testEnv := &envtest.Environment{ErrorIfCRDPathMissing: true}
-	cfg, err := testEnv.Start()
-	if err != nil {
-		t.Fatalf("Error starting testEnv: %s", err.Error())
-	}
-
-	// clean up after
-	defer func() {
-		if err := testEnv.Stop(); err != nil {
-			t.Fatalf("Error stopping testenv: %s", err.Error())
-		}
-	}()
-
-	scheme1 := runtime.NewScheme()
-	err = veleroapi.AddToScheme(scheme1) // for velero types
-	if err != nil {
-		t.Fatalf("Error adding api to scheme: %s", err.Error())
-	}
-
-	// test client to testEnv above with no velero CRDs
-	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
-	if err != nil {
-		t.Fatalf("Error starting client: %s", err.Error())
-	}
+	fakeClient := CreateVeleroCRDTestClient(false) // false = don't include velero scheme
 
 	t.Run("velero CRDs not present", func(t *testing.T) {
-		crdsPresent, err := VeleroCRDsPresent(context.Background(), k8sClient1)
+		crdsPresent, err := VeleroCRDsPresent(context.Background(), fakeClient)
 		if err != nil {
 			t.Errorf("VeleroCRDsPresent() returned an unexpected error %s", err.Error())
 		}
@@ -693,40 +863,37 @@ func Test_VeleroCRDsPresent_NotPresent(t *testing.T) {
 	})
 }
 
+// Test_VeleroCRDsPresent tests detection when Velero CRDs are available in the cluster.
+//
+// This test validates the logic that confirms Velero Custom Resource
+// Definitions are present and accessible for backup operations.
+//
+// Test Coverage:
+// - CRD presence detection for available Velero resources
+// - Successful validation when Velero is properly installed
+// - Proper boolean return value for available CRDs
+// - Client interaction with full Velero scheme support
+//
+// Test Scenarios:
+// - Cluster with Velero CRDs properly installed (should return true)
+// - Successful API discovery and resource validation
+// - Proper confirmation of backup infrastructure availability
+//
+// Implementation Details:
+// - Uses fake client with Velero scheme to simulate available CRDs
+// - Tests API discovery and resource availability checking
+// - Validates proper true return when resources are accessible
+// - Ensures successful operation without errors
+//
+// Business Logic:
+// Velero CRD presence confirmation enables backup operations to proceed
+// with confidence that the required infrastructure is available and
+// properly configured for backup and restore functionality.
 func Test_VeleroCRDsPresent(t *testing.T) {
-	// Test env with our dependent CRDs loaded
-	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "hack", "crds")},
-		ErrorIfCRDPathMissing: true,
-	}
-	cfg, err := testEnv.Start()
-	if err != nil {
-		t.Fatalf("Error starting testEnv: %s", err.Error())
-	}
+	fakeClient := CreateVeleroCRDTestClient(true) // true = include velero scheme
 
-	// clean up after
-	defer func() {
-		if err := testEnv.Stop(); err != nil {
-			t.Fatalf("Error stopping testenv: %s", err.Error())
-		}
-	}()
-
-	scheme1 := runtime.NewScheme()
-	err = veleroapi.AddToScheme(scheme1) // for velero types
-	if err != nil {
-		t.Fatalf("Error adding api to scheme: %s", err.Error())
-	}
-
-	// test client to testEnv above with no velero CRDs
-	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
-	if err != nil {
-		t.Fatalf("Error starting client: %s", err.Error())
-	}
-
-	// Rely on testEnv setup in suite_test.go (this will have all the CRDs)
-	// (use k8sClient setup in BeforeSuite that talks to the testEnv)
 	t.Run("velero CRDs present", func(t *testing.T) {
-		crdsPresent, err := VeleroCRDsPresent(context.Background(), k8sClient1)
+		crdsPresent, err := VeleroCRDsPresent(context.Background(), fakeClient)
 		if err != nil {
 			t.Errorf("VeleroCRDsPresent() returned an unexpected error %s", err.Error())
 		}
@@ -734,6 +901,172 @@ func Test_VeleroCRDsPresent(t *testing.T) {
 			t.Errorf("VeleroCRDsPresent() should return true when CRDs are present")
 		}
 	})
+}
+
+// Test_isCRDNotPresentError tests identification of CRD-not-present error conditions.
+//
+// This test validates the logic that determines whether specific errors
+// indicate that Custom Resource Definitions are not available in the cluster.
+//
+// Test Coverage:
+// - Error type classification for CRD absence
+// - NoResourceMatchError detection and handling
+// - NotFound error identification for missing resources
+// - String pattern matching for API group errors
+// - Case sensitivity validation for error messages
+// - Partial match prevention for similar error patterns
+//
+// Test Scenarios:
+// - Nil error handling (should return false)
+// - Generic errors that don't indicate CRD absence
+// - NoResourceMatchError indicating missing CRDs (should return true)
+// - NotFound errors for missing resources (should return true)
+// - API group resource failure errors (should return true)
+// - Type registration errors (should return true)
+// - Case-sensitive error message validation
+// - Partial match rejection for incomplete patterns
+// - Other error types like timeout and permission errors
+//
+// Implementation Details:
+// - Uses specific error type checking for Kubernetes errors
+// - Performs string pattern matching for error messages
+// - Validates case sensitivity and exact pattern matching
+// - Returns boolean indicating CRD absence vs other error types
+//
+// Business Logic:
+// Proper CRD-not-present error identification enables the system to
+// distinguish between infrastructure issues and other operational
+// problems, allowing for appropriate error handling and user messaging.
+func Test_isCRDNotPresentError(t *testing.T) {
+	type args struct {
+		err error
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "nil error should return false",
+			args: args{
+				err: nil,
+			},
+			want: false,
+		},
+		{
+			name: "generic error should return false",
+			args: args{
+				err: errors.New("some generic error"),
+			},
+			want: false,
+		},
+		{
+			name: "NoMatchError should return true",
+			args: args{
+				err: &meta.NoResourceMatchError{
+					PartialResource: schema.GroupVersionResource{
+						Group: "test", Version: "v1", Resource: "tests",
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "NotFound error should return true",
+			args: args{
+				err: kerrors.NewNotFound(schema.GroupResource{Group: "test", Resource: "tests"}, "test-resource"),
+			},
+			want: true,
+		},
+		{
+			name: "error containing 'failed to get API group resources' should return true",
+			args: args{
+				err: errors.New("failed to get API group resources for group test"),
+			},
+			want: true,
+		},
+		{
+			name: "error containing 'no kind is registered for the type' should return true",
+			args: args{
+				err: errors.New("no kind is registered for the type v1beta1.TestResource"),
+			},
+			want: true,
+		},
+		{
+			name: "error with 'failed to get API group resources' substring should return true",
+			args: args{
+				err: errors.New("some prefix: failed to get API group resources and some suffix"),
+			},
+			want: true,
+		},
+		{
+			name: "error with 'no kind is registered for the type' substring should return true",
+			args: args{
+				err: errors.New("prefix: no kind is registered for the type SomeType: suffix"),
+			},
+			want: true,
+		},
+		{
+			name: "case sensitivity - 'Failed to get API group resources' should return false",
+			args: args{
+				err: errors.New("Failed to get API group resources"),
+			},
+			want: false,
+		},
+		{
+			name: "case sensitivity - 'No kind is registered for the type' should return false",
+			args: args{
+				err: errors.New("No kind is registered for the type TestType"),
+			},
+			want: false,
+		},
+		{
+			name: "partial match - 'failed to get API' should return false",
+			args: args{
+				err: errors.New("failed to get API"),
+			},
+			want: false,
+		},
+		{
+			name: "partial match - 'no kind is registered' should return false",
+			args: args{
+				err: errors.New("no kind is registered"),
+			},
+			want: false,
+		},
+		{
+			name: "timeout error should return false",
+			args: args{
+				err: errors.New("timeout waiting for response"),
+			},
+			want: false,
+		},
+		{
+			name: "permission denied error should return false",
+			args: args{
+				err: kerrors.NewForbidden(
+					schema.GroupResource{Group: "test", Resource: "tests"},
+					"test-resource",
+					errors.New("forbidden"),
+				),
+			},
+			want: false,
+		},
+		{
+			name: "already exists error should return false",
+			args: args{
+				err: kerrors.NewAlreadyExists(schema.GroupResource{Group: "test", Resource: "tests"}, "test-resource"),
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isCRDNotPresentError(tt.args.err); got != tt.want {
+				t.Errorf("isCRDNotPresentError() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
 
 func labelSelectorArrayEqual(a []*metav1.LabelSelector, b []metav1.LabelSelector) bool {
@@ -799,6 +1132,36 @@ func requirementsEqual(ma []metav1.LabelSelectorRequirement, mb []metav1.LabelSe
 	return true
 }
 
+// Test_addRestoreLabelSelector tests addition of label selectors to Velero restore operations.
+//
+// This test validates the logic that adds label selector requirements to
+// Velero restore resources for proper resource filtering during restoration.
+//
+// Test Coverage:
+// - Label selector addition to empty restore configurations
+// - Cluster activation label selector handling
+// - OrLabelSelector array management and updates
+// - Label selector requirement merging and uniqueness
+// - Empty vs populated selector handling
+//
+// Test Scenarios:
+// - Empty restore with no selectors (should remain empty)
+// - Empty restore with cluster activation selector
+// - Restore with existing orLabelSelector arrays
+// - Merge operations with multiple selector requirements
+// - Preservation of user-defined selector configurations
+//
+// Implementation Details:
+// - Uses Velero Restore custom resources for testing
+// - Tests label selector requirement structures
+// - Validates array equality for complex selector comparisons
+// - Handles both LabelSelector and OrLabelSelector fields
+// - Ensures proper merging without duplication
+//
+// Business Logic:
+// Label selector management is crucial for targeted restore operations,
+// ensuring that only appropriate resources are restored based on cluster
+// configuration and activation status during disaster recovery.
 func Test_addRestoreLabelSelector(t *testing.T) {
 	type args struct {
 		veleroRestore *veleroapi.Restore
@@ -1048,6 +1411,35 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 	}
 }
 
+// Test_appendUniqueReq tests addition of unique label selector requirements to requirement lists.
+//
+// This test validates the logic that appends label selector requirements to
+// existing requirement lists while preventing duplication.
+//
+// Test Coverage:
+// - Unique requirement addition to existing lists
+// - Duplicate detection and prevention
+// - Empty requirement handling
+// - Requirement equality comparison
+// - List preservation when duplicates are found
+//
+// Test Scenarios:
+// - Adding empty requirements (should not modify list)
+// - Adding duplicate requirements (should not modify list)
+// - Adding unique requirements (should append to list)
+// - Requirement comparison with different operators and values
+//
+// Implementation Details:
+// - Uses LabelSelectorRequirement structures for testing
+// - Performs deep equality comparison of requirements
+// - Validates in-place modification of requirement slices
+// - Ensures proper deduplication without changing order
+// - Handles Key, Operator, and Values comparison
+//
+// Business Logic:
+// Unique requirement management is essential for maintaining clean
+// and efficient label selector configurations, preventing redundant
+// filtering rules that could impact restore performance.
 func Test_appendUniqueReq(t *testing.T) {
 	type args struct {
 		requirements  []metav1.LabelSelectorRequirement
@@ -1107,6 +1499,35 @@ func Test_appendUniqueReq(t *testing.T) {
 	}
 }
 
+// Test_updateBackupSchedulePhaseWhenPaused tests backup schedule phase management during paused states.
+//
+// This test validates the logic that updates backup schedule phases and
+// manages associated Velero schedules when backup schedules are paused or in collision.
+//
+// Test Coverage:
+// - Backup schedule phase transitions (enabled to paused, collision states)
+// - Velero schedule deletion during pause operations
+// - Schedule status cleanup and management
+// - Client interaction for schedule and status updates
+// - Controller result handling for different phase states
+//
+// Test Scenarios:
+// - Backup schedule paused (should delete all Velero schedules)
+// - Backup schedule in collision state (should clean up schedules)
+// - Schedule status updates and cleanup validation
+// - Phase transition validation and messaging
+//
+// Implementation Details:
+// - Uses fake Kubernetes client for testing schedule operations
+// - Tests multiple backup types (Credentials, ManagedClusters, Resources)
+// - Validates proper cleanup of schedule status references
+// - Checks controller result values for proper reconciliation
+// - Manages complex schedule state transitions
+//
+// Business Logic:
+// Backup schedule phase management is critical for coordinating backup
+// operations, ensuring that paused schedules properly clean up their
+// associated Velero resources and handle collision scenarios gracefully.
 func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 	type args struct {
 		ctx                context.Context
@@ -1115,23 +1536,8 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 		backupSchedule     *v1beta1.BackupSchedule
 		phase              v1beta1.SchedulePhase
 		msg                string
-	}
-
-	testEnv := &envtest.Environment{
-		CRDDirectoryPaths: []string{
-			filepath.Join("..", "config", "crd", "bases"),
-			filepath.Join("..", "hack", "crds"),
-		},
-		ErrorIfCRDPathMissing: true,
-	}
-	cfg, err := testEnv.Start()
-	if err != nil {
-		t.Fatalf("Error starting testEnv: %s", err.Error())
-	}
-	scheme1 := runtime.NewScheme()
-	k8sClient1, err := client.New(cfg, client.Options{Scheme: scheme1})
-	if err != nil {
-		t.Fatalf("Error starting client: %s", err.Error())
+		setupScheme        bool
+		setupObjects       []client.Object
 	}
 
 	creds := *createSchedule(veleroBackupNames[Credentials], "default").object
@@ -1151,10 +1557,10 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 		{
 			name: "backup schedule paused",
 			args: args{
-				ctx:   context.Background(),
-				c:     k8sClient1,
-				msg:   "BackupSchedule is paused.",
-				phase: v1beta1.SchedulePhasePaused,
+				ctx:         context.Background(),
+				msg:         "BackupSchedule is paused.",
+				phase:       v1beta1.SchedulePhasePaused,
+				setupScheme: true, // need scheme for objects
 				veleroScheduleList: veleroapi.ScheduleList{
 					Items: []veleroapi.Schedule{
 						creds,
@@ -1169,6 +1575,18 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 					scheduleStatus(ManagedClusters, cls).
 					scheduleStatus(Resources, res).
 					object,
+				setupObjects: []client.Object{
+					createBackupSchedule("acm-schedule", "default").
+						paused(true).
+						phase(v1beta1.SchedulePhaseEnabled).
+						scheduleStatus(Credentials, creds).
+						scheduleStatus(ManagedClusters, cls).
+						scheduleStatus(Resources, res).
+						object,
+					&creds,
+					&cls,
+					&res,
+				},
 			},
 			wantBackupSchedule: *createBackupSchedule("acm-schedule", "default").
 				paused(true).
@@ -1178,18 +1596,18 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 				cls,
 				res,
 			},
-			wantScheduleStatusNil:   false, // backup schedule status doesn't get updated bc of delete error
+			wantScheduleStatusNil:   true, // backup schedule status gets updated with fake client
 			wantReturn:              ctrl.Result{},
-			wantBackupSchedulePhase: v1beta1.SchedulePhaseEnabled,
-			wantMsg:                 "",
+			wantBackupSchedulePhase: v1beta1.SchedulePhasePaused,
+			wantMsg:                 "BackupSchedule is paused.",
 		},
 		{
 			name: "backup schedule in collision",
 			args: args{
-				ctx:   context.Background(),
-				c:     k8sClient1,
-				msg:   "collision",
-				phase: v1beta1.SchedulePhaseBackupCollision,
+				ctx:         context.Background(),
+				msg:         "collision",
+				phase:       v1beta1.SchedulePhaseBackupCollision,
+				setupScheme: true,
 				veleroScheduleList: veleroapi.ScheduleList{
 					Items: []veleroapi.Schedule{
 						creds,
@@ -1203,6 +1621,17 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 					scheduleStatus(Resources, res).
 					phase(v1beta1.SchedulePhaseBackupCollision).
 					object,
+				setupObjects: []client.Object{
+					createBackupSchedule("acm-schedule", "default").
+						scheduleStatus(Credentials, creds).
+						scheduleStatus(ManagedClusters, cls).
+						scheduleStatus(Resources, res).
+						phase(v1beta1.SchedulePhaseBackupCollision).
+						object,
+					&creds,
+					&cls,
+					&res,
+				},
 			},
 			wantBackupSchedule: *createBackupSchedule("acm-schedule", "default").
 				phase(v1beta1.SchedulePhaseBackupCollision).
@@ -1220,10 +1649,10 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 		{
 			name: "backup schedule paused with creds schedule not found",
 			args: args{
-				ctx:   context.Background(),
-				c:     k8sClient1,
-				msg:   "BackupSchedule is paused.",
-				phase: v1beta1.SchedulePhasePaused,
+				ctx:         context.Background(),
+				msg:         "BackupSchedule is paused.",
+				phase:       v1beta1.SchedulePhasePaused,
+				setupScheme: true,
 				veleroScheduleList: veleroapi.ScheduleList{
 					Items: []veleroapi.Schedule{
 						cls,
@@ -1236,6 +1665,16 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 					scheduleStatus(ManagedClusters, cls).
 					scheduleStatus(Resources, res).
 					object,
+				setupObjects: []client.Object{
+					createBackupSchedule("acm-schedule", "default").
+						paused(true).
+						scheduleStatus(Credentials, creds).
+						scheduleStatus(ManagedClusters, cls).
+						scheduleStatus(Resources, res).
+						object,
+					&cls, // only cls and res, no creds
+					&res,
+				},
 			},
 			wantBackupSchedule: *createBackupSchedule("acm-schedule", "default").
 				paused(true).
@@ -1253,10 +1692,10 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 		{
 			name: "backup schedule not in collision or paused",
 			args: args{
-				ctx:   context.Background(),
-				c:     k8sClient1,
-				msg:   "some value",
-				phase: v1beta1.SchedulePhaseEnabled,
+				ctx:         context.Background(),
+				msg:         "some value",
+				phase:       v1beta1.SchedulePhaseEnabled,
+				setupScheme: true,
 				veleroScheduleList: veleroapi.ScheduleList{
 					Items: []veleroapi.Schedule{
 						cls,
@@ -1270,46 +1709,34 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 					scheduleStatus(Resources, res).
 					phase(v1beta1.SchedulePhaseEnabled).
 					object,
+				setupObjects: []client.Object{
+					createBackupSchedule("acm-schedule", "default").
+						paused(false).
+						scheduleStatus(Credentials, creds).
+						scheduleStatus(ManagedClusters, cls).
+						scheduleStatus(Resources, res).
+						phase(v1beta1.SchedulePhaseEnabled).
+						object,
+					&cls,
+					&res,
+				},
 			},
 			wantBackupSchedule: *createBackupSchedule("acm-schedule", "default").
 				paused(false).
 				phase(v1beta1.SchedulePhaseEnabled).
 				object,
 			wantDeletedSchedules:    []veleroapi.Schedule{},
-			wantScheduleStatusNil:   true,
+			wantScheduleStatusNil:   false, // status should remain unchanged
 			wantReturn:              ctrl.Result{},
-			wantBackupSchedulePhase: "",
+			wantBackupSchedulePhase: v1beta1.SchedulePhaseEnabled, // phase should remain unchanged
 			wantMsg:                 "",
 		},
 	}
 
-	for i, tt := range tests {
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if i == 1 {
-				// create the scheme now, to have the delete resource fail
-				_ = veleroapi.AddToScheme(scheme1) // for velero types
-				_ = v1beta1.AddToScheme(scheme1)   // for acm backup types
-			}
-
-			if i > 0 {
-				if err := k8sClient1.Create(tt.args.ctx, tt.args.backupSchedule, &client.CreateOptions{}); err != nil {
-					t.Errorf("Failed to create backup schedule name =%v ns =%v , err=%v",
-						tt.args.backupSchedule.Name,
-						tt.args.backupSchedule.Namespace,
-						err.Error())
-				}
-
-				// create resources
-				for i := range tt.args.veleroScheduleList.Items {
-					if err := k8sClient1.Create(
-						tt.args.ctx, &tt.args.veleroScheduleList.Items[i], &client.CreateOptions{}); err != nil {
-						t.Errorf("Failed to create schedule name =%v ns =%v , err=%v",
-							tt.args.veleroScheduleList.Items[i].Name,
-							tt.args.veleroScheduleList.Items[i].Namespace,
-							err.Error())
-					}
-				}
-			}
+			fakeClient := CreateBackupSchedulePausedTestClient(tt.args.setupObjects...)
+			tt.args.c = fakeClient
 
 			returnValue, _ := updateBackupSchedulePhaseWhenPaused(tt.args.ctx, tt.args.c,
 				tt.args.veleroScheduleList, tt.args.backupSchedule, tt.args.phase, tt.args.msg)
@@ -1361,35 +1788,41 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 
 				schedule := veleroapi.Schedule{}
 
-				if err := k8sClient1.Get(tt.args.ctx, lookupKey, &schedule); err == nil {
+				if err := fakeClient.Get(tt.args.ctx, lookupKey, &schedule); err == nil {
 					t.Errorf(" schedule should not be found = %v", lookupKey.Name)
-				}
-			}
-
-			// first test (i=0) will not create velero schedules, it intentionally doesn't add the api to the
-			// client scheme - so no cleanup required
-			if i > 0 {
-				// clean up
-				err = k8sClient1.Delete(tt.args.ctx, tt.args.backupSchedule)
-				if client.IgnoreNotFound(err) != nil {
-					t.Errorf("Error deleting: %s", err.Error())
-				}
-
-				for i := range tt.args.veleroScheduleList.Items {
-					err := k8sClient1.Delete(tt.args.ctx, &tt.args.veleroScheduleList.Items[i])
-					if client.IgnoreNotFound(err) != nil {
-						t.Errorf("Error deleting: %s", err.Error())
-					}
 				}
 			}
 		})
 	}
-	// clean up
-	if err := testEnv.Stop(); err != nil {
-		t.Fatalf("Error stopping testenv: %s", err.Error())
-	}
 }
 
+// Test_remove tests removal of specific strings from string slices.
+//
+// This test validates the logic that removes specific string values from
+// string slices while preserving order and handling edge cases.
+//
+// Test Coverage:
+// - String removal from populated slices
+// - Handling of non-existent string removal requests
+// - Order preservation after string removal
+// - Edge cases with empty slices and missing values
+//
+// Test Scenarios:
+// - String not found in slice (should return unchanged slice)
+// - String found and successfully removed from slice
+// - Order preservation of remaining elements
+// - Multiple occurrences handling (if applicable)
+//
+// Implementation Details:
+// - Uses simple string slice operations for testing
+// - Performs deep equality comparison of result slices
+// - Validates proper slice modification without side effects
+// - Handles edge cases gracefully without panics
+//
+// Business Logic:
+// String removal functionality is essential for maintaining clean
+// configuration lists, enabling dynamic management of resource
+// filters and backup configurations by removing obsolete entries.
 func Test_remove(t *testing.T) {
 	type args struct {
 		s []string
