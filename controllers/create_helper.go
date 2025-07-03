@@ -1,16 +1,25 @@
 package controllers
 
 import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	. "github.com/onsi/gomega" //nolint:staticcheck
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
-	workv1 "open-cluster-management.io/api/work/v1"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
 )
 
@@ -70,21 +79,6 @@ func createSecret(name string, ns string,
 	}
 
 	return secret
-}
-
-func createMWork(name string, ns string) *workv1.ManifestWork {
-	mwork := &workv1.ManifestWork{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "work.open-cluster-management.io",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: ns,
-		},
-	}
-
-	return mwork
 }
 
 func createConfigMap(name string, ns string,
@@ -335,6 +329,11 @@ func (b *RestoreHelper) setDeleteTimestamp(deletionTimestamp metav1.Time) *Resto
 	return b
 }
 
+func (b *RestoreHelper) setFinalizer(values []string) *RestoreHelper {
+	b.object.SetFinalizers(values)
+	return b
+}
+
 // acm restore
 type ACMRestoreHelper struct {
 	object *v1beta1.Restore
@@ -501,11 +500,6 @@ func (b *BackupScheduleHelper) useManagedServiceAccount(usemsa bool) *BackupSche
 	return b
 }
 
-func (b *BackupScheduleHelper) managedServiceAccountTTL(ttl metav1.Duration) *BackupScheduleHelper {
-	b.object.Spec.ManagedServiceAccountTTL = ttl
-	return b
-}
-
 func (b *BackupScheduleHelper) phase(ph v1beta1.SchedulePhase) *BackupScheduleHelper {
 	b.object.Status.Phase = ph
 	return b
@@ -527,21 +521,6 @@ func (b *BackupScheduleHelper) scheduleStatus(scheduleType ResourceType, sch vel
 
 func (b *BackupScheduleHelper) noBackupOnStart(stopBackupOnStart bool) *BackupScheduleHelper {
 	b.object.Spec.NoBackupOnStart = stopBackupOnStart
-	return b
-}
-
-func (b *BackupScheduleHelper) setVolumeSnapshotLocation(locations []string) *BackupScheduleHelper {
-	b.object.Spec.VolumeSnapshotLocations = locations
-	return b
-}
-
-func (b *BackupScheduleHelper) useOwnerReferencesInBackup(useOwnerReferences bool) *BackupScheduleHelper {
-	b.object.Spec.UseOwnerReferencesInBackup = useOwnerReferences
-	return b
-}
-
-func (b *BackupScheduleHelper) skipImmediately(skipImmediately bool) *BackupScheduleHelper {
-	b.object.Spec.SkipImmediately = skipImmediately
 	return b
 }
 
@@ -647,7 +626,7 @@ type ChannelHelper struct {
 	object *chnv1.Channel
 }
 
-func createChannel(name string, ns string, ctype chnv1.ChannelType, path string) *ChannelHelper {
+func createChannel(name string, ctype chnv1.ChannelType, path string) *ChannelHelper {
 	return &ChannelHelper{
 		object: &chnv1.Channel{
 			TypeMeta: metav1.TypeMeta{
@@ -656,7 +635,7 @@ func createChannel(name string, ns string, ctype chnv1.ChannelType, path string)
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
-				Namespace: ns,
+				Namespace: "default",
 			},
 			Spec: chnv1.ChannelSpec{
 				Type:     ctype,
@@ -674,4 +653,713 @@ func (b *ChannelHelper) channelLabels(labels map[string]string) *ChannelHelper {
 func (b *ChannelHelper) channelFinalizers(finalizers []string) *ChannelHelper {
 	b.object.Finalizers = finalizers
 	return b
+}
+
+// Factory functions for restore controller test data
+
+// createDefaultBackupNames creates standard backup names for restore testing with specified timestamps
+func createDefaultBackupNames(timestamp, genericTimestamp string) (string, string, string, string, string, string) {
+	return fmt.Sprintf("acm-managed-clusters-schedule-%s", timestamp),
+		fmt.Sprintf("acm-resources-schedule-%s", timestamp),
+		fmt.Sprintf("acm-resources-generic-schedule-%s", genericTimestamp),
+		fmt.Sprintf("acm-credentials-schedule-%s", timestamp),
+		fmt.Sprintf("acm-credentials-hive-schedule-%s", timestamp),
+		fmt.Sprintf("acm-credentials-cluster-schedule-%s", timestamp)
+}
+
+// createDefaultTimestamps creates standard timestamp objects for restore testing with specified timestamp strings
+func createDefaultTimestamps(
+	resourcesTime, resourcesGenericTime, unrelatedResourcesGenericTime string,
+) (metav1.Time, metav1.Time, metav1.Time) {
+	resourcesTimestamp, _ := time.Parse("20060102150405", resourcesTime)
+	resourcesGenericTimestamp, _ := time.Parse("20060102150405", resourcesGenericTime)
+	unrelatedResourcesGenericTimestamp, _ := time.Parse("20060102150405", unrelatedResourcesGenericTime)
+
+	return metav1.NewTime(resourcesTimestamp),
+		metav1.NewTime(resourcesGenericTimestamp),
+		metav1.NewTime(unrelatedResourcesGenericTimestamp)
+}
+
+// createDefaultClusterVersions creates standard cluster version test data
+func createDefaultClusterVersions() []ocinfrav1.ClusterVersion {
+	return []ocinfrav1.ClusterVersion{
+		*createClusterVersion("version-new-one", "aaa", map[string]string{
+			"velero.io/backup-name": "backup-123",
+		}),
+	}
+}
+
+// createDefaultChannels creates standard channel test data
+func createDefaultChannels() []chnv1.Channel {
+	return []chnv1.Channel{
+		*createChannel("channel-from-backup",
+			chnv1.ChannelTypeHelmRepo, "http://test.svc.cluster.local:3000/charts").
+			channelLabels(map[string]string{
+				"velero.io/backup-name": "backup-123",
+			}).object,
+		*createChannel("channel-from-backup-with-finalizers",
+			chnv1.ChannelTypeHelmRepo, "http://test.svc.cluster.local:3000/charts").
+			channelLabels(map[string]string{
+				"velero.io/backup-name": "backup-123",
+			}).
+			channelFinalizers([]string{"finalizer1"}).object,
+		*createChannel("channel-not-from-backup",
+			chnv1.ChannelTypeGit, "https://github.com/test/app-samples").object,
+		// Add charts-v1 channel to test the backup exclusion logic
+		*createChannel("charts-v1",
+			chnv1.ChannelTypeHelmRepo, "http://charts.svc.cluster.local:3000/charts").object,
+	}
+}
+
+// createDefaultVeleroBackups creates standard velero backup test data
+func createDefaultVeleroBackups(
+	veleroNamespace string,
+	managedClustersBackupName, resourcesBackupName, resourcesGenericBackupName,
+	credentialsBackupName, credentialsHiveBackupName, credentialsClusterBackupName string,
+	resourcesStartTime, resourcesGenericStartTime, unrelatedResourcesGenericStartTime metav1.Time,
+	includedResources []string,
+) []veleroapi.Backup {
+	return []veleroapi.Backup{
+		*createBackup(managedClustersBackupName, veleroNamespace).
+			phase(veleroapi.BackupPhaseCompleted).
+			errors(0).includedResources(backupManagedClusterResources).
+			object,
+		*createBackup(resourcesBackupName, veleroNamespace).
+			startTimestamp(resourcesStartTime).
+			phase(veleroapi.BackupPhaseCompleted).
+			errors(0).includedResources(includedResources).
+			object,
+		*createBackup(resourcesGenericBackupName, veleroNamespace).
+			startTimestamp(resourcesGenericStartTime).
+			phase(veleroapi.BackupPhaseCompleted).
+			errors(0).includedResources(includedResources).
+			object,
+		*createBackup("acm-resources-generic-schedule-20210910181420", veleroNamespace).
+			startTimestamp(unrelatedResourcesGenericStartTime).
+			phase(veleroapi.BackupPhaseCompleted).
+			errors(0).includedResources(includedResources).
+			object,
+		*createBackup(credentialsBackupName, veleroNamespace).
+			phase(veleroapi.BackupPhaseCompleted).
+			errors(0).includedResources(backupCredsResources).
+			object,
+		*createBackup(credentialsHiveBackupName, veleroNamespace).
+			phase(veleroapi.BackupPhaseCompleted).
+			errors(0).includedResources(backupCredsResources).
+			object,
+		*createBackup(credentialsClusterBackupName, veleroNamespace).
+			phase(veleroapi.BackupPhaseCompleted).
+			errors(0).includedResources(backupCredsResources).
+			object,
+	}
+}
+
+// createDefaultLabelSelectors creates standard label selector test data
+func createDefaultLabelSelectors() ([]metav1.LabelSelectorRequirement, []*metav1.LabelSelector) {
+	req1 := metav1.LabelSelectorRequirement{
+		Key:      "foo",
+		Operator: metav1.LabelSelectorOperator("In"),
+		Values:   []string{"bar"},
+	}
+	req2 := metav1.LabelSelectorRequirement{
+		Key:      "foo2",
+		Operator: metav1.LabelSelectorOperator("NotIn"),
+		Values:   []string{"bar2"},
+	}
+
+	matchExpressions := []metav1.LabelSelectorRequirement{req1, req2}
+
+	restoreOrSelector := []*metav1.LabelSelector{
+		{
+			MatchLabels: map[string]string{
+				"restore-test-1": "restore-test-1-value",
+			},
+		},
+		{
+			MatchLabels: map[string]string{
+				"restore-test-2": "restore-test-2-value",
+			},
+		},
+	}
+
+	return matchExpressions, restoreOrSelector
+}
+
+// createDefaultACMRestore creates a fully configured ACM restore for testing with customizable resource filters
+func createDefaultACMRestore(
+	restoreName, veleroNamespace string,
+	managedClustersBackupName, credentialsBackupName, resourcesBackupName string,
+	matchExpressions []metav1.LabelSelectorRequirement,
+	restoreOrSelector []*metav1.LabelSelector,
+	excludedResources, includedResources []string,
+	excludedNamespaces, includedNamespaces []string,
+	namespaceMapping map[string]string,
+	restoreLabelSelectorMatchLabels map[string]string,
+) *v1beta1.Restore {
+	return createACMRestore(restoreName, veleroNamespace).
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+		syncRestoreWithNewBackups(true).
+		restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
+		veleroManagedClustersBackupName(managedClustersBackupName).
+		veleroCredentialsBackupName(credentialsBackupName).
+		restorePVs(true).
+		preserveNodePorts(true).
+		restoreStatus(&veleroapi.RestoreStatusSpec{
+			IncludedResources: []string{"webhook"},
+		}).
+		hookResources([]veleroapi.RestoreResourceHookSpec{
+			{Name: "hookName"},
+		}).
+		excludedResources(excludedResources).
+		includedResources(includedResources).
+		excludedNamespaces(excludedNamespaces).
+		namespaceMapping(namespaceMapping).
+		includedNamespaces(includedNamespaces).
+		restoreLabelSelector(&metav1.LabelSelector{
+			MatchLabels:      restoreLabelSelectorMatchLabels,
+			MatchExpressions: matchExpressions,
+		}).
+		restoreORLabelSelector(restoreOrSelector).
+		veleroResourcesBackupName(resourcesBackupName).object
+}
+
+// Test Helper Functions for Common Patterns
+//
+// These functions extract common Eventually/Consistently patterns used across
+// multiple test cases to reduce code duplication and improve maintainability.
+
+// waitForRestorePhase waits for a restore to reach the specified phase
+func waitForRestorePhase(
+	ctx context.Context,
+	k8sClient client.Client,
+	restoreName, namespace string,
+	expectedPhase v1beta1.RestorePhase,
+	timeout, interval time.Duration,
+) {
+	Eventually(func() v1beta1.RestorePhase {
+		restore := v1beta1.Restore{}
+		restoreLookupKey := types.NamespacedName{
+			Name:      restoreName,
+			Namespace: namespace,
+		}
+		err := k8sClient.Get(ctx, restoreLookupKey, &restore)
+		if err != nil {
+			return ""
+		}
+		return restore.Status.Phase
+	}, timeout, interval).Should(BeEquivalentTo(expectedPhase))
+}
+
+// waitForVeleroRestoreCount waits for the specified number of velero restores in namespace
+func waitForVeleroRestoreCount(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	expectedCount int,
+	timeout, interval time.Duration,
+) {
+	veleroRestores := veleroapi.RestoreList{}
+	Eventually(func() int {
+		if err := k8sClient.List(ctx, &veleroRestores, client.InNamespace(namespace)); err != nil {
+			return -1
+		}
+		return len(veleroRestores.Items)
+	}, timeout, interval).Should(Equal(expectedCount))
+}
+
+// getRestoreWithRetry gets a restore resource with retry logic
+func getRestoreWithRetry(
+	ctx context.Context,
+	k8sClient client.Client,
+	restoreName, namespace string,
+	timeout, interval time.Duration,
+) *v1beta1.Restore {
+	restore := &v1beta1.Restore{}
+	Eventually(func() error {
+		restoreLookupKey := types.NamespacedName{
+			Name:      restoreName,
+			Namespace: namespace,
+		}
+		return k8sClient.Get(ctx, restoreLookupKey, restore)
+	}, timeout, interval).Should(Succeed())
+	return restore
+}
+
+// waitForRestoreStatusFieldEmpty waits for a specific restore status field to be empty
+func waitForRestoreStatusFieldEmpty(
+	ctx context.Context,
+	k8sClient client.Client,
+	restoreName, namespace string,
+	fieldExtractor func(*v1beta1.Restore) string,
+	timeout, interval time.Duration,
+) {
+	Eventually(func() string {
+		restore := v1beta1.Restore{}
+		restoreLookupKey := types.NamespacedName{
+			Name:      restoreName,
+			Namespace: namespace,
+		}
+		err := k8sClient.Get(ctx, restoreLookupKey, &restore)
+		if err != nil {
+			return err.Error()
+		}
+		return fieldExtractor(&restore)
+	}, timeout, interval).Should(BeEmpty())
+}
+
+// waitForCompletionTimestamp waits for restore completion timestamp to be set
+func waitForCompletionTimestamp(
+	ctx context.Context,
+	k8sClient client.Client,
+	restoreName, namespace string,
+	timeout, interval time.Duration,
+) {
+	Eventually(func() *metav1.Time {
+		restore := v1beta1.Restore{}
+		restoreLookupKey := types.NamespacedName{
+			Name:      restoreName,
+			Namespace: namespace,
+		}
+		err := k8sClient.Get(ctx, restoreLookupKey, &restore)
+		if err != nil {
+			return nil
+		}
+		return restore.Status.CompletionTimestamp
+	}, timeout, interval).ShouldNot(BeNil())
+}
+
+// createLookupKey creates a NamespacedName for any resource lookup
+func createLookupKey(name, namespace string) types.NamespacedName {
+	return types.NamespacedName{
+		Name:      name,
+		Namespace: namespace,
+	}
+}
+
+// waitForRestoreStatusFieldNonEmpty waits for a specific restore status field to become non-empty
+func waitForRestoreStatusFieldNonEmpty(
+	ctx context.Context,
+	k8sClient client.Client,
+	restoreName, namespace string,
+	fieldExtractor func(*v1beta1.Restore) string,
+	timeout, interval time.Duration,
+) {
+	Eventually(func() string {
+		restore := v1beta1.Restore{}
+		restoreLookupKey := types.NamespacedName{
+			Name:      restoreName,
+			Namespace: namespace,
+		}
+		err := k8sClient.Get(ctx, restoreLookupKey, &restore)
+		if err != nil {
+			return ""
+		}
+		return fieldExtractor(&restore)
+	}, timeout, interval).ShouldNot(BeEmpty())
+}
+
+// waitForRestoreStatusFieldValue waits for a restore status field to equal a specific value
+func waitForRestoreStatusFieldValue(
+	ctx context.Context,
+	k8sClient client.Client,
+	restoreName, namespace string,
+	fieldExtractor func(*v1beta1.Restore) string,
+	expectedValue string,
+	timeout, interval time.Duration,
+) {
+	Eventually(func() string {
+		restore := v1beta1.Restore{}
+		restoreLookupKey := types.NamespacedName{
+			Name:      restoreName,
+			Namespace: namespace,
+		}
+		err := k8sClient.Get(ctx, restoreLookupKey, &restore)
+		if err != nil {
+			return ""
+		}
+		return fieldExtractor(&restore)
+	}, timeout, interval).Should(BeIdenticalTo(expectedValue))
+}
+
+// updateVeleroRestoreStatusToCompleted updates all velero restores in the list to completed status
+func updateVeleroRestoreStatusToCompleted(
+	ctx context.Context,
+	k8sClient client.Client,
+	restoreNames []string,
+	namespace string,
+	timeout, interval time.Duration,
+) {
+	Eventually(func() error {
+		for _, restoreName := range restoreNames {
+			veleroRestore := &veleroapi.Restore{}
+			err := k8sClient.Get(ctx, createLookupKey(restoreName, namespace), veleroRestore)
+			if err != nil {
+				return err
+			}
+			if veleroRestore.Status.Phase != veleroapi.RestorePhaseCompleted {
+				veleroRestore.Status.Phase = veleroapi.RestorePhaseCompleted
+				err = k8sClient.Update(ctx, veleroRestore)
+				if err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}, timeout, interval).Should(Succeed())
+}
+
+// verifyVeleroRestoreExists verifies that a velero restore resource exists
+func verifyVeleroRestoreExists(
+	ctx context.Context,
+	k8sClient client.Client,
+	restoreName, namespace string,
+) {
+	veleroRestore := veleroapi.Restore{}
+	Expect(k8sClient.Get(ctx, createLookupKey(restoreName, namespace), &veleroRestore)).ShouldNot(HaveOccurred())
+}
+
+// createAndVerifyResources creates a slice of resources and verifies creation success
+func createAndVerifyResources(ctx context.Context, k8sClient client.Client, resources []client.Object) {
+	for i := range resources {
+		Expect(k8sClient.Create(ctx, resources[i])).Should(Succeed())
+	}
+}
+
+// ChannelUnstructuredHelper creates unstructured Channel objects for testing
+func createChannelUnstructured(name, namespace string) *unstructured.Unstructured {
+	channel := &unstructured.Unstructured{}
+	channel.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "apps.open-cluster-management.io/v1beta1",
+		"kind":       "Channel",
+		"metadata": map[string]interface{}{
+			"name":      name,
+			"namespace": namespace,
+		},
+		"spec": map[string]interface{}{
+			"type":     "Git",
+			"pathname": "https://github.com/test/app-samples",
+		},
+	})
+	return channel
+}
+
+func withBackupLabel(obj *unstructured.Unstructured, backupName string) *unstructured.Unstructured {
+	labels := obj.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	labels[BackupNameVeleroLabel] = backupName
+	obj.SetLabels(labels)
+	return obj
+}
+
+func withFinalizers(obj *unstructured.Unstructured, finalizers []string) *unstructured.Unstructured {
+	obj.SetFinalizers(finalizers)
+	return obj
+}
+
+func withGenericLabel(obj *unstructured.Unstructured) *unstructured.Unstructured {
+	labels := obj.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	labels[backupCredsClusterLabel] = "i-am-a-generic-resource"
+	obj.SetLabels(labels)
+	return obj
+}
+
+// ManagedClusterUnstructuredHelper creates unstructured ManagedCluster objects for testing
+func createManagedClusterUnstructured(name, namespace string) *unstructured.Unstructured {
+	cluster := &unstructured.Unstructured{}
+	cluster.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "cluster.open-cluster-management.io/v1beta1",
+		"kind":       "ManagedCluster",
+		"metadata": map[string]interface{}{
+			"name":      name,
+			"namespace": namespace,
+		},
+	})
+	return cluster
+}
+
+// MSAUnstructuredHelper creates unstructured ManagedServiceAccount objects for testing
+func createMSAUnstructured(name, namespace string) *unstructured.Unstructured {
+	msa := &unstructured.Unstructured{}
+	msa.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "authentication.open-cluster-management.io/v1beta1",
+		"kind":       "ManagedServiceAccount",
+		"metadata": map[string]interface{}{
+			"name":      name,
+			"namespace": namespace,
+			"labels": map[string]interface{}{
+				msa_label: msa_service_name,
+			},
+		},
+		"spec": map[string]interface{}{
+			"somethingelse": "aaa",
+			"rotation": map[string]interface{}{
+				"validity": "50h",
+				"enabled":  true,
+			},
+		},
+	})
+	return msa
+}
+
+// TestSchemeSetup creates a common scheme with all necessary APIs for testing
+func setupTestScheme() (*runtime.Scheme, error) {
+	scheme := runtime.NewScheme()
+
+	if err := veleroapi.AddToScheme(scheme); err != nil {
+		return nil, err
+	}
+	if err := clusterv1.AddToScheme(scheme); err != nil {
+		return nil, err
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		return nil, err
+	}
+	if err := chnv1.AddToScheme(scheme); err != nil {
+		return nil, err
+	}
+
+	return scheme, nil
+}
+
+// TestBackupSetup creates common backup objects for testing
+type TestBackupSetup struct {
+	ResourcesBackup               veleroapi.Backup
+	GenericBackup                 veleroapi.Backup
+	GenericBackupOld              veleroapi.Backup
+	ClustersBackup                veleroapi.Backup
+	ClustersBackupOld             veleroapi.Backup
+	NamespaceName                 string
+	ClusterNamespace              string
+	CurrentTime                   string
+	TenHourAgoTime                string
+	AFewSecondsAgoTime            string
+	VeleroResourcesBackupName     string
+	VeleroGenericBackupName       string
+	VeleroGenericBackupNameOlder  string
+	VeleroClustersBackupName      string
+	VeleroClustersBackupNameOlder string
+}
+
+//nolint:funlen
+func createTestBackupSetup() *TestBackupSetup {
+	namespaceName := "open-cluster-management-backup"
+	clusterNamespace := "managed1"
+
+	timeNow, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
+	rightNow := metav1.NewTime(timeNow)
+	tenHourAgo := rightNow.Add(-10 * time.Hour)
+	aFewSecondsAgo := rightNow.Add(-2 * time.Second)
+
+	currentTime := rightNow.Format("20060102150405")
+	tenHourAgoTime := tenHourAgo.Format("20060102150405")
+	aFewSecondsAgoTime := aFewSecondsAgo.Format("20060102150405")
+
+	veleroResourcesBackupName := veleroScheduleNames[Resources] + "-" + currentTime
+	veleroGenericBackupName := veleroScheduleNames[ResourcesGeneric] + "-" + aFewSecondsAgoTime
+	veleroGenericBackupNameOlder := veleroScheduleNames[ResourcesGeneric] + "-" + tenHourAgoTime
+	veleroClustersBackupName := veleroScheduleNames[ManagedClusters] + "-" + aFewSecondsAgoTime
+	veleroClustersBackupNameOlder := veleroScheduleNames[ManagedClusters] + "-" + tenHourAgoTime
+
+	resources := []string{
+		"crd-not-found.apps.open-cluster-management.io",
+		"channel.apps.open-cluster-management.io",
+	}
+	resources = append(resources, backupResources...)
+
+	return &TestBackupSetup{
+		ResourcesBackup: *createBackup(veleroResourcesBackupName, namespaceName).
+			includedResources(resources).
+			startTimestamp(rightNow).
+			excludedNamespaces([]string{"local-cluster", "open-cluster-management-backup"}).
+			labels(map[string]string{BackupScheduleTypeLabel: string(Resources)}).
+			phase(veleroapi.BackupPhaseCompleted).object,
+
+		GenericBackup: *createBackup(veleroGenericBackupName, namespaceName).
+			excludedResources(backupManagedClusterResources).
+			startTimestamp(metav1.NewTime(aFewSecondsAgo)).
+			labels(map[string]string{BackupScheduleTypeLabel: string(ResourcesGeneric)}).
+			phase(veleroapi.BackupPhaseCompleted).object,
+
+		GenericBackupOld: *createBackup(veleroGenericBackupNameOlder, namespaceName).
+			excludedResources(backupManagedClusterResources).
+			startTimestamp(metav1.NewTime(tenHourAgo)).
+			labels(map[string]string{BackupScheduleTypeLabel: string(ResourcesGeneric)}).object,
+
+		ClustersBackup: *createBackup(veleroClustersBackupName, namespaceName).
+			includedResources(backupManagedClusterResources).
+			excludedNamespaces([]string{"local-cluster"}).
+			startTimestamp(metav1.NewTime(aFewSecondsAgo)).
+			labels(map[string]string{BackupScheduleTypeLabel: string(ManagedClusters)}).
+			phase(veleroapi.BackupPhaseCompleted).object,
+
+		ClustersBackupOld: *createBackup(veleroClustersBackupNameOlder, namespaceName).
+			includedResources(backupManagedClusterResources).
+			excludedNamespaces([]string{"local-cluster"}).
+			startTimestamp(metav1.NewTime(tenHourAgo)).
+			labels(map[string]string{BackupScheduleTypeLabel: string(ManagedClusters)}).object,
+
+		NamespaceName:                 namespaceName,
+		ClusterNamespace:              clusterNamespace,
+		CurrentTime:                   currentTime,
+		TenHourAgoTime:                tenHourAgoTime,
+		AFewSecondsAgoTime:            aFewSecondsAgoTime,
+		VeleroResourcesBackupName:     veleroResourcesBackupName,
+		VeleroGenericBackupName:       veleroGenericBackupName,
+		VeleroGenericBackupNameOlder:  veleroGenericBackupNameOlder,
+		VeleroClustersBackupName:      veleroClustersBackupName,
+		VeleroClustersBackupNameOlder: veleroClustersBackupNameOlder,
+	}
+}
+
+// Test helper functions to reduce repetitive patterns
+
+// AssertNoError is a helper to reduce repetitive error checking in tests
+func AssertNoError(t *testing.T, err error, message string) {
+	if err != nil {
+		t.Fatalf("%s: %s", message, err.Error())
+	}
+}
+
+// CreateTestClient creates a fake client with common scheme setup
+func CreateTestClient(objects ...client.Object) (client.Client, error) {
+	scheme, err := setupTestScheme()
+	if err != nil {
+		return nil, err
+	}
+
+	return fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(objects...).
+		Build(), nil
+}
+
+// CreateTestClientOrFail creates a test client and fails the test if there's an error
+func CreateTestClientOrFail(t *testing.T, objects ...client.Object) client.Client {
+	client, err := CreateTestClient(objects...)
+	AssertNoError(t, err, "Error creating test client")
+	return client
+}
+
+// Schedule Test Helper Functions
+
+// ScheduleTestScheme creates a scheme with all APIs needed for schedule tests
+func createScheduleTestScheme() *runtime.Scheme {
+	testScheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(testScheme)
+	_ = veleroapi.AddToScheme(testScheme)
+	_ = v1beta1.AddToScheme(testScheme)
+	_ = ocinfrav1.AddToScheme(testScheme)
+	return testScheme
+}
+
+// CreateScheduleTestClient creates a fake client with schedule test scheme and objects
+func CreateScheduleTestClient(objects ...client.Object) client.Client {
+	return fake.NewClientBuilder().
+		WithScheme(createScheduleTestScheme()).
+		WithObjects(objects...).
+		Build()
+}
+
+// CreateScheduleTestClientWithScheme creates a fake client with conditional scheme setup
+func CreateScheduleTestClientWithScheme(setupScheme bool, objects ...client.Object) client.Client {
+	var testScheme *runtime.Scheme
+	if setupScheme {
+		testScheme = createScheduleTestScheme()
+	} else {
+		testScheme = runtime.NewScheme()
+	}
+
+	return fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(objects...).
+		Build()
+}
+
+// CreateDeleteVeleroSchedulesTestClient creates a client for deleteVeleroSchedules tests with conditional setup
+func CreateDeleteVeleroSchedulesTestClient(
+	testName string,
+	veleroNamespace *corev1.Namespace,
+	veleroSchedules *veleroapi.ScheduleList,
+) client.Client {
+	testObjects := []client.Object{veleroNamespace}
+
+	// Add schedules for specific test cases
+	if testName == "velero schedules is not empty, schedules are updated" ||
+		testName == "velero schedules is not empty, schedules are updated and NO CRDs found" ||
+		testName == "velero schedules is not empty, schedules are NOT updated but new CRDs found" ||
+		testName == "velero schedules is not empty, schedules are NOT updated but new CRDs found error on update" {
+
+		for i := range veleroSchedules.Items {
+			veleroSchedule := &veleroSchedules.Items[i]
+			veleroSchedule.Namespace = veleroNamespace.Name
+			testObjects = append(testObjects, veleroSchedule)
+		}
+	}
+
+	return CreateScheduleTestClient(testObjects...)
+}
+
+// CreateTestBackupWithLabels creates a backup with common test labels
+func CreateTestBackupWithLabels(name, namespace, clusterLabel, restoreLabel string) *veleroapi.Backup {
+	return createBackup(name, namespace).
+		labels(map[string]string{
+			BackupScheduleClusterLabel: clusterLabel,
+			RestoreClusterLabel:        restoreLabel,
+		}).
+		phase(veleroapi.BackupPhaseCompleted).
+		object
+}
+
+// Utils Test Helper Functions
+
+// createUtilsTestScheme creates a scheme for utils tests with conditional API registration
+func createUtilsTestScheme(includeVelero, includeOCInfra, includeV1Beta1 bool) *runtime.Scheme {
+	testScheme := runtime.NewScheme()
+
+	// Always add core v1
+	_ = corev1.AddToScheme(testScheme)
+
+	if includeVelero {
+		_ = veleroapi.AddToScheme(testScheme)
+	}
+
+	if includeOCInfra {
+		_ = ocinfrav1.AddToScheme(testScheme)
+	}
+
+	if includeV1Beta1 {
+		_ = v1beta1.AddToScheme(testScheme)
+	}
+
+	return testScheme
+}
+
+// CreateUtilsTestClient creates a fake client for utils tests with conditional scheme setup
+func CreateUtilsTestClient(includeVelero, includeOCInfra, includeV1Beta1 bool, objects ...client.Object) client.Client {
+	testScheme := createUtilsTestScheme(includeVelero, includeOCInfra, includeV1Beta1)
+
+	return fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(objects...).
+		Build()
+}
+
+// CreateHubIdentificationTestClient creates a fake client specifically for hub identification tests
+func CreateHubIdentificationTestClient(setupScheme bool, objects ...client.Object) client.Client {
+	return CreateUtilsTestClient(false, setupScheme, false, objects...)
+}
+
+// CreateVeleroCRDTestClient creates a fake client for VeleroCRDs tests
+func CreateVeleroCRDTestClient(includeVeleroScheme bool, objects ...client.Object) client.Client {
+	return CreateUtilsTestClient(includeVeleroScheme, false, false, objects...)
+}
+
+// CreateBackupSchedulePausedTestClient creates a fake client for backup schedule paused tests
+func CreateBackupSchedulePausedTestClient(objects ...client.Object) client.Client {
+	return CreateUtilsTestClient(true, false, true, objects...)
 }
