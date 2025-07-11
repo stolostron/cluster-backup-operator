@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -548,7 +549,12 @@ func updateMSAToken(
 	if specInfo == nil {
 		return false, nil
 	}
-	patch := `[ { "op": "replace", "path": "/spec/rotation/validity", "value" : "` + tokenValidity + `" } ]`
+	// Properly encode the JSON value to handle special characters and quotes
+	validityJSON, err := json.Marshal(tokenValidity)
+	if err != nil {
+		return false, err
+	}
+	patch := `[ { "op": "replace", "path": "/spec/rotation/validity", "value" : ` + string(validityJSON) + ` } ]`
 	iter := reflect.ValueOf(specInfo).MapRange()
 	for iter.Next() {
 		key := iter.Key().Interface()
