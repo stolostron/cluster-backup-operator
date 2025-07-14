@@ -25,7 +25,7 @@ import (
 
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
