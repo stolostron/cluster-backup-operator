@@ -548,6 +548,21 @@ func (b *BackupScheduleHelper) managedServiceAccountTTL(ttl metav1.Duration) *Ba
 	return b
 }
 
+func (b *BackupScheduleHelper) volumeSnapshotLocations(locations []string) *BackupScheduleHelper {
+	b.object.Spec.VolumeSnapshotLocations = locations
+	return b
+}
+
+func (b *BackupScheduleHelper) useOwnerReferencesInBackup(useOwnerRefs bool) *BackupScheduleHelper {
+	b.object.Spec.UseOwnerReferencesInBackup = useOwnerRefs
+	return b
+}
+
+func (b *BackupScheduleHelper) skipImmediately(skip bool) *BackupScheduleHelper {
+	b.object.Spec.SkipImmediately = skip
+	return b
+}
+
 // storage location
 type StorageLocationHelper struct {
 	object *veleroapi.BackupStorageLocation
