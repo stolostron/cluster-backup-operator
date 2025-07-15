@@ -11,6 +11,21 @@
     "release-2.13",
     "release-2.14"
   ],
+  "packageRules": [
+    {
+      "baseBranchList": [
+        "release-2.10",
+        "release-2.11",
+        "release-2.12",
+        "release-2.13",
+        "release-2.14"
+      ],
+      "matchManagers": [
+        "gomod"
+      ],
+      "enabled": false
+    }
+  ],
   "rebaseWhen": "behind-base-branch",
   "prConcurrentLimit": 0,
   "timezone": "America/New_York",
