@@ -597,6 +597,122 @@ var _ = Describe("BackupSchedule controller", func() {
 				}
 
 			})
+
+			// Test Case: Advanced BackupSchedule Configuration Options
+			//
+			// This test validates that advanced backup schedule configuration options
+			// are properly transferred to the Velero schedule objects:
+			// - VolumeSnapshotLocations: Ensures volume snapshot locations are applied to backup templates
+			// - UseOwnerReferencesInBackup: Verifies owner reference settings are propagated to Velero schedules
+			// - SkipImmediately: Confirms skip immediately flag is set on Velero schedules
+			It("should apply advanced backup schedule configuration options to velero schedules", func() {
+				createdSchedule := v1beta1.BackupSchedule{}
+
+				// Configure BackupSchedule with advanced options
+				testVolumeSnapshotLocations := []string{"aws-snapshots", "azure-snapshots"}
+				testUseOwnerReferences := true
+				testSkipImmediately := true
+
+				// Create BackupSchedule with advanced configuration
+				By("creating backup schedule with advanced configuration options")
+				advancedBackupSchedule := *createBackupSchedule(backupScheduleName+"-advanced", veleroNamespace.Name).
+					schedule(backupSchedule).
+					veleroTTL(metav1.Duration{Duration: defaultVeleroTTL}).
+					volumeSnapshotLocations(testVolumeSnapshotLocations).
+					useOwnerReferencesInBackup(testUseOwnerReferences).
+					skipImmediately(testSkipImmediately).
+					object
+
+				// Create the new schedule
+				Expect(k8sClient.Create(ctx, &advancedBackupSchedule)).Should(Succeed())
+
+				// Step 1: Verify BackupSchedule is created with advanced configuration
+				advancedScheduleLookupKey := createLookupKey(backupScheduleName+"-advanced", veleroNamespace.Name)
+				Eventually(func() error {
+					return k8sClient.Get(ctx, advancedScheduleLookupKey, &createdSchedule)
+				}, timeout, interval).Should(Succeed())
+
+				// Verify the advanced configuration is set
+				Expect(createdSchedule.Spec.VolumeSnapshotLocations).Should(Equal(testVolumeSnapshotLocations))
+				Expect(createdSchedule.Spec.UseOwnerReferencesInBackup).Should(Equal(testUseOwnerReferences))
+				Expect(createdSchedule.Spec.SkipImmediately).Should(Equal(testSkipImmediately))
+
+				// Step 2: Wait for Velero schedules to be created
+				By("waiting for velero schedules to be created with advanced configuration")
+				veleroSchedules := &veleroapi.ScheduleList{}
+				expectedScheduleCount := len(veleroScheduleNames)
+				Eventually(func() (int, error) {
+					err := k8sClient.List(ctx, veleroSchedules, client.InNamespace(veleroNamespace.Name))
+					if err != nil {
+						return 0, err
+					}
+					// Filter schedules that belong to our advanced test
+					count := 0
+					for _, schedule := range veleroSchedules.Items {
+						if labels := schedule.GetLabels(); labels != nil {
+							if scheduleName, exists := labels[BackupScheduleNameLabel]; exists &&
+								scheduleName == backupScheduleName+"-advanced" {
+								count++
+							}
+						}
+					}
+					return count, nil
+				}, timeout, interval).Should(Equal(expectedScheduleCount))
+
+				// Step 3: Verify VolumeSnapshotLocations are applied to Velero schedules
+				By("verifying volume snapshot locations are applied to velero backup templates")
+				for _, schedule := range veleroSchedules.Items {
+					// Only check schedules that belong to our advanced test
+					if labels := schedule.GetLabels(); labels != nil {
+						if scheduleName, exists := labels[BackupScheduleNameLabel]; exists &&
+							scheduleName == backupScheduleName+"-advanced" {
+							// VolumeSnapshotLocations should be set in the backup template
+							Expect(schedule.Spec.Template.VolumeSnapshotLocations).Should(Equal(testVolumeSnapshotLocations))
+						}
+					}
+				}
+
+				// Step 4: Verify UseOwnerReferencesInBackup is applied to Velero schedules
+				By("verifying use owner references setting is applied to velero schedules")
+				for _, schedule := range veleroSchedules.Items {
+					// Only check schedules that belong to our advanced test
+					if labels := schedule.GetLabels(); labels != nil {
+						if scheduleName, exists := labels[BackupScheduleNameLabel]; exists &&
+							scheduleName == backupScheduleName+"-advanced" {
+							// UseOwnerReferencesInBackup should be set on the schedule
+							Expect(schedule.Spec.UseOwnerReferencesInBackup).ShouldNot(BeNil())
+							Expect(*schedule.Spec.UseOwnerReferencesInBackup).Should(Equal(testUseOwnerReferences))
+						}
+					}
+				}
+
+				// Step 5: Verify SkipImmediately is applied to Velero schedules
+				By("verifying skip immediately setting is applied to velero schedules")
+				for _, schedule := range veleroSchedules.Items {
+					// Only check schedules that belong to our advanced test
+					if labels := schedule.GetLabels(); labels != nil {
+						if scheduleName, exists := labels[BackupScheduleNameLabel]; exists &&
+							scheduleName == backupScheduleName+"-advanced" {
+							// SkipImmediately should be set on the schedule
+							Expect(schedule.Spec.SkipImmediately).ShouldNot(BeNil())
+							Expect(*schedule.Spec.SkipImmediately).Should(Equal(testSkipImmediately))
+						}
+					}
+				}
+
+				// Step 6: Verify BackupSchedule status shows successful processing
+				By("verifying backup schedule status reflects successful processing")
+				Eventually(func() (bool, error) {
+					err := k8sClient.Get(ctx, advancedScheduleLookupKey, &createdSchedule)
+					if err != nil {
+						return false, err
+					}
+					// Check if status has been updated with Velero schedule info
+					hasVeleroSchedules := createdSchedule.Status.VeleroScheduleResources != nil
+					return hasVeleroSchedules, nil
+				}, timeout, interval).Should(BeTrue())
+
+			})
 		})
 
 		Context("when testing backup collision detection", func() {
@@ -1626,6 +1742,84 @@ var _ = Describe("BackupSchedule controller", func() {
 				Expect(k8sClient.Delete(ctx, testNs1, &client.DeleteOptions{GracePeriodSeconds: &zero})).Should(Succeed())
 				Expect(k8sClient.Delete(ctx, testNs2, &client.DeleteOptions{GracePeriodSeconds: &zero})).Should(Succeed())
 			})
+		})
+	})
+
+	Context("when no backup storage location resources exist", func() {
+		BeforeEach(func() {
+			// Override to not create any BackupStorageLocation resources
+			backupStorageLocation = nil
+		})
+
+		JustBeforeEach(func() {
+			// Ensure there are no existing BackupStorageLocation resources across all namespaces
+			// Delete all existing BackupStorageLocation resources to ensure clean state
+			storageLocations := &veleroapi.BackupStorageLocationList{}
+			Expect(k8sClient.List(ctx, storageLocations)).To(Succeed())
+
+			for _, location := range storageLocations.Items {
+				Expect(k8sClient.Delete(ctx, &location)).To(Succeed())
+			}
+
+			// Verify no BackupStorageLocation resources exist across all namespaces
+			newStorageLocations := &veleroapi.BackupStorageLocationList{}
+			Eventually(func() int {
+				err := k8sClient.List(ctx, newStorageLocations)
+				if err != nil {
+					return -1
+				}
+				return len(newStorageLocations.Items)
+			}, timeout, interval).Should(Equal(0))
+		})
+
+		// Test Case: No BackupStorageLocation Resources Found
+		//
+		// This test validates that the controller properly handles scenarios where
+		// no BackupStorageLocation resources exist at all, triggering the validation
+		// error that suggests creating Velero or DataProtectionApplications resources.
+		It("should fail validation when no BackupStorageLocation resources exist", func() {
+			scheduleLookupKey := createLookupKey(backupScheduleName, veleroNamespace.Name)
+			createdSchedule := v1beta1.BackupSchedule{}
+
+			// Step 1: Verify BackupSchedule is created
+			Eventually(func() error {
+				return k8sClient.Get(ctx, scheduleLookupKey, &createdSchedule)
+			}, timeout, interval).Should(Succeed())
+
+			// Step 2: Verify controller fails validation when no storage locations exist
+			By("backup schedule should fail validation when no storage locations exist")
+			Eventually(func() v1beta1.SchedulePhase {
+				err := k8sClient.Get(ctx, scheduleLookupKey, &createdSchedule)
+				if err != nil {
+					return v1beta1.SchedulePhaseNew
+				}
+				return createdSchedule.Status.Phase
+			}, timeout, interval).Should(Equal(v1beta1.SchedulePhaseFailedValidation))
+
+			// Step 3: Verify the error message suggests creating Velero or DataProtectionApplications
+			By("error message should suggest creating Velero or DataProtectionApplications resources")
+			Eventually(func() string {
+				err := k8sClient.Get(ctx, scheduleLookupKey, &createdSchedule)
+				if err != nil {
+					return ""
+				}
+				return createdSchedule.Status.LastMessage
+			}, timeout, interval).Should(And(
+				ContainSubstring("velero.io.BackupStorageLocation resources not found"),
+				ContainSubstring("Verify you have created a konveyor.openshift.io.Velero or "+
+					"oadp.openshift.io.DataProtectionApplications resource"),
+			))
+
+			// Step 4: Verify no Velero schedules are created
+			By("verifying no velero schedules are created when no storage locations exist")
+			veleroSchedules := &veleroapi.ScheduleList{}
+			Consistently(func() (int, error) {
+				err := k8sClient.List(ctx, veleroSchedules, client.InNamespace(veleroNamespace.Name))
+				if err != nil {
+					return -1, err
+				}
+				return len(veleroSchedules.Items), nil
+			}, time.Second*2, interval).Should(Equal(0))
 		})
 	})
 
