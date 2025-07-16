@@ -8,7 +8,7 @@ metadata:
     pipelinesascode.tekton.dev/cancel-in-progress: "false"
     pipelinesascode.tekton.dev/max-keep-runs: "3"
     pipelinesascode.tekton.dev/on-cel-expression: event == "push" && target_branch
-      == "release-2.15"
+      == "main"
   creationTimestamp: null
   labels:
     appstudio.openshift.io/application: release-acm-215
@@ -18,6 +18,12 @@ metadata:
   namespace: crt-redhat-acm-tenant
 spec:
   params:
+  - name: hermetic
+    value: "true"
+  - name: prefetch-input
+    value: '{"type": "gomod", "path": "."}'
+  - name: build-source-image
+    value: "true"
   - name: git-url
     value: '{{source_url}}'
   - name: revision
@@ -27,6 +33,9 @@ spec:
   - name: build-platforms
     value:
     - linux/x86_64
+    - linux/ppc64le
+    - linux/s390x
+    - linux/arm64
   - name: dockerfile
     value: Dockerfile.rhtap
   - name: path-context
@@ -51,6 +60,27 @@ spec:
         - name: kind
           value: task
         resolver: bundles
+    - name: slack-webhook-notification
+      params:
+      - name: message
+        value: ":x: *cluster-backup-operator 2.15* PipelineRun failed: https://konflux-ui.apps.stone-prd-rh01.pg1f.p1.openshiftapps.com/ns/crt-redhat-acm-tenant/applications/release-acm-215/pipelineruns/$(context.pipelineRun.name)"
+      - name: secret-name
+        value: backup-team-slack-notification-secret
+      - name: key-name
+        value: backup-team
+      taskRef:
+        params:
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-slack-webhook-notification@sha256:452188df385218d0a1d9d097ff5daa67f11ae3597c917a3c2bb644787453a8e0
+        - name: name
+          value: slack-webhook-notification
+        - name: kind
+          value: Task
+        resolver: bundles
+      when:
+        - input: $(tasks.status)
+          operator: in
+          values: ["Failed"]
     params:
     - description: Source Repository URL
       name: git-url
