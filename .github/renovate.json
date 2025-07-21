@@ -21,7 +21,11 @@
       "matchManagers": [
         "gomod"
       ],
-      "enabled": false
+      "enabled": false,
+      "vulnerabilityAlerts": {
+        "enabled": true
+      },
+      "osvVulnerabilityAlerts": true
     }
   ],
   "rebaseWhen": "behind-base-branch",
