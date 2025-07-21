@@ -19,6 +19,12 @@ metadata:
   namespace: crt-redhat-acm-tenant
 spec:
   params:
+  - name: hermetic
+    value: "true"
+  - name: prefetch-input
+    value: '{"type": "gomod", "path": "."}'
+  - name: build-source-image
+    value: "true"
   - name: git-url
     value: '{{source_url}}'
   - name: revision
