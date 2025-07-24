@@ -1015,9 +1015,9 @@ var _ = Describe("BackupSchedule controller", func() {
 					return k8sClient.Update(ctx, &createdSchedule)
 				}, timeout, interval).Should(Succeed())
 
-				// Step 6: Wait for the controller to eventually recreate all schedules
-				// Due to the 5-minute requeue interval and potential indexing issues with fake client,
-				// we'll wait for the final result: all schedules recreated
+				// Step 6: Wait for the controller to recreate all schedules
+				// The controller detects missing schedules, deletes all existing ones, and recreates them
+				// Due to the 5-minute requeue interval, we need to continuously trigger reconciliation
 				By("waiting for controller to eventually recreate all velero schedules")
 				Eventually(func() (int, error) {
 					// Continue triggering reconciliation by updating annotations
