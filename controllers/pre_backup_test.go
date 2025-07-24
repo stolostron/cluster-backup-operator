@@ -40,6 +40,7 @@ import (
 	"time"
 
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
+	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -64,7 +65,14 @@ import (
 
 // setupTestLogger configures the logger for tests
 func setupTestLogger() {
-	log.SetLogger(zap.New(zap.UseDevMode(true)))
+	// Configure logger to only show Fatal and Panic levels to reduce noise from expected test errors
+	log.SetLogger(zap.New(zap.UseDevMode(true), zap.Level(zapcore.FatalLevel)))
+}
+
+// setupQuietTestLogger configures a logger that suppresses all output for error path testing
+func setupQuietTestLogger() {
+	// Suppress all log output for tests that intentionally trigger errors
+	log.SetLogger(zap.New(zap.Level(zapcore.DPanicLevel)))
 }
 
 // createTestContext returns a background context for tests
@@ -1071,7 +1079,7 @@ type failingSecretDeleteClient struct {
 func (f *failingSecretDeleteClient) Delete(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error {
 	// If it's a secret with the specific name we want to fail on, return an error
 	if secret, ok := obj.(*corev1.Secret); ok && secret.Name == f.failOnSecretName {
-		return fmt.Errorf("simulated secret deletion failure for %s", secret.Name)
+		return fmt.Errorf("[TEST] simulated secret deletion failure for %s", secret.Name)
 	}
 	// Otherwise, delegate to the real client
 	return f.Client.Delete(ctx, obj, opts...)
@@ -1373,6 +1381,12 @@ func Test_cleanupMSAForImportedClusters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Use quiet logging for tests that expect errors to avoid confusing PR output
+			if tt.wantErr {
+				setupQuietTestLogger()
+				defer setupTestLogger() // Restore normal logging after test
+			}
+
 			// Test cleanupMSAForImportedClusters
 			err := cleanupMSAForImportedClusters(tt.args.ctx, tt.args.c,
 				tt.args.dr,
