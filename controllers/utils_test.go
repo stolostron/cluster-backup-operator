@@ -1548,7 +1548,7 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 		name                    string
 		args                    args
 		wantBackupSchedule      v1beta1.BackupSchedule
-		wantDeletedSchedules    []veleroapi.Schedule
+		wantPausedSchedules     []veleroapi.Schedule
 		wantScheduleStatusNil   bool
 		wantReturn              ctrl.Result
 		wantBackupSchedulePhase v1beta1.SchedulePhase
@@ -1568,21 +1568,26 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 						res,
 					},
 				},
-				backupSchedule: createBackupSchedule("acm-schedule", "default").
-					paused(true).
-					phase(v1beta1.SchedulePhaseEnabled).
-					scheduleStatus(Credentials, creds).
-					scheduleStatus(ManagedClusters, cls).
-					scheduleStatus(Resources, res).
-					object,
+				backupSchedule: &v1beta1.BackupSchedule{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "BackupSchedule",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-schedule",
+						Namespace: "default",
+					},
+					Spec: v1beta1.BackupScheduleSpec{
+						Paused: true,
+					},
+					Status: v1beta1.BackupScheduleStatus{
+						Phase:                         v1beta1.SchedulePhaseEnabled,
+						VeleroScheduleCredentials:     creds.DeepCopy(),
+						VeleroScheduleManagedClusters: cls.DeepCopy(),
+						VeleroScheduleResources:       res.DeepCopy(),
+					},
+				},
 				setupObjects: []client.Object{
-					createBackupSchedule("acm-schedule", "default").
-						paused(true).
-						phase(v1beta1.SchedulePhaseEnabled).
-						scheduleStatus(Credentials, creds).
-						scheduleStatus(ManagedClusters, cls).
-						scheduleStatus(Resources, res).
-						object,
 					&creds,
 					&cls,
 					&res,
@@ -1591,12 +1596,12 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 			wantBackupSchedule: *createBackupSchedule("acm-schedule", "default").
 				paused(true).
 				object,
-			wantDeletedSchedules: []veleroapi.Schedule{
+			wantPausedSchedules: []veleroapi.Schedule{
 				creds,
 				cls,
 				res,
 			},
-			wantScheduleStatusNil:   true, // backup schedule status gets updated with fake client
+			wantScheduleStatusNil:   false, // backup schedule status kept since schedules are paused, not deleted
 			wantReturn:              ctrl.Result{},
 			wantBackupSchedulePhase: v1beta1.SchedulePhasePaused,
 			wantMsg:                 "BackupSchedule is paused.",
@@ -1615,19 +1620,23 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 						res,
 					},
 				},
-				backupSchedule: createBackupSchedule("acm-schedule", "default").
-					scheduleStatus(Credentials, creds).
-					scheduleStatus(ManagedClusters, cls).
-					scheduleStatus(Resources, res).
-					phase(v1beta1.SchedulePhaseBackupCollision).
-					object,
+				backupSchedule: &v1beta1.BackupSchedule{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "BackupSchedule",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-schedule",
+						Namespace: "default",
+					},
+					Status: v1beta1.BackupScheduleStatus{
+						Phase:                         v1beta1.SchedulePhaseBackupCollision,
+						VeleroScheduleCredentials:     creds.DeepCopy(),
+						VeleroScheduleManagedClusters: cls.DeepCopy(),
+						VeleroScheduleResources:       res.DeepCopy(),
+					},
+				},
 				setupObjects: []client.Object{
-					createBackupSchedule("acm-schedule", "default").
-						scheduleStatus(Credentials, creds).
-						scheduleStatus(ManagedClusters, cls).
-						scheduleStatus(Resources, res).
-						phase(v1beta1.SchedulePhaseBackupCollision).
-						object,
 					&creds,
 					&cls,
 					&res,
@@ -1636,12 +1645,12 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 			wantBackupSchedule: *createBackupSchedule("acm-schedule", "default").
 				phase(v1beta1.SchedulePhaseBackupCollision).
 				object,
-			wantDeletedSchedules: []veleroapi.Schedule{
+			wantPausedSchedules: []veleroapi.Schedule{
 				creds,
 				cls,
 				res,
 			},
-			wantScheduleStatusNil:   true,
+			wantScheduleStatusNil:   false, // backup schedule status kept since schedules are paused, not deleted
 			wantReturn:              ctrl.Result{},
 			wantBackupSchedulePhase: v1beta1.SchedulePhaseBackupCollision,
 			wantMsg:                 "collision",
@@ -1659,19 +1668,25 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 						res,
 					},
 				},
-				backupSchedule: createBackupSchedule("acm-schedule", "default").
-					paused(true).
-					scheduleStatus(Credentials, creds).
-					scheduleStatus(ManagedClusters, cls).
-					scheduleStatus(Resources, res).
-					object,
+				backupSchedule: &v1beta1.BackupSchedule{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "cluster.open-cluster-management.io/v1beta1",
+						Kind:       "BackupSchedule",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-schedule",
+						Namespace: "default",
+					},
+					Spec: v1beta1.BackupScheduleSpec{
+						Paused: true,
+					},
+					Status: v1beta1.BackupScheduleStatus{
+						VeleroScheduleCredentials:     creds.DeepCopy(),
+						VeleroScheduleManagedClusters: cls.DeepCopy(),
+						VeleroScheduleResources:       res.DeepCopy(),
+					},
+				},
 				setupObjects: []client.Object{
-					createBackupSchedule("acm-schedule", "default").
-						paused(true).
-						scheduleStatus(Credentials, creds).
-						scheduleStatus(ManagedClusters, cls).
-						scheduleStatus(Resources, res).
-						object,
 					&cls, // only cls and res, no creds
 					&res,
 				},
@@ -1679,12 +1694,12 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 			wantBackupSchedule: *createBackupSchedule("acm-schedule", "default").
 				paused(true).
 				object,
-			wantDeletedSchedules: []veleroapi.Schedule{
-				creds,
+			wantPausedSchedules: []veleroapi.Schedule{
+				// creds is intentionally missing (not found scenario)
 				cls,
 				res,
 			},
-			wantScheduleStatusNil:   true,
+			wantScheduleStatusNil:   false, // backup schedule status kept since schedules are paused, not deleted
 			wantReturn:              ctrl.Result{},
 			wantBackupSchedulePhase: v1beta1.SchedulePhasePaused,
 			wantMsg:                 "BackupSchedule is paused.",
@@ -1725,7 +1740,7 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 				paused(false).
 				phase(v1beta1.SchedulePhaseEnabled).
 				object,
-			wantDeletedSchedules:    []veleroapi.Schedule{},
+			wantPausedSchedules:     []veleroapi.Schedule{},
 			wantScheduleStatusNil:   false, // status should remain unchanged
 			wantReturn:              ctrl.Result{},
 			wantBackupSchedulePhase: v1beta1.SchedulePhaseEnabled, // phase should remain unchanged
@@ -1738,8 +1753,30 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 			fakeClient := CreateBackupSchedulePausedTestClient(tt.args.setupObjects...)
 			tt.args.c = fakeClient
 
-			returnValue, _ := updateBackupSchedulePhaseWhenPaused(tt.args.ctx, tt.args.c,
+			// Only create the BackupSchedule if the function will actually process it
+			if tt.args.phase == v1beta1.SchedulePhasePaused || tt.args.phase == v1beta1.SchedulePhaseBackupCollision {
+				// Create the BackupSchedule in the fake client
+				if err := fakeClient.Create(tt.args.ctx, tt.args.backupSchedule); err != nil {
+					t.Fatalf("BackupSchedule creation failed: %v", err)
+				}
+
+				// Verify the BackupSchedule was created successfully
+				testBackupSchedule := &v1beta1.BackupSchedule{}
+				err := fakeClient.Get(tt.args.ctx, client.ObjectKey{
+					Name:      tt.args.backupSchedule.Name,
+					Namespace: tt.args.backupSchedule.Namespace,
+				}, testBackupSchedule)
+				if err != nil {
+					t.Fatalf("BackupSchedule not found after creation: %v", err)
+				}
+			}
+
+			returnValue, err := updateBackupSchedulePhaseWhenPaused(context.Background(), tt.args.c,
 				tt.args.veleroScheduleList, tt.args.backupSchedule, tt.args.phase, tt.args.msg)
+
+			if err != nil {
+				t.Errorf("updateBackupSchedulePhaseWhenPaused returned error: %v", err)
+			}
 
 			if returnValue != tt.wantReturn {
 				t.Errorf("updateBackupSchedulePhaseWhenPaused return should be =%v got=%v",
@@ -1747,23 +1784,23 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 					returnValue)
 			}
 
-			// check schedules in status
+			// check schedules in status - they should remain populated since schedules are paused, not deleted
 			if (tt.args.backupSchedule.Status.VeleroScheduleCredentials == nil) !=
 				tt.wantScheduleStatusNil {
-				t.Errorf("VeleroScheduleCredentials don't match , should be nil =%v got should be nil =%v",
-					tt.args.backupSchedule.Status.VeleroScheduleCredentials,
+				t.Errorf("VeleroScheduleCredentials don't match expected behavior, nil=%v, expected nil=%v",
+					tt.args.backupSchedule.Status.VeleroScheduleCredentials == nil,
 					tt.wantScheduleStatusNil)
 			}
 			if (tt.args.backupSchedule.Status.VeleroScheduleManagedClusters == nil) !=
 				tt.wantScheduleStatusNil {
-				t.Errorf("VeleroScheduleManagedClusters don't match , should be  =%v got=%v",
-					tt.args.backupSchedule.Status.VeleroScheduleManagedClusters,
+				t.Errorf("VeleroScheduleManagedClusters don't match expected behavior, nil=%v, expected nil=%v",
+					tt.args.backupSchedule.Status.VeleroScheduleManagedClusters == nil,
 					tt.wantScheduleStatusNil)
 			}
 			if (tt.args.backupSchedule.Status.VeleroScheduleResources == nil) !=
 				tt.wantScheduleStatusNil {
-				t.Errorf("VeleroScheduleResources don't match , should be  =%v got=%v",
-					tt.args.backupSchedule.Status.VeleroScheduleResources,
+				t.Errorf("VeleroScheduleResources don't match expected behavior, nil=%v, expected nil=%v",
+					tt.args.backupSchedule.Status.VeleroScheduleResources == nil,
 					tt.wantScheduleStatusNil)
 			}
 
@@ -1778,18 +1815,23 @@ func Test_updateBackupSchedulePhaseWhenPaused(t *testing.T) {
 					tt.wantMsg, tt.args.backupSchedule.Status.LastMessage)
 			}
 
-			// check schedules are deleted
-			for i := range tt.wantDeletedSchedules {
+			// check schedules are paused
+			for i := range tt.wantPausedSchedules {
 
 				lookupKey := types.NamespacedName{
-					Name:      tt.wantDeletedSchedules[i].Name,
-					Namespace: tt.wantDeletedSchedules[i].Namespace,
+					Name:      tt.wantPausedSchedules[i].Name,
+					Namespace: tt.wantPausedSchedules[i].Namespace,
 				}
 
 				schedule := veleroapi.Schedule{}
 
-				if err := fakeClient.Get(tt.args.ctx, lookupKey, &schedule); err == nil {
-					t.Errorf(" schedule should not be found = %v", lookupKey.Name)
+				if err := fakeClient.Get(tt.args.ctx, lookupKey, &schedule); err != nil {
+					t.Errorf("schedule should be found = %v, err: %v", lookupKey.Name, err)
+				} else {
+					// Check that the schedule is paused
+					if !schedule.Spec.Paused {
+						t.Errorf("schedule should be paused but got paused = %v", schedule.Spec.Paused)
+					}
 				}
 			}
 		})

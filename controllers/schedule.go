@@ -161,6 +161,12 @@ func isScheduleSpecUpdated(
 			}
 			updated = true
 		}
+
+		// synchronize pause state between BackupSchedule and Velero schedules
+		if veleroSchedule.Spec.Paused != backupSchedule.Spec.Paused {
+			veleroSchedule.Spec.Paused = backupSchedule.Spec.Paused
+			updated = true
+		}
 	}
 
 	return updated
