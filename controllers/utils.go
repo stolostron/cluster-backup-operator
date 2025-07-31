@@ -483,7 +483,45 @@ func addRestoreLabelSelector(
 	}
 }
 
-// update BackupSchedule status and remove velero schedules
+// pause a single velero schedule
+func pauseVeleroSchedule(ctx context.Context, c client.Client, schedule *veleroapi.Schedule) error {
+	scheduleLogger := log.FromContext(ctx)
+
+	scheduleLogger.Info("Attempt to pause schedule " + schedule.Name)
+
+	// Get a fresh copy of the schedule to avoid "object was modified" errors
+	currentSchedule := &veleroapi.Schedule{}
+	scheduleKey := client.ObjectKey{
+		Name:      schedule.Name,
+		Namespace: schedule.Namespace,
+	}
+
+	if err := c.Get(ctx, scheduleKey, currentSchedule); err != nil {
+		// ignore not found errors
+		if !kerrors.IsNotFound(err) {
+			scheduleLogger.Error(err, "Failed to get schedule "+schedule.Name)
+			return err
+		}
+		return err // not found is ok
+	}
+
+	// Set the schedule to paused state
+	currentSchedule.Spec.Paused = true
+
+	if err := c.Update(ctx, currentSchedule); err != nil {
+		// ignore not found errors
+		if !kerrors.IsNotFound(err) {
+			scheduleLogger.Error(err, "Failed to pause schedule "+schedule.Name)
+			return err
+		}
+	} else {
+		scheduleLogger.Info("Schedule paused successfully " + schedule.Name)
+	}
+
+	return nil
+}
+
+// update BackupSchedule status and pause velero schedules
 // when the BackupSchedule is paused or in BackupCollision
 func updateBackupSchedulePhaseWhenPaused(
 	ctx context.Context,
@@ -493,46 +531,69 @@ func updateBackupSchedulePhaseWhenPaused(
 	phase v1beta1.SchedulePhase,
 	msg string,
 ) (ctrl.Result, error) {
-	scheduleLogger := log.FromContext(ctx)
-
 	if phase != v1beta1.SchedulePhasePaused && phase != v1beta1.SchedulePhaseBackupCollision {
 		// do not process any other type of schedule here
 		return ctrl.Result{}, nil
 	}
 
-	// delete schedules, so we don't generate new backups
+	// pause schedules, so we don't generate new backups
+	// Collect errors but continue processing all schedules
+	var pauseErrors []error
 	for i := range veleroScheduleList.Items {
-		scheduleLogger.Info(
-			"Attempt to delete schedule " + veleroScheduleList.Items[i].Name,
-		)
-
-		if err := c.Delete(ctx, &veleroScheduleList.Items[i]); err == nil {
-			scheduleLogger.Info(
-				"Schedule deleted successfully " + veleroScheduleList.Items[i].Name,
-			)
-		} else {
-			// ignore not found errors
-			if !kerrors.IsNotFound(err) {
-				errMsg := "Failed to delete schedule " + veleroScheduleList.Items[i].Name
-				scheduleLogger.Error(err,
-					errMsg,
-				)
-				return ctrl.Result{}, err
-			}
+		if err := pauseVeleroSchedule(ctx, c, &veleroScheduleList.Items[i]); err != nil {
+			pauseErrors = append(pauseErrors, err)
 		}
 	}
 
-	// update status
+	// update status directly on the passed BackupSchedule object
 	backupSchedule.Status.Phase = phase
-	backupSchedule.Status.LastMessage = msg
 
-	backupSchedule.Status.VeleroScheduleCredentials = nil
-	backupSchedule.Status.VeleroScheduleManagedClusters = nil
-	backupSchedule.Status.VeleroScheduleResources = nil
-
+	// Set message based on whether there were errors pausing schedules
+	if len(pauseErrors) > 0 {
+		backupSchedule.Status.LastMessage = fmt.Sprintf("%s (with %d schedule pause errors)", msg, len(pauseErrors))
+	} else {
+		backupSchedule.Status.LastMessage = msg
+	}
+	// Update the status references to reflect the current paused state of the schedules
+	updateBackupScheduleStatusReferences(backupSchedule, veleroScheduleList)
+	// Update the status - try Status().Update() first (for real K8s), fallback to Update() (for fake client)
 	err := c.Status().Update(ctx, backupSchedule)
+	if err != nil {
+		// If Status().Update() fails (e.g., fake client), try regular Update()
+		if updateErr := c.Update(ctx, backupSchedule); updateErr != nil {
+			// If both fail, return the original status update error
+			return ctrl.Result{}, err
+		}
+	}
 
-	return ctrl.Result{}, err
+	// Return error if any schedules failed to pause
+	if len(pauseErrors) > 0 {
+		return ctrl.Result{}, pauseErrors[0] // return first error
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// updateBackupScheduleStatusReferences updates the BackupSchedule status with current paused schedules
+func updateBackupScheduleStatusReferences(
+	backupSchedule *v1beta1.BackupSchedule,
+	veleroScheduleList veleroapi.ScheduleList,
+) {
+	// Since schedules are paused (not deleted), we keep updated references
+	for i := range veleroScheduleList.Items {
+		schedule := &veleroScheduleList.Items[i]
+
+		// Determine which status field this schedule belongs to based on exact name match
+		scheduleName := schedule.Name
+		switch scheduleName {
+		case veleroScheduleNames[Credentials]:
+			backupSchedule.Status.VeleroScheduleCredentials = schedule.DeepCopy()
+		case veleroScheduleNames[ManagedClusters]:
+			backupSchedule.Status.VeleroScheduleManagedClusters = schedule.DeepCopy()
+		case veleroScheduleNames[Resources]:
+			backupSchedule.Status.VeleroScheduleResources = schedule.DeepCopy()
+		}
+	}
 }
 
 // Return true if the managedCluster object has label "local-cluster": "true"

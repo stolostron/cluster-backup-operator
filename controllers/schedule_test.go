@@ -96,6 +96,21 @@ func initVeleroSchedulesWithSpecs(
 	return veleroScheduleList
 }
 
+func initVeleroSchedulesWithPausedState(
+	cronSpec string,
+	ttl metav1.Duration,
+	paused bool,
+) *veleroapi.ScheduleList {
+	veleroScheduleList := initVeleroScheduleTypes()
+	for i := range veleroScheduleList.Items {
+		veleroSchedule := &veleroScheduleList.Items[i]
+		veleroSchedule.Spec.Schedule = cronSpec
+		veleroSchedule.Spec.Template.TTL = ttl
+		veleroSchedule.Spec.Paused = paused
+	}
+	return veleroScheduleList
+}
+
 func initVeleroScheduleTypes() *veleroapi.ScheduleList {
 	return &veleroapi.ScheduleList{
 		TypeMeta: metav1.TypeMeta{
@@ -535,6 +550,59 @@ func Test_isScheduleSpecUpdated(t *testing.T) {
 					object,
 			},
 			want: true,
+		},
+		{
+			name: "pause state updated - BackupSchedule paused but Velero schedules not paused",
+			args: args{
+				schedules: initVeleroSchedulesWithSpecs(
+					"0 8 * * *",
+					metav1.Duration{Duration: time.Hour * 1},
+				),
+				backupSchedule: createBackupSchedule(
+					"name",
+					"ns",
+				).schedule("0 8 * * *").
+					veleroTTL(metav1.Duration{Duration: time.Hour * 1}).
+					paused(true).
+					object,
+			},
+			want: true,
+		},
+		{
+			name: "pause state updated - BackupSchedule unpaused but Velero schedules still paused",
+			args: args{
+				schedules: initVeleroSchedulesWithPausedState(
+					"0 6 * * *",
+					metav1.Duration{Duration: time.Hour * 1},
+					true, // Velero schedules are paused
+				),
+				backupSchedule: createBackupSchedule(
+					"name",
+					"ns",
+				).schedule("0 6 * * *").
+					veleroTTL(metav1.Duration{Duration: time.Hour * 1}).
+					paused(false). // BackupSchedule is not paused
+					object,
+			},
+			want: true,
+		},
+		{
+			name: "pause state synchronized - both BackupSchedule and Velero schedules paused",
+			args: args{
+				schedules: initVeleroSchedulesWithPausedState(
+					"0 6 * * *",
+					metav1.Duration{Duration: time.Hour * 1},
+					true, // Velero schedules are paused
+				),
+				backupSchedule: createBackupSchedule(
+					"name",
+					"ns",
+				).schedule("0 6 * * *").
+					veleroTTL(metav1.Duration{Duration: time.Hour * 1}).
+					paused(true). // BackupSchedule is also paused
+					object,
+			},
+			want: false,
 		},
 	}
 	for _, tt := range tests {

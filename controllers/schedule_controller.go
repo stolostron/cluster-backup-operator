@@ -418,6 +418,7 @@ func (r *BackupScheduleReconciler) initVeleroSchedules(
 		}
 		veleroSchedule.Spec.Template = *veleroBackupTemplate
 		veleroSchedule.Spec.Schedule = backupSchedule.Spec.VeleroSchedule
+		veleroSchedule.Spec.Paused = backupSchedule.Spec.Paused // Set pause state to match BackupSchedule
 		if backupSchedule.Spec.VeleroTTL.Duration != 0 && scheduleKey != ValidationSchedule {
 			// TTL for a validation backup is already set using the cron job interval
 			veleroSchedule.Spec.Template.TTL = backupSchedule.Spec.VeleroTTL
