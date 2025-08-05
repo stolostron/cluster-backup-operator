@@ -12,7 +12,7 @@
   ],
   "packageRules": [
     {
-      "baseBranchList": [
+      "matchBaseBranches": [
         "release-2.11",
         "release-2.12",
         "release-2.13",
