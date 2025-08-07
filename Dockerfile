@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM registry.ci.openshift.org/stolostron/builder:go1.23-linux AS builder
+FROM registry.ci.openshift.org/stolostron/builder:go1.24-linux AS builder
 
 WORKDIR /workspace
 # Copy the source files
@@ -15,7 +15,7 @@ RUN  CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go mod vendor
 RUN  CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go mod tidy
 
 # Build
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o manager main.go
+RUN CGO_ENABLED=1 GOOS=linux go build -a -o manager main.go
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
