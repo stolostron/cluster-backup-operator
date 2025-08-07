@@ -79,8 +79,9 @@ github.com/openshift/hive/apis v0.0.0-20250725035156-a29a23859060 h1:MIseGDYL78F
 github.com/openshift/hive/apis v0.0.0-20250725035156-a29a23859060/go.mod h1:XUEuhGkTuSXP+eb0LtY3/iJTs/3Fc18CVkqMsmgN+gg=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
-github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
+github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/prashantv/gostub v1.1.0 h1:BTyx3RfQjRHnUWaGF9oQos79AlQ5k8WNktv7VGvVH4g=
 github.com/prashantv/gostub v1.1.0/go.mod h1:A5zLQHz7ieHGG7is6LLXLz7I8+3LZzsrV0P1IAHhP5U=
 github.com/prometheus/client_golang v1.23.0 h1:ust4zpdl9r4trLY/gSjlm07PuiBq2ynaXXlptpfy8Uc=
@@ -189,8 +190,8 @@ k8s.io/kube-openapi v0.0.0-20250628140032-d90c4fd18f59 h1:Jc4GiFTK2HHOpfQFoQEGXT
 k8s.io/kube-openapi v0.0.0-20250628140032-d90c4fd18f59/go.mod h1:GLOk5B+hDbRROvt0X2+hqX64v/zO3vXN7J78OUmBSKw=
 k8s.io/utils v0.0.0-20250604170112-4c0f3b243397 h1:hwvWFiBzdWw1FhfY1FooPn3kzWuJ8tmbZBHi4zVsl1Y=
 k8s.io/utils v0.0.0-20250604170112-4c0f3b243397/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
-open-cluster-management.io/api v0.16.2 h1:JzpJtgp/qJKjDLEO7o7q5eVLxYkfgxhtagJvWFbaNno=
-open-cluster-management.io/api v0.16.2/go.mod h1:9erZEWEn4bEqh0nIX2wA7f/s3KCuFycQdBrPrRzi0QM=
+open-cluster-management.io/api v1.0.0 h1:54QllH9DTudCk6VrGt0q8CDsE3MghqJeTaTN4RHZpE0=
+open-cluster-management.io/api v1.0.0/go.mod h1:/OeqXycNBZQoe3WG6ghuWsMgsKGuMZrK8ZpsU6gWL0Y=
 open-cluster-management.io/multicloud-operators-channel v0.16.0 h1:9gi8M5ojsRK+2EMtUMC/1g1I4H4bl0+lS7CKtRCtp44=
 open-cluster-management.io/multicloud-operators-channel v0.16.0/go.mod h1:FCYH3p9NVhsUP5eks0bXDUKdnQ/N/BgGoP18kX/Q52U=
 sigs.k8s.io/controller-runtime v0.21.0 h1:CYfjpEuicjUecRk+KAeyYh+ouUBn4llGyDYytIGcJS8=
