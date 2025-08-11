@@ -474,6 +474,11 @@ spec:
         operator: in
         values:
         - "false"
+      matrix:
+        params:
+        - name: image-arch
+          value:
+          - $(params.build-platforms)
     - name: apply-tags
       params:
       - name: IMAGE_URL
