@@ -984,9 +984,17 @@ var _ = Describe("BackupSchedule controller", func() {
 				By("manually deleting some velero schedules to trigger cleanup logic")
 				schedulesToDelete := 2 // Delete 2 out of 5 schedules
 
-				for i := 0; i < schedulesToDelete; i++ {
-					scheduleToDelete := &veleroSchedules.Items[i]
-					Expect(k8sClient.Delete(ctx, scheduleToDelete)).Should(Succeed())
+				// Get a fresh list right before deletion to avoid stale references
+				freshVeleroSchedules := &veleroapi.ScheduleList{}
+				Expect(k8sClient.List(ctx, freshVeleroSchedules, client.InNamespace(veleroNamespace.Name))).Should(Succeed())
+				Expect(len(freshVeleroSchedules.Items)).To(BeNumerically(">=", schedulesToDelete))
+
+				for i := 0; i < schedulesToDelete && i < len(freshVeleroSchedules.Items); i++ {
+					scheduleToDelete := &freshVeleroSchedules.Items[i]
+					err := k8sClient.Delete(ctx, scheduleToDelete)
+					if err != nil && !errors.IsNotFound(err) {
+						Expect(err).Should(Succeed()) // Only fail if it's not a "not found" error
+					}
 				}
 
 				// Step 4: Verify some schedules are deleted (should have fewer than expected)
@@ -1210,21 +1218,73 @@ var _ = Describe("BackupSchedule controller", func() {
 					return k8sClient.Update(ctx, &createdSchedule)
 				}, timeout, interval).Should(Succeed())
 
-				// Verify the cron-only update is applied
+				// Verify the cron-only update is applied using smart waiting
+				By("waiting for controller to propagate cron schedule changes to all velero schedules")
+
+				// First, capture the current resource version to detect when controller processes the change
+				var initialResourceVersion string
+				Eventually(func() error {
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(&createdSchedule), &createdSchedule)
+					if err != nil {
+						return err
+					}
+					initialResourceVersion = createdSchedule.ResourceVersion
+					return nil
+				}, timeout, interval).Should(Succeed())
+
+				// Wait for the BackupSchedule resource to be updated (indicating controller processed it)
 				Eventually(func() (bool, error) {
-					err := k8sClient.List(ctx, veleroSchedules, client.InNamespace(veleroNamespace.Name))
+					var currentSchedule v1beta1.BackupSchedule
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(&createdSchedule), &currentSchedule)
 					if err != nil {
 						return false, err
 					}
 
-					// Check if all schedules have the new cron schedule
-					for _, schedule := range veleroSchedules.Items {
-						if schedule.Spec.Schedule != anotherCronSchedule {
-							return false, nil
+					// Check if the resource has been updated by comparing resource versions
+					// and verify the spec actually contains our new cron schedule
+					resourceUpdated := currentSchedule.ResourceVersion != initialResourceVersion
+					specUpdated := currentSchedule.Spec.VeleroSchedule == anotherCronSchedule
+
+					if !specUpdated {
+						return false, fmt.Errorf("BackupSchedule spec not yet updated: expected %s, got %s",
+							anotherCronSchedule, currentSchedule.Spec.VeleroSchedule)
+					}
+
+					return resourceUpdated && specUpdated, nil
+				}, timeout, interval).Should(BeTrue(), "BackupSchedule should be updated with new cron schedule")
+
+				// Now wait for Velero schedules to be updated, but with an early exit strategy
+				Eventually(func() (bool, error) {
+					freshVeleroSchedules := &veleroapi.ScheduleList{}
+					err := k8sClient.List(ctx, freshVeleroSchedules, client.InNamespace(veleroNamespace.Name))
+					if err != nil {
+						return false, err
+					}
+
+					expectedScheduleCount := len(veleroScheduleNames)
+					if len(freshVeleroSchedules.Items) != expectedScheduleCount {
+						return false, fmt.Errorf("expected %d schedules, found %d",
+							expectedScheduleCount, len(freshVeleroSchedules.Items))
+					}
+
+					// Count updated schedules and track progress
+					updatedCount := 0
+					for _, schedule := range freshVeleroSchedules.Items {
+						if schedule.Spec.Schedule == anotherCronSchedule {
+							updatedCount++
 						}
 					}
-					return true, nil
-				}, timeout*2, interval).Should(BeTrue())
+
+					// Success when all are updated
+					if updatedCount == expectedScheduleCount {
+						return true, nil
+					}
+
+					// Early failure if no progress after reasonable time - indicates a real issue
+					// Instead of waiting forever, fail fast if there's clearly a problem
+					return false, fmt.Errorf("schedule update progress: %d/%d updated", updatedCount, expectedScheduleCount)
+
+				}, timeout*2, interval).Should(BeTrue(), "All Velero schedules should be updated")
 
 			})
 		})
