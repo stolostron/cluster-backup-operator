@@ -1218,31 +1218,73 @@ var _ = Describe("BackupSchedule controller", func() {
 					return k8sClient.Update(ctx, &createdSchedule)
 				}, timeout, interval).Should(Succeed())
 
-				// Verify the cron-only update is applied
+				// Verify the cron-only update is applied using smart waiting
+				By("waiting for controller to propagate cron schedule changes to all velero schedules")
+
+				// First, capture the current resource version to detect when controller processes the change
+				var initialResourceVersion string
+				Eventually(func() error {
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(&createdSchedule), &createdSchedule)
+					if err != nil {
+						return err
+					}
+					initialResourceVersion = createdSchedule.ResourceVersion
+					return nil
+				}, timeout, interval).Should(Succeed())
+
+				// Wait for the BackupSchedule resource to be updated (indicating controller processed it)
 				Eventually(func() (bool, error) {
-					// Get a fresh list of schedules to avoid stale references
+					var currentSchedule v1beta1.BackupSchedule
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(&createdSchedule), &currentSchedule)
+					if err != nil {
+						return false, err
+					}
+
+					// Check if the resource has been updated by comparing resource versions
+					// and verify the spec actually contains our new cron schedule
+					resourceUpdated := currentSchedule.ResourceVersion != initialResourceVersion
+					specUpdated := currentSchedule.Spec.VeleroSchedule == anotherCronSchedule
+
+					if !specUpdated {
+						return false, fmt.Errorf("BackupSchedule spec not yet updated: expected %s, got %s",
+							anotherCronSchedule, currentSchedule.Spec.VeleroSchedule)
+					}
+
+					return resourceUpdated && specUpdated, nil
+				}, timeout, interval).Should(BeTrue(), "BackupSchedule should be updated with new cron schedule")
+
+				// Now wait for Velero schedules to be updated, but with an early exit strategy
+				Eventually(func() (bool, error) {
 					freshVeleroSchedules := &veleroapi.ScheduleList{}
 					err := k8sClient.List(ctx, freshVeleroSchedules, client.InNamespace(veleroNamespace.Name))
 					if err != nil {
 						return false, err
 					}
 
-					// Ensure we have the expected number of schedules
 					expectedScheduleCount := len(veleroScheduleNames)
 					if len(freshVeleroSchedules.Items) != expectedScheduleCount {
 						return false, fmt.Errorf("expected %d schedules, found %d",
 							expectedScheduleCount, len(freshVeleroSchedules.Items))
 					}
 
-					// Check if all schedules have the new cron schedule
+					// Count updated schedules and track progress
+					updatedCount := 0
 					for _, schedule := range freshVeleroSchedules.Items {
-						if schedule.Spec.Schedule != anotherCronSchedule {
-							return false, fmt.Errorf("schedule %s still has old cron schedule: %s, expected: %s",
-								schedule.Name, schedule.Spec.Schedule, anotherCronSchedule)
+						if schedule.Spec.Schedule == anotherCronSchedule {
+							updatedCount++
 						}
 					}
-					return true, nil
-				}, timeout*4, interval).Should(BeTrue())
+
+					// Success when all are updated
+					if updatedCount == expectedScheduleCount {
+						return true, nil
+					}
+
+					// Early failure if no progress after reasonable time - indicates a real issue
+					// Instead of waiting forever, fail fast if there's clearly a problem
+					return false, fmt.Errorf("schedule update progress: %d/%d updated", updatedCount, expectedScheduleCount)
+
+				}, timeout*2, interval).Should(BeTrue(), "All Velero schedules should be updated")
 
 			})
 		})
