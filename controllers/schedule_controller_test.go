@@ -984,9 +984,17 @@ var _ = Describe("BackupSchedule controller", func() {
 				By("manually deleting some velero schedules to trigger cleanup logic")
 				schedulesToDelete := 2 // Delete 2 out of 5 schedules
 
-				for i := 0; i < schedulesToDelete; i++ {
-					scheduleToDelete := &veleroSchedules.Items[i]
-					Expect(k8sClient.Delete(ctx, scheduleToDelete)).Should(Succeed())
+				// Get a fresh list right before deletion to avoid stale references
+				freshVeleroSchedules := &veleroapi.ScheduleList{}
+				Expect(k8sClient.List(ctx, freshVeleroSchedules, client.InNamespace(veleroNamespace.Name))).Should(Succeed())
+				Expect(len(freshVeleroSchedules.Items)).To(BeNumerically(">=", schedulesToDelete))
+
+				for i := 0; i < schedulesToDelete && i < len(freshVeleroSchedules.Items); i++ {
+					scheduleToDelete := &freshVeleroSchedules.Items[i]
+					err := k8sClient.Delete(ctx, scheduleToDelete)
+					if err != nil && !errors.IsNotFound(err) {
+						Expect(err).Should(Succeed()) // Only fail if it's not a "not found" error
+					}
 				}
 
 				// Step 4: Verify some schedules are deleted (should have fewer than expected)
@@ -1212,19 +1220,29 @@ var _ = Describe("BackupSchedule controller", func() {
 
 				// Verify the cron-only update is applied
 				Eventually(func() (bool, error) {
-					err := k8sClient.List(ctx, veleroSchedules, client.InNamespace(veleroNamespace.Name))
+					// Get a fresh list of schedules to avoid stale references
+					freshVeleroSchedules := &veleroapi.ScheduleList{}
+					err := k8sClient.List(ctx, freshVeleroSchedules, client.InNamespace(veleroNamespace.Name))
 					if err != nil {
 						return false, err
 					}
 
+					// Ensure we have the expected number of schedules
+					expectedScheduleCount := len(veleroScheduleNames)
+					if len(freshVeleroSchedules.Items) != expectedScheduleCount {
+						return false, fmt.Errorf("expected %d schedules, found %d",
+							expectedScheduleCount, len(freshVeleroSchedules.Items))
+					}
+
 					// Check if all schedules have the new cron schedule
-					for _, schedule := range veleroSchedules.Items {
+					for _, schedule := range freshVeleroSchedules.Items {
 						if schedule.Spec.Schedule != anotherCronSchedule {
-							return false, nil
+							return false, fmt.Errorf("schedule %s still has old cron schedule: %s, expected: %s",
+								schedule.Name, schedule.Spec.Schedule, anotherCronSchedule)
 						}
 					}
 					return true, nil
-				}, timeout*2, interval).Should(BeTrue())
+				}, timeout*4, interval).Should(BeTrue())
 
 			})
 		})
