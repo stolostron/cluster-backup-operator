@@ -10,7 +10,7 @@ require (
 	github.com/openshift/hive/apis v0.0.0-20250806195719-4929f16c1e4a
 	github.com/pkg/errors v0.9.1
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/vmware-tanzu/velero v1.14.0
+	github.com/vmware-tanzu/velero v1.16.2
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.33.3
