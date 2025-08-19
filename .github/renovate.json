@@ -21,13 +21,13 @@
       "matchManagers": [
         "gomod"
       ],
-      "enabled": false,
-      "vulnerabilityAlerts": {
-        "enabled": true
-      },
-      "osvVulnerabilityAlerts": true
+      "enabled": false
     }
   ],
+  "vulnerabilityAlerts": {
+    "enabled": true
+  },
+  "osvVulnerabilityAlerts": true,
   "rebaseWhen": "behind-base-branch",
   "prConcurrentLimit": 0,
   "timezone": "America/New_York",
