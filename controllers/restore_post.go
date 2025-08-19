@@ -115,6 +115,7 @@ func deleteObsClientCert(
 // this is a dummy backup, its only purpose being to share with all hubs using
 // the current backup storage location
 // that a restore of managed clusters has been completed on this hub
+// nolint:funlen
 func recordClustersRestoreOperation(
 	ctx context.Context,
 	c client.Client,
@@ -225,6 +226,7 @@ func cleanupDeltaResources(
 	return processed
 }
 
+// nolint:funlen
 func cleanupDeltaForCredentials(
 	ctx context.Context,
 	c client.Client,
@@ -424,6 +426,7 @@ func cleanupDeltaForClustersBackup(
 	deleteDynamicResourcesForBackup(ctx, c, restoreOptions, veleroBackup, "")
 }
 
+// nolint:funlen
 func deleteDynamicResourcesForBackup(
 	ctx context.Context,
 	c client.Client,
