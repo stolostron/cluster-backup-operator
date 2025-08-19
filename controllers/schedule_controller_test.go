@@ -1280,9 +1280,8 @@ var _ = Describe("BackupSchedule controller", func() {
 						return true, nil
 					}
 
-					// Early failure if no progress after reasonable time - indicates a real issue
-					// Instead of waiting forever, fail fast if there's clearly a problem
-					return false, fmt.Errorf("schedule update progress: %d/%d updated", updatedCount, expectedScheduleCount)
+					// Keep polling without treating partial progress as an error
+					return false, nil
 
 				}, timeout*2, interval).Should(BeTrue(), "All Velero schedules should be updated")
 
