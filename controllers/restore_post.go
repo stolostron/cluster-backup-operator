@@ -614,10 +614,10 @@ func postRestoreActivation(
 			autoImportSecret.GetLabels() != nil &&
 			autoImportSecret.GetLabels()[activateLabel] == "true" {
 
-			msg := fmt.Sprintf(fmt.Sprintf(
+			msg := fmt.Sprintf(
 				"failed to delete the auto-import-secret from namespace %s",
 				clusterName,
-			))
+			)
 			// found secret
 			if err := c.Delete(ctx, autoImportSecret); err == nil {
 				msg = "deleted auto-import-secret from namespace " + clusterName
