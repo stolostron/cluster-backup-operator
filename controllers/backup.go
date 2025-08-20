@@ -413,7 +413,7 @@ func getResourcesByBackupType(
 
 func isBackupFinished(backups []*veleroapi.Backup) bool {
 
-	if backups == nil || len(backups) <= 0 {
+	if len(backups) <= 0 {
 		return false
 	}
 

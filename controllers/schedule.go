@@ -397,6 +397,7 @@ func isRestoreRunning(
 	return restoreName
 }
 
+// nolint:funlen
 func createInitialBackupForSchedule(
 	ctx context.Context,
 	c client.Client,
