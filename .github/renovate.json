@@ -26,6 +26,17 @@
       }
     ]
   },
+  "dockerfile": {
+    "managerFilePatterns": ["Dockerfile.rhtap"],
+    "ignorePaths": ["**/Dockerfile"],
+    "pinDigests": true
+  },
+  "packageRules": [
+    {
+      "groupName": "containerfile images",
+      "matchManagers": ["dockerfile"]
+    }
+  ],
   "vulnerabilityAlerts": {
     "enabled": true
   },
