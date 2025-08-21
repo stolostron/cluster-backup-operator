@@ -60,7 +60,7 @@ jobs:
         contains(github.event.review.body, '@gemini-cli /review') &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)
       )
-    timeout-minutes: 5
+    timeout-minutes: 10
     runs-on: 'ubuntu-latest'
 
     steps:
