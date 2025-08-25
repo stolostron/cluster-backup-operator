@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/go-logr/logr v1.4.3
 	github.com/onsi/ginkgo/v2 v2.25.1
-	github.com/onsi/gomega v1.38.0
+	github.com/onsi/gomega v1.38.1
 	github.com/openshift/api v0.0.0-20250313134101-8a7efbfb5316 // release 4.13
 	github.com/openshift/hive/apis v0.0.0-20250824190819-2c81289297f7
 	github.com/pkg/errors v0.9.1
@@ -78,7 +78,7 @@ require (
 )
 
 require (
-	github.com/Masterminds/semver/v3 v3.3.1 // indirect
+	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 )
