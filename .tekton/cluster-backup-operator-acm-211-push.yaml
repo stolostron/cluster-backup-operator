@@ -40,6 +40,14 @@ spec:
     value: Dockerfile.rhtap
   - name: path-context
     value: .
+  - name: send-slack-notification
+    value: "true"
+  - name: konflux-application-name
+    value: "release-acm-211"
+  - name: slack-webhook-url-secret-name
+    value: "backup-team-slack-notification-secret"
+  - name: slack-webhook-url-secret-key
+    value: "backup-team"
   pipelineRef:
     resolver: git
     params:
