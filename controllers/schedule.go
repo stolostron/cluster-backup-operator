@@ -172,6 +172,29 @@ func isScheduleSpecUpdated(
 	return updated
 }
 
+// isScheduleTTLUpdated checks if only TTL-related changes occurred in the schedule spec
+func isScheduleTTLUpdated(
+	schedules *veleroapi.ScheduleList,
+	backupSchedule *v1beta1.BackupSchedule,
+) bool {
+	if schedules == nil || len(schedules.Items) <= 0 {
+		return false
+	}
+
+	for i := range schedules.Items {
+		veleroSchedule := &schedules.Items[i]
+
+		// validation backup TTL should be ignored here
+		// since that one is using the schedule's cron job interval
+		if veleroSchedule.Name != veleroScheduleNames[ValidationSchedule] &&
+			veleroSchedule.Spec.Template.TTL.Duration != backupSchedule.Spec.VeleroTTL.Duration {
+			return true
+		}
+	}
+
+	return false
+}
+
 func getSchedulesWithUpdatedResources(
 	resourcesToBackup []string,
 	schedules *veleroapi.ScheduleList,
@@ -544,11 +567,12 @@ func isVeleroSchedulesUpdateRequired(
 	resourcesToBackup []string,
 	veleroScheduleList veleroapi.ScheduleList,
 	backupSchedule *v1beta1.BackupSchedule,
-) (ctrl.Result, bool, error) {
+) (bool, error) {
 	scheduleLogger := log.FromContext(ctx)
 
 	// update velero schedules if cron schedule or ttl is changed on the backupSchedule
-	if isScheduleSpecUpdated(&veleroScheduleList, backupSchedule) {
+	scheduleSpecUpdated := isScheduleSpecUpdated(&veleroScheduleList, backupSchedule)
+	if scheduleSpecUpdated {
 		scheduleLogger.Info(
 			fmt.Sprintf("Updating Velero schedules spec based on %s spec ", backupSchedule.Name),
 		)
@@ -556,10 +580,19 @@ func isVeleroSchedulesUpdateRequired(
 		for i := range veleroScheduleList.Items {
 			veleroSchedule := &veleroScheduleList.Items[i]
 			if err := c.Update(ctx, veleroSchedule, &client.UpdateOptions{}); err != nil {
-				return ctrl.Result{}, true, err
+				return true, err
 			}
 		}
-		return ctrl.Result{RequeueAfter: collisionControlInterval}, true, nil
+
+		// Refresh the velero schedule list after updating specs to get latest state
+		refreshedScheduleList := veleroapi.ScheduleList{}
+		if err := c.List(ctx, &refreshedScheduleList,
+			client.InNamespace(backupSchedule.Namespace),
+			client.MatchingLabels{BackupScheduleNameLabel: backupSchedule.Name}); err != nil {
+			return true, err
+		}
+		// Update the list for resource comparison
+		veleroScheduleList = refreshedScheduleList
 	}
 
 	// update backup resources on velero schedules if any changes in hub resources
@@ -573,13 +606,18 @@ func isVeleroSchedulesUpdateRequired(
 				),
 			)
 			if err := c.Update(ctx, &schedulesToBeUpdated[i], &client.UpdateOptions{}); err != nil {
-				return ctrl.Result{}, true, err
+				return true, err
 			}
 		}
-		return ctrl.Result{RequeueAfter: collisionControlInterval}, true, nil
 	}
 
-	return ctrl.Result{}, false, nil
+	// schedules and resources have been updated successfully
+	// caller will refresh the schedule list and continue processing
+	if scheduleSpecUpdated || len(schedulesToBeUpdated) > 0 {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 // returns true if there was a passive activation after this schedule was created

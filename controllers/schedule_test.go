@@ -864,7 +864,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 			testClient := CreateDeleteVeleroSchedulesTestClient(tt.name, &veleroNamespace, veleroSchedulesUpdate)
 			tt.args.c = testClient
 
-			_, got, err := isVeleroSchedulesUpdateRequired(tt.args.ctx, tt.args.c, tt.args.resourcesToBackup,
+			got, err := isVeleroSchedulesUpdateRequired(tt.args.ctx, tt.args.c, tt.args.resourcesToBackup,
 				*tt.args.schedules, tt.args.backupSchedule)
 			if got != tt.want {
 				t.Errorf(
@@ -1885,6 +1885,202 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 				t.Errorf("isRestoreHubAfterSchedule() expected message but got empty string")
 			} else if !tt.wantMessage && msg != "" {
 				t.Errorf("isRestoreHubAfterSchedule() expected no message but got: %s", msg)
+			}
+		})
+	}
+}
+
+func Test_isScheduleTTLUpdated(t *testing.T) {
+	type args struct {
+		schedules      *veleroapi.ScheduleList
+		backupSchedule *backupv1beta1.BackupSchedule
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "nil schedules should return false",
+			args: args{
+				schedules: nil,
+				backupSchedule: &backupv1beta1.BackupSchedule{
+					Spec: backupv1beta1.BackupScheduleSpec{
+						VeleroTTL: metav1.Duration{Duration: time.Hour * 72},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "empty schedules should return false",
+			args: args{
+				schedules: &veleroapi.ScheduleList{
+					Items: []veleroapi.Schedule{},
+				},
+				backupSchedule: &backupv1beta1.BackupSchedule{
+					Spec: backupv1beta1.BackupScheduleSpec{
+						VeleroTTL: metav1.Duration{Duration: time.Hour * 72},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "schedules with same TTL should return false",
+			args: args{
+				schedules: &veleroapi.ScheduleList{
+					Items: []veleroapi.Schedule{
+						{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: "test-schedule-acm-managed-clusters",
+							},
+							Spec: veleroapi.ScheduleSpec{
+								Template: veleroapi.BackupSpec{
+									TTL: metav1.Duration{Duration: time.Hour * 72},
+								},
+							},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: "test-schedule-acm-resources",
+							},
+							Spec: veleroapi.ScheduleSpec{
+								Template: veleroapi.BackupSpec{
+									TTL: metav1.Duration{Duration: time.Hour * 72},
+								},
+							},
+						},
+					},
+				},
+				backupSchedule: &backupv1beta1.BackupSchedule{
+					Spec: backupv1beta1.BackupScheduleSpec{
+						VeleroTTL: metav1.Duration{Duration: time.Hour * 72},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "schedules with different TTL should return true",
+			args: args{
+				schedules: &veleroapi.ScheduleList{
+					Items: []veleroapi.Schedule{
+						{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: "test-schedule-acm-managed-clusters",
+							},
+							Spec: veleroapi.ScheduleSpec{
+								Template: veleroapi.BackupSpec{
+									TTL: metav1.Duration{Duration: time.Hour * 48}, // Different from BackupSchedule
+								},
+							},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: "test-schedule-acm-resources",
+							},
+							Spec: veleroapi.ScheduleSpec{
+								Template: veleroapi.BackupSpec{
+									TTL: metav1.Duration{Duration: time.Hour * 72}, // Same as BackupSchedule
+								},
+							},
+						},
+					},
+				},
+				backupSchedule: &backupv1beta1.BackupSchedule{
+					Spec: backupv1beta1.BackupScheduleSpec{
+						VeleroTTL: metav1.Duration{Duration: time.Hour * 72},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "validation schedule should be ignored even with different TTL",
+			args: args{
+				schedules: &veleroapi.ScheduleList{
+					Items: []veleroapi.Schedule{
+						{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: "acm-validation-policy-schedule", // This is the validation schedule
+							},
+							Spec: veleroapi.ScheduleSpec{
+								Template: veleroapi.BackupSpec{
+									TTL: metav1.Duration{Duration: time.Hour * 24}, // Different TTL but should be ignored
+								},
+							},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: "test-schedule-acm-resources",
+							},
+							Spec: veleroapi.ScheduleSpec{
+								Template: veleroapi.BackupSpec{
+									TTL: metav1.Duration{Duration: time.Hour * 72}, // Same as BackupSchedule
+								},
+							},
+						},
+					},
+				},
+				backupSchedule: &backupv1beta1.BackupSchedule{
+					Spec: backupv1beta1.BackupScheduleSpec{
+						VeleroTTL: metav1.Duration{Duration: time.Hour * 72},
+					},
+				},
+			},
+			want: false, // Should return false because validation schedule is ignored
+		},
+		{
+			name: "multiple schedules - one different TTL should return true",
+			args: args{
+				schedules: &veleroapi.ScheduleList{
+					Items: []veleroapi.Schedule{
+						{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: "acm-validation-policy-schedule", // Validation schedule - ignored
+							},
+							Spec: veleroapi.ScheduleSpec{
+								Template: veleroapi.BackupSpec{
+									TTL: metav1.Duration{Duration: time.Hour * 24},
+								},
+							},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: "test-schedule-acm-managed-clusters",
+							},
+							Spec: veleroapi.ScheduleSpec{
+								Template: veleroapi.BackupSpec{
+									TTL: metav1.Duration{Duration: time.Hour * 72}, // Same as BackupSchedule
+								},
+							},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: "test-schedule-acm-resources",
+							},
+							Spec: veleroapi.ScheduleSpec{
+								Template: veleroapi.BackupSpec{
+									TTL: metav1.Duration{Duration: time.Hour * 96}, // Different from BackupSchedule
+								},
+							},
+						},
+					},
+				},
+				backupSchedule: &backupv1beta1.BackupSchedule{
+					Spec: backupv1beta1.BackupScheduleSpec{
+						VeleroTTL: metav1.Duration{Duration: time.Hour * 72},
+					},
+				},
+			},
+			want: true, // Should return true because one non-validation schedule has different TTL
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isScheduleTTLUpdated(tt.args.schedules, tt.args.backupSchedule); got != tt.want {
+				t.Errorf("isScheduleTTLUpdated() = %v, want %v", got, tt.want)
 			}
 		})
 	}

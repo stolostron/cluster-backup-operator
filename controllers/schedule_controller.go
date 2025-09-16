@@ -27,8 +27,10 @@ import (
 	"github.com/pkg/errors"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
@@ -234,9 +236,22 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 
 	// check for any updates that are required for velero schedules based on backupSchedule and hub resources
-	if result, updated, err := isVeleroSchedulesUpdateRequired(ctx, r.Client,
+	if updated, err := isVeleroSchedulesUpdateRequired(ctx, r.Client,
 		getResourcesToBackup(ctx, r.DiscoveryClient), veleroScheduleList, backupSchedule); updated {
-		return result, err
+
+		// if MSA is enabled, check if TTL specifically changed and update MSA tokens only then
+		if backupSchedule.Spec.UseManagedServiceAccount &&
+			isScheduleTTLUpdated(&veleroScheduleList, backupSchedule) {
+			r.updateMSATokens(ctx, mapper, backupSchedule)
+		}
+
+		// handle any errors from the update process or requeue to update schedules
+		if err != nil {
+			return ctrl.Result{}, err
+		} else {
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+		}
+
 	}
 
 	// velero schedules already exist, update schedule status with latest velero schedules
@@ -479,4 +494,75 @@ func (r *BackupScheduleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			},
 		}).
 		Complete(r)
+}
+
+// updateMSATokens updates MSA tokens by finding them using label selectors
+// This is more efficient than iterating through managed clusters since it targets MSA resources directly
+// This function is designed to be resilient and logs errors instead of returning them
+func (r *BackupScheduleReconciler) updateMSATokens(
+	ctx context.Context,
+	mapper meta.RESTMapper,
+	backupSchedule *v1beta1.BackupSchedule,
+) {
+	logger := log.FromContext(ctx)
+
+	// Calculate token validity based on BackupSchedule TTL settings
+	const defaultTTL = 720
+	tokenValidity := fmt.Sprintf("%vh0m0s", defaultTTL*2)
+	if backupSchedule.Spec.VeleroTTL.Duration != 0 {
+		tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.VeleroTTL.Duration*2)
+	}
+	if backupSchedule.Spec.ManagedServiceAccountTTL.Duration != 0 {
+		tokenValidity = fmt.Sprintf("%v", backupSchedule.Spec.ManagedServiceAccountTTL.Duration)
+	}
+
+	// Setup dynamic client for MSA resources
+	if r.DynamicClient == nil {
+		logger.Info("Dynamic client is nil, skipping MSA token update (expected in test environments)")
+		return
+	}
+
+	gvk := schema.GroupVersionKind{Group: msa_group, Version: "v1beta1", Kind: msa_kind}
+
+	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+	if err != nil {
+		logger.Info("ManagedServiceAccount CRD not available, skipping MSA token update",
+			"error", err.Error())
+		return
+	}
+
+	dr := r.DynamicClient.Resource(mapping.Resource)
+
+	// Use label selector to find all MSA resources, both "auto-import-account" and "auto-import-account-pair"
+	labelSelector := fmt.Sprintf("%s=%s", msa_label, msa_service_name)
+	listOptions := metav1.ListOptions{LabelSelector: labelSelector}
+
+	msaList, err := dr.List(ctx, listOptions)
+	if err != nil {
+		logger.Info("Failed to list MSA resources, skipping MSA token update", "error", err.Error())
+		return // Don't fail the entire reconcile
+	}
+
+	logger.Info("Found MSA resources for token TTL update", "count", len(msaList.Items))
+	updatedCount, errorCount := 0, 0
+
+	for i := range msaList.Items {
+		msaObj := &msaList.Items[i]
+		namespace, name := msaObj.GetNamespace(), msaObj.GetName()
+
+		if tokenUpdated, updateErr := updateMSAToken(ctx, dr, msaObj, name, namespace, tokenValidity); updateErr != nil {
+			logger.Error(updateErr, "Failed to update MSA token", "namespace", namespace, "name", name)
+			errorCount++
+		} else if tokenUpdated {
+			logger.Info("Updated MSA token TTL", "namespace", namespace, "name", name, "newTTL", tokenValidity)
+			updatedCount++
+		} else {
+			// No error, but no update needed (token already has correct validity)
+			logger.Info("MSA token TTL already up-to-date", "namespace", namespace, "name", name,
+				"currentTTL", tokenValidity)
+		}
+	}
+
+	logger.Info("MSA token TTL update completed", "updated", updatedCount, "errors", errorCount,
+		"total", len(msaList.Items))
 }
