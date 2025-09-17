@@ -24,7 +24,8 @@ RUN CGO_ENABLED=1 GOFLAGS='-mod=readonly' go build -tags strictfipsruntime -a -o
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM registry.redhat.io/ubi9/ubi-minimal:latest@sha256:2f06ae0e6d3d9c4f610d32c480338eef474867f435d8d28625f2985e8acde6e8
 LABEL \
-    name="cluster-backup-operator" \
+    name="rhacm2/cluster-backup-rhel9-operator" \
+    cpe="cpe:/a:redhat:acm:2.12::el9" \
     com.redhat.component="cluster-backup-operator" \
     description="The Cluster Backup and Restore Operator runs on the hub cluster, providing disaster recovery \
     solutions for Red Hat Advanced Cluster Management in the event of hub cluster failures." \
