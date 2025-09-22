@@ -26,7 +26,6 @@ import (
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
-	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -284,102 +283,95 @@ func isHiveCreatedCluster(
 	return nbOfSecrets > 0
 }
 
-func findValidMSAToken(
-	secrets []corev1.Secret,
-	currentTime time.Time,
-) string {
-	accessToken := ""
-
-	// find MSA secrets in this namespace
-	if len(secrets) == 0 {
-		return accessToken
+// selectValidMSASecret selects a valid MSA secret for a cluster based on expiration and creation time
+// always return a secret to try the auto import as the MSA token annotation is not updated in real time,
+// so there might be tokens with an invalid annotation for which the MSA expiration was extended
+// (MSA updates token expiration about 20% before the remaining lifetime threshold))
+// So, if only one MSA secret, use it regardless of the expiration annotation - that could be outdated
+// if none of the secrets have a valid expiration annotation, use the most recent one as a last resort
+func selectValidMSASecret(msaSecrets []corev1.Secret, currentTime time.Time) *corev1.Secret {
+	if len(msaSecrets) == 0 {
+		return nil
 	}
-	// go through MSA secrets and try to find one having a valid token
-	for s := range secrets {
-		secret := secrets[s]
+
+	if len(msaSecrets) == 1 {
+		// Single MSA secret - use it regardless of expiration annotation
+		return &msaSecrets[0]
+	}
+
+	// Two MSA secrets - check expiration priority
+	for i := range msaSecrets {
+		secret := &msaSecrets[i]
+
+		// Check if this secret has a valid expiration timestamp
 		annotations := secret.GetAnnotations()
-		if annotations == nil {
-			continue
-		}
-		tokenExpiry := annotations["expirationTimestamp"]
-		if tokenExpiry == "" {
-			continue
-		}
-		expiryTime, err := time.Parse(time.RFC3339, tokenExpiry)
-		if err != nil || expiryTime.IsZero() {
-			continue
-		}
-		if expiryTime.After(currentTime) {
-			if err = yaml.Unmarshal(secret.Data["token"], &accessToken); err == nil {
-				if accessToken != "" {
-					// secret has token value
-					break
+		if annotations != nil {
+			tokenExpiry := annotations["expirationTimestamp"]
+			if tokenExpiry != "" {
+				expiryTime, err := time.Parse(time.RFC3339, tokenExpiry)
+				if err == nil && !expiryTime.IsZero() && expiryTime.After(currentTime) {
+					// Found a valid secret, return it immediately
+					return secret
 				}
 			}
 		}
 	}
 
-	return accessToken
+	// All secrets are invalid - return the most recently created one
+	mostRecent := &msaSecrets[0]
+	for i := 1; i < len(msaSecrets); i++ {
+		if msaSecrets[i].CreationTimestamp.After(mostRecent.CreationTimestamp.Time) {
+			mostRecent = &msaSecrets[i]
+		}
+	}
+
+	return mostRecent
 }
 
 // returns true if the managed cluster
 // needs to be reimported
 func managedClusterShouldReimport(
 	ctx context.Context,
-	managedClusters []clusterv1.ManagedCluster,
-	clusterName string,
+	managedCluster clusterv1.ManagedCluster,
 ) (bool, string, string) {
 	logger := log.FromContext(ctx)
 
 	url := ""
-
-	for i := range managedClusters {
-
-		managedCluster := managedClusters[i]
-
-		if clusterName != managedCluster.Name {
-			// find the cluster by name
-			continue
-		}
-
-		if isLocalCluster(&managedCluster) {
-			// skip local-cluster
-			return false, url, ""
-		}
-
-		// skip available managed clusters
-		isManagedClusterAvailable := false
-		for _, condition := range managedCluster.Status.Conditions {
-			if condition.Type == "ManagedClusterConditionAvailable" &&
-				condition.Status == metav1.ConditionTrue {
-				isManagedClusterAvailable = true
-				break
-			}
-		}
-		if isManagedClusterAvailable {
-			msg := fmt.Sprintf("managed cluster %s already available",
-				managedCluster.Name)
-
-			logger.Info(msg)
-			return false, url, msg
-		}
-
-		// if empty, the managed cluster has no accessible address for the hub to connect with it
-		if len(managedCluster.Spec.ManagedClusterClientConfigs) == 0 ||
-			managedCluster.Spec.ManagedClusterClientConfigs[0].URL == "" {
-			msg := fmt.Sprintf("Cannot reimport cluster %s, no serverUrl property",
-				managedCluster.Name)
-
-			logger.Info(msg)
-
-			return false, url, msg
-		}
-
-		url = managedCluster.Spec.ManagedClusterClientConfigs[0].URL
-		return true, url, ""
+	if isLocalCluster(&managedCluster) {
+		// skip local-cluster
+		return false, url, ""
 	}
 
-	return false, url, ""
+	// skip available managed clusters
+	isManagedClusterAvailable := false
+	for _, condition := range managedCluster.Status.Conditions {
+		if condition.Type == "ManagedClusterConditionAvailable" &&
+			condition.Status == metav1.ConditionTrue {
+			isManagedClusterAvailable = true
+			break
+		}
+	}
+	if isManagedClusterAvailable {
+		msg := fmt.Sprintf("managed cluster %s already available",
+			managedCluster.Name)
+
+		logger.Info(msg)
+		return false, url, msg
+	}
+
+	// if empty, the managed cluster has no accessible address for the hub to connect with it
+	if len(managedCluster.Spec.ManagedClusterClientConfigs) == 0 ||
+		managedCluster.Spec.ManagedClusterClientConfigs[0].URL == "" {
+		msg := fmt.Sprintf("Cannot reimport cluster %s, no serverUrl property",
+			managedCluster.Name)
+
+		logger.Info(msg)
+
+		return false, url, msg
+	}
+
+	url = managedCluster.Spec.ManagedClusterClientConfigs[0].URL
+	return true, url, ""
 }
 
 func VeleroCRDsPresent(

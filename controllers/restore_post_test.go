@@ -195,6 +195,101 @@ func Test_postRestoreActivation(t *testing.T) {
 			want: []string{},
 		},
 		{
+			name: "skip local cluster in clustersWithMSASecrets loop",
+			args: args{
+				ctx:         context.Background(),
+				currentTime: current,
+				managedClusters: []clusterv1.ManagedCluster{
+					*createManagedCluster("local-cluster", true).object,
+				},
+				secrets: []corev1.Secret{
+					*createSecret("auto-import-account", "local-cluster",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
+							"token": []byte("YWRtaW4="),
+						}),
+				},
+			},
+			want: []string{},
+		},
+		{
+			name: "managed cluster not found for MSA secret",
+			args: args{
+				ctx:         context.Background(),
+				currentTime: current,
+				managedClusters: []clusterv1.ManagedCluster{
+					*createManagedCluster("local-cluster", true).object,
+					*createManagedCluster("different-cluster", false).object,
+				},
+				secrets: []corev1.Secret{
+					*createSecret("auto-import-account", "missing-cluster",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
+							"token": []byte("YWRtaW4="),
+						}),
+				},
+			},
+			want: []string{},
+		},
+		{
+			name: "invalid token data in MSA secret - yaml unmarshal error",
+			args: args{
+				ctx:         context.Background(),
+				currentTime: current,
+				managedClusters: []clusterv1.ManagedCluster{
+					*createManagedCluster("local-cluster", true).object,
+					*createManagedCluster("managed-activ-1", false).
+						clusterUrl("someurl").
+						conditions([]metav1.Condition{
+							metav1.Condition{
+								Status: metav1.ConditionFalse,
+							},
+						}).object,
+				},
+				secrets: []corev1.Secret{
+					*createSecret("auto-import-account", "managed-activ-1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
+							"token": []byte("invalid-yaml-data: [unclosed"),
+						}),
+				},
+			},
+			want: []string{},
+		},
+		{
+			name: "empty token data in MSA secret",
+			args: args{
+				ctx:         context.Background(),
+				currentTime: current,
+				managedClusters: []clusterv1.ManagedCluster{
+					*createManagedCluster("local-cluster", true).object,
+					*createManagedCluster("managed-activ-1", false).
+						clusterUrl("someurl").
+						conditions([]metav1.Condition{
+							metav1.Condition{
+								Status: metav1.ConditionFalse,
+							},
+						}).object,
+				},
+				secrets: []corev1.Secret{
+					*createSecret("auto-import-account", "managed-activ-1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
+							"token": []byte(""),
+						}),
+				},
+			},
+			want: []string{},
+		},
+		{
 			name: "create auto import for managed-activ-1 cluster",
 			args: args{
 				ctx:         context.Background(),
@@ -244,6 +339,103 @@ func Test_postRestoreActivation(t *testing.T) {
 				},
 			},
 			want: []string{"managed-activ-1"},
+		},
+		{
+			name: "delete existing auto-import-secret with activate label before creating new one",
+			args: args{
+				ctx:         context.Background(),
+				currentTime: current,
+				managedClusters: []clusterv1.ManagedCluster{
+					*createManagedCluster("local-cluster", true).object,
+					*createManagedCluster("managed-activ-1", false).
+						clusterUrl("someurl").
+						conditions([]metav1.Condition{
+							metav1.Condition{
+								Status: metav1.ConditionFalse,
+							},
+						}).object,
+				},
+				secrets: []corev1.Secret{
+					*createSecret("auto-import-account", "managed-activ-1",
+						nil, map[string]string{
+							"lastRefreshTimestamp": fourHoursAgo,
+							"expirationTimestamp":  nextTenHours,
+						}, map[string][]byte{
+							"token": []byte("YWRtaW4="),
+						}),
+				},
+			},
+			want: []string{"managed-activ-1"},
+		},
+		{
+			name: "multiple clusters with MSA secrets - mixed scenarios",
+			args: args{
+				ctx:         context.Background(),
+				currentTime: current,
+				managedClusters: []clusterv1.ManagedCluster{
+					*createManagedCluster("local-cluster", true).object,
+					*createManagedCluster("cluster-active", false).clusterUrl("someurl").
+						conditions([]metav1.Condition{
+							metav1.Condition{
+								Status: metav1.ConditionTrue,
+								Type:   "ManagedClusterConditionAvailable",
+							},
+						}).object,
+					*createManagedCluster("cluster-no-url", false).emptyClusterUrl().
+						conditions([]metav1.Condition{
+							metav1.Condition{
+								Status: metav1.ConditionFalse,
+							},
+						}).object,
+					*createManagedCluster("cluster-valid", false).
+						clusterUrl("someurl").
+						conditions([]metav1.Condition{
+							metav1.Condition{
+								Status: metav1.ConditionFalse,
+							},
+						}).object,
+					*createManagedCluster("cluster-invalid-token", false).
+						clusterUrl("someurl").
+						conditions([]metav1.Condition{
+							metav1.Condition{
+								Status: metav1.ConditionFalse,
+							},
+						}).object,
+				},
+				secrets: []corev1.Secret{
+					*createSecret("auto-import-account", "local-cluster",
+						nil, map[string]string{
+							"expirationTimestamp": nextTenHours,
+						}, map[string][]byte{
+							"token": []byte("YWRtaW4="),
+						}),
+					*createSecret("auto-import-account", "cluster-active",
+						nil, map[string]string{
+							"expirationTimestamp": nextTenHours,
+						}, map[string][]byte{
+							"token": []byte("YWRtaW4="),
+						}),
+					*createSecret("auto-import-account", "cluster-no-url",
+						nil, map[string]string{
+							"expirationTimestamp": nextTenHours,
+						}, map[string][]byte{
+							"token": []byte("YWRtaW4="),
+						}),
+					*createSecret("auto-import-account", "cluster-valid",
+						nil, map[string]string{
+							"expirationTimestamp": nextTenHours,
+						}, map[string][]byte{
+							"token": []byte("YWRtaW4="),
+						}),
+					*createSecret("auto-import-account", "cluster-invalid-token",
+						nil, map[string]string{
+							"expirationTimestamp": nextTenHours,
+						}, map[string][]byte{
+							"token": []byte("invalid-yaml: ["),
+						}),
+				},
+			},
+			want: []string{"cluster-valid"},
 		},
 	}
 
