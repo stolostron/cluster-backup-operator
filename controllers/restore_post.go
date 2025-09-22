@@ -23,6 +23,7 @@ import (
 
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -582,30 +583,17 @@ func postRestoreActivation(
 
 	activationMessages := []string{}
 
-	processedClusters := []string{}
-	for s := range msaSecrets {
-		secret := msaSecrets[s]
+	// Loop through managed clusters
+	for i := range managedClusters {
+		managedCluster := managedClusters[i]
+		clusterName := managedCluster.Name
 
-		clusterName := secret.Namespace
-		if findValue(processedClusters, clusterName) ||
-			clusterName == localClusterName {
+		// Check if cluster should be reimported
+		if clusterName == localClusterName {
 			// this cluster should not be processed
 			continue
 		}
-		accessToken := ""
-		if accessToken = findValidMSAToken([]corev1.Secret{secret}, currentTime); accessToken == "" {
-			// this secret should not be processed
-			msg := fmt.Sprintf("Skip MSA access token for secret (%s:%s) no loger valid!",
-				secret.Namespace, secret.Name)
-			activationMessages = append(activationMessages, msg)
-			logger.Info(msg)
-			continue
-		}
-
-		// found a valid access token for this cluster name, add it to the list
-		processedClusters = append(processedClusters, clusterName)
-
-		reimport, url, message := managedClusterShouldReimport(ctx, managedClusters, clusterName)
+		reimport, url, message := managedClusterShouldReimport(ctx, managedCluster)
 		if message != "" {
 			activationMessages = append(activationMessages, message)
 		}
@@ -618,6 +606,32 @@ func postRestoreActivation(
 					clusterName,
 				),
 			)
+			continue
+		}
+
+		// Get MSA secrets for this cluster
+		var clusterMSASecrets []corev1.Secret
+		for _, secret := range msaSecrets {
+			if secret.Namespace == clusterName {
+				clusterMSASecrets = append(clusterMSASecrets, secret)
+			}
+		}
+
+		selectedSecret := selectValidMSASecret(clusterMSASecrets, currentTime)
+		if selectedSecret == nil {
+			msg := fmt.Sprintf("No suitable MSA secret found for cluster (%s)", clusterName)
+			activationMessages = append(activationMessages, msg)
+			logger.Info(msg)
+			continue
+		}
+
+		// Extract access token from the selected secret
+		accessToken := ""
+		if err := yaml.Unmarshal(selectedSecret.Data["token"], &accessToken); err != nil || accessToken == "" {
+			msg := fmt.Sprintf("Skip MSA access token for cluster (%s) - invalid token data in secret (%s)",
+				clusterName, selectedSecret.Name)
+			activationMessages = append(activationMessages, msg)
+			logger.Info(msg)
 			continue
 		}
 

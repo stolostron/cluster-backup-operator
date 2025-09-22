@@ -433,150 +433,6 @@ func Test_getResourceDetails(t *testing.T) {
 	}
 }
 
-// Test_findValidMSAToken tests identification and validation of Managed Service Account tokens.
-//
-// This test validates the logic that finds valid MSA tokens from a collection
-// of secrets, ensuring proper authentication for backup operations.
-//
-// Test Coverage:
-// - MSA token discovery from secret collections
-// - Token expiration and validity checking
-// - Secret type filtering and validation
-// - Token metadata parsing and verification
-// - Time-based token validity assessment
-//
-// Test Scenarios:
-// - No secrets available for token discovery
-// - Secrets without valid expirationTimestamp annotations
-// - Secrets with invalid or malformed expiration times
-// - Expired MSA tokens that should be rejected
-// - Valid MSA tokens with proper expiration times and token data
-//
-// Implementation Details:
-// - Filters secrets by type to identify MSA tokens
-// - Parses token metadata for expiration information using RFC3339 format
-// - Compares current time against token expiration timestamps
-// - Validates presence of required token data in secret
-// - Returns the most appropriate valid token or empty string
-//
-// Business Logic:
-// Valid MSA token identification is crucial for authenticated backup operations,
-// ensuring that restore processes have proper credentials to access cluster resources.
-func Test_findValidMSAToken(t *testing.T) {
-	current, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
-	nextHour := "2022-07-26T16:25:34Z"
-	fourHoursAgo := "2022-07-26T11:25:34Z"
-
-	type args struct {
-		currentTime time.Time
-		secrets     []corev1.Secret
-	}
-	tests := []struct {
-		name string
-		args args
-		want string
-	}{
-		{
-			name: "MSA has no secrets",
-			args: args{
-				secrets: []corev1.Secret{},
-			},
-			want: "",
-		},
-		{
-			name: "MSA has secrets but no expirationTimestamp valid ",
-			args: args{
-				currentTime: current,
-				secrets: []corev1.Secret{
-					*createSecret("auto-import-no-annotations", "managed1",
-						nil, nil, nil),
-					*createSecret("auto-import-no-expiration", "managed1",
-						nil, map[string]string{
-							"lastRefreshTimestamp": "2022-07-26T15:25:34Z",
-						}, nil),
-					*createSecret("auto-import-invalid-expiration", "managed1",
-						nil, map[string]string{
-							"expirationTimestamp": "aaa",
-						}, nil),
-				},
-			},
-			want: "",
-		},
-		{
-			name: "MSA has secrets but expirationTimestamp is before current time ",
-			args: args{
-				currentTime: current,
-				secrets: []corev1.Secret{
-					*createSecret("auto-import-account", "managed1",
-						nil, map[string]string{
-							"expirationTimestamp": fourHoursAgo,
-						}, nil),
-				},
-			},
-			want: "",
-		},
-		{
-			name: "MSA has secrets with valid expirationTimestamp but no token",
-			args: args{
-				currentTime: current,
-				secrets: []corev1.Secret{
-					*createSecret("auto-import-account", "managed1",
-						nil, map[string]string{
-							"expirationTimestamp": nextHour,
-						}, map[string][]byte{
-							"token1": []byte("aaa"),
-						}),
-				},
-			},
-			want: "",
-		},
-		{
-			name: "MSA has secrets with valid expirationTimestamp and one valid token",
-			args: args{
-				currentTime: current,
-				secrets: []corev1.Secret{
-					*createSecret("auto-import-account", "managed1",
-						nil, map[string]string{
-							"expirationTimestamp": nextHour,
-						}, map[string][]byte{
-							"token1": []byte("aaa"),
-						}),
-					*createSecret("auto-import-account", "managed1",
-						nil, map[string]string{
-							"expirationTimestamp": nextHour,
-						}, map[string][]byte{
-							"token": []byte("YWRtaW4="),
-						}),
-				},
-			},
-			want: "YWRtaW4=",
-		},
-		{
-			name: "MSA has secrets with valid expirationTimestamp and with token",
-			args: args{
-				currentTime: current,
-				secrets: []corev1.Secret{
-					*createSecret("auto-import-account", "managed1",
-						nil, map[string]string{
-							"expirationTimestamp": nextHour,
-						}, map[string][]byte{
-							"token": []byte("YWRtaW4="),
-						}),
-				},
-			},
-			want: "YWRtaW4=",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := findValidMSAToken(tt.args.secrets, tt.args.currentTime); got != tt.want {
-				t.Errorf("findValidMSAToken() returns = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 // Test_managedClusterShouldReimport tests determination of whether managed clusters require reimport.
 //
 // This test validates the logic that determines when managed clusters should be
@@ -652,9 +508,8 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 	}
 
 	type args struct {
-		ctx             context.Context
-		clusterName     string
-		managedClusters []clusterv1.ManagedCluster
+		ctx            context.Context
+		managedCluster clusterv1.ManagedCluster
 	}
 	tests := []struct {
 		name string
@@ -665,63 +520,48 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 		{
 			name: "managed cluster is local cluster, ignore",
 			args: args{
-				ctx:             context.Background(),
-				managedClusters: managedClusters1,
-				clusterName:     "local-cluster",
+				ctx:            context.Background(),
+				managedCluster: managedClusters1[0], // local-cluster
 			},
 			want: false,
 		},
 		{
 			name: "managed cluster is local cluster (but not named 'local-cluster'), ignore",
 			args: args{
-				ctx:             context.Background(),
-				managedClusters: managedClusters1,
-				clusterName:     "test-local",
-			},
-			want: false,
-		},
-		{
-			name: "managed cluster name not in the list",
-			args: args{
-				ctx:             context.Background(),
-				managedClusters: managedClusters1,
-				clusterName:     "test3",
+				ctx:            context.Background(),
+				managedCluster: managedClusters1[1], // test-local
 			},
 			want: false,
 		},
 		{
 			name: "managed cluster has no url",
 			args: args{
-				ctx:             context.Background(),
-				managedClusters: managedClusters1,
-				clusterName:     "test1",
+				ctx:            context.Background(),
+				managedCluster: managedClusters1[2], // test1 from managedClusters1
 			},
 			want: false,
 		},
 		{
 			name: "managed cluster is available",
 			args: args{
-				ctx:             context.Background(),
-				managedClusters: managedClustersAvailable,
-				clusterName:     "test1",
+				ctx:            context.Background(),
+				managedCluster: managedClustersAvailable[0], // test1 with available condition
 			},
 			want: false,
 		},
 		{
 			name: "managed cluster is not available but has no url",
 			args: args{
-				ctx:             context.Background(),
-				managedClusters: managedClustersNOTAvailableNoURL,
-				clusterName:     "test1",
+				ctx:            context.Background(),
+				managedCluster: managedClustersNOTAvailableNoURL[0], // test1 not available, no URL
 			},
 			want: false,
 		},
 		{
 			name: "managed cluster is not available AND has url",
 			args: args{
-				ctx:             context.Background(),
-				managedClusters: managedClustersNOTAvailableWithURL,
-				clusterName:     "test1",
+				ctx:            context.Background(),
+				managedCluster: managedClustersNOTAvailableWithURL[0], // test1 not available, with URL
 			},
 			want: true,
 		},
@@ -730,7 +570,7 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got, _, _ := managedClusterShouldReimport(tt.args.ctx,
-				tt.args.managedClusters, tt.args.clusterName); got != tt.want {
+				tt.args.managedCluster); got != tt.want {
 				t.Errorf("managedClusterShouldReimport() returns = %v, want %v", got, tt.want)
 			}
 		})
@@ -1896,6 +1736,304 @@ func Test_remove(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := remove(tt.args.s, tt.args.r); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("remove() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// Test_selectValidMSASecret tests the MSA secret selection logic for cluster activation.
+//
+// This test validates the logic that selects the most appropriate MSA secret
+// when multiple secrets are available for a cluster during post-restore activation.
+//
+// Test Coverage:
+// - Empty secret list handling
+// - Single secret selection (always selected regardless of expiration)
+// - Multiple secrets with valid expiration timestamps
+// - Multiple secrets with expired timestamps (fallback to most recent)
+// - Secrets with missing or invalid annotations
+// - Edge cases with malformed timestamp data
+//
+// Test Scenarios:
+// - No MSA secrets available
+// - Single MSA secret (should always be selected)
+// - Two secrets - first one valid, second expired
+// - Two secrets - first expired, second valid
+// - Two secrets - both expired, select most recently created
+// - Two secrets - missing expiration annotations
+// - Two secrets - invalid timestamp formats
+func Test_selectValidMSASecret(t *testing.T) {
+	current, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
+	validExpiry := "2022-07-26T16:25:34Z" // 1 hour in future
+	expiredTime := "2022-07-26T14:25:34Z" // 1 hour in past
+
+	type args struct {
+		msaSecrets  []corev1.Secret
+		currentTime time.Time
+	}
+	tests := []struct {
+		name string
+		args args
+		want *corev1.Secret
+	}{
+		{
+			name: "no MSA secrets - should return nil",
+			args: args{
+				msaSecrets:  []corev1.Secret{},
+				currentTime: current,
+			},
+			want: nil,
+		},
+		{
+			name: "single MSA secret - should always return it regardless of expiration",
+			args: args{
+				msaSecrets: []corev1.Secret{
+					*createSecret("auto-import-account", "cluster1", nil,
+						map[string]string{
+							"expirationTimestamp": expiredTime, // expired but should still be selected
+						}, map[string][]byte{
+							"token": []byte("token1"),
+						}),
+				},
+				currentTime: current,
+			},
+			want: func() *corev1.Secret {
+				s := createSecret("auto-import-account", "cluster1", nil,
+					map[string]string{
+						"expirationTimestamp": expiredTime,
+					}, map[string][]byte{
+						"token": []byte("token1"),
+					})
+				return s
+			}(),
+		},
+		{
+			name: "two secrets - first one valid, should return first",
+			args: args{
+				msaSecrets: []corev1.Secret{
+					*createSecret("auto-import-account", "cluster1", nil,
+						map[string]string{
+							"expirationTimestamp": validExpiry, // valid
+						}, map[string][]byte{
+							"token": []byte("token1"),
+						}),
+					*createSecret("auto-import-account-pair", "cluster1", nil,
+						map[string]string{
+							"expirationTimestamp": expiredTime, // expired
+						}, map[string][]byte{
+							"token": []byte("token2"),
+						}),
+				},
+				currentTime: current,
+			},
+			want: func() *corev1.Secret {
+				s := createSecret("auto-import-account", "cluster1", nil,
+					map[string]string{
+						"expirationTimestamp": validExpiry,
+					}, map[string][]byte{
+						"token": []byte("token1"),
+					})
+				return s
+			}(),
+		},
+		{
+			name: "two secrets - first expired, second valid, should return second",
+			args: args{
+				msaSecrets: []corev1.Secret{
+					*createSecret("auto-import-account", "cluster1", nil,
+						map[string]string{
+							"expirationTimestamp": expiredTime, // expired
+						}, map[string][]byte{
+							"token": []byte("token1"),
+						}),
+					*createSecret("auto-import-account-pair", "cluster1", nil,
+						map[string]string{
+							"expirationTimestamp": validExpiry, // valid
+						}, map[string][]byte{
+							"token": []byte("token2"),
+						}),
+				},
+				currentTime: current,
+			},
+			want: func() *corev1.Secret {
+				s := createSecret("auto-import-account-pair", "cluster1", nil,
+					map[string]string{
+						"expirationTimestamp": validExpiry,
+					}, map[string][]byte{
+						"token": []byte("token2"),
+					})
+				return s
+			}(),
+		},
+		{
+			name: "two secrets - both expired, should return most recently created",
+			args: args{
+				msaSecrets: []corev1.Secret{
+					func() corev1.Secret {
+						s := *createSecret("auto-import-account", "cluster1", nil,
+							map[string]string{
+								"expirationTimestamp": expiredTime,
+							}, map[string][]byte{
+								"token": []byte("token1"),
+							})
+						// Set older creation time
+						s.CreationTimestamp = metav1.NewTime(time.Date(2022, 7, 26, 10, 0, 0, 0, time.UTC))
+						return s
+					}(),
+					func() corev1.Secret {
+						s := *createSecret("auto-import-account-pair", "cluster1", nil,
+							map[string]string{
+								"expirationTimestamp": expiredTime,
+							}, map[string][]byte{
+								"token": []byte("token2"),
+							})
+						// Set newer creation time
+						s.CreationTimestamp = metav1.NewTime(time.Date(2022, 7, 26, 12, 0, 0, 0, time.UTC))
+						return s
+					}(),
+				},
+				currentTime: current,
+			},
+			want: func() *corev1.Secret {
+				s := createSecret("auto-import-account-pair", "cluster1", nil,
+					map[string]string{
+						"expirationTimestamp": expiredTime,
+					}, map[string][]byte{
+						"token": []byte("token2"),
+					})
+				s.CreationTimestamp = metav1.NewTime(time.Date(2022, 7, 26, 12, 0, 0, 0, time.UTC))
+				return s
+			}(),
+		},
+		{
+			name: "two secrets - missing expiration annotations, should return most recently created",
+			args: args{
+				msaSecrets: []corev1.Secret{
+					func() corev1.Secret {
+						s := *createSecret("auto-import-account", "cluster1", nil, nil, map[string][]byte{
+							"token": []byte("token1"),
+						})
+						s.CreationTimestamp = metav1.NewTime(time.Date(2022, 7, 26, 10, 0, 0, 0, time.UTC))
+						return s
+					}(),
+					func() corev1.Secret {
+						s := *createSecret("auto-import-account-pair", "cluster1", nil, nil, map[string][]byte{
+							"token": []byte("token2"),
+						})
+						s.CreationTimestamp = metav1.NewTime(time.Date(2022, 7, 26, 12, 0, 0, 0, time.UTC))
+						return s
+					}(),
+				},
+				currentTime: current,
+			},
+			want: func() *corev1.Secret {
+				s := createSecret("auto-import-account-pair", "cluster1", nil, nil, map[string][]byte{
+					"token": []byte("token2"),
+				})
+				s.CreationTimestamp = metav1.NewTime(time.Date(2022, 7, 26, 12, 0, 0, 0, time.UTC))
+				return s
+			}(),
+		},
+		{
+			name: "two secrets - invalid timestamp format, should return most recently created",
+			args: args{
+				msaSecrets: []corev1.Secret{
+					func() corev1.Secret {
+						s := *createSecret("auto-import-account", "cluster1", nil,
+							map[string]string{
+								"expirationTimestamp": "invalid-format",
+							}, map[string][]byte{
+								"token": []byte("token1"),
+							})
+						s.CreationTimestamp = metav1.NewTime(time.Date(2022, 7, 26, 10, 0, 0, 0, time.UTC))
+						return s
+					}(),
+					func() corev1.Secret {
+						s := *createSecret("auto-import-account-pair", "cluster1", nil,
+							map[string]string{
+								"expirationTimestamp": "also-invalid",
+							}, map[string][]byte{
+								"token": []byte("token2"),
+							})
+						s.CreationTimestamp = metav1.NewTime(time.Date(2022, 7, 26, 12, 0, 0, 0, time.UTC))
+						return s
+					}(),
+				},
+				currentTime: current,
+			},
+			want: func() *corev1.Secret {
+				s := createSecret("auto-import-account-pair", "cluster1", nil,
+					map[string]string{
+						"expirationTimestamp": "also-invalid",
+					}, map[string][]byte{
+						"token": []byte("token2"),
+					})
+				s.CreationTimestamp = metav1.NewTime(time.Date(2022, 7, 26, 12, 0, 0, 0, time.UTC))
+				return s
+			}(),
+		},
+		{
+			name: "two secrets - empty timestamp, should return most recently created",
+			args: args{
+				msaSecrets: []corev1.Secret{
+					func() corev1.Secret {
+						s := *createSecret("auto-import-account", "cluster1", nil,
+							map[string]string{
+								"expirationTimestamp": "",
+							}, map[string][]byte{
+								"token": []byte("token1"),
+							})
+						s.CreationTimestamp = metav1.NewTime(time.Date(2022, 7, 26, 10, 0, 0, 0, time.UTC))
+						return s
+					}(),
+					func() corev1.Secret {
+						s := *createSecret("auto-import-account-pair", "cluster1", nil,
+							map[string]string{
+								"expirationTimestamp": "",
+							}, map[string][]byte{
+								"token": []byte("token2"),
+							})
+						s.CreationTimestamp = metav1.NewTime(time.Date(2022, 7, 26, 12, 0, 0, 0, time.UTC))
+						return s
+					}(),
+				},
+				currentTime: current,
+			},
+			want: func() *corev1.Secret {
+				s := createSecret("auto-import-account-pair", "cluster1", nil,
+					map[string]string{
+						"expirationTimestamp": "",
+					}, map[string][]byte{
+						"token": []byte("token2"),
+					})
+				s.CreationTimestamp = metav1.NewTime(time.Date(2022, 7, 26, 12, 0, 0, 0, time.UTC))
+				return s
+			}(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := selectValidMSASecret(tt.args.msaSecrets, tt.args.currentTime)
+
+			if tt.want == nil {
+				if got != nil {
+					t.Errorf("selectValidMSASecret() = %v, want nil", got)
+				}
+				return
+			}
+
+			if got == nil {
+				t.Errorf("selectValidMSASecret() = nil, want %v", tt.want.Name)
+				return
+			}
+
+			if got.Name != tt.want.Name {
+				t.Errorf("selectValidMSASecret() returned secret name = %v, want %v", got.Name, tt.want.Name)
+			}
+
+			if got.Namespace != tt.want.Namespace {
+				t.Errorf("selectValidMSASecret() returned secret namespace = %v, want %v", got.Namespace, tt.want.Namespace)
 			}
 		})
 	}
