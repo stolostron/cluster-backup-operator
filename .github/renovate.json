@@ -3,7 +3,7 @@
   "addLabels": [
     "ok-to-test"
   ],
-  "baseBranches": [
+  "baseBranchPatterns": [
     "main",
     "release-2.11",
     "release-2.12",
@@ -14,14 +14,20 @@
   "dependencyDashboard": true,
   "timezone": "America/New_York",
   "dockerfile": {
-    "managerFilePatterns": ["Dockerfile.rhtap"],
-    "ignorePaths": ["**/Dockerfile"],
+    "managerFilePatterns": [
+      "Dockerfile.rhtap"
+    ],
+    "ignorePaths": [
+      "**/Dockerfile"
+    ],
     "pinDigests": true
   },
   "gomod": {
     "packageRules": [
       {
-        "matchDepTypes": ["indirect"],
+        "matchDepTypes": [
+          "indirect"
+        ],
         "enabled": false
       },
       {
@@ -45,7 +51,9 @@
   "packageRules": [
     {
       "groupName": "containerfile images ({{{baseBranch}}})",
-      "matchManagers": ["dockerfile"]
+      "matchManagers": [
+        "dockerfile"
+      ]
     }
   ]
 }
