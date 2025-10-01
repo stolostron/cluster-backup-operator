@@ -6,6 +6,7 @@ metadata:
 spec:
   template:
     spec:
+      automountServiceAccountToken: true
       containers:
       - name: manager
         args:
