@@ -6,7 +6,6 @@ metadata:
 spec:
   template:
     spec:
-      automountServiceAccountToken: true
       containers:
       - name: manager
         args:
@@ -15,13 +14,6 @@ spec:
         - name: manager-config
           mountPath: /controller_manager_config.yaml
           subPath: controller_manager_config.yaml
-        resources:
-          limits:
-            cpu: 100m
-            memory: 30Mi
-          requests:
-            cpu: 100m
-            memory: 20Mi
       volumes:
       - name: manager-config
         configMap:
