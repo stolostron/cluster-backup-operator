@@ -53,5 +53,4 @@ spec:
             cpu: 100m
             memory: 20Mi
       serviceAccountName: controller-manager
-      automountServiceAccountToken: true
       terminationGracePeriodSeconds: 10
