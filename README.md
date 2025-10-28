@@ -1118,8 +1118,7 @@ The Cluster Back up and Restore Operator chart automatically installs the [OADP 
 
 | ACM Version | OADP Version |
 |:------------| -----------: |
-| 2.14+       | stable channel* |
-| 2.13        | 1.4 or stable channel* |
+| 2.13+       | 1.4 or stable channel* |
 | 2.12        | 1.4          |
 | 2.11        | 1.4          |
 | 2.10.4      | 1.4          |
@@ -1132,9 +1131,7 @@ The Cluster Back up and Restore Operator chart automatically installs the [OADP 
 
 (*) The stable channel is a new OADP release channel that provides a single, version-aligned OADP release based on your OpenShift Container Platform (OCP) version.
 
-In ACM 2.13, hub clusters running on OCP 4.19 or later use the OADP stable channel. For earlier OCP versions, OADP 1.4 is installed from the regular channel.
-
-Starting with ACM 2.14, all hub clusters automatically install OADP from the stable channel.
+In ACM 2.13+, hub clusters running on OCP 4.19 or later use the OADP stable channel. For earlier OCP versions, OADP 1.4 is installed from the regular channel.
 
 For details on which OADP version is provided for your OCP version, see the [OpenShift Operator update policy](https://access.redhat.com/support/policy/updates/openshift_operators).
 
