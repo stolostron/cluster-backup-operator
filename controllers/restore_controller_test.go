@@ -1967,6 +1967,73 @@ var _ = Describe("Finalizer Cleanup Tests", func() {
 				"Status should reflect the regular credentials restore name")
 		})
 
+		It("Should create only one credential restore (with NotIn selector) when NOT restoring managed clusters", func() {
+			// Modify the restore to skip managed clusters
+			skipManagedClusters := "skip"
+			testRhacmRestore.Spec.VeleroManagedClustersBackupName = &skipManagedClusters
+
+			// Create the ACM Restore resource
+			Expect(k8sClient.Create(ctx, &testRhacmRestore)).Should(Succeed())
+
+			// Wait for the restore to start processing
+			Eventually(func() v1beta1.RestorePhase {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      testRestoreName,
+					Namespace: testVeleroNamespace.Name,
+				}, &testRhacmRestore)
+				if err != nil {
+					return ""
+				}
+				return testRhacmRestore.Status.Phase
+			}, timeout, interval).Should(Or(
+				Equal(v1beta1.RestorePhaseStarted),
+				Equal(v1beta1.RestorePhaseRunning),
+			))
+
+			// Verify that ONLY ONE credential restore was created (no -active suffix)
+			regularCredentialsRestoreName := testRestoreName + "-" + testCredentialsBackupName
+
+			// Check for regular credentials restore
+			Eventually(func() bool {
+				regularRestore := &veleroapi.Restore{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      regularCredentialsRestoreName,
+					Namespace: testVeleroNamespace.Name,
+				}, regularRestore)
+				return err == nil
+			}, timeout, interval).Should(BeTrue(), "Regular credentials restore should be created")
+
+			// Verify NO -active credentials restore exists (since managed clusters are skipped)
+			activeCredentialsRestoreName := regularCredentialsRestoreName + "-active"
+			Consistently(func() bool {
+				activeRestore := &veleroapi.Restore{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      activeCredentialsRestoreName,
+					Namespace: testVeleroNamespace.Name,
+				}, activeRestore)
+				return k8serr.IsNotFound(err)
+			}, time.Second*5, interval).Should(BeTrue(), "Active credentials restore should NOT be created when managed clusters are skipped")
+
+			// Verify label selector on the regular restore has NotIn for cluster-activation
+			regularRestore := &veleroapi.Restore{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      regularCredentialsRestoreName,
+				Namespace: testVeleroNamespace.Name,
+			}, regularRestore)).Should(Succeed())
+
+			// Regular restore should have NotIn selector for cluster-activation
+			foundNotInSelector := false
+			if regularRestore.Spec.LabelSelector != nil {
+				for _, req := range regularRestore.Spec.LabelSelector.MatchExpressions {
+					if req.Key == backupCredsClusterLabel && req.Operator == metav1.LabelSelectorOpNotIn {
+						foundNotInSelector = true
+						Expect(req.Values).To(ContainElement(ClusterActivationLabel))
+					}
+				}
+			}
+			Expect(foundNotInSelector).To(BeTrue(), "Regular restore should have NotIn selector for cluster-activation when managed clusters are skipped")
+		})
+
 		It("Should create both regular and -active generic resource restores when using specific backup names", func() {
 			// Create the ACM Restore resource
 			Expect(k8sClient.Create(ctx, &testRhacmRestore)).Should(Succeed())

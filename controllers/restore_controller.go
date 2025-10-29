@@ -546,11 +546,13 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 		key := resKeys[resKey]
 
-		restoreObj := veleroRestoresToCreate[key]
 		if veleroRestoresToCreate[key] == nil {
 			// this type of backup is not restored now
 			continue
 		}
+
+		// When NOT restoring managed clusters, exclude cluster-activation resources
+		// This modifies the original object which will be created later (line 602)
 		if (key == ResourcesGeneric || key == Credentials) &&
 			veleroRestoresToCreate[ManagedClusters] == nil {
 			// if restoring the resources but not the managed clusters,
@@ -560,11 +562,11 @@ func (r *RestoreReconciler) initVeleroRestores(
 			req.Operator = "NotIn"
 			req.Values = []string{ClusterActivationLabel}
 
-			addRestoreLabelSelector(restoreObj, *req)
+			addRestoreLabelSelector(veleroRestoresToCreate[key], *req)
 		}
 
 		// Check if we need to create both regular and active restores for credentials/generic resources
-		// when managed clusters are being restored
+		// when managed clusters ARE being restored
 		needsRegularRestore := (key == Credentials || key == ResourcesGeneric) &&
 			veleroRestoresToCreate[ManagedClusters] != nil &&
 			((key == Credentials && *restore.Spec.VeleroCredentialsBackupName != skipRestoreStr) ||
