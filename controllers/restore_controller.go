@@ -563,6 +563,53 @@ func (r *RestoreReconciler) initVeleroRestores(
 			addRestoreLabelSelector(restoreObj, *req)
 		}
 
+		// Check if we need to create both regular and active restores for credentials/generic resources
+		// when managed clusters are being restored
+		needsRegularRestore := (key == Credentials || key == ResourcesGeneric) &&
+			veleroRestoresToCreate[ManagedClusters] != nil &&
+			((key == Credentials && *restore.Spec.VeleroCredentialsBackupName != skipRestoreStr) ||
+				(key == ResourcesGeneric && *restore.Spec.VeleroResourcesBackupName != skipRestoreStr))
+
+		// If we need both regular and active restores, create the regular one first
+		if needsRegularRestore {
+			// Create a copy for the regular restore (without activation label)
+			regularRestore := veleroRestoresToCreate[key].DeepCopy()
+			req := &metav1.LabelSelectorRequirement{}
+			req.Key = backupCredsClusterLabel
+			req.Operator = "NotIn"
+			req.Values = []string{ClusterActivationLabel}
+			addRestoreLabelSelector(regularRestore, *req)
+
+			err := r.Create(ctx, regularRestore, &client.CreateOptions{})
+			if err != nil {
+				restoreLogger.Info(
+					fmt.Sprintf("unable to create regular Velero restore for restore %s:%s, error:%s",
+						regularRestore.Namespace, regularRestore.Name,
+						err.Error()),
+				)
+				if k8serr.IsAlreadyExists(err) && key == Credentials {
+					restore.Status.VeleroCredentialsRestoreName = regularRestore.Name
+				}
+				if k8serr.IsAlreadyExists(err) && key == ResourcesGeneric {
+					restore.Status.VeleroGenericResourcesRestoreName = regularRestore.Name
+				}
+			} else {
+				newVeleroRestoreCreated = true
+				r.Recorder.Event(
+					restore,
+					v1.EventTypeNormal,
+					"Velero restore created:",
+					regularRestore.Name,
+				)
+				switch key {
+				case Credentials:
+					restore.Status.VeleroCredentialsRestoreName = regularRestore.Name
+				case ResourcesGeneric:
+					restore.Status.VeleroGenericResourcesRestoreName = regularRestore.Name
+				}
+			}
+		}
+
 		isCredsClsOnActiveStep := updateLabelsForActiveResources(restore, key, veleroRestoresToCreate)
 		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
 

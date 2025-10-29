@@ -1719,4 +1719,313 @@ var _ = Describe("Finalizer Cleanup Tests", func() {
 			}, timeout, interval).Should(BeTrue())
 		})
 	})
+
+	// Test for bug fix: Credentials restore missing regular restore when using backup names
+	//
+	// This test validates the fix for the issue where only the -active credentials restore
+	// was created when using specific backup names (not "latest") with managed clusters.
+	//
+	// Bug Description:
+	// When restoring with specific backup names AND managed clusters, only the -active
+	// credentials restore was created. The regular (passive) credentials restore was missing.
+	//
+	// Expected Behavior:
+	// Both regular and active credential restores should be created when:
+	// - Using a specific backup name (not "skip" or "latest")
+	// - Restoring managed clusters
+	//
+	// Test Coverage:
+	// - Verifies both regular and -active credential restores are created
+	// - Verifies both regular and -active generic resource restores are created
+	// - Validates proper label selectors on each restore
+	// - Confirms status is updated correctly
+	Context("Bug Fix: Regular and Active Restores with Specific Backup Names", func() {
+		var (
+			testVeleroNamespace            *corev1.Namespace
+			testBackupStorageLocation      *veleroapi.BackupStorageLocation
+			testVeleroBackups              []veleroapi.Backup
+			testRestoreName                string
+			testRhacmRestore               v1beta1.Restore
+			testCredentialsBackupName      string
+			testManagedClustersBackupName  string
+			testResourcesBackupName        string
+			testResourcesGenericBackupName string
+		)
+
+		BeforeEach(func() {
+			ctx = context.Background()
+
+			// Create a unique timestamp for backup names
+			timestamp := "20251029181055"
+
+			// Create test namespace
+			testVeleroNamespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-restore-bugfix-ns",
+				},
+			}
+
+			// Create backup storage location
+			testBackupStorageLocation = &veleroapi.BackupStorageLocation{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-backup-storage-location",
+					Namespace: testVeleroNamespace.Name,
+				},
+				Spec: veleroapi.BackupStorageLocationSpec{
+					Provider: "aws",
+				},
+				Status: veleroapi.BackupStorageLocationStatus{
+					Phase: veleroapi.BackupStorageLocationPhaseAvailable,
+				},
+			}
+
+			// Define specific backup names (not "latest" or "skip")
+			testManagedClustersBackupName = "acm-managed-clusters-schedule-" + timestamp
+			testCredentialsBackupName = "acm-credentials-schedule-" + timestamp
+			testResourcesBackupName = "acm-resources-schedule-" + timestamp
+			testResourcesGenericBackupName = "acm-resources-generic-schedule-" + timestamp
+
+			// Create Velero backup resources with specific names
+			testVeleroBackups = []veleroapi.Backup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      testManagedClustersBackupName,
+						Namespace: testVeleroNamespace.Name,
+						Labels: map[string]string{
+							"velero.io/schedule-name":                                 "acm-managed-clusters-schedule",
+							"cluster.open-cluster-management.io/backup-schedule-type": "acm-managed-clusters",
+							"velero.io/storage-location":                              "test-backup-storage-location",
+							BackupScheduleClusterLabel:                                "test-cluster-id",
+						},
+					},
+					Spec: veleroapi.BackupSpec{
+						StorageLocation: "test-backup-storage-location",
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseCompleted,
+						StartTimestamp: &metav1.Time{Time: time.Now().Add(-1 * time.Hour)},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      testCredentialsBackupName,
+						Namespace: testVeleroNamespace.Name,
+						Labels: map[string]string{
+							"velero.io/schedule-name":                                 "acm-credentials-schedule",
+							"cluster.open-cluster-management.io/backup-schedule-type": "acm-credentials",
+							"velero.io/storage-location":                              "test-backup-storage-location",
+							BackupScheduleClusterLabel:                                "test-cluster-id",
+						},
+					},
+					Spec: veleroapi.BackupSpec{
+						StorageLocation: "test-backup-storage-location",
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseCompleted,
+						StartTimestamp: &metav1.Time{Time: time.Now().Add(-1 * time.Hour)},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      testResourcesBackupName,
+						Namespace: testVeleroNamespace.Name,
+						Labels: map[string]string{
+							"velero.io/schedule-name":                                 "acm-resources-schedule",
+							"cluster.open-cluster-management.io/backup-schedule-type": "acm-resources",
+							"velero.io/storage-location":                              "test-backup-storage-location",
+							BackupScheduleClusterLabel:                                "test-cluster-id",
+						},
+					},
+					Spec: veleroapi.BackupSpec{
+						StorageLocation: "test-backup-storage-location",
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseCompleted,
+						StartTimestamp: &metav1.Time{Time: time.Now().Add(-1 * time.Hour)},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      testResourcesGenericBackupName,
+						Namespace: testVeleroNamespace.Name,
+						Labels: map[string]string{
+							"velero.io/schedule-name":                                 "acm-resources-generic-schedule",
+							"cluster.open-cluster-management.io/backup-schedule-type": "acm-resources-generic",
+							"velero.io/storage-location":                              "test-backup-storage-location",
+							BackupScheduleClusterLabel:                                "test-cluster-id",
+						},
+					},
+					Spec: veleroapi.BackupSpec{
+						StorageLocation: "test-backup-storage-location",
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseCompleted,
+						StartTimestamp: &metav1.Time{Time: time.Now().Add(-1 * time.Hour)},
+					},
+				},
+			}
+
+			// Create ACM Restore resource using specific backup names (not "latest")
+			testRestoreName = "restore-acm-bugfix-test"
+			testRhacmRestore = v1beta1.Restore{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testRestoreName,
+					Namespace: testVeleroNamespace.Name,
+				},
+				Spec: v1beta1.RestoreSpec{
+					CleanupBeforeRestore:            v1beta1.CleanupTypeRestored,
+					VeleroManagedClustersBackupName: &testManagedClustersBackupName,
+					VeleroCredentialsBackupName:     &testCredentialsBackupName,
+					VeleroResourcesBackupName:       &testResourcesBackupName,
+				},
+			}
+		})
+
+		It("Should create both regular and -active credential restores when using specific backup names", func() {
+			// Create the ACM Restore resource
+			Expect(k8sClient.Create(ctx, &testRhacmRestore)).Should(Succeed())
+
+			// Wait for the restore to start processing
+			Eventually(func() v1beta1.RestorePhase {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      testRestoreName,
+					Namespace: testVeleroNamespace.Name,
+				}, &testRhacmRestore)
+				if err != nil {
+					return ""
+				}
+				return testRhacmRestore.Status.Phase
+			}, timeout, interval).Should(Or(
+				Equal(v1beta1.RestorePhaseStarted),
+				Equal(v1beta1.RestorePhaseRunning),
+			))
+
+			// Verify that BOTH regular and -active credential restores were created
+			regularCredentialsRestoreName := testRestoreName + "-" + testCredentialsBackupName
+			activeCredentialsRestoreName := regularCredentialsRestoreName + "-active"
+
+			// Check for regular credentials restore
+			Eventually(func() bool {
+				regularRestore := &veleroapi.Restore{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      regularCredentialsRestoreName,
+					Namespace: testVeleroNamespace.Name,
+				}, regularRestore)
+				return err == nil
+			}, timeout, interval).Should(BeTrue(), "Regular credentials restore should be created")
+
+			// Check for active credentials restore
+			Eventually(func() bool {
+				activeRestore := &veleroapi.Restore{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      activeCredentialsRestoreName,
+					Namespace: testVeleroNamespace.Name,
+				}, activeRestore)
+				return err == nil
+			}, timeout, interval).Should(BeTrue(), "Active credentials restore should be created")
+
+			// Verify label selectors are correct on regular restore
+			regularRestore := &veleroapi.Restore{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      regularCredentialsRestoreName,
+				Namespace: testVeleroNamespace.Name,
+			}, regularRestore)).Should(Succeed())
+
+			// Regular restore should have NotIn selector for cluster-activation
+			foundNotInSelector := false
+			if regularRestore.Spec.LabelSelector != nil {
+				for _, req := range regularRestore.Spec.LabelSelector.MatchExpressions {
+					if req.Key == backupCredsClusterLabel && req.Operator == metav1.LabelSelectorOpNotIn {
+						foundNotInSelector = true
+						Expect(req.Values).To(ContainElement(ClusterActivationLabel))
+					}
+				}
+			}
+			Expect(foundNotInSelector).To(BeTrue(), "Regular restore should have NotIn selector for cluster-activation")
+
+			// Verify label selectors are correct on active restore
+			activeRestore := &veleroapi.Restore{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      activeCredentialsRestoreName,
+				Namespace: testVeleroNamespace.Name,
+			}, activeRestore)).Should(Succeed())
+
+			// Active restore should have In selector for cluster-activation
+			foundInSelector := false
+			if activeRestore.Spec.LabelSelector != nil {
+				for _, req := range activeRestore.Spec.LabelSelector.MatchExpressions {
+					if req.Key == backupCredsClusterLabel && req.Operator == metav1.LabelSelectorOpIn {
+						foundInSelector = true
+						Expect(req.Values).To(ContainElement(ClusterActivationLabel))
+					}
+				}
+			}
+			Expect(foundInSelector).To(BeTrue(), "Active restore should have In selector for cluster-activation")
+
+			// Verify status shows the regular credentials restore (first one created)
+			Expect(testRhacmRestore.Status.VeleroCredentialsRestoreName).To(Equal(regularCredentialsRestoreName),
+				"Status should reflect the regular credentials restore name")
+		})
+
+		It("Should create both regular and -active generic resource restores when using specific backup names", func() {
+			// Create the ACM Restore resource
+			Expect(k8sClient.Create(ctx, &testRhacmRestore)).Should(Succeed())
+
+			// Wait for the restore to start processing
+			Eventually(func() v1beta1.RestorePhase {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      testRestoreName,
+					Namespace: testVeleroNamespace.Name,
+				}, &testRhacmRestore)
+				if err != nil {
+					return ""
+				}
+				return testRhacmRestore.Status.Phase
+			}, timeout, interval).Should(Or(
+				Equal(v1beta1.RestorePhaseStarted),
+				Equal(v1beta1.RestorePhaseRunning),
+			))
+
+			// Verify that BOTH regular and -active generic resource restores were created
+			regularGenericRestoreName := testRestoreName + "-" + testResourcesGenericBackupName
+			activeGenericRestoreName := regularGenericRestoreName + "-active"
+
+			// Check for regular generic resource restore
+			Eventually(func() bool {
+				regularRestore := &veleroapi.Restore{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      regularGenericRestoreName,
+					Namespace: testVeleroNamespace.Name,
+				}, regularRestore)
+				return err == nil
+			}, timeout, interval).Should(BeTrue(), "Regular generic resource restore should be created")
+
+			// Check for active generic resource restore
+			Eventually(func() bool {
+				activeRestore := &veleroapi.Restore{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      activeGenericRestoreName,
+					Namespace: testVeleroNamespace.Name,
+				}, activeRestore)
+				return err == nil
+			}, timeout, interval).Should(BeTrue(), "Active generic resource restore should be created")
+		})
+
+		AfterEach(func() {
+			// Clean up test resources
+			Expect(k8sClient.Delete(ctx, &testRhacmRestore)).Should(Succeed())
+
+			for i := range testVeleroBackups {
+				Expect(k8sClient.Delete(ctx, &testVeleroBackups[i])).Should(Succeed())
+			}
+
+			if testBackupStorageLocation != nil {
+				Expect(k8sClient.Delete(ctx, testBackupStorageLocation)).Should(Succeed())
+			}
+
+			if testVeleroNamespace != nil {
+				Expect(k8sClient.Delete(ctx, testVeleroNamespace)).Should(Succeed())
+			}
+		})
+	})
 })
