@@ -489,6 +489,137 @@ func (backups mostRecent) Less(i, j int) bool {
 	return backups[j].Status.StartTimestamp.Before(backups[i].Status.StartTimestamp)
 }
 
+// shouldCreateRegularRestore determines if both regular and active restores are needed
+// for credentials or generic resources when managed clusters are being restored
+func shouldCreateRegularRestore(
+	key ResourceType,
+	restore *v1beta1.Restore,
+	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
+) bool {
+	// Only applies to Credentials and ResourcesGeneric
+	if key != Credentials && key != ResourcesGeneric {
+		return false
+	}
+
+	// Only when managed clusters are being restored
+	if veleroRestoresToCreate[ManagedClusters] == nil {
+		return false
+	}
+
+	// Check if the backup name is not "skip" for this resource type
+	if key == Credentials {
+		return *restore.Spec.VeleroCredentialsBackupName != skipRestoreStr
+	}
+	return *restore.Spec.VeleroResourcesBackupName != skipRestoreStr
+}
+
+// createRegularRestore creates the regular (passive) restore for credentials or generic resources
+// Returns true if a new restore was created, false otherwise
+func (r *RestoreReconciler) createRegularRestore(
+	ctx context.Context,
+	key ResourceType,
+	restore *v1beta1.Restore,
+	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
+) bool {
+	restoreLogger := log.FromContext(ctx)
+
+	// Create a copy for the regular restore (without activation label)
+	regularRestore := veleroRestoresToCreate[key].DeepCopy()
+	req := &metav1.LabelSelectorRequirement{}
+	req.Key = backupCredsClusterLabel
+	req.Operator = "NotIn"
+	req.Values = []string{ClusterActivationLabel}
+	addRestoreLabelSelector(regularRestore, *req)
+
+	err := r.Create(ctx, regularRestore, &client.CreateOptions{})
+	if err != nil {
+		restoreLogger.Info(
+			fmt.Sprintf("unable to create regular Velero restore for restore %s:%s, error:%s",
+				regularRestore.Namespace, regularRestore.Name,
+				err.Error()),
+		)
+		if k8serr.IsAlreadyExists(err) && key == Credentials {
+			restore.Status.VeleroCredentialsRestoreName = regularRestore.Name
+		}
+		if k8serr.IsAlreadyExists(err) && key == ResourcesGeneric {
+			restore.Status.VeleroGenericResourcesRestoreName = regularRestore.Name
+		}
+		return false
+	}
+
+	r.Recorder.Event(
+		restore,
+		v1.EventTypeNormal,
+		"Velero restore created:",
+		regularRestore.Name,
+	)
+	switch key {
+	case Credentials:
+		restore.Status.VeleroCredentialsRestoreName = regularRestore.Name
+	case ResourcesGeneric:
+		restore.Status.VeleroGenericResourcesRestoreName = regularRestore.Name
+	}
+	return true
+}
+
+// createActiveRestore creates the active restore and handles status updates
+// Returns newVeleroRestoreCreated bool, shouldWait bool, and waitMsg string
+func (r *RestoreReconciler) createActiveRestore(
+	ctx context.Context,
+	key ResourceType,
+	restore *v1beta1.Restore,
+	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
+	isCredsClsOnActiveStep bool,
+) (bool, bool, string) {
+	restoreLogger := log.FromContext(ctx)
+	newVeleroRestoreCreated := false
+
+	err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
+
+	if err != nil {
+		restoreLogger.Info(
+			fmt.Sprintf("unable to create Velero restore for restore %s:%s, error:%s",
+				veleroRestoresToCreate[key].Namespace, veleroRestoresToCreate[key].Name,
+				err.Error()),
+		)
+		if k8serr.IsAlreadyExists(err) && key == Credentials {
+			restore.Status.VeleroCredentialsRestoreName = veleroRestoresToCreate[key].Name
+		}
+		if k8serr.IsAlreadyExists(err) && key == ResourcesGeneric {
+			restore.Status.VeleroGenericResourcesRestoreName = veleroRestoresToCreate[key].Name
+		}
+	} else {
+		newVeleroRestoreCreated = true
+		r.Recorder.Event(
+			restore,
+			v1.EventTypeNormal,
+			"Velero restore created:",
+			veleroRestoresToCreate[key].Name,
+		)
+		switch key {
+		case ManagedClusters:
+			restore.Status.VeleroManagedClustersRestoreName = veleroRestoresToCreate[key].Name
+		case Credentials:
+			restore.Status.VeleroCredentialsRestoreName = veleroRestoresToCreate[key].Name
+		case Resources:
+			restore.Status.VeleroResourcesRestoreName = veleroRestoresToCreate[key].Name
+		case ResourcesGeneric:
+			restore.Status.VeleroGenericResourcesRestoreName = veleroRestoresToCreate[key].Name
+		}
+	}
+
+	// check if needed to wait for pvcs to be created before the app data is restored
+	if isCredsClsOnActiveStep {
+		if shouldWait, waitMsg := processRestoreWait(ctx, r.Client,
+			veleroRestoresToCreate[key].Name, restore.Namespace); shouldWait {
+			// some PVCs were not created yet, wait for them
+			return newVeleroRestoreCreated, true, waitMsg
+		}
+	}
+
+	return newVeleroRestoreCreated, false, ""
+}
+
 // create velero.io.Restore resource for each resource type
 //
 //nolint:funlen
@@ -567,93 +698,24 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 		// Check if we need to create both regular and active restores for credentials/generic resources
 		// when managed clusters ARE being restored
-		needsRegularRestore := (key == Credentials || key == ResourcesGeneric) &&
-			veleroRestoresToCreate[ManagedClusters] != nil &&
-			((key == Credentials && *restore.Spec.VeleroCredentialsBackupName != skipRestoreStr) ||
-				(key == ResourcesGeneric && *restore.Spec.VeleroResourcesBackupName != skipRestoreStr))
+		needsRegularRestore := shouldCreateRegularRestore(key, restore, veleroRestoresToCreate)
 
 		// If we need both regular and active restores, create the regular one first
 		if needsRegularRestore {
-			// Create a copy for the regular restore (without activation label)
-			regularRestore := veleroRestoresToCreate[key].DeepCopy()
-			req := &metav1.LabelSelectorRequirement{}
-			req.Key = backupCredsClusterLabel
-			req.Operator = "NotIn"
-			req.Values = []string{ClusterActivationLabel}
-			addRestoreLabelSelector(regularRestore, *req)
-
-			err := r.Create(ctx, regularRestore, &client.CreateOptions{})
-			if err != nil {
-				restoreLogger.Info(
-					fmt.Sprintf("unable to create regular Velero restore for restore %s:%s, error:%s",
-						regularRestore.Namespace, regularRestore.Name,
-						err.Error()),
-				)
-				if k8serr.IsAlreadyExists(err) && key == Credentials {
-					restore.Status.VeleroCredentialsRestoreName = regularRestore.Name
-				}
-				if k8serr.IsAlreadyExists(err) && key == ResourcesGeneric {
-					restore.Status.VeleroGenericResourcesRestoreName = regularRestore.Name
-				}
-			} else {
+			created := r.createRegularRestore(ctx, key, restore, veleroRestoresToCreate)
+			if created {
 				newVeleroRestoreCreated = true
-				r.Recorder.Event(
-					restore,
-					v1.EventTypeNormal,
-					"Velero restore created:",
-					regularRestore.Name,
-				)
-				switch key {
-				case Credentials:
-					restore.Status.VeleroCredentialsRestoreName = regularRestore.Name
-				case ResourcesGeneric:
-					restore.Status.VeleroGenericResourcesRestoreName = regularRestore.Name
-				}
 			}
 		}
 
 		isCredsClsOnActiveStep := updateLabelsForActiveResources(restore, key, veleroRestoresToCreate)
-		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
-
-		if err != nil {
-			restoreLogger.Info(
-				fmt.Sprintf("unable to create Velero restore for restore %s:%s, error:%s",
-					veleroRestoresToCreate[key].Namespace, veleroRestoresToCreate[key].Name,
-					err.Error()),
-			)
-			if k8serr.IsAlreadyExists(err) && key == Credentials {
-				restore.Status.VeleroCredentialsRestoreName = veleroRestoresToCreate[key].Name
-			}
-			if k8serr.IsAlreadyExists(err) && key == ResourcesGeneric {
-				restore.Status.VeleroGenericResourcesRestoreName = veleroRestoresToCreate[key].Name
-			}
-		} else {
+		created, shouldWait, waitMsg := r.createActiveRestore(
+			ctx, key, restore, veleroRestoresToCreate, isCredsClsOnActiveStep)
+		if created {
 			newVeleroRestoreCreated = true
-			r.Recorder.Event(
-				restore,
-				v1.EventTypeNormal,
-				"Velero restore created:",
-				veleroRestoresToCreate[key].Name,
-			)
-			switch key {
-			case ManagedClusters:
-				restore.Status.VeleroManagedClustersRestoreName = veleroRestoresToCreate[key].Name
-			case Credentials:
-				restore.Status.VeleroCredentialsRestoreName = veleroRestoresToCreate[key].Name
-			case Resources:
-				restore.Status.VeleroResourcesRestoreName = veleroRestoresToCreate[key].Name
-			case ResourcesGeneric:
-				restore.Status.VeleroGenericResourcesRestoreName = veleroRestoresToCreate[key].Name
-
-			}
 		}
-		// check if needed to wait for pvcs to be created before the app data is restored
-		if isCredsClsOnActiveStep {
-			if shouldWait, waitMsg := processRestoreWait(ctx, r.Client,
-				veleroRestoresToCreate[key].Name, restore.Namespace); shouldWait {
-				// some PVCs were not created yet, wait for them
-				return true, waitMsg, nil
-			}
+		if shouldWait {
+			return true, waitMsg, nil
 		}
 	}
 

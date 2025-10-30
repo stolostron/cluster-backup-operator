@@ -2012,7 +2012,8 @@ var _ = Describe("Finalizer Cleanup Tests", func() {
 					Namespace: testVeleroNamespace.Name,
 				}, activeRestore)
 				return k8serr.IsNotFound(err)
-			}, time.Second*5, interval).Should(BeTrue(), "Active credentials restore should NOT be created when managed clusters are skipped")
+			}, time.Second*5, interval).Should(BeTrue(),
+				"Active credentials restore should NOT be created when managed clusters are skipped")
 
 			// Verify label selector on the regular restore has NotIn for cluster-activation
 			regularRestore := &veleroapi.Restore{}
@@ -2031,7 +2032,8 @@ var _ = Describe("Finalizer Cleanup Tests", func() {
 					}
 				}
 			}
-			Expect(foundNotInSelector).To(BeTrue(), "Regular restore should have NotIn selector for cluster-activation when managed clusters are skipped")
+			Expect(foundNotInSelector).To(BeTrue(),
+				"Regular restore should have NotIn selector for cluster-activation when managed clusters are skipped")
 		})
 
 		It("Should create both regular and -active generic resource restores when using specific backup names", func() {
