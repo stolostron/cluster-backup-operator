@@ -551,6 +551,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			// this type of backup is not restored now
 			continue
 		}
+
 		if (key == ResourcesGeneric || key == Credentials) &&
 			veleroRestoresToCreate[ManagedClusters] == nil {
 			// if restoring the resources but not the managed clusters,

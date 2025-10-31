@@ -291,6 +291,35 @@ func Test_isValidSyncOptions(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name: "Invalid: Sync with MC=latest on first run (status empty)",
+			args: args{
+				restore: createACMRestore("Restore", "velero-ns").
+					syncRestoreWithNewBackups(true).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackup). // Should be skip initially
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(latestBackup).object,
+			},
+			want: false, // Should be rejected
+		},
+		{
+			name: "Valid: Sync with MC=latest after activation (status populated)",
+			args: args{
+				restore: func() *v1beta1.Restore {
+					r := createACMRestore("Restore", "velero-ns").
+						syncRestoreWithNewBackups(true).
+						cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+						veleroManagedClustersBackupName(latestBackup).
+						veleroCredentialsBackupName(latestBackup).
+						veleroResourcesBackupName(latestBackup).object
+					// Simulate that MC restore was already done (not first run)
+					r.Status.VeleroManagedClustersRestoreName = "previous-mc-restore"
+					return r
+				}(),
+			},
+			want: true, // Should be accepted (user edited from skip to latest)
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
