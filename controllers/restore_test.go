@@ -1674,6 +1674,23 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 			wantResName: "credentials-restore", // creds was skipped
 		},
 		{
+			name: "Credentials restore with ManagedCluster specific backup name, no sync, no -active suffix",
+			args: args{
+				restype: Credentials,
+				acmRestore: createACMRestore("acm-restore", "ns").
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName("acm-managed-clusters-schedule-20251029181055").
+					veleroCredentialsBackupName("acm-credentials-schedule-20251029181055").
+					veleroResourcesBackupName("acm-resources-schedule-20251029181055").object,
+				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
+					Credentials:     createRestore("credentials-restore", "ns").object,
+					ManagedClusters: createRestore("clusters-restore", "ns").object,
+				},
+			},
+			want:        true,
+			wantResName: "credentials-restore", // No -active suffix, no activation filter - restore ALL credentials
+		},
+		{
 			name: "Generic Res restore with ManagedCluster and no sync, should return false no active",
 			args: args{
 				restype: ResourcesGeneric,
@@ -1725,6 +1742,52 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 					tt.wantResName, tt.args.veleroRestoresToCreate[tt.args.restype].Name)
 			}
 		})
+	}
+}
+
+// Test_credentialsRestoreWithSpecificBackupName tests the fix for credentials restore
+// when using specific backup names with managed clusters (non-sync mode).
+//
+// This test validates that when restoring credentials with:
+// - Specific backup names (not "latest")
+// - Managed clusters being restored
+// - Sync mode disabled
+//
+// The credentials restore should:
+// - NOT add activation label selector (should restore ALL credentials)
+// - NOT add -active suffix to the restore name
+// - Return true for isCredsClsOnActiveStep (PVC wait required)
+func Test_credentialsRestoreWithSpecificBackupName(t *testing.T) {
+	acmRestore := createACMRestore("acm-restore", "ns").
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+		veleroManagedClustersBackupName("acm-managed-clusters-schedule-20251029181055").
+		veleroCredentialsBackupName("acm-credentials-schedule-20251029181055").
+		veleroResourcesBackupName("acm-resources-schedule-20251029181055").object
+
+	veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+		Credentials:     createRestore("credentials-restore", "ns").object,
+		ManagedClusters: createRestore("clusters-restore", "ns").object,
+	}
+
+	// Call the function
+	isCredsClsOnActiveStep := updateLabelsForActiveResources(acmRestore, Credentials, veleroRestoresToCreate)
+
+	// Verify return value
+	if !isCredsClsOnActiveStep {
+		t.Errorf("Expected isCredsClsOnActiveStep to be true, got false")
+	}
+
+	// Verify restore name (should NOT have -active suffix)
+	expectedName := "credentials-restore"
+	actualName := veleroRestoresToCreate[Credentials].Name
+	if actualName != expectedName {
+		t.Errorf("Expected restore name %s, got %s", expectedName, actualName)
+	}
+
+	// Verify NO activation label selector is added
+	credsRestore := veleroRestoresToCreate[Credentials]
+	if hasActivationLabel(*credsRestore) {
+		t.Errorf("Credentials restore should NOT have activation label selector in non-sync mode")
 	}
 }
 

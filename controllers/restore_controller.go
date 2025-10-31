@@ -630,9 +630,16 @@ func updateLabelsForActiveResources(
 
 	restoreObj := veleroRestoresToCreate[key]
 
-	if (key == ResourcesGeneric && (veleroRestoresToCreate[Resources] == nil ||
-		veleroRestoresToCreate[ManagedClusters] != nil && restore.Spec.SyncRestoreWithNewBackups)) ||
-		(key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil) {
+	// Check if credentials or resources were originally set to skip
+	credsWasSkip := key == Credentials && restore.Spec.VeleroCredentialsBackupName != nil &&
+		*restore.Spec.VeleroCredentialsBackupName == skipRestoreStr
+	resourcesWasSkip := key == ResourcesGeneric && restore.Spec.VeleroResourcesBackupName != nil &&
+		*restore.Spec.VeleroResourcesBackupName == skipRestoreStr
+
+	if (key == ResourcesGeneric && veleroRestoresToCreate[ManagedClusters] != nil &&
+		(veleroRestoresToCreate[Resources] == nil || restore.Spec.SyncRestoreWithNewBackups || resourcesWasSkip)) ||
+		(key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil &&
+			(restore.Spec.SyncRestoreWithNewBackups || credsWasSkip)) {
 		// if restoring the ManagedClusters
 		// and resources are not restored or this is a sync phase
 		// need to restore the generic resources for the activation phase
@@ -653,12 +660,12 @@ func updateLabelsForActiveResources(
 			(key == Credentials && *restore.Spec.VeleroCredentialsBackupName != skipRestoreStr) {
 			veleroRestoresToCreate[key].Name = veleroRestoresToCreate[key].Name + "-active"
 		}
-		if key == Credentials {
-			// this is an activation stage and the credebtials are being restored
-			// before going to the next restore
-			// wait for the creation of the PVCs defined by backup-pvc configmaps stored by this backup
-			isCredsClsOnActiveStep = true
-		}
+	}
+
+	if key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil {
+		// this is a credentials restore with managed clusters being restored
+		// wait for the creation of the PVCs defined by backup-pvc configmaps stored by this backup
+		isCredsClsOnActiveStep = true
 	}
 
 	return isCredsClsOnActiveStep
