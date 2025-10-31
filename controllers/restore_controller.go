@@ -618,6 +618,47 @@ func (r *RestoreReconciler) initVeleroRestores(
 	return false, "", nil
 }
 
+// shouldAddActivationLabel determines if activation label should be added for this resource type
+func shouldAddActivationLabel(
+	key ResourceType,
+	restore *v1beta1.Restore,
+	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
+	credsWasSkip bool,
+	resourcesWasSkip bool,
+) bool {
+	// Only applies when managed clusters are being restored
+	if veleroRestoresToCreate[ManagedClusters] == nil {
+		return false
+	}
+
+	// For ResourcesGeneric
+	if key == ResourcesGeneric {
+		if veleroRestoresToCreate[Resources] == nil {
+			return true
+		}
+		if restore.Spec.SyncRestoreWithNewBackups {
+			return true
+		}
+		if resourcesWasSkip {
+			return true
+		}
+		return false
+	}
+
+	// For Credentials
+	if key == Credentials {
+		if restore.Spec.SyncRestoreWithNewBackups {
+			return true
+		}
+		if credsWasSkip {
+			return true
+		}
+		return false
+	}
+
+	return false
+}
+
 // for an activation phase update restore labels to include activation resources
 func updateLabelsForActiveResources(
 	restore *v1beta1.Restore,
@@ -636,10 +677,7 @@ func updateLabelsForActiveResources(
 	resourcesWasSkip := key == ResourcesGeneric && restore.Spec.VeleroResourcesBackupName != nil &&
 		*restore.Spec.VeleroResourcesBackupName == skipRestoreStr
 
-	if (key == ResourcesGeneric && veleroRestoresToCreate[ManagedClusters] != nil &&
-		(veleroRestoresToCreate[Resources] == nil || restore.Spec.SyncRestoreWithNewBackups || resourcesWasSkip)) ||
-		(key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil &&
-			(restore.Spec.SyncRestoreWithNewBackups || credsWasSkip)) {
+	if shouldAddActivationLabel(key, restore, veleroRestoresToCreate, credsWasSkip, resourcesWasSkip) {
 		// if restoring the ManagedClusters
 		// and resources are not restored or this is a sync phase
 		// need to restore the generic resources for the activation phase

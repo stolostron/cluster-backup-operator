@@ -732,9 +732,4 @@ oc get restore.cluster.open-cluster-management.io <restore-name> -n open-cluster
 
 **Expected:** Should be `latest` (not `skip`) for activation
 
-## Version Information
-
-This behavior is available in cluster-backup-operator version 2.5 and later.
-
-For questions or issues, please file a GitHub issue.
 
