@@ -1639,6 +1639,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 		acmRestore             *v1beta1.Restore
 		restype                ResourceType
 		veleroRestoresToCreate map[ResourceType]*veleroapi.Restore
+		validatedSyncMode      bool // The validated sync mode (false if invalid config)
 	}
 
 	tests := []struct {
@@ -1662,6 +1663,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
 					Credentials: createRestore("credentials-restore", "ns").object,
 				},
+				validatedSyncMode: true, // Valid sync config
 			},
 			want:        false,
 			wantResName: "credentials-restore",
@@ -1681,6 +1683,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 					Credentials:     createRestore("credentials-restore", "ns").object,
 					ManagedClusters: createRestore("clusters-restore", "ns").object,
 				},
+				validatedSyncMode: true, // Valid sync config (MC=latest, but user edited from skip)
 			},
 			want:        true,
 			wantResName: "credentials-restore-active",
@@ -1698,6 +1701,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 					Credentials:     createRestore("credentials-restore", "ns").object,
 					ManagedClusters: createRestore("clusters-restore", "ns").object,
 				},
+				validatedSyncMode: false, // Not sync mode
 			},
 			want:        true,
 			wantResName: "credentials-restore", // creds was skipped
@@ -1715,9 +1719,29 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 					Credentials:     createRestore("credentials-restore", "ns").object,
 					ManagedClusters: createRestore("clusters-restore", "ns").object,
 				},
+				validatedSyncMode: false, // Not sync mode
 			},
 			want:        true,
 			wantResName: "credentials-restore", // No -active suffix, no activation filter - restore ALL credentials
+		},
+		{
+			name: "Regression: Sync with specific backup names (invalid, treated as non-sync)",
+			args: args{
+				restype: Credentials,
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(true). // User set sync=true
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName("acm-managed-clusters-schedule-20251029181055"). // But uses specific names
+					veleroCredentialsBackupName("acm-credentials-schedule-20251029181055").
+					veleroResourcesBackupName("acm-resources-schedule-20251029181055").object,
+				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
+					Credentials:     createRestore("credentials-restore", "ns").object,
+					ManagedClusters: createRestore("clusters-restore", "ns").object,
+				},
+				validatedSyncMode: false, // Validation fails, treated as non-sync
+			},
+			want:        true,
+			wantResName: "credentials-restore", // No -active suffix despite sync=true in spec
 		},
 		{
 			name: "Generic Res restore with ManagedCluster and no sync, should return false no active",
@@ -1734,6 +1758,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 					ManagedClusters:  createRestore("clusters-restore", "ns").object,
 					Credentials:      createRestore("credentials-restore", "ns").object,
 				},
+				validatedSyncMode: false, // Not sync mode
 			},
 			want:        false,
 			wantResName: "generic-restore",
@@ -1755,6 +1780,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 					ManagedClusters:  createRestore("clusters-restore", "ns").object,
 					Credentials:      createRestore("credentials-restore", "ns").object,
 				},
+				validatedSyncMode: true, // Valid sync config
 			},
 			want:        false,
 			wantResName: "generic-restore-active",
@@ -1762,7 +1788,8 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := updateLabelsForActiveResources(tt.args.acmRestore, tt.args.restype, tt.args.veleroRestoresToCreate)
+			got := updateLabelsForActiveResources(tt.args.acmRestore, tt.args.restype,
+				tt.args.veleroRestoresToCreate, tt.args.validatedSyncMode)
 			if got != tt.want {
 				t.Errorf("error updating labels for: %s", tt.name)
 			}
@@ -1798,8 +1825,8 @@ func Test_credentialsRestoreWithSpecificBackupName(t *testing.T) {
 		ManagedClusters: createRestore("clusters-restore", "ns").object,
 	}
 
-	// Call the function
-	isCredsClsOnActiveStep := updateLabelsForActiveResources(acmRestore, Credentials, veleroRestoresToCreate)
+	// Call the function with validatedSyncMode=false (non-sync mode)
+	isCredsClsOnActiveStep := updateLabelsForActiveResources(acmRestore, Credentials, veleroRestoresToCreate, false)
 
 	// Verify return value
 	if !isCredsClsOnActiveStep {

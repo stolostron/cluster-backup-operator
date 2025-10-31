@@ -564,7 +564,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			addRestoreLabelSelector(restoreObj, *req)
 		}
 
-		isCredsClsOnActiveStep := updateLabelsForActiveResources(restore, key, veleroRestoresToCreate)
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(restore, key, veleroRestoresToCreate, sync)
 		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
 
 		if err != nil {
@@ -620,9 +620,10 @@ func (r *RestoreReconciler) initVeleroRestores(
 }
 
 // shouldAddActivationLabel determines if activation label should be added for this resource type
+// Uses validated sync parameter instead of restore.Spec.SyncRestoreWithNewBackups to handle invalid configs
 func shouldAddActivationLabel(
 	key ResourceType,
-	restore *v1beta1.Restore,
+	validatedSyncMode bool,
 	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
 	credsWasSkip bool,
 	resourcesWasSkip bool,
@@ -637,7 +638,8 @@ func shouldAddActivationLabel(
 		if veleroRestoresToCreate[Resources] == nil {
 			return true
 		}
-		if restore.Spec.SyncRestoreWithNewBackups {
+		// Use validated sync mode (not raw spec value) to handle invalid configurations
+		if validatedSyncMode {
 			return true
 		}
 		if resourcesWasSkip {
@@ -648,7 +650,8 @@ func shouldAddActivationLabel(
 
 	// For Credentials
 	if key == Credentials {
-		if restore.Spec.SyncRestoreWithNewBackups {
+		// Use validated sync mode (not raw spec value) to handle invalid configurations
+		if validatedSyncMode {
 			return true
 		}
 		if credsWasSkip {
@@ -665,6 +668,7 @@ func updateLabelsForActiveResources(
 	restore *v1beta1.Restore,
 	key ResourceType,
 	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
+	validatedSyncMode bool,
 ) bool {
 	// check if this is the credential restore run
 	// during the cluster activation step
@@ -678,7 +682,7 @@ func updateLabelsForActiveResources(
 	resourcesWasSkip := key == ResourcesGeneric && restore.Spec.VeleroResourcesBackupName != nil &&
 		*restore.Spec.VeleroResourcesBackupName == skipRestoreStr
 
-	if shouldAddActivationLabel(key, restore, veleroRestoresToCreate, credsWasSkip, resourcesWasSkip) {
+	if shouldAddActivationLabel(key, validatedSyncMode, veleroRestoresToCreate, credsWasSkip, resourcesWasSkip) {
 		// if restoring the ManagedClusters
 		// and resources are not restored or this is a sync phase
 		// need to restore the generic resources for the activation phase

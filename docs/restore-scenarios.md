@@ -754,6 +754,15 @@ Restores are created in this order:
 5. **ResourcesGeneric** (priority 4)
 6. **ManagedClusters** (priority 5)
 
+## Common Mistakes and Fixes
+
+| ❌ Invalid Configuration | ✅ Correct Configuration | Reason |
+|-------------------------|-------------------------|---------|
+| `sync: true`<br>`MC: latest` (first run) | `sync: true`<br>`MC: skip` (first run)<br>Then edit to `MC: latest` | Sync requires MC=skip initially |
+| `sync: true`<br>`MC: acm-mc-...-123456` | `sync: true`<br>`MC: latest` | Sync mode requires `latest`, not specific names |
+| `sync: true`<br>`Creds: acm-creds-...-123456` | `sync: true`<br>`Creds: latest` | Sync mode requires `latest` for all backups |
+| `sync: true`<br>`MC: latest`<br>Create new restore for activation | Edit existing restore<br>Change `MC: skip` → `latest` | Sync mode uses SAME restore resource |
+
 ## Related Documentation
 
 - [Main README](../README.md#restoring-a-backup)
@@ -763,7 +772,9 @@ Restores are created in this order:
 
 ## Troubleshooting
 
-### Sync mode validation error
+### Sync mode validation errors
+
+#### Error 1: MC set to latest on first run
 
 **Error:** "When syncRestoreWithNewBackups is true, veleroManagedClustersBackupName must initially be set to 'skip'..."
 
@@ -775,6 +786,29 @@ Restores are created in this order:
 3. When ready to activate, edit the restore to set `veleroManagedClustersBackupName: latest`
 
 **Alternative:** If you want to restore everything at once (not using sync workflow), set `syncRestoreWithNewBackups: false` or omit it.
+
+#### Error 2: Using specific backup names in sync mode
+
+**Error:** "VeleroManagedClustersBackupName should be set to skip or latest."
+
+**Cause:** Trying to use specific backup names (e.g., `acm-credentials-schedule-20251029181055`) with `syncRestoreWithNewBackups: true`.
+
+**Invalid Configuration:**
+```yaml
+syncRestoreWithNewBackups: true
+veleroManagedClustersBackupName: acm-managed-clusters-schedule-20251029181055  # ❌ Specific name not allowed
+veleroCredentialsBackupName: acm-credentials-schedule-20251029181055
+```
+
+**Solution:** 
+- **Option 1:** Use `latest` for all backup names in sync mode
+- **Option 2:** Use specific backup names with `syncRestoreWithNewBackups: false` (non-sync mode)
+
+**Why This Restriction Exists:**
+- Sync mode continuously checks for NEW backups
+- Specific backup names are static and won't change
+- This combination doesn't make logical sense
+- Use sync mode with `latest` to track new backups, OR use specific names in non-sync mode
 
 ### Restore stuck in "Started" phase
 
