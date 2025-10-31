@@ -551,6 +551,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			// this type of backup is not restored now
 			continue
 		}
+
 		if (key == ResourcesGeneric || key == Credentials) &&
 			veleroRestoresToCreate[ManagedClusters] == nil {
 			// if restoring the resources but not the managed clusters,
@@ -563,7 +564,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			addRestoreLabelSelector(restoreObj, *req)
 		}
 
-		isCredsClsOnActiveStep := updateLabelsForActiveResources(restore, key, veleroRestoresToCreate)
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(restore, key, veleroRestoresToCreate, sync)
 		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
 
 		if err != nil {
@@ -618,11 +619,56 @@ func (r *RestoreReconciler) initVeleroRestores(
 	return false, "", nil
 }
 
+// shouldAddActivationLabel determines if activation label should be added for this resource type
+// Uses validated sync parameter instead of restore.Spec.SyncRestoreWithNewBackups to handle invalid configs
+func shouldAddActivationLabel(
+	key ResourceType,
+	validatedSyncMode bool,
+	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
+	credsWasSkip bool,
+	resourcesWasSkip bool,
+) bool {
+	// Only applies when managed clusters are being restored
+	if veleroRestoresToCreate[ManagedClusters] == nil {
+		return false
+	}
+
+	// For ResourcesGeneric
+	if key == ResourcesGeneric {
+		if veleroRestoresToCreate[Resources] == nil {
+			return true
+		}
+		// Use validated sync mode (not raw spec value) to handle invalid configurations
+		if validatedSyncMode {
+			return true
+		}
+		if resourcesWasSkip {
+			return true
+		}
+		return false
+	}
+
+	// For Credentials
+	if key == Credentials {
+		// Use validated sync mode (not raw spec value) to handle invalid configurations
+		if validatedSyncMode {
+			return true
+		}
+		if credsWasSkip {
+			return true
+		}
+		return false
+	}
+
+	return false
+}
+
 // for an activation phase update restore labels to include activation resources
 func updateLabelsForActiveResources(
 	restore *v1beta1.Restore,
 	key ResourceType,
 	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
+	validatedSyncMode bool,
 ) bool {
 	// check if this is the credential restore run
 	// during the cluster activation step
@@ -630,9 +676,13 @@ func updateLabelsForActiveResources(
 
 	restoreObj := veleroRestoresToCreate[key]
 
-	if (key == ResourcesGeneric && (veleroRestoresToCreate[Resources] == nil ||
-		veleroRestoresToCreate[ManagedClusters] != nil && restore.Spec.SyncRestoreWithNewBackups)) ||
-		(key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil) {
+	// Check if credentials or resources were originally set to skip
+	credsWasSkip := key == Credentials && restore.Spec.VeleroCredentialsBackupName != nil &&
+		*restore.Spec.VeleroCredentialsBackupName == skipRestoreStr
+	resourcesWasSkip := key == ResourcesGeneric && restore.Spec.VeleroResourcesBackupName != nil &&
+		*restore.Spec.VeleroResourcesBackupName == skipRestoreStr
+
+	if shouldAddActivationLabel(key, validatedSyncMode, veleroRestoresToCreate, credsWasSkip, resourcesWasSkip) {
 		// if restoring the ManagedClusters
 		// and resources are not restored or this is a sync phase
 		// need to restore the generic resources for the activation phase
@@ -653,12 +703,12 @@ func updateLabelsForActiveResources(
 			(key == Credentials && *restore.Spec.VeleroCredentialsBackupName != skipRestoreStr) {
 			veleroRestoresToCreate[key].Name = veleroRestoresToCreate[key].Name + "-active"
 		}
-		if key == Credentials {
-			// this is an activation stage and the credebtials are being restored
-			// before going to the next restore
-			// wait for the creation of the PVCs defined by backup-pvc configmaps stored by this backup
-			isCredsClsOnActiveStep = true
-		}
+	}
+
+	if key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil {
+		// this is a credentials restore with managed clusters being restored
+		// wait for the creation of the PVCs defined by backup-pvc configmaps stored by this backup
+		isCredsClsOnActiveStep = true
 	}
 
 	return isCredsClsOnActiveStep

@@ -854,7 +854,7 @@ type ACMRestoreConfig struct {
 func createDefaultACMRestore(config ACMRestoreConfig) *v1beta1.Restore {
 	return createACMRestore(config.RestoreName, config.VeleroNamespace).
 		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
-		syncRestoreWithNewBackups(true).
+		syncRestoreWithNewBackups(false). // Non-sync mode for specific backup names
 		restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 		veleroManagedClustersBackupName(config.ManagedClustersBackupName).
 		veleroCredentialsBackupName(config.CredentialsBackupName).

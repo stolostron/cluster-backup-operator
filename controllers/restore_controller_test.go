@@ -371,6 +371,7 @@ var _ = Describe("Basic Restore controller", func() {
 					veleroCredentialsHiveBackupName,
 					veleroCredentialsClusterBackupName,
 				}
+				// In non-sync mode with all backups set, we expect 6 restores without -active suffix
 				waitForVeleroRestoreCount(ctx, k8sClient, veleroNamespace.Name, len(backupNames), timeout, interval)
 
 				// Get the velero restores for further validation
@@ -389,47 +390,47 @@ var _ = Describe("Basic Restore controller", func() {
 				}
 
 				restoreNames := []string{}
-				for i := range backupNames {
+				// Validate properties on all restores (now 8 instead of 6)
+				for i := range veleroRestores.Items {
+					restore := &veleroRestores.Items[i]
 					// look for velero optional properties
-					Expect(*veleroRestores.Items[i].Spec.RestorePVs).Should(BeTrue())
-					Expect(*veleroRestores.Items[i].Spec.PreserveNodePorts).Should(BeTrue())
-					Expect(veleroRestores.Items[i].Spec.RestoreStatus.IncludedResources[0]).
+					Expect(*restore.Spec.RestorePVs).Should(BeTrue())
+					Expect(*restore.Spec.PreserveNodePorts).Should(BeTrue())
+					Expect(restore.Spec.RestoreStatus.IncludedResources[0]).
 						Should(BeIdenticalTo("webhook"))
-					Expect(veleroRestores.Items[i].Spec.Hooks.Resources[0].Name).Should(
+					Expect(restore.Spec.Hooks.Resources[0].Name).Should(
 						BeIdenticalTo("hookName"))
-					Expect(veleroRestores.Items[i].Spec.ExcludedNamespaces).Should(
+					Expect(restore.Spec.ExcludedNamespaces).Should(
 						ContainElement("ns1"))
-					Expect(veleroRestores.Items[i].Spec.IncludedNamespaces).Should(
+					Expect(restore.Spec.IncludedNamespaces).Should(
 						ContainElement("ns3"))
-					Expect(veleroRestores.Items[i].Spec.NamespaceMapping["ns3"]).Should(
+					Expect(restore.Spec.NamespaceMapping["ns3"]).Should(
 						BeIdenticalTo("map-ns3"))
-					Expect(veleroRestores.Items[i].Spec.IncludedNamespaces).Should(
+					Expect(restore.Spec.IncludedNamespaces).Should(
 						ContainElement("ns4"))
-					Expect(veleroRestores.Items[i].Spec.IncludedNamespaces).Should(
-						ContainElement("ns4"))
-					Expect(veleroRestores.Items[i].Spec.ExcludedResources).Should(
+					Expect(restore.Spec.ExcludedResources).Should(
 						ContainElement("res1"))
-					Expect(veleroRestores.Items[i].Spec.IncludedResources).Should(
+					Expect(restore.Spec.IncludedResources).Should(
 						ContainElement("res3"))
-					Expect(veleroRestores.Items[i].Spec.IncludedResources).Should(
+					Expect(restore.Spec.IncludedResources).Should(
 						ContainElement("res4"))
-					Expect(veleroRestores.Items[i].Spec.LabelSelector.MatchLabels["restorelabel"]).Should(
+					Expect(restore.Spec.LabelSelector.MatchLabels["restorelabel"]).Should(
 						BeIdenticalTo("value"))
-					Expect(veleroRestores.Items[i].Spec.LabelSelector.MatchExpressions).Should(
+					Expect(restore.Spec.LabelSelector.MatchExpressions).Should(
 						ContainElement(req1))
-					Expect(veleroRestores.Items[i].Spec.LabelSelector.MatchExpressions).Should(
+					Expect(restore.Spec.LabelSelector.MatchExpressions).Should(
 						ContainElement(req2))
 
 					// should use the OrLabelSelectors
-					Expect(veleroRestores.Items[i].Spec.OrLabelSelectors[0].MatchLabels["restore-test-1"]).Should(
+					Expect(restore.Spec.OrLabelSelectors[0].MatchLabels["restore-test-1"]).Should(
 						BeIdenticalTo("restore-test-1-value"))
-					Expect(veleroRestores.Items[i].Spec.OrLabelSelectors[1].MatchLabels["restore-test-2"]).Should(
+					Expect(restore.Spec.OrLabelSelectors[1].MatchLabels["restore-test-2"]).Should(
 						BeIdenticalTo("restore-test-2-value"))
 
-					_, found := find(backupNames, veleroRestores.Items[i].Spec.BackupName)
+					_, found := find(backupNames, restore.Spec.BackupName)
 					Expect(found).Should(BeTrue())
 
-					restoreNames = append(restoreNames, veleroRestores.Items[i].GetName())
+					restoreNames = append(restoreNames, restore.GetName())
 				}
 
 				// Now update all the velero restores to simulate that they are complete

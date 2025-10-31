@@ -291,6 +291,35 @@ func Test_isValidSyncOptions(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name: "Invalid: Sync with MC=latest on first run (status empty)",
+			args: args{
+				restore: createACMRestore("Restore", "velero-ns").
+					syncRestoreWithNewBackups(true).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackup). // Should be skip initially
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(latestBackup).object,
+			},
+			want: false, // Should be rejected
+		},
+		{
+			name: "Valid: Sync with MC=latest after activation (status populated)",
+			args: args{
+				restore: func() *v1beta1.Restore {
+					r := createACMRestore("Restore", "velero-ns").
+						syncRestoreWithNewBackups(true).
+						cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+						veleroManagedClustersBackupName(latestBackup).
+						veleroCredentialsBackupName(latestBackup).
+						veleroResourcesBackupName(latestBackup).object
+					// Simulate that MC restore was already done (not first run)
+					r.Status.VeleroManagedClustersRestoreName = "previous-mc-restore"
+					return r
+				}(),
+			},
+			want: true, // Should be accepted (user edited from skip to latest)
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1610,6 +1639,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 		acmRestore             *v1beta1.Restore
 		restype                ResourceType
 		veleroRestoresToCreate map[ResourceType]*veleroapi.Restore
+		validatedSyncMode      bool // The validated sync mode (false if invalid config)
 	}
 
 	tests := []struct {
@@ -1633,6 +1663,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
 					Credentials: createRestore("credentials-restore", "ns").object,
 				},
+				validatedSyncMode: true, // Valid sync config
 			},
 			want:        false,
 			wantResName: "credentials-restore",
@@ -1652,6 +1683,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 					Credentials:     createRestore("credentials-restore", "ns").object,
 					ManagedClusters: createRestore("clusters-restore", "ns").object,
 				},
+				validatedSyncMode: true, // Valid sync config (MC=latest, but user edited from skip)
 			},
 			want:        true,
 			wantResName: "credentials-restore-active",
@@ -1669,9 +1701,47 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 					Credentials:     createRestore("credentials-restore", "ns").object,
 					ManagedClusters: createRestore("clusters-restore", "ns").object,
 				},
+				validatedSyncMode: false, // Not sync mode
 			},
 			want:        true,
 			wantResName: "credentials-restore", // creds was skipped
+		},
+		{
+			name: "Credentials restore with ManagedCluster specific backup name, no sync, no -active suffix",
+			args: args{
+				restype: Credentials,
+				acmRestore: createACMRestore("acm-restore", "ns").
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName("acm-managed-clusters-schedule-20251029181055").
+					veleroCredentialsBackupName("acm-credentials-schedule-20251029181055").
+					veleroResourcesBackupName("acm-resources-schedule-20251029181055").object,
+				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
+					Credentials:     createRestore("credentials-restore", "ns").object,
+					ManagedClusters: createRestore("clusters-restore", "ns").object,
+				},
+				validatedSyncMode: false, // Not sync mode
+			},
+			want:        true,
+			wantResName: "credentials-restore", // No -active suffix, no activation filter - restore ALL credentials
+		},
+		{
+			name: "Regression: Sync with specific backup names (invalid, treated as non-sync)",
+			args: args{
+				restype: Credentials,
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(true). // User set sync=true
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName("acm-managed-clusters-schedule-20251029181055"). // But uses specific names
+					veleroCredentialsBackupName("acm-credentials-schedule-20251029181055").
+					veleroResourcesBackupName("acm-resources-schedule-20251029181055").object,
+				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
+					Credentials:     createRestore("credentials-restore", "ns").object,
+					ManagedClusters: createRestore("clusters-restore", "ns").object,
+				},
+				validatedSyncMode: false, // Validation fails, treated as non-sync
+			},
+			want:        true,
+			wantResName: "credentials-restore", // No -active suffix despite sync=true in spec
 		},
 		{
 			name: "Generic Res restore with ManagedCluster and no sync, should return false no active",
@@ -1688,6 +1758,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 					ManagedClusters:  createRestore("clusters-restore", "ns").object,
 					Credentials:      createRestore("credentials-restore", "ns").object,
 				},
+				validatedSyncMode: false, // Not sync mode
 			},
 			want:        false,
 			wantResName: "generic-restore",
@@ -1709,6 +1780,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 					ManagedClusters:  createRestore("clusters-restore", "ns").object,
 					Credentials:      createRestore("credentials-restore", "ns").object,
 				},
+				validatedSyncMode: true, // Valid sync config
 			},
 			want:        false,
 			wantResName: "generic-restore-active",
@@ -1716,7 +1788,8 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := updateLabelsForActiveResources(tt.args.acmRestore, tt.args.restype, tt.args.veleroRestoresToCreate)
+			got := updateLabelsForActiveResources(tt.args.acmRestore, tt.args.restype,
+				tt.args.veleroRestoresToCreate, tt.args.validatedSyncMode)
 			if got != tt.want {
 				t.Errorf("error updating labels for: %s", tt.name)
 			}
@@ -1725,6 +1798,52 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 					tt.wantResName, tt.args.veleroRestoresToCreate[tt.args.restype].Name)
 			}
 		})
+	}
+}
+
+// Test_credentialsRestoreWithSpecificBackupName tests the fix for credentials restore
+// when using specific backup names with managed clusters (non-sync mode).
+//
+// This test validates that when restoring credentials with:
+// - Specific backup names (not "latest")
+// - Managed clusters being restored
+// - Sync mode disabled
+//
+// The credentials restore should:
+// - NOT add activation label selector (should restore ALL credentials)
+// - NOT add -active suffix to the restore name
+// - Return true for isCredsClsOnActiveStep (PVC wait required)
+func Test_credentialsRestoreWithSpecificBackupName(t *testing.T) {
+	acmRestore := createACMRestore("acm-restore", "ns").
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+		veleroManagedClustersBackupName("acm-managed-clusters-schedule-20251029181055").
+		veleroCredentialsBackupName("acm-credentials-schedule-20251029181055").
+		veleroResourcesBackupName("acm-resources-schedule-20251029181055").object
+
+	veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+		Credentials:     createRestore("credentials-restore", "ns").object,
+		ManagedClusters: createRestore("clusters-restore", "ns").object,
+	}
+
+	// Call the function with validatedSyncMode=false (non-sync mode)
+	isCredsClsOnActiveStep := updateLabelsForActiveResources(acmRestore, Credentials, veleroRestoresToCreate, false)
+
+	// Verify return value
+	if !isCredsClsOnActiveStep {
+		t.Errorf("Expected isCredsClsOnActiveStep to be true, got false")
+	}
+
+	// Verify restore name (should NOT have -active suffix)
+	expectedName := "credentials-restore"
+	actualName := veleroRestoresToCreate[Credentials].Name
+	if actualName != expectedName {
+		t.Errorf("Expected restore name %s, got %s", expectedName, actualName)
+	}
+
+	// Verify NO activation label selector is added
+	credsRestore := veleroRestoresToCreate[Credentials]
+	if hasActivationLabel(*credsRestore) {
+		t.Errorf("Credentials restore should NOT have activation label selector in non-sync mode")
 	}
 }
 
