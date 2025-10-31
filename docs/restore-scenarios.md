@@ -29,6 +29,49 @@ The cluster-backup-operator supports multiple restore scenarios to accommodate d
    - `In cluster-activation`: Restores only activation resources (activation data)
    - No filter: Restores ALL resources (both passive and activation)
 
+### Critical Validation Rules
+
+**⚠️ Sync Mode Restriction:**
+
+When `syncRestoreWithNewBackups: true`, the `veleroManagedClustersBackupName` **MUST** be set to `skip` initially.
+
+**Invalid Configuration (Will be rejected):**
+```yaml
+syncRestoreWithNewBackups: true
+veleroManagedClustersBackupName: latest  # ❌ ERROR on first run!
+```
+
+**Error Message:**
+> "When syncRestoreWithNewBackups is true, veleroManagedClustersBackupName must initially be set to 'skip'. To activate managed clusters, edit the restore to set veleroManagedClustersBackupName to 'latest'."
+
+**Correct Workflow:**
+```yaml
+# Step 1: Create with MC=skip
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-sync
+spec:
+  syncRestoreWithNewBackups: true
+  veleroManagedClustersBackupName: skip    # ✅ Must be skip initially
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
+
+# Step 2: Edit the SAME restore to activate
+# (oc edit restore restore-sync -n open-cluster-management-backup)
+spec:
+  veleroManagedClustersBackupName: latest  # ✅ OK after initial creation
+```
+
+**Why This Rule Exists:**
+
+Sync mode is designed for the passive→activate workflow where the same restore resource is edited. Starting with `MC=latest` would:
+1. Skip the passive sync phase entirely
+2. Not create passive restores that `-active` restores are meant to avoid colliding with
+3. Violate the design intent of sync mode
+
+If you want to restore everything at once without the passive phase, use **non-sync mode** instead (Case 3).
+
 ## Key Concepts
 
 ### Passive vs Activation Data
@@ -72,6 +115,8 @@ The cluster-backup-operator supports multiple restore scenarios to accommodate d
 | **3** | ❌ No | latest/specific | latest/specific | latest/specific | **NONE** | **NO** | All-at-once activation |
 | **4** | ❌ No | latest/specific | skip | latest/specific | Creds:**In**<br>Res:**NONE** | Creds:**NO**<br>Res:**NO** | Activate MC, skip creds, restore resources |
 | **5** | ❌ No | latest/specific | skip | skip | Creds:**In**<br>Res:**In** | Creds:**NO**<br>Res:**NO** | Activate MC only (creds/res from MC backup) |
+
+**Note:** The scenario "Sync mode with MC=latest from the start" is **not supported** and will be rejected by validation. Sync mode requires starting with `MC=skip` and later editing to `MC=latest`.
 
 ## Detailed Scenarios with Examples
 
@@ -651,13 +696,44 @@ restore-name-acm-resources-generic-schedule-TIMESTAMP
 restore-name-acm-managed-clusters-schedule-TIMESTAMP
 ```
 
+## Validation Rules
+
+### Sync Mode Requirements
+
+When `syncRestoreWithNewBackups: true`:
+
+| Requirement | Rule | Validation |
+|-------------|------|------------|
+| **Backup names** | Must use `latest` (not specific names) | ✅ Enforced |
+| **Initial MC value** | Must be `skip` on first creation | ✅ Enforced |
+| **Credentials** | Must be `latest` | ✅ Enforced |
+| **Resources** | Must be `latest` | ✅ Enforced |
+
+**Implementation:** The validation occurs in `controllers/restore.go` - `isValidSyncOptions()` function.
+
+**When Validation is Checked:**
+- On restore resource creation
+- On restore resource update
+- Prevents invalid configurations before any restores are created
+
+### Non-Sync Mode Requirements
+
+When `syncRestoreWithNewBackups: false` or not set:
+
+| Requirement | Rule |
+|-------------|------|
+| **Backup names** | Can use `skip`, `latest`, or specific names |
+| **MC value** | Can be `skip`, `latest`, or specific name |
+| **Workflow** | Create separate restore resources (don't edit existing ones) |
+
 ## Quick Reference
 
 ### When do I see `-active` restores?
 
-✅ **Sync mode** when managed clusters are activated (user edits restore resource)  
+✅ **Sync mode** when managed clusters are activated (user edits restore resource from MC=skip to MC=latest)  
 ✅ **Non-sync mode** when credentials/resources were set to `skip` but MC is being restored  
-❌ **Never in non-sync mode** when credentials/resources are set to `latest` or specific names
+❌ **Never in non-sync mode** when credentials/resources are set to `latest` or specific names  
+❌ **Never in sync mode on first run** (prevented by validation)
 
 ### When are label selectors applied?
 
@@ -686,6 +762,19 @@ Restores are created in this order:
 - [Active-Passive Configuration](../README.md#active-passive-configuration-design)
 
 ## Troubleshooting
+
+### Sync mode validation error
+
+**Error:** "When syncRestoreWithNewBackups is true, veleroManagedClustersBackupName must initially be set to 'skip'..."
+
+**Cause:** Trying to create a sync restore with `veleroManagedClustersBackupName` set to `latest` from the beginning.
+
+**Solution:** 
+1. Create the restore with `veleroManagedClustersBackupName: skip`
+2. Wait for passive data to sync
+3. When ready to activate, edit the restore to set `veleroManagedClustersBackupName: latest`
+
+**Alternative:** If you want to restore everything at once (not using sync workflow), set `syncRestoreWithNewBackups: false` or omit it.
 
 ### Restore stuck in "Started" phase
 
