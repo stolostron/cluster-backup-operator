@@ -116,7 +116,9 @@ func isValidSyncOptions(restore *v1beta1.Restore) (bool, string) {
 
 	// When sync is enabled and this is a new restore (not yet activated),
 	// managed clusters must be set to skip initially
-	if backupName != skipRestoreStr && restore.Status.VeleroManagedClustersRestoreName == "" {
+	// Only validate on non-Enabled phase (new restore creation, not during activation)
+	if restore.Status.Phase != v1beta1.RestorePhaseEnabled &&
+		backupName != skipRestoreStr && restore.Status.VeleroManagedClustersRestoreName == "" {
 		return false, "When syncRestoreWithNewBackups is true, veleroManagedClustersBackupName must " +
 			"initially be set to 'skip'. To activate managed clusters, edit the restore to set " +
 			"veleroManagedClustersBackupName to 'latest'."

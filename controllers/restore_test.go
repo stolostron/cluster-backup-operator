@@ -304,7 +304,7 @@ func Test_isValidSyncOptions(t *testing.T) {
 			want: false, // Should be rejected
 		},
 		{
-			name: "Valid: Sync with MC=latest after activation (status populated)",
+			name: "Valid: Sync with MC=latest after passive phase (user edited from skip)",
 			args: args{
 				restore: func() *v1beta1.Restore {
 					r := createACMRestore("Restore", "velero-ns").
@@ -313,12 +313,14 @@ func Test_isValidSyncOptions(t *testing.T) {
 						veleroManagedClustersBackupName(latestBackup).
 						veleroCredentialsBackupName(latestBackup).
 						veleroResourcesBackupName(latestBackup).object
-					// Simulate that MC restore was already done (not first run)
-					r.Status.VeleroManagedClustersRestoreName = "previous-mc-restore"
+					// Simulate activation phase: Phase=Enabled (passive sync was running)
+					r.Status.Phase = v1beta1.RestorePhaseEnabled
+					// MC restore not created yet (activation phase)
+					r.Status.VeleroManagedClustersRestoreName = ""
 					return r
 				}(),
 			},
-			want: true, // Should be accepted (user edited from skip to latest)
+			want: true, // Should be accepted (Phase=Enabled means user edited from skip to latest)
 		},
 	}
 	for _, tt := range tests {

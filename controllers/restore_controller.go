@@ -501,19 +501,24 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 	restoreOnlyManagedClusters := false
 	if sync {
-		if isNewBackupAvailable(ctx, r.Client, restore, Resources) ||
-			isNewBackupAvailable(ctx, r.Client, restore, Credentials) {
+		hasNewBackups := isNewBackupAvailable(ctx, r.Client, restore, Resources) ||
+			isNewBackupAvailable(ctx, r.Client, restore, Credentials)
+
+		isMCActivation := restore.Status.VeleroManagedClustersRestoreName == "" &&
+			*restore.Spec.VeleroManagedClustersBackupName == latestBackupStr
+
+		if hasNewBackups {
 			restoreLogger.Info(
 				"new backups available to sync with for this restore",
 				"name", restore.Name,
 				"namespace", restore.Namespace,
 			)
-		} else if restore.Status.VeleroManagedClustersRestoreName == "" &&
-			*restore.Spec.VeleroManagedClustersBackupName == latestBackupStr {
+		} else if isMCActivation {
 			// check if the managed cluster resources were not restored yet
-			// allow that now
+			// allow that now - this is the activation phase
 			restoreOnlyManagedClusters = true
 		} else {
+			// No new backups and MC already restored, nothing to do
 			return false, "", nil
 		}
 	}
