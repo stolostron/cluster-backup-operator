@@ -1,0 +1,318 @@
+Create this for testing PVC waiting
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: acm-pvcs-mongo-storage
+  namespace: open-cluster-management-backup
+  labels:
+    cluster.open-cluster-management.io/backup-pvc: mongo-storage
+data:
+  aa: bb
+
+
+Case 1:
+
+Scenario: Invalid combination syncRestoreWithNewBackups=true and veleroManagedClustersBackupName: latest
+PVC mongo-storage exists
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-all-sync
+  namespace: open-cluster-management-backup
+spec:
+  syncRestoreWithNewBackups: true # restore again when new backups are available
+  restoreSyncInterval: 10m # check for new backups every 10 minutes
+  cleanupBeforeRestore: None
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
+
+Expected result:
+restore-acm-all-sync status is Finished
+  lastMessage: All Velero restores have run successfully ; SyncRestoreWithNewBackups option is ignored because VeleroManagedClustersBackupName should be set to skip or latest.
+
+Case 1.1:
+
+Scenario: Invalid combination syncRestoreWithNewBackups=true and veleroManagedClustersBackupName: latest 
+PVC mongo-storage DOES not exist ( it should wait for the creation )
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-all-sync
+  namespace: open-cluster-management-backup
+spec:
+  syncRestoreWithNewBackups: true # restore again when new backups are available
+  restoreSyncInterval: 10m # check for new backups every 10 minutes
+  cleanupBeforeRestore: None
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
+
+Expected result:
+status:
+  lastMessage: 'waiting for PVC mongo-storage:open-cluster-management-backup'
+
+Only the credentials backup is created. ALL credentials are restored with this backup.
+
+NOW create the PVC mongo-storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-storage
+  namespace: open-cluster-management-backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+
+Result :
+Restore goes to finish state. Generic backup is created ( no -active ); it has no labelSelector ( all resources are restored )
+
+
+Case 2:
+
+Scenario: Invalid combination syncRestoreWithNewBackups=true and veleroManagedClustersBackupName: backupname
+PVC mongo-storage exists
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-all-sync
+  namespace: open-cluster-management-backup
+spec:
+  syncRestoreWithNewBackups: true # restore again when new backups are available
+  restoreSyncInterval: 10m # check for new backups every 10 minutes
+  cleanupBeforeRestore: None
+  veleroCredentialsBackupName: acm-credentials-schedule-20251103183520
+  veleroManagedClustersBackupName: acm-managed-clusters-schedule-20251103183521
+  veleroResourcesBackupName: acm-resources-schedule-20251103183521
+
+Expected result:
+restore-acm-all-sync status is Finished
+  lastMessage: All Velero restores have run successfully ; SyncRestoreWithNewBackups option is ignored because VeleroManagedClustersBackupName should be set to skip or latest.
+
+Case 2.2:
+
+Scenario: Invalid combination syncRestoreWithNewBackups=true and veleroManagedClustersBackupName: backupname
+PVC mongo-storage DOES not exist ( it should wait for the creation )
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-all-sync
+  namespace: open-cluster-management-backup
+spec:
+  syncRestoreWithNewBackups: true # restore again when new backups are available
+  restoreSyncInterval: 10m # check for new backups every 10 minutes
+  cleanupBeforeRestore: None
+  veleroCredentialsBackupName: acm-credentials-schedule-20251103183520
+  veleroManagedClustersBackupName: acm-managed-clusters-schedule-20251103183521
+  veleroResourcesBackupName: acm-resources-schedule-20251103183521
+
+Expected result:
+status:
+  lastMessage: 'waiting for PVC mongo-storage:open-cluster-management-backup'
+
+Only the credentials backup is created. ALL credentials are restored with this backup.
+
+NOW create the PVC mongo-storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-storage
+  namespace: open-cluster-management-backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+
+Result :
+Restore goes to finish state. Generic backup is created ( no -active ); it has no labelSelector ( all resources are restored )
+
+
+Case 3:
+
+Scenario: Sync valid scenario; only passive data is restored
+
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-all-sync
+  namespace: open-cluster-management-backup
+spec:
+  syncRestoreWithNewBackups: true # restore again when new backups are available
+  restoreSyncInterval: 10m # check for new backups every 10 minutes
+  cleanupBeforeRestore: None
+  veleroManagedClustersBackupName: skip
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
+
+Expected result:
+1.restore-acm-all-sync status is Enabled
+2.lastMessage: 'Velero restores have run to completion, restore will continue to sync with new backups'
+
+3. Velero restore created - only these:
+- restore-acm-all-sync-acm-credentials-schedule-20251030171520
+Spec has
+  labelSelector:
+    matchExpressions:
+      - key: cluster.open-cluster-management.io/backup
+        operator: NotIn
+        values:
+          - cluster-activation
+  scheduleName: acm-credentials-schedule
+
+- restore-acm-all-sync-acm-resources-generic-schedule-20251030171520
+spec contains
+  labelSelector:
+    matchExpressions:
+      - key: cluster.open-cluster-management.io/backup
+        operator: NotIn
+        values:
+          - cluster-activation
+  scheduleName: acm-resources-generic-schedule
+
+- restore-acm-all-sync-acm-resources-schedule-20251030171520
+
+
+Case 3.1.1 activate data : set veleroManagedClustersBackupName: latest
+PVC exists
+
+Result: 
+Expected result:
+restore-acm-all-sync status is Finished
+lastMessage: All Velero restores have run successfully
+
+New Velero restore created :
+I should see both -active restores, for credentials and generic (restore-acm-all-sync-acm-credentials-schedule-20251030171520-active and 
+restore-acm-all-sync-acm-resources-generic-schedule-20251030171520- active ) resources with 
+  labelSelector:
+    matchExpressions:
+      - key: cluster.open-cluster-management.io/backup
+        operator: In
+        values:
+          - cluster-activation
+
+Case 3.1.2 activate data : set veleroManagedClustersBackupName: latest
+PVC mongo-storage DOES not exist ( it should wait for the creation )
+
+Expected result:
+a. status:
+  lastMessage: 'waiting for PVC mongo-storage:open-cluster-management-backup'
+b. credentials-active is created
+
+NOW create the PVC mongo-storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-storage
+  namespace: open-cluster-management-backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+
+Result :
+Restore goes to finish state. Generic -active is created too
+
+
+Case 4:
+Valid restore all with backupname
+PVC exists
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-all-sync
+  namespace: open-cluster-management-backup
+spec:
+  cleanupBeforeRestore: None
+  veleroCredentialsBackupName: acm-credentials-schedule-20251103183520
+  veleroManagedClustersBackupName: acm-managed-clusters-schedule-20251103183521
+  veleroResourcesBackupName: acm-resources-schedule-20251103183521
+
+Result :
+Restore goes to finish state. no -active is created; restore creds and generic have no labelSelector
+
+
+Case 5:
+Valid restore all with backupname
+PVC mongo-storage DOES not exist ( it should wait for the creation )
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-all-sync
+  namespace: open-cluster-management-backup
+spec:
+  cleanupBeforeRestore: None
+  veleroCredentialsBackupName: acm-credentials-schedule-20251103183520
+  veleroManagedClustersBackupName: acm-managed-clusters-schedule-20251103183521
+  veleroResourcesBackupName: acm-resources-schedule-20251103183521
+
+Result :
+
+a. status:
+  lastMessage: 'waiting for PVC mongo-storage:open-cluster-management-backup'
+b. credentials restore is created ( restore all , no labelSelector)
+c. Restore goes to Started state. 
+
+
+NOW create the PVC mongo-storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-storage
+  namespace: open-cluster-management-backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+
+Result :
+Restore goes to finish state. Generic is created; no -active restore ( restores have no labelSelector)
+
+Case 6:
+Skip managed clusters; activation resources should not be restored
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-all-sync
+  namespace: open-cluster-management-backup
+spec:
+  cleanupBeforeRestore: None
+  veleroManagedClustersBackupName: skip
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
+
+Result:
+Restore creds and generic with labelSelector ( notIn cluster-activation)
+
+Case 6:
+Skip managed clusters, use backup name; activation resources should not be restored
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-all-sync
+  namespace: open-cluster-management-backup
+spec:
+  cleanupBeforeRestore: None
+  veleroCredentialsBackupName: acm-credentials-schedule-20251103183520
+  veleroManagedClustersBackupName: skip
+  veleroResourcesBackupName: acm-resources-schedule-20251103183521
+
+Result:
+Restore creds and generic with labelSelector ( notIn cluster-activation)
