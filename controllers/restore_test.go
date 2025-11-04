@@ -20,6 +20,7 @@ package controllers
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -1644,6 +1645,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 				acmRestore: createACMRestore("acm-restore", "ns").
 					syncRestoreWithNewBackups(true).
 					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
+					phase(v1beta1.RestorePhaseEnabled).
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(latestBackupStr).
 					veleroCredentialsBackupName(latestBackupStr).
@@ -1654,7 +1656,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 				},
 			},
 			want:        true,
-			wantResName: "credentials-restore-active",
+			wantResName: "credentials-restore-active", // -active suffix for sync to avoid name collision
 		},
 		{
 			name: "Credentials restore for ManagedCluster latest with no sync, should return true",
@@ -1672,6 +1674,23 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 			},
 			want:        true,
 			wantResName: "credentials-restore", // creds was skipped
+		},
+		{
+			name: "Credentials restore with ManagedCluster specific backup name, no sync, no -active suffix",
+			args: args{
+				restype: Credentials,
+				acmRestore: createACMRestore("acm-restore", "ns").
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName("acm-managed-clusters-schedule-20251029181055").
+					veleroCredentialsBackupName("acm-credentials-schedule-20251029181055").
+					veleroResourcesBackupName("acm-resources-schedule-20251029181055").object,
+				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
+					Credentials:     createRestore("credentials-restore", "ns").object,
+					ManagedClusters: createRestore("clusters-restore", "ns").object,
+				},
+			},
+			want:        true,
+			wantResName: "credentials-restore", // No -active suffix, no activation filter - restore ALL credentials
 		},
 		{
 			name: "Generic Res restore with ManagedCluster and no sync, should return false no active",
@@ -1699,6 +1718,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 				acmRestore: createACMRestore("acm-restore", "ns").
 					syncRestoreWithNewBackups(true).
 					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
+					phase(v1beta1.RestorePhaseEnabled).
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(latestBackupStr).
 					veleroCredentialsBackupName(latestBackupStr).
@@ -1716,13 +1736,994 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := updateLabelsForActiveResources(tt.args.acmRestore, tt.args.restype, tt.args.veleroRestoresToCreate)
+			// Create a fake client for the test
+			fakeClient := fake.NewClientBuilder().Build()
+			got := updateLabelsForActiveResources(
+				context.Background(), fakeClient, tt.args.acmRestore, tt.args.restype, tt.args.veleroRestoresToCreate,
+			)
 			if got != tt.want {
 				t.Errorf("error updating labels for: %s", tt.name)
 			}
 			if tt.wantResName != tt.args.veleroRestoresToCreate[tt.args.restype].Name {
 				t.Errorf("The restore resource name should be  %v, but got %v",
 					tt.wantResName, tt.args.veleroRestoresToCreate[tt.args.restype].Name)
+			}
+		})
+	}
+}
+
+// Test_credentialsRestoreWithSpecificBackupName tests the bug fix for credentials restore
+// when using specific backup names with managed clusters (non-sync mode).
+//
+// This test validates that when restoring credentials with:
+// - Specific backup names (not "latest")
+// - Managed clusters being restored
+// - Sync mode disabled
+//
+// The credentials restore should:
+// - NOT add activation label selector (should restore ALL credentials)
+// - NOT add -active suffix to the restore name
+// - Return true for isCredsClsOnActiveStep (PVC wait required)
+func Test_credentialsRestoreWithSpecificBackupName(t *testing.T) {
+	acmRestore := createACMRestore("acm-restore", "ns").
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+		veleroManagedClustersBackupName("acm-managed-clusters-schedule-20251029181055").
+		veleroCredentialsBackupName("acm-credentials-schedule-20251029181055").
+		veleroResourcesBackupName("acm-resources-schedule-20251029181055").object
+
+	veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+		Credentials:     createRestore("credentials-restore", "ns").object,
+		ManagedClusters: createRestore("clusters-restore", "ns").object,
+	}
+
+	// Call the function
+	fakeClient := fake.NewClientBuilder().Build()
+	isCredsClsOnActiveStep := updateLabelsForActiveResources(
+		context.Background(), fakeClient, acmRestore, Credentials, veleroRestoresToCreate,
+	)
+
+	// Verify return value
+	if !isCredsClsOnActiveStep {
+		t.Errorf("Expected isCredsClsOnActiveStep to be true, got false")
+	}
+
+	// Verify restore name (should NOT have -active suffix)
+	expectedName := "credentials-restore"
+	actualName := veleroRestoresToCreate[Credentials].Name
+	if actualName != expectedName {
+		t.Errorf("Expected restore name %s, got %s", expectedName, actualName)
+	}
+
+	// Verify NO activation label selector is added
+	credsRestore := veleroRestoresToCreate[Credentials]
+	if hasActivationLabel(*credsRestore) {
+		t.Errorf("Credentials restore should NOT have activation label selector in non-sync mode with specific backup names")
+	}
+}
+
+// Test_credentialsRestoreWithoutManagedClusters tests credentials restore when managed clusters are skipped.
+//
+// This test validates that when restoring credentials with:
+// - Specific backup name for credentials
+// - Managed clusters set to "skip"
+// - Resources set to "skip"
+//
+// The credentials restore should:
+// - Add "NotIn cluster-activation" label selector (exclude activation credentials)
+// - NOT add -active suffix to the restore name
+// - Return false for isCredsClsOnActiveStep (no PVC wait needed)
+func Test_credentialsRestoreWithoutManagedClusters(t *testing.T) {
+	acmRestore := createACMRestore("acm-restore", "ns").
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+		veleroManagedClustersBackupName("skip").
+		veleroCredentialsBackupName("acm-credentials-schedule-20251029181055").
+		veleroResourcesBackupName("skip").object
+
+	veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+		Credentials: createRestore("credentials-restore", "ns").object,
+	}
+
+	// Call the function
+	fakeClient := fake.NewClientBuilder().Build()
+	isCredsClsOnActiveStep := updateLabelsForActiveResources(
+		context.Background(), fakeClient, acmRestore, Credentials, veleroRestoresToCreate,
+	)
+
+	// Verify return value (should be false - no PVC wait needed)
+	if isCredsClsOnActiveStep {
+		t.Errorf("Expected isCredsClsOnActiveStep to be false, got true")
+	}
+
+	// Verify restore name (should NOT have -active suffix)
+	expectedName := "credentials-restore"
+	actualName := veleroRestoresToCreate[Credentials].Name
+	if actualName != expectedName {
+		t.Errorf("Expected restore name %s, got %s", expectedName, actualName)
+	}
+
+	// Verify that "NotIn cluster-activation" label selector is NOT added by updateLabelsForActiveResources
+	// (it's added elsewhere in the restore flow)
+	credsRestore := veleroRestoresToCreate[Credentials]
+	if hasActivationLabel(*credsRestore) {
+		t.Errorf("Credentials restore should NOT have activation label selector added by updateLabelsForActiveResources")
+	}
+}
+
+// Test_restoreCase1_SkipClustersLatestCredsSync tests Case 1:
+// ManagedClusters=skip, Credentials=latest, Resources=latest, Sync=true
+//
+// Expected: Credentials and ResourcesGeneric with NO label selector, no -active suffix
+func Test_restoreCase1_SkipClustersLatestCredsSync(t *testing.T) {
+	skipRestoreStr := "skip"
+	latestBackupStr := "latest"
+
+	// Test Credentials
+	t.Run("Credentials", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(skipRestoreStr).
+			veleroCredentialsBackupName(latestBackupStr).
+			veleroResourcesBackupName(latestBackupStr).
+			syncRestoreWithNewBackups(true).
+			restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			Credentials: createRestore("credentials-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, Credentials, veleroRestoresToCreate,
+		)
+
+		if isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=false, got true")
+		}
+
+		restoreObj := veleroRestoresToCreate[Credentials]
+		if hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected NO label selector")
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+
+	// Test ResourcesGeneric
+	t.Run("ResourcesGeneric", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(skipRestoreStr).
+			veleroCredentialsBackupName(latestBackupStr).
+			veleroResourcesBackupName(latestBackupStr).
+			syncRestoreWithNewBackups(true).
+			restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			ResourcesGeneric: createRestore("generic-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, ResourcesGeneric, veleroRestoresToCreate,
+		)
+
+		if isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=false, got true")
+		}
+
+		restoreObj := veleroRestoresToCreate[ResourcesGeneric]
+		if hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected NO label selector")
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+}
+
+// Test_restoreCase2_SkipClustersLatestCredsNoSync tests Case 2:
+// ManagedClusters=skip, Credentials=latest, Resources=latest, Sync=false
+//
+// Expected: Credentials and ResourcesGeneric with NO label selector, no -active suffix
+func Test_restoreCase2_SkipClustersLatestCredsNoSync(t *testing.T) {
+	skipRestoreStr := "skip"
+	latestBackupStr := "latest"
+
+	// Test Credentials
+	t.Run("Credentials", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(skipRestoreStr).
+			veleroCredentialsBackupName(latestBackupStr).
+			veleroResourcesBackupName(latestBackupStr).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			Credentials: createRestore("credentials-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, Credentials, veleroRestoresToCreate,
+		)
+
+		if isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=false, got true")
+		}
+
+		restoreObj := veleroRestoresToCreate[Credentials]
+		if hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected NO label selector")
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+
+	// Test ResourcesGeneric
+	t.Run("ResourcesGeneric", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(skipRestoreStr).
+			veleroCredentialsBackupName(latestBackupStr).
+			veleroResourcesBackupName(latestBackupStr).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			ResourcesGeneric: createRestore("generic-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, ResourcesGeneric, veleroRestoresToCreate,
+		)
+
+		if isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=false, got true")
+		}
+
+		restoreObj := veleroRestoresToCreate[ResourcesGeneric]
+		if hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected NO label selector")
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+}
+
+// Test_restoreCase3_LatestClustersLatestCredsNoSync tests Case 3:
+// ManagedClusters=latest, Credentials=latest, Resources=latest, Sync=false
+//
+// Expected: NO label selector for both Credentials and ResourcesGeneric
+func Test_restoreCase3_LatestClustersLatestCredsNoSync(t *testing.T) {
+	latestBackupStr := "latest"
+
+	// Test Credentials
+	t.Run("Credentials", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(latestBackupStr).
+			veleroCredentialsBackupName(latestBackupStr).
+			veleroResourcesBackupName(latestBackupStr).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			Credentials:     createRestore("credentials-restore", "ns").object,
+			ManagedClusters: createRestore("clusters-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, Credentials, veleroRestoresToCreate,
+		)
+
+		if !isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=true, got false")
+		}
+
+		restoreObj := veleroRestoresToCreate[Credentials]
+		if hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected NO label selector")
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+
+	// Test ResourcesGeneric
+	t.Run("ResourcesGeneric", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(latestBackupStr).
+			veleroCredentialsBackupName(latestBackupStr).
+			veleroResourcesBackupName(latestBackupStr).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			ResourcesGeneric: createRestore("generic-restore", "ns").object,
+			Resources:        createRestore("resources-restore", "ns").object,
+			ManagedClusters:  createRestore("clusters-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, ResourcesGeneric, veleroRestoresToCreate,
+		)
+
+		if isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=false, got true")
+		}
+
+		restoreObj := veleroRestoresToCreate[ResourcesGeneric]
+		if hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected NO label selector")
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+}
+
+// Test_restoreCase4_LatestClustersSkipCredsLatestResourcesNoSync tests Case 4:
+// ManagedClusters=latest, Credentials=skip, Resources=latest, Sync=false
+//
+// Expected: Credentials with In cluster-activation, ResourcesGeneric with NO label selector
+func Test_restoreCase4_LatestClustersSkipCredsLatestResourcesNoSync(t *testing.T) {
+	skipRestoreStr := "skip"
+	latestBackupStr := "latest"
+
+	// Test Credentials
+	t.Run("Credentials", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(latestBackupStr).
+			veleroCredentialsBackupName(skipRestoreStr).
+			veleroResourcesBackupName(latestBackupStr).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			Credentials:     createRestore("credentials-restore", "ns").object,
+			ManagedClusters: createRestore("clusters-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, Credentials, veleroRestoresToCreate,
+		)
+
+		if !isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=true, got false")
+		}
+
+		restoreObj := veleroRestoresToCreate[Credentials]
+		if !hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected In cluster-activation label selector")
+		}
+
+		// Verify it's In
+		if restoreObj.Spec.LabelSelector != nil {
+			for _, req := range restoreObj.Spec.LabelSelector.MatchExpressions {
+				if req.Key == backupCredsClusterLabel && req.Operator != "In" {
+					t.Errorf("Expected operator In, got %s", req.Operator)
+				}
+			}
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+
+	// Test ResourcesGeneric
+	t.Run("ResourcesGeneric", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(latestBackupStr).
+			veleroCredentialsBackupName(skipRestoreStr).
+			veleroResourcesBackupName(latestBackupStr).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			ResourcesGeneric: createRestore("generic-restore", "ns").object,
+			Resources:        createRestore("resources-restore", "ns").object,
+			ManagedClusters:  createRestore("clusters-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, ResourcesGeneric, veleroRestoresToCreate,
+		)
+
+		if isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=false, got true")
+		}
+
+		restoreObj := veleroRestoresToCreate[ResourcesGeneric]
+		if hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected NO label selector")
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+}
+
+// Test_restoreCase5_LatestClustersSkipCredsSkipResourcesNoSync tests Case 5:
+// ManagedClusters=latest, Credentials=skip, Resources=skip, Sync=false
+//
+// Expected: Both Credentials and ResourcesGeneric with In cluster-activation, no -active suffix
+func Test_restoreCase5_LatestClustersSkipCredsSkipResourcesNoSync(t *testing.T) {
+	skipRestoreStr := "skip"
+	latestBackupStr := "latest"
+
+	// Test Credentials
+	t.Run("Credentials", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(latestBackupStr).
+			veleroCredentialsBackupName(skipRestoreStr).
+			veleroResourcesBackupName(skipRestoreStr).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			Credentials:     createRestore("credentials-restore", "ns").object,
+			ManagedClusters: createRestore("clusters-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, Credentials, veleroRestoresToCreate,
+		)
+
+		if !isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=true, got false")
+		}
+
+		restoreObj := veleroRestoresToCreate[Credentials]
+		if !hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected In cluster-activation label selector")
+		}
+
+		// Verify it's In
+		if restoreObj.Spec.LabelSelector != nil {
+			for _, req := range restoreObj.Spec.LabelSelector.MatchExpressions {
+				if req.Key == backupCredsClusterLabel && req.Operator != "In" {
+					t.Errorf("Expected operator In, got %s", req.Operator)
+				}
+			}
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+
+	// Test ResourcesGeneric
+	t.Run("ResourcesGeneric", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(latestBackupStr).
+			veleroCredentialsBackupName(skipRestoreStr).
+			veleroResourcesBackupName(skipRestoreStr).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			ResourcesGeneric: createRestore("generic-restore", "ns").object,
+			ManagedClusters:  createRestore("clusters-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, ResourcesGeneric, veleroRestoresToCreate,
+		)
+
+		if isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=false, got true")
+		}
+
+		restoreObj := veleroRestoresToCreate[ResourcesGeneric]
+		if !hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected In cluster-activation label selector")
+		}
+
+		// Verify it's In
+		if restoreObj.Spec.LabelSelector != nil {
+			for _, req := range restoreObj.Spec.LabelSelector.MatchExpressions {
+				if req.Key == backupCredsClusterLabel && req.Operator != "In" {
+					t.Errorf("Expected operator In, got %s", req.Operator)
+				}
+			}
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+}
+
+// Test_restoreCase6_SkipClustersLatestCredsLatestResourcesNoSync tests Case 6:
+// ManagedClusters=skip, Credentials=latest, Resources=latest, Sync=false
+//
+// Expected: Both Credentials and ResourcesGeneric with NO label selector, no -active suffix
+func Test_restoreCase6_SkipClustersLatestCredsLatestResourcesNoSync(t *testing.T) {
+	skipRestoreStr := "skip"
+	latestBackupStr := "latest"
+
+	// Test Credentials
+	t.Run("Credentials", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(skipRestoreStr).
+			veleroCredentialsBackupName(latestBackupStr).
+			veleroResourcesBackupName(latestBackupStr).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			Credentials: createRestore("credentials-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, Credentials, veleroRestoresToCreate,
+		)
+
+		if isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=false, got true")
+		}
+
+		restoreObj := veleroRestoresToCreate[Credentials]
+		if hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected NO label selector")
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+
+	// Test ResourcesGeneric
+	t.Run("ResourcesGeneric", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(skipRestoreStr).
+			veleroCredentialsBackupName(latestBackupStr).
+			veleroResourcesBackupName(latestBackupStr).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			ResourcesGeneric: createRestore("generic-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, ResourcesGeneric, veleroRestoresToCreate,
+		)
+
+		if isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=false, got true")
+		}
+
+		restoreObj := veleroRestoresToCreate[ResourcesGeneric]
+		if hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected NO label selector")
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+}
+
+// Test_restoreCase7_SpecificBackupNamesNoSync tests Case 7:
+// ManagedClusters=name, Credentials=name, Resources=name, Sync=false
+//
+// Expected: NO label selector for both Credentials and ResourcesGeneric
+func Test_restoreCase7_SpecificBackupNamesNoSync(t *testing.T) {
+	specificBackupName := "acm-credentials-schedule-20251029181055"
+
+	// Test Credentials
+	t.Run("Credentials", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(specificBackupName).
+			veleroCredentialsBackupName(specificBackupName).
+			veleroResourcesBackupName(specificBackupName).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			Credentials:     createRestore("credentials-restore", "ns").object,
+			ManagedClusters: createRestore("clusters-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, Credentials, veleroRestoresToCreate,
+		)
+
+		if !isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=true, got false")
+		}
+
+		restoreObj := veleroRestoresToCreate[Credentials]
+		if hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected NO label selector")
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+
+	// Test ResourcesGeneric
+	t.Run("ResourcesGeneric", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(specificBackupName).
+			veleroCredentialsBackupName(specificBackupName).
+			veleroResourcesBackupName(specificBackupName).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			ResourcesGeneric: createRestore("generic-restore", "ns").object,
+			Resources:        createRestore("resources-restore", "ns").object,
+			ManagedClusters:  createRestore("clusters-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, ResourcesGeneric, veleroRestoresToCreate,
+		)
+
+		if isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=false, got true")
+		}
+
+		restoreObj := veleroRestoresToCreate[ResourcesGeneric]
+		if hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected NO label selector")
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+}
+
+// Test_restoreCase8_SkipClustersSpecificBackupNamesNoSync tests Case 8:
+// ManagedClusters=skip, Credentials=name, Resources=name, Sync=false
+//
+// Expected: Both Credentials and ResourcesGeneric with NO label selector, no -active suffix
+func Test_restoreCase8_SkipClustersSpecificBackupNamesNoSync(t *testing.T) {
+	skipRestoreStr := "skip"
+	specificBackupName := "acm-credentials-schedule-20251029181055"
+
+	// Test Credentials
+	t.Run("Credentials", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(skipRestoreStr).
+			veleroCredentialsBackupName(specificBackupName).
+			veleroResourcesBackupName(specificBackupName).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			Credentials: createRestore("credentials-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, Credentials, veleroRestoresToCreate,
+		)
+
+		if isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=false, got true")
+		}
+
+		restoreObj := veleroRestoresToCreate[Credentials]
+		if hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected NO label selector")
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+
+	// Test ResourcesGeneric
+	t.Run("ResourcesGeneric", func(t *testing.T) {
+		acmRestore := createACMRestore("acm-restore", "ns").
+			cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+			veleroManagedClustersBackupName(skipRestoreStr).
+			veleroCredentialsBackupName(specificBackupName).
+			veleroResourcesBackupName(specificBackupName).object
+
+		veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+			ResourcesGeneric: createRestore("generic-restore", "ns").object,
+		}
+
+		fakeClient := fake.NewClientBuilder().Build()
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(
+			context.Background(), fakeClient, acmRestore, ResourcesGeneric, veleroRestoresToCreate,
+		)
+
+		if isCredsClsOnActiveStep {
+			t.Errorf("Expected isCredsClsOnActiveStep=false, got true")
+		}
+
+		restoreObj := veleroRestoresToCreate[ResourcesGeneric]
+		if hasActivationLabel(*restoreObj) {
+			t.Errorf("Expected NO label selector")
+		}
+
+		if strings.HasSuffix(restoreObj.Name, "-active") {
+			t.Errorf("Expected no -active suffix")
+		}
+	})
+}
+
+// Test_restoreLabelSelectorScenarios tests all 8 restore scenarios for correct label selector behavior.
+//
+// This comprehensive test validates that label selectors are correctly applied based on:
+// - Whether managed clusters are being restored (latest/name vs skip)
+// - Whether sync mode is enabled
+// - Whether credentials/resources were originally set to skip
+func Test_restoreLabelSelectorScenarios(t *testing.T) {
+	skipRestoreStr := "skip"
+	latestBackupStr := "latest"
+	specificBackupName := "acm-credentials-schedule-20251029181055"
+
+	tests := []struct {
+		name                  string
+		managedClusters       string
+		credentials           string
+		resources             string
+		sync                  bool
+		resourceType          ResourceType
+		wantLabelSelector     string // "In", "NotIn", or "none"
+		wantActiveSuffix      bool
+		wantIsCredsActiveStep bool
+	}{
+		// Case 1: ManagedClusters=skip, Credentials=latest, Resources=latest, Sync=true
+		{
+			name:                  "Case1-Credentials: skip clusters, latest creds, sync=true",
+			managedClusters:       skipRestoreStr,
+			credentials:           latestBackupStr,
+			resources:             latestBackupStr,
+			sync:                  true,
+			resourceType:          Credentials,
+			wantLabelSelector:     "none",
+			wantActiveSuffix:      false,
+			wantIsCredsActiveStep: false,
+		},
+		{
+			name:                  "Case1-ResourcesGeneric: skip clusters, latest resources, sync=true",
+			managedClusters:       skipRestoreStr,
+			credentials:           latestBackupStr,
+			resources:             latestBackupStr,
+			sync:                  true,
+			resourceType:          ResourcesGeneric,
+			wantLabelSelector:     "none",
+			wantActiveSuffix:      false,
+			wantIsCredsActiveStep: false,
+		},
+		// Case 2: ManagedClusters=skip, Credentials=latest, Resources=latest, Sync=false
+		{
+			name:                  "Case2-Credentials: skip clusters, latest creds, sync=false",
+			managedClusters:       skipRestoreStr,
+			credentials:           latestBackupStr,
+			resources:             latestBackupStr,
+			sync:                  false,
+			resourceType:          Credentials,
+			wantLabelSelector:     "none",
+			wantActiveSuffix:      false,
+			wantIsCredsActiveStep: false,
+		},
+		{
+			name:                  "Case2-ResourcesGeneric: skip clusters, latest resources, sync=false",
+			managedClusters:       skipRestoreStr,
+			credentials:           latestBackupStr,
+			resources:             latestBackupStr,
+			sync:                  false,
+			resourceType:          ResourcesGeneric,
+			wantLabelSelector:     "none",
+			wantActiveSuffix:      false,
+			wantIsCredsActiveStep: false,
+		},
+		// Case 3: ManagedClusters=latest, Credentials=latest, Resources=latest, Sync=false
+		{
+			name:                  "Case3-Credentials: latest clusters, latest creds, sync=false",
+			managedClusters:       latestBackupStr,
+			credentials:           latestBackupStr,
+			resources:             latestBackupStr,
+			sync:                  false,
+			resourceType:          Credentials,
+			wantLabelSelector:     "none",
+			wantActiveSuffix:      false,
+			wantIsCredsActiveStep: true,
+		},
+		{
+			name:                  "Case3-ResourcesGeneric: latest clusters, latest resources, sync=false",
+			managedClusters:       latestBackupStr,
+			credentials:           latestBackupStr,
+			resources:             latestBackupStr,
+			sync:                  false,
+			resourceType:          ResourcesGeneric,
+			wantLabelSelector:     "none",
+			wantActiveSuffix:      false,
+			wantIsCredsActiveStep: false,
+		},
+		// Case 4: ManagedClusters=latest, Credentials=skip, Resources=latest, Sync=false
+		{
+			name:                  "Case4-Credentials: latest clusters, skip creds, sync=false",
+			managedClusters:       latestBackupStr,
+			credentials:           skipRestoreStr,
+			resources:             latestBackupStr,
+			sync:                  false,
+			resourceType:          Credentials,
+			wantLabelSelector:     "In",
+			wantActiveSuffix:      false,
+			wantIsCredsActiveStep: true,
+		},
+		{
+			name:                  "Case4-ResourcesGeneric: latest clusters, skip creds, latest resources, sync=false",
+			managedClusters:       latestBackupStr,
+			credentials:           skipRestoreStr,
+			resources:             latestBackupStr,
+			sync:                  false,
+			resourceType:          ResourcesGeneric,
+			wantLabelSelector:     "none",
+			wantActiveSuffix:      false,
+			wantIsCredsActiveStep: false,
+		},
+		// Case 5: ManagedClusters=latest, Credentials=skip, Resources=skip, Sync=false
+		{
+			name:                  "Case5-Credentials: latest clusters, skip creds, skip resources, sync=false",
+			managedClusters:       latestBackupStr,
+			credentials:           skipRestoreStr,
+			resources:             skipRestoreStr,
+			sync:                  false,
+			resourceType:          Credentials,
+			wantLabelSelector:     "In",
+			wantActiveSuffix:      false,
+			wantIsCredsActiveStep: true,
+		},
+		{
+			name:                  "Case5-ResourcesGeneric: latest clusters, skip creds, skip resources, sync=false",
+			managedClusters:       latestBackupStr,
+			credentials:           skipRestoreStr,
+			resources:             skipRestoreStr,
+			sync:                  false,
+			resourceType:          ResourcesGeneric,
+			wantLabelSelector:     "In",
+			wantActiveSuffix:      false,
+			wantIsCredsActiveStep: false,
+		},
+		// Case 7: ManagedClusters=name, Credentials=name, Resources=name, Sync=false
+		{
+			name:                  "Case7-Credentials: specific backup names, sync=false",
+			managedClusters:       specificBackupName,
+			credentials:           specificBackupName,
+			resources:             specificBackupName,
+			sync:                  false,
+			resourceType:          Credentials,
+			wantLabelSelector:     "none",
+			wantActiveSuffix:      false,
+			wantIsCredsActiveStep: true,
+		},
+		{
+			name:                  "Case7-ResourcesGeneric: specific backup names, sync=false",
+			managedClusters:       specificBackupName,
+			credentials:           specificBackupName,
+			resources:             specificBackupName,
+			sync:                  false,
+			resourceType:          ResourcesGeneric,
+			wantLabelSelector:     "none",
+			wantActiveSuffix:      false,
+			wantIsCredsActiveStep: false,
+		},
+		// Case 8: ManagedClusters=skip, Credentials=name, Resources=name, Sync=false
+		{
+			name:                  "Case8-Credentials: skip clusters, specific backup names, sync=false",
+			managedClusters:       skipRestoreStr,
+			credentials:           specificBackupName,
+			resources:             specificBackupName,
+			sync:                  false,
+			resourceType:          Credentials,
+			wantLabelSelector:     "none",
+			wantActiveSuffix:      false,
+			wantIsCredsActiveStep: false,
+		},
+		{
+			name:                  "Case8-ResourcesGeneric: skip clusters, specific backup names, sync=false",
+			managedClusters:       skipRestoreStr,
+			credentials:           specificBackupName,
+			resources:             specificBackupName,
+			sync:                  false,
+			resourceType:          ResourcesGeneric,
+			wantLabelSelector:     "none",
+			wantActiveSuffix:      false,
+			wantIsCredsActiveStep: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create ACM restore
+			restoreBuilder := createACMRestore("acm-restore", "ns").
+				cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+				veleroManagedClustersBackupName(tt.managedClusters).
+				veleroCredentialsBackupName(tt.credentials).
+				veleroResourcesBackupName(tt.resources)
+
+			if tt.sync {
+				restoreBuilder = restoreBuilder.syncRestoreWithNewBackups(true).
+					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20})
+			}
+
+			acmRestore := restoreBuilder.object
+
+			// Create velero restores map
+			veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore)
+
+			if tt.managedClusters != skipRestoreStr {
+				veleroRestoresToCreate[ManagedClusters] = createRestore("clusters-restore", "ns").object
+			}
+
+			if tt.resourceType == Credentials {
+				veleroRestoresToCreate[Credentials] = createRestore("credentials-restore", "ns").object
+			} else {
+				veleroRestoresToCreate[ResourcesGeneric] = createRestore("generic-restore", "ns").object
+				if tt.resources != skipRestoreStr {
+					veleroRestoresToCreate[Resources] = createRestore("resources-restore", "ns").object
+				}
+			}
+
+			// Call the function
+			fakeClient := fake.NewClientBuilder().Build()
+			isCredsClsOnActiveStep := updateLabelsForActiveResources(
+				context.Background(), fakeClient, acmRestore, tt.resourceType, veleroRestoresToCreate,
+			)
+
+			// Verify isCredsClsOnActiveStep
+			if isCredsClsOnActiveStep != tt.wantIsCredsActiveStep {
+				t.Errorf("Expected isCredsClsOnActiveStep=%v, got %v", tt.wantIsCredsActiveStep, isCredsClsOnActiveStep)
+			}
+
+			// Verify label selector
+			restoreObj := veleroRestoresToCreate[tt.resourceType]
+			hasLabel := hasActivationLabel(*restoreObj)
+
+			switch tt.wantLabelSelector {
+			case "In":
+				if !hasLabel {
+					t.Errorf("Expected 'In cluster-activation' label selector, but not found")
+				}
+				// Verify it's "In" not "NotIn"
+				if restoreObj.Spec.LabelSelector != nil {
+					for _, req := range restoreObj.Spec.LabelSelector.MatchExpressions {
+						if req.Key == backupCredsClusterLabel && req.Operator != "In" {
+							t.Errorf("Expected operator 'In', got '%s'", req.Operator)
+						}
+					}
+				}
+			case "NotIn":
+				if !hasLabel {
+					t.Errorf("Expected 'NotIn cluster-activation' label selector, but not found")
+				}
+				// Verify it's "NotIn" not "In"
+				if restoreObj.Spec.LabelSelector != nil {
+					for _, req := range restoreObj.Spec.LabelSelector.MatchExpressions {
+						if req.Key == backupCredsClusterLabel && req.Operator != "NotIn" {
+							t.Errorf("Expected operator 'NotIn', got '%s'", req.Operator)
+						}
+					}
+				}
+			case "none":
+				if hasLabel {
+					t.Errorf("Expected NO label selector, but found one")
+				}
+			}
+
+			// Verify -active suffix
+			hasActiveSuffix := strings.HasSuffix(restoreObj.Name, "-active")
+			if hasActiveSuffix != tt.wantActiveSuffix {
+				t.Errorf("Expected -active suffix=%v, got %v (name: %s)", tt.wantActiveSuffix, hasActiveSuffix, restoreObj.Name)
 			}
 		})
 	}
