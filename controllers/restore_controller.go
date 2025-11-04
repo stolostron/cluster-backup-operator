@@ -633,6 +633,42 @@ func checkCredsActiveExists(ctx context.Context, c client.Client, restore *v1bet
 	return false
 }
 
+// shouldAddActivationLabelForKey determines if activation label should be added for this resource type
+func shouldAddActivationLabelForKey(
+	key ResourceType,
+	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
+	isRealSyncMode bool,
+	credsWasSkip bool,
+	resourcesWasSkip bool,
+	credsActiveExists bool,
+) bool {
+	// Only applies when managed clusters are being restored
+	if veleroRestoresToCreate[ManagedClusters] == nil {
+		return false
+	}
+
+	// For ResourcesGeneric
+	if key == ResourcesGeneric {
+		if veleroRestoresToCreate[Resources] == nil {
+			return true
+		}
+		if isRealSyncMode || resourcesWasSkip || credsActiveExists {
+			return true
+		}
+		return false
+	}
+
+	// For Credentials
+	if key == Credentials {
+		if isRealSyncMode || credsWasSkip {
+			return true
+		}
+		return false
+	}
+
+	return false
+}
+
 // for an activation phase update restore labels to include activation resources
 func updateLabelsForActiveResources(
 	ctx context.Context,
@@ -664,10 +700,10 @@ func updateLabelsForActiveResources(
 		credsActiveExists = checkCredsActiveExists(ctx, c, restore)
 	}
 
-	if (key == ResourcesGeneric && veleroRestoresToCreate[ManagedClusters] != nil &&
-		(veleroRestoresToCreate[Resources] == nil || isRealSyncMode || resourcesWasSkip || credsActiveExists)) ||
-		(key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil &&
-			(isRealSyncMode || credsWasSkip)) {
+	shouldAddActivationLabel := shouldAddActivationLabelForKey(
+		key, veleroRestoresToCreate, isRealSyncMode, credsWasSkip, resourcesWasSkip, credsActiveExists)
+
+	if shouldAddActivationLabel {
 		// if restoring the ManagedClusters
 		// and resources are not restored or this is a sync phase
 		// need to restore the generic resources for the activation phase
