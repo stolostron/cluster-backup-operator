@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
@@ -1420,7 +1421,9 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := updateLabelsForActiveResources(tt.args.acmRestore, tt.args.restype, tt.args.veleroRestoresToCreate)
+			fakeClient := fake.NewClientBuilder().Build()
+			got := updateLabelsForActiveResources(context.Background(), fakeClient,
+				tt.args.acmRestore, tt.args.restype, tt.args.veleroRestoresToCreate)
 			if got != tt.want {
 				t.Errorf("error updating labels for: %s", tt.name)
 			}
