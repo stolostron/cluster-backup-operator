@@ -1346,13 +1346,17 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 			name: "Credentials restore with ManagedCluster latest and sync, should return true",
 			args: args{
 				restype: Credentials,
-				acmRestore: createACMRestore("acm-restore", "ns").
-					syncRestoreWithNewBackups(true).
-					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
-					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
-					veleroManagedClustersBackupName(latestBackupStr).
-					veleroCredentialsBackupName(latestBackupStr).
-					veleroResourcesBackupName(latestBackupStr).object,
+				acmRestore: func() *v1beta1.Restore {
+					r := createACMRestore("acm-restore", "ns").
+						syncRestoreWithNewBackups(true).
+						restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+						cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+						veleroManagedClustersBackupName(latestBackupStr).
+						veleroCredentialsBackupName(latestBackupStr).
+						veleroResourcesBackupName(latestBackupStr).object
+					r.Status.Phase = v1beta1.RestorePhaseEnabled
+					return r
+				}(),
 				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
 					Credentials:     createRestore("credentials-restore", "ns").object,
 					ManagedClusters: createRestore("clusters-restore", "ns").object,
@@ -1401,13 +1405,17 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 			name: "Generic Res restore with ManagedCluster and sync, should return false and active",
 			args: args{
 				restype: ResourcesGeneric,
-				acmRestore: createACMRestore("acm-restore", "ns").
-					syncRestoreWithNewBackups(true).
-					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
-					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
-					veleroManagedClustersBackupName(latestBackupStr).
-					veleroCredentialsBackupName(latestBackupStr).
-					veleroResourcesBackupName(latestBackupStr).object,
+				acmRestore: func() *v1beta1.Restore {
+					r := createACMRestore("acm-restore", "ns").
+						syncRestoreWithNewBackups(true).
+						restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+						cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+						veleroManagedClustersBackupName(latestBackupStr).
+						veleroCredentialsBackupName(latestBackupStr).
+						veleroResourcesBackupName(latestBackupStr).object
+					r.Status.Phase = v1beta1.RestorePhaseEnabled
+					return r
+				}(),
 				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
 					Resources:        createRestore("resources-restore", "ns").object,
 					ResourcesGeneric: createRestore("generic-restore", "ns").object,
