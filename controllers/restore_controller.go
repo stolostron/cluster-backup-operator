@@ -451,7 +451,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			)
 		}
 
-		isCredsClsOnActiveStep := updateLabelsForActiveResources(restore, key, veleroRestoresToCreate)
+		isCredsClsOnActiveStep := updateLabelsForActiveResources(ctx, r.Client, restore, key, veleroRestoresToCreate)
 		err := r.Create(ctx, veleroRestoresToCreate[key], &client.CreateOptions{})
 
 		if err != nil {
@@ -506,8 +506,91 @@ func (r *RestoreReconciler) initVeleroRestores(
 	return false, "", nil
 }
 
+// checkCredsActiveExists checks if a credentials-active Velero restore exists
+func checkCredsActiveExists(ctx context.Context, c client.Client, restore *v1beta1.Restore) bool {
+	veleroRestoreList := &veleroapi.RestoreList{}
+	if err := c.List(ctx, veleroRestoreList, client.InNamespace(restore.Namespace)); err == nil {
+		for i := range veleroRestoreList.Items {
+			if strings.Contains(veleroRestoreList.Items[i].Name, restore.Name) &&
+				strings.Contains(veleroRestoreList.Items[i].Name, "credentials") &&
+				strings.HasSuffix(veleroRestoreList.Items[i].Name, "-active") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// addActivationLabelAndSuffix adds the In activation label and -active suffix to the restore
+func addActivationLabelAndSuffix(
+	key ResourceType,
+	restore *v1beta1.Restore,
+	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
+) {
+	restoreObj := veleroRestoresToCreate[key]
+	
+	if restoreObj.Spec.LabelSelector == nil {
+		labels := &metav1.LabelSelector{}
+		restoreObj.Spec.LabelSelector = labels
+		requirements := make([]metav1.LabelSelectorRequirement, 0)
+		restoreObj.Spec.LabelSelector.MatchExpressions = requirements
+	}
+	req := &metav1.LabelSelectorRequirement{}
+	req.Key = backupCredsClusterLabel
+	req.Operator = "In"
+	req.Values = []string{ClusterActivationLabel}
+	restoreObj.Spec.LabelSelector.MatchExpressions = append(
+		restoreObj.Spec.LabelSelector.MatchExpressions,
+		*req,
+	)
+
+	// Add -active suffix if not skipping
+	if (key == ResourcesGeneric && *restore.Spec.VeleroResourcesBackupName != skipRestoreStr) ||
+		(key == Credentials && *restore.Spec.VeleroCredentialsBackupName != skipRestoreStr) {
+		veleroRestoresToCreate[key].Name = veleroRestoresToCreate[key].Name + "-active"
+	}
+}
+
+// shouldAddActivationLabelForKey determines if activation label should be added for this resource type
+func shouldAddActivationLabelForKey(
+	key ResourceType,
+	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
+	isRealSyncMode bool,
+	credsWasSkip bool,
+	resourcesWasSkip bool,
+	credsActiveExists bool,
+) bool {
+	// Only applies when managed clusters are being restored
+	if veleroRestoresToCreate[ManagedClusters] == nil {
+		return false
+	}
+
+	// For ResourcesGeneric
+	if key == ResourcesGeneric {
+		if veleroRestoresToCreate[Resources] == nil {
+			return true
+		}
+		if isRealSyncMode || resourcesWasSkip || credsActiveExists {
+			return true
+		}
+		return false
+	}
+
+	// For Credentials
+	if key == Credentials {
+		if isRealSyncMode || credsWasSkip {
+			return true
+		}
+		return false
+	}
+
+	return false
+}
+
 // for an activation phase update restore labels to include activation resources
 func updateLabelsForActiveResources(
+	ctx context.Context,
+	c client.Client,
 	restore *v1beta1.Restore,
 	key ResourceType,
 	veleroRestoresToCreate map[ResourceType]*veleroapi.Restore,
@@ -517,44 +600,35 @@ func updateLabelsForActiveResources(
 	// during the cluster activation step
 	isCredsClsOnActiveStep := false
 
-	restoreObj := veleroRestoresToCreate[key]
+	// Check if credentials or resources were originally set to skip
+	credsWasSkip := key == Credentials && restore.Spec.VeleroCredentialsBackupName != nil &&
+		*restore.Spec.VeleroCredentialsBackupName == skipRestoreStr
+	resourcesWasSkip := key == ResourcesGeneric && restore.Spec.VeleroResourcesBackupName != nil &&
+		*restore.Spec.VeleroResourcesBackupName == skipRestoreStr
 
-	if (key == ResourcesGeneric && (veleroRestoresToCreate[Resources] == nil ||
-		veleroRestoresToCreate[ManagedClusters] != nil && restore.Spec.SyncRestoreWithNewBackups)) ||
-		(key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil) {
-		// if restoring the ManagedClusters
-		// and resources are not restored or this is a sync phase
-		// need to restore the generic resources for the activation phase
+	// Only add activation label when in true sync mode or when resources were originally skipped
+	// Don't add it when sync=true but managedClusters=latest from the start (non-sync scenario)
+	isRealSyncMode := restore.Spec.SyncRestoreWithNewBackups &&
+		(restore.Status.Phase == v1beta1.RestorePhaseEnabled)
 
-		// if restoring the ManagedClusters need to restore the credentials resources for the activation phase
-		// if managed clusters are restored, then need to restore the credentials to get active resources
-		if restoreObj.Spec.LabelSelector == nil {
-			labels := &metav1.LabelSelector{}
-			restoreObj.Spec.LabelSelector = labels
+	// Check if credentials-active Velero restore exists (indicates activation scenario)
+	credsActiveExists := false
+	if key == ResourcesGeneric {
+		credsActiveExists = checkCredsActiveExists(ctx, c, restore)
+	}
 
-			requirements := make([]metav1.LabelSelectorRequirement, 0)
-			restoreObj.Spec.LabelSelector.MatchExpressions = requirements
-		}
-		req := &metav1.LabelSelectorRequirement{}
-		req.Key = backupCredsClusterLabel
-		req.Operator = "In"
-		req.Values = []string{ClusterActivationLabel}
-		restoreObj.Spec.LabelSelector.MatchExpressions = append(
-			restoreObj.Spec.LabelSelector.MatchExpressions,
-			*req,
-		)
-		// use a different name for this activation restore; if this Restore was run using the sync operation,
-		// the generic and credentials restore for this backup name already exist
-		if (key == ResourcesGeneric && *restore.Spec.VeleroResourcesBackupName != skipRestoreStr) ||
-			(key == Credentials && *restore.Spec.VeleroCredentialsBackupName != skipRestoreStr) {
-			veleroRestoresToCreate[key].Name = veleroRestoresToCreate[key].Name + "-active"
-		}
-		if key == Credentials {
-			// this is an activation stage and the credebtials are being restored
-			// before going to the next restore
-			// wait for the creation of the PVCs defined by backup-pvc configmaps stored by this backup
-			isCredsClsOnActiveStep = true
-		}
+	shouldAddActivationLabel := shouldAddActivationLabelForKey(
+		key, veleroRestoresToCreate, isRealSyncMode, credsWasSkip, resourcesWasSkip, credsActiveExists)
+
+	if shouldAddActivationLabel {
+		// if restoring the ManagedClusters need to restore activation resources
+		addActivationLabelAndSuffix(key, restore, veleroRestoresToCreate)
+	}
+
+	if key == Credentials && veleroRestoresToCreate[ManagedClusters] != nil {
+		// this is a credentials restore with managed clusters being restored
+		// wait for the creation of the PVCs defined by backup-pvc configmaps stored by this backup
+		isCredsClsOnActiveStep = true
 	}
 
 	return isCredsClsOnActiveStep
