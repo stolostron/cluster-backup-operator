@@ -22,7 +22,7 @@ RUN CGO_ENABLED=1 GOFLAGS='-mod=readonly' go build -tags strictfipsruntime -a -o
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM registry.redhat.io/ubi9/ubi-minimal:latest@sha256:2ddd6e10383981c7d10e4966a7c0edce7159f8ca91b1691cafabc78bae79d8f8
+FROM registry.redhat.io/ubi9/ubi-minimal:latest@sha256:53ea1f6d835898acda5becdb3f8b1292038a480384bbcf994fc0bcf1f7e8eaf7
 LABEL \
     name="rhacm2/cluster-backup-rhel9-operator" \
     cpe="cpe:/a:redhat:acm:2.15::el9" \
