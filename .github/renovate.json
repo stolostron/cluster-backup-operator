@@ -21,7 +21,7 @@
     "ignorePaths": [
       "**/Dockerfile"
     ],
-    "pinDigests": true
+    "pinDigests": false
   },
   "gomod": {
     "packageRules": [
