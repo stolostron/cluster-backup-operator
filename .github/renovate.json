@@ -8,7 +8,8 @@
     "release-2.11",
     "release-2.12",
     "release-2.13",
-    "release-2.14"
+    "release-2.14",
+    "release-2.15"
   ],
   "prConcurrentLimit": 0,
   "dependencyDashboard": true,
@@ -35,7 +36,8 @@
           "release-2.11",
           "release-2.12",
           "release-2.13",
-          "release-2.14"
+          "release-2.14",
+          "release-2.15"
         ],
         "matchManagers": [
           "gomod"
