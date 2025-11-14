@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM brew.registry.redhat.io/rh-osbs/openshift-golang-builder:rhel_9_1.24@sha256:8412323224878c4e27cd6f7dc6ce99c50f878f37df323285bff29a53f8ec37cd AS builder
+FROM brew.registry.redhat.io/rh-osbs/openshift-golang-builder:rhel_9_1.24 AS builder
 
 ENV GOEXPERIMENT=strictfipsruntime
 ENV BUILD_TAGS="strictfipsruntime"
@@ -22,7 +22,8 @@ RUN CGO_ENABLED=1 GOFLAGS='-mod=readonly' go build -tags strictfipsruntime -a -o
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM registry.redhat.io/ubi9/ubi-minimal:latest@sha256:6fc28bcb6776e387d7a35a2056d9d2b985dc4e26031e98a2bd35a7137cd6fd71
+FROM registry.redhat.io/ubi9/ubi-minimal:latest
+
 LABEL \
     name="rhacm2/cluster-backup-rhel9-operator" \
     cpe="cpe:/a:redhat:acm:2.12::el9" \
