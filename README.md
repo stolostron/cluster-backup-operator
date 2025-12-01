@@ -62,8 +62,9 @@ Cluster Back up and Restore Operator
     - [Schedule  a backup](#schedule--a-backup)
     - [Restore a backup](#restore-a-backup)
 - [ACM Backup and Restore Performance in a Large-Scale Environment](#acm-backup-and-restore-performance-in-a-large-scale-environment)
-  - [First attempt with cleanupBeforeRestore set to None:](#first-attempt-with-cleanupbeforerestore-set-to-none)
-  - [Second attempt with cleanupBeforeRestore set to CleanupRestored:](#second-attempt-with-cleanupbeforerestore-set-to-cleanuprestored)
+  - [First attempt with cleanupBeforeRestore set to None](#first-attempt-with-cleanupbeforerestore-set-to-none)
+  - [Second attempt with cleanupBeforeRestore set to CleanupRestored](#second-attempt-with-cleanupbeforerestore-set-to-cleanuprestored)
+  - [ACM 2.15 Large Scale: 3,500+ SNO clusters](#acm-215-large-scale-3500-sno-clusters)
 - [Virtual Machine Backup and Restore Performance in a Large-Scale Environment](#virtual-machine-backup-and-restore-performance-in-a-large-scale-environment)
   - [Test Environment](#test-environment)
   - [Test Scenarios and Results](#test-scenarios-and-results)
@@ -871,7 +872,7 @@ The following performance results are from ACM backup and restore operations con
 
 ACM version: 2.11.0-DOWNSTREAM-2024-07-10-21-49-48 (RC3)
 
-### First attempt with cleanupBeforeRestore set to None:
+### First attempt with cleanupBeforeRestore set to None
 
 1. Backup
 
@@ -937,7 +938,7 @@ Completed
 7451
 ```
 
-### Second attempt with cleanupBeforeRestore set to CleanupRestored:
+### Second attempt with cleanupBeforeRestore set to CleanupRestored
 
 1. Backup:
    
@@ -1022,6 +1023,109 @@ Completed
 2024-07-24T20:53:52Z
 2024-07-24T20:56:29Z
 7284
+```
+
+### ACM 2.15 Large Scale: 3,500+ SNO clusters
+
+Environment: cloud24  
+ACM version: 2.15  
+Managed Resources: 3,500+ Single Node OpenShift (SNO) clusters
+
+OADP Configuration:
+```yaml
+configuration:
+  velero:
+    podConfig:
+      resourceAllocations:
+        limits:
+          cpu: 4
+          memory: 8Gi
+        requests:
+          cpu: 500m
+          memory: 256Mi
+  nodeAgent:
+    enable: true
+    uploaderType: kopia
+```
+
+1. Backup
+
+```
+# oc get backup.velero -n open-cluster-management-backup -ojson | jq '.items[] | .metadata.name,.status.phase, .status.startTimestamp, .status.completionTimestamp,.status.progress.itemsBackedUp'
+"acm-credentials-schedule-20251126160014"
+"Completed"
+"2025-11-26T16:00:40Z"
+"2025-11-26T16:02:25Z"
+29387
+"acm-managed-clusters-schedule-20251126160014"
+"Completed"
+"2025-11-26T16:02:25Z"
+"2025-11-26T16:05:31Z"
+51422
+"acm-resources-generic-schedule-20251126160014"
+"Completed"
+"2025-11-26T16:05:31Z"
+"2025-11-26T16:05:37Z"
+1
+"acm-resources-schedule-20251126160114"
+"Completed"
+"2025-11-26T16:05:39Z"
+"2025-11-26T16:06:34Z"
+14886
+"acm-validation-policy-schedule-20251126160015"
+"Completed"
+"2025-11-26T16:05:37Z"
+"2025-11-26T16:05:39Z"
+1
+
+# for i in $(mc ls minio/dr4hub/velero/backups | awk '{print $5}' ); do echo $i $(mc ls minio/dr4hub/velero/backups/"$i" --json | jq -s 'map(.size) | add' | numfmt --to=iec-i --suffix=B --padding=7); done
+acm-credentials-schedule-20251126160014/ 73MiB
+acm-managed-clusters-schedule-20251126160014/ 33MiB
+acm-resources-generic-schedule-20251126160014/ 23KiB
+acm-resources-schedule-20251126160114/ 5.1MiB
+acm-validation-policy-schedule-20251126160015/ 17KiB
+```
+
+2. Restore - cleanupBeforeRestore=None
+
+```
+# oc get restore.velero -n open-cluster-management-backup -ojson | jq -r '.items[] | .metadata.name,.status.phase, .status.startTimestamp, .status.completionTimestamp,.status.progress.itemsRestored'
+restore-acm-passive-none-acm-credentials-schedule-20251126160014
+Completed
+2025-11-26T18:14:21Z
+2025-11-26T18:23:33Z
+29387
+restore-acm-passive-none-acm-resources-generic-schedule-20251126160014
+Completed
+2025-11-26T18:28:01Z
+2025-11-26T18:28:02Z
+1
+restore-acm-passive-none-acm-resources-schedule-20251126160114
+Completed
+2025-11-26T18:23:33Z
+2025-11-26T18:28:01Z
+14870
+```
+
+3. Restore - cleanupBeforeRestore=CleanupRestored
+
+```
+# oc get restore.velero -n open-cluster-management-backup -ojson | jq -r '.items[] | .metadata.name,.status.phase, .status.startTimestamp, .status.completionTimestamp,.status.progress.itemsRestored'
+restore-acm-passive-cleanup-acm-credentials-schedule-20251126160014
+Completed
+2025-11-26T17:41:21Z
+2025-11-26T17:50:28Z
+29387
+restore-acm-passive-cleanup-acm-resources-generic-schedule-20251126160014
+Completed
+2025-11-26T17:55:14Z
+2025-11-26T17:55:14Z
+1
+restore-acm-passive-cleanup-acm-resources-schedule-20251126160114
+Completed
+2025-11-26T17:50:28Z
+2025-11-26T17:55:14Z
+14870
 ```
 
 ## Virtual Machine Backup and Restore Performance in a Large-Scale Environment
