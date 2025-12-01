@@ -615,9 +615,9 @@ spec:
 
 ## Backup validation using a Policy
 
-The Cluster Backup and Restore Operator [helm chart](https://github.com/stolostron/multiclusterhub-operator/tree/main/pkg/templates/charts/toggle/cluster-backup) installs [backup-restore-enabled](https://github.com/stolostron/multiclusterhub-operator/blob/main/pkg/templates/charts/toggle/cluster-backup/templates/hub-backup-pod.yaml) and [backup-restore-auto-import](https://github.com/stolostron/multiclusterhub-operator/blob/main/pkg/templates/charts/toggle/cluster-backup/templates/hub-backup-auto-import.yaml) Policies, designed to provide information on issues with the backup and restore component. 
+The Cluster Backup and Restore Operator [helm chart](https://github.com/stolostron/multiclusterhub-operator/tree/main/pkg/templates/charts/toggle/cluster-backup) installs the [backup-restore-enabled](https://github.com/stolostron/multiclusterhub-operator/blob/main/pkg/templates/charts/toggle/cluster-backup/templates/hub-backup-pod.yaml) policy, which is designed to provide information about issues with the backup and restore component. 
 
-These policies include a set of templates that check for the following constraints and alerts when any of them are violated.
+This policy includes a set of templates that check for the following constraints and alert when any of them are violated.
 
 ### OADP channel validation
 When you enable the backup component on the MultiClusterHub, the cluster backup and restore operator Helm chart can automatically install the OADP operator in the open-cluster-management-backup namespace, or you can install it manually in that namespace. The OADP channel you select for manual installation must match or exceed the version set by the Red Hat Advanced Cluster Management backup and restore operator Helm chart. Since the OADP Operator and Velero Custom Resource Definitions (CRDs) are cluster-scoped, you cannot have multiple versions on the same cluster. You must install the same version in the open-cluster-management-backup namespace and any other namespaces.
