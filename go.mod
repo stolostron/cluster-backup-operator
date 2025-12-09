@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/go-logr/logr v1.4.3
-	github.com/onsi/ginkgo/v2 v2.27.2
+	github.com/onsi/ginkgo/v2 v2.27.3
 	github.com/onsi/gomega v1.38.2
 	github.com/openshift/api v0.0.0-20250313134101-8a7efbfb5316 // release 4.13
 	github.com/openshift/hive/apis v0.0.0-20251028182716-eb1dc4f43efc
