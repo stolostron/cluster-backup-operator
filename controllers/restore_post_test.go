@@ -32,7 +32,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -119,8 +118,8 @@ func Test_postRestoreActivation(t *testing.T) {
 					*createManagedCluster("test1", false).object,
 					*createManagedCluster("managed1", false).clusterUrl("someurl").
 						conditions([]metav1.Condition{
-							v1.Condition{
-								Status: v1.ConditionTrue,
+							metav1.Condition{
+								Status: metav1.ConditionTrue,
 								Type:   "ManagedClusterConditionAvailable",
 							},
 						}).object,
@@ -153,8 +152,8 @@ func Test_postRestoreActivation(t *testing.T) {
 					*createManagedCluster("test1", false).object,
 					*createManagedCluster("managed1", false).emptyClusterUrl().
 						conditions([]metav1.Condition{
-							v1.Condition{
-								Status: v1.ConditionFalse,
+							metav1.Condition{
+								Status: metav1.ConditionFalse,
 							},
 						}).object,
 				},
@@ -200,15 +199,15 @@ func Test_postRestoreActivation(t *testing.T) {
 					*createManagedCluster("managed1", false).
 						clusterUrl("someurl").
 						conditions([]metav1.Condition{
-							v1.Condition{
-								Status: v1.ConditionFalse,
+							metav1.Condition{
+								Status: metav1.ConditionFalse,
 							},
 						}).
 						object,
 					*createManagedCluster("managed2", false).clusterUrl("someurl").
 						conditions([]metav1.Condition{
-							v1.Condition{
-								Status: v1.ConditionFalse,
+							metav1.Condition{
+								Status: metav1.ConditionFalse,
 							},
 						}).
 						object,
@@ -513,19 +512,20 @@ func Test_deleteDynamicResource(t *testing.T) {
 	resInterface := dynClient.Resource(targetGVR)
 
 	// create resources which should be found
-	_, err = resInterface.Namespace("default").Create(context.Background(), res_default, v1.CreateOptions{})
+	_, err = resInterface.Namespace("default").Create(context.Background(), res_default, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Err creating: %s", err.Error())
 	}
-	_, err = resInterface.Namespace("default").Create(context.Background(), res_default_with_finalizer, v1.CreateOptions{})
+	_, err = resInterface.Namespace("default").Create(context.Background(),
+		res_default_with_finalizer, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Err creating: %s", err.Error())
 	}
-	_, err = resInterface.Create(context.Background(), res_global, v1.CreateOptions{})
+	_, err = resInterface.Create(context.Background(), res_global, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Err creating: %s", err.Error())
 	}
-	_, err = resInterface.Create(context.Background(), res_global_with_finalizer, v1.CreateOptions{})
+	_, err = resInterface.Create(context.Background(), res_global_with_finalizer, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Err creating: %s", err.Error())
 	}
@@ -541,7 +541,7 @@ func Test_deleteDynamicResource(t *testing.T) {
 		dr                      dynamic.NamespaceableResourceInterface
 		resource                unstructured.Unstructured
 		localClusterName        string
-		deleteOptions           v1.DeleteOptions
+		deleteOptions           metav1.DeleteOptions
 		excludedNamespaces      []string
 		skipExcludedBackupLabel bool
 	}
@@ -1261,7 +1261,7 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 	ns1 := *createNamespace(namespace)
 
 	timeNow, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
-	rightNow := v1.NewTime(timeNow)
+	rightNow := metav1.NewTime(timeNow)
 	tenHourAgo := rightNow.Add(-10 * time.Hour)
 	aFewSecondsAgo := rightNow.Add(-2 * time.Second)
 
@@ -1403,7 +1403,7 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 					BackupScheduleNameLabel: "acm-credentials-hive-schedule-" + tenHourAgoTime,
 				}).
 				phase(veleroapi.BackupPhaseCompleted).
-				startTimestamp(v1.NewTime(tenHourAgo)).
+				startTimestamp(metav1.NewTime(tenHourAgo)).
 				object
 
 			err := k8sClient1.Create(ctx, &hiveOldBackup)
@@ -1419,7 +1419,7 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 					BackupScheduleNameLabel: "acm-credentials-hive-schedule-" + aFewSecondsAgoTime,
 				}).
 				phase(veleroapi.BackupPhaseCompleted).
-				startTimestamp(v1.NewTime(aFewSecondsAgo)).
+				startTimestamp(metav1.NewTime(aFewSecondsAgo)).
 				object
 
 			err := k8sClient1.Create(ctx, &hiveCloseToCredsBackup)
@@ -1623,7 +1623,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 	namespaceName := "open-cluster-management-backup"
 	timeNow, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
-	rightNow := v1.NewTime(timeNow)
+	rightNow := metav1.NewTime(timeNow)
 	tenHourAgo := rightNow.Add(-10 * time.Hour)
 	aFewSecondsAgo := rightNow.Add(-2 * time.Second)
 
@@ -1668,7 +1668,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 	genericBackup := *createBackup(veleroGenericBackupName, namespaceName).
 		excludedResources(backupManagedClusterResources).
-		startTimestamp(v1.NewTime(aFewSecondsAgo)).
+		startTimestamp(metav1.NewTime(aFewSecondsAgo)).
 		labels(map[string]string{
 			BackupScheduleTypeLabel: string(ResourcesGeneric),
 		}).
@@ -1677,7 +1677,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 	genericBackupOld := *createBackup(veleroGenericBackupNameOlder, namespaceName).
 		excludedResources(backupManagedClusterResources).
-		startTimestamp(v1.NewTime(tenHourAgo)).
+		startTimestamp(metav1.NewTime(tenHourAgo)).
 		labels(map[string]string{
 			BackupScheduleTypeLabel: string(ResourcesGeneric),
 		}).
@@ -1686,7 +1686,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	clustersBackup := *createBackup(veleroClustersBackupName, namespaceName).
 		includedResources(backupManagedClusterResources).
 		excludedNamespaces([]string{"local-cluster"}).
-		startTimestamp(v1.NewTime(aFewSecondsAgo)).
+		startTimestamp(metav1.NewTime(aFewSecondsAgo)).
 		labels(map[string]string{
 			BackupScheduleTypeLabel: string(ManagedClusters),
 		}).
@@ -1696,7 +1696,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 	clustersBackupOld := *createBackup(veleroClustersBackupNameOlder, namespaceName).
 		includedResources(backupManagedClusterResources).
 		excludedNamespaces([]string{"local-cluster"}).
-		startTimestamp(v1.NewTime(tenHourAgo)).
+		startTimestamp(metav1.NewTime(tenHourAgo)).
 		labels(map[string]string{
 			BackupScheduleTypeLabel: string(ManagedClusters),
 		}).
@@ -2369,56 +2369,56 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 	// create some channel resources
 	_, err = dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
-		channel_with_backup_label_same, v1.CreateOptions{})
+		channel_with_backup_label_same, metav1.CreateOptions{})
 	if client.IgnoreAlreadyExists(err) != nil {
 		t.Fatalf("Error creating: %s", err.Error())
 	}
 	_, err = dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
-		channel_with_backup_label_diff, v1.CreateOptions{})
+		channel_with_backup_label_diff, metav1.CreateOptions{})
 	if client.IgnoreAlreadyExists(err) != nil {
 		t.Fatalf("Error creating: %s", err.Error())
 	}
 	_, err = dyn.Resource(chGVKList).Namespace("local-cluster").Create(context.Background(),
-		channel_with_backup_label_diff_excl_ns, v1.CreateOptions{})
+		channel_with_backup_label_diff_excl_ns, metav1.CreateOptions{})
 	if client.IgnoreAlreadyExists(err) != nil {
 		t.Fatalf("Error creating: %s", err.Error())
 	}
 	_, err = dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
-		channel_with_backup_label_generic, v1.CreateOptions{})
+		channel_with_backup_label_generic, metav1.CreateOptions{})
 	if client.IgnoreAlreadyExists(err) != nil {
 		t.Fatalf("Error creating: %s", err.Error())
 	}
 	_, err = dyn.Resource(chGVKList).Namespace("default").Create(context.Background(),
-		channel_with_no_backup_label, v1.CreateOptions{})
+		channel_with_no_backup_label, metav1.CreateOptions{})
 	if client.IgnoreAlreadyExists(err) != nil {
 		t.Fatalf("Error creating: %s", err.Error())
 	}
 
 	// create some cluster resources
 	_, err = dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
-		cls_with_backup_label_diff, v1.CreateOptions{})
+		cls_with_backup_label_diff, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Error creating: %s", err.Error())
 	}
 	_, err = dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
-		cls_with_backup_label_same, v1.CreateOptions{})
+		cls_with_backup_label_same, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Error creating: %s", err.Error())
 	}
 	_, err = dyn.Resource(clsGVKList).Namespace("local-cluster").Create(context.Background(),
-		cls_with_backup_label_diff_excl_ns, v1.CreateOptions{})
+		cls_with_backup_label_diff_excl_ns, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Error creating: %s", err.Error())
 	}
 	_, err = dyn.Resource(clsGVKList).Namespace("default").Create(context.Background(),
-		cls_with_no_backup_label, v1.CreateOptions{})
+		cls_with_no_backup_label, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Error creating: %s", err.Error())
 	}
 
 	//
 	_, err = dyn.Resource(msaGVRList).Namespace("managed1").Create(context.Background(),
-		msaObj, v1.CreateOptions{})
+		msaObj, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Error creating: %s", err.Error())
 	}
@@ -2732,7 +2732,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		// create resources for this test
 		for i := range tt.resourcesToCreate {
 			if _, err := dyn.Resource(chGVKList).Namespace(tt.resourcesToCreate[i].GetNamespace()).Create(context.Background(),
-				&tt.resourcesToCreate[i], v1.CreateOptions{}); err != nil {
+				&tt.resourcesToCreate[i], metav1.CreateOptions{}); err != nil {
 				t.Errorf("cannot create resource %s ", err.Error())
 			}
 		}
@@ -2754,7 +2754,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 		for i := range tt.resourcesToBeDeleted {
 			if _, err := dr.Namespace(tt.resourcesToBeDeleted[i].GetNamespace()).
-				Get(tt.args.ctx, tt.resourcesToBeDeleted[i].GetName(), v1.GetOptions{}); err == nil {
+				Get(tt.args.ctx, tt.resourcesToBeDeleted[i].GetName(), metav1.GetOptions{}); err == nil {
 				t.Errorf("cleanupDeltaForResourcesBackup(%s) resource %s should NOT be found",
 					tt.name, tt.resourcesToBeDeleted[i])
 			}
@@ -2762,7 +2762,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 		for i := range tt.resourcesToKeep {
 			if _, err := dr.Namespace(tt.resourcesToKeep[i].GetNamespace()).
-				Get(tt.args.ctx, tt.resourcesToKeep[i].GetName(), v1.GetOptions{}); err != nil {
+				Get(tt.args.ctx, tt.resourcesToKeep[i].GetName(), metav1.GetOptions{}); err != nil {
 				t.Errorf("cleanupDeltaForResourcesBackup(%s) resource %s should be found ! they were deleted",
 					tt.name, tt.resourcesToKeep[i].GetName())
 			}
@@ -2785,7 +2785,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		// create resources for this test
 		for i := range tt.resourcesToCreate {
 			if _, err := dyn.Resource(chGVKList).Namespace(tt.resourcesToCreate[i].GetNamespace()).Create(context.Background(),
-				&tt.resourcesToCreate[i], v1.CreateOptions{}); err != nil {
+				&tt.resourcesToCreate[i], metav1.CreateOptions{}); err != nil {
 				t.Errorf("cannot create resource %s ", err.Error())
 			}
 		}
@@ -2808,7 +2808,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 		for i := range tt.resourcesToBeDeleted {
 			if _, err := dr.Namespace(tt.resourcesToBeDeleted[i].GetNamespace()).
-				Get(tt.args.ctx, tt.resourcesToBeDeleted[i].GetName(), v1.GetOptions{}); err == nil {
+				Get(tt.args.ctx, tt.resourcesToBeDeleted[i].GetName(), metav1.GetOptions{}); err == nil {
 				t.Errorf("cleanupDeltaForClustersBackup(%s) resource %s should NOT be found",
 					tt.name, tt.resourcesToBeDeleted[i])
 			}
@@ -2816,7 +2816,7 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 
 		for i := range tt.resourcesToKeep {
 			if _, err := dr.Namespace(tt.resourcesToKeep[i].GetNamespace()).
-				Get(tt.args.ctx, tt.resourcesToKeep[i].GetName(), v1.GetOptions{}); err != nil {
+				Get(tt.args.ctx, tt.resourcesToKeep[i].GetName(), metav1.GetOptions{}); err != nil {
 				t.Errorf("cleanupDeltaForClustersBackup(%s) resource %s should be found ! they were deleted",
 					tt.name, tt.resourcesToKeep[i].GetName())
 			}

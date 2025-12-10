@@ -60,9 +60,9 @@ var _ = Describe("BackupSchedule controller", func() {
 			"20210910181338",
 		}
 
-		backupScheduleName string = "the-backup-schedule-name"
+		backupScheduleName = "the-backup-schedule-name"
 
-		backupSchedule string = "0 */6 * * *"
+		backupSchedule = "0 */6 * * *"
 
 		timeout  = time.Second * 9
 		interval = time.Millisecond * 250
@@ -927,7 +927,8 @@ var _ = Describe("BackupSchedule controller", func() {
 
 				veleroSchedule := veleroScheduleList.Items[i]
 				// validate resources schedule content
-				if veleroSchedule.Name == "acm-resources-schedule" {
+				switch veleroSchedule.Name {
+				case "acm-resources-schedule":
 					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
 						"placement.cluster.open-cluster-management.io")).Should(BeTrue())
 					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
@@ -939,10 +940,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
 						"clusterpool.other.hive.openshift.io")).Should(BeFalse())
 
-				} else
-				// generic resources, using backup label
-				if veleroSchedule.Name == "acm-resources-generic-schedule" {
-
+				case "acm-resources-generic-schedule": // generic resources, using backup label
 					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, // secrets are in the creds backup
 						"secret")).Should(BeTrue())
 
@@ -956,10 +954,7 @@ var _ = Describe("BackupSchedule controller", func() {
 					Expect(findValue(veleroSchedule.Spec.Template.ExcludedResources, // exclude this, part of mannged cluster
 						"clusterpool.other.hive.openshift.io")).Should(BeTrue())
 
-				} else
-				// generic resources, using backup label
-				if veleroSchedule.Name == "acm-managed-clusters-schedule" {
-
+				case "acm-managed-clusters-schedule": // generic resources, using backup label
 					Expect(findValue(veleroSchedule.Spec.Template.IncludedResources,
 						"clusterdeployment.hive.openshift.io")).Should(BeTrue())
 					//.other.hive.openshift.io included here

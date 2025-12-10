@@ -14,7 +14,6 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
@@ -193,7 +192,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 							ObjectMeta: metav1.ObjectMeta{
 								Name:      "valid-storage",
 								Namespace: "default",
-								OwnerReferences: []v1.OwnerReference{
+								OwnerReferences: []metav1.OwnerReference{
 									{
 										Kind: "DataProtectionApplication",
 									},
@@ -222,7 +221,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 							ObjectMeta: metav1.ObjectMeta{
 								Name:      "valid-storage",
 								Namespace: "default1",
-								OwnerReferences: []v1.OwnerReference{
+								OwnerReferences: []metav1.OwnerReference{
 									{
 										Kind: "DataProtectionApplication",
 									},
@@ -240,7 +239,7 @@ func Test_isValidStorageLocationDefined(t *testing.T) {
 							ObjectMeta: metav1.ObjectMeta{
 								Name:      "valid-storage",
 								Namespace: "default",
-								OwnerReferences: []v1.OwnerReference{
+								OwnerReferences: []metav1.OwnerReference{
 									{
 										Kind: "DataProtectionApplication",
 									},
@@ -426,13 +425,13 @@ func Test_managedClusterShouldReimport(t *testing.T) {
 		*createManagedCluster("test1", false).object,
 	}
 
-	conditionTypeAvailableTrue := v1.Condition{
+	conditionTypeAvailableTrue := metav1.Condition{
 		Type:   "ManagedClusterConditionAvailable",
-		Status: v1.ConditionTrue,
+		Status: metav1.ConditionTrue,
 	}
 
-	conditionTypeAvailableFalse := v1.Condition{
-		Status: v1.ConditionFalse,
+	conditionTypeAvailableFalse := metav1.Condition{
+		Status: metav1.ConditionFalse,
 		Type:   "ManagedClusterConditionAvailable",
 	}
 
@@ -736,7 +735,7 @@ func Test_VeleroCRDsPresent(t *testing.T) {
 	})
 }
 
-func labelSelectorArrayEqual(a []*v1.LabelSelector, b []v1.LabelSelector) bool {
+func labelSelectorArrayEqual(a []*metav1.LabelSelector, b []metav1.LabelSelector) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -748,7 +747,7 @@ func labelSelectorArrayEqual(a []*v1.LabelSelector, b []v1.LabelSelector) bool {
 	return true
 }
 
-func labelSelectorEqual(a *v1.LabelSelector, b *v1.LabelSelector) bool {
+func labelSelectorEqual(a *metav1.LabelSelector, b *metav1.LabelSelector) bool {
 	if a == nil && b == nil {
 		return true
 	}
@@ -805,7 +804,7 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 		labelSelector metav1.LabelSelectorRequirement
 	}
 
-	emptyLabelSelector := make([]v1.LabelSelector, 0)
+	emptyLabelSelector := make([]metav1.LabelSelector, 0)
 
 	clusterActivationReq := metav1.LabelSelectorRequirement{}
 	clusterActivationReq.Key = backupCredsClusterLabel
@@ -831,8 +830,8 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 	tests := []struct {
 		name                string
 		args                args
-		wantOrLabelSelector []v1.LabelSelector
-		wantLabelSelector   v1.LabelSelector
+		wantOrLabelSelector []metav1.LabelSelector
+		wantLabelSelector   metav1.LabelSelector
 	}{
 		{
 			name: "no user defined orLabelSelector or LabelSelector, get empty match expressions",
@@ -842,7 +841,7 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 				labelSelector: metav1.LabelSelectorRequirement{},
 			},
 			wantOrLabelSelector: emptyLabelSelector,
-			wantLabelSelector:   v1.LabelSelector{},
+			wantLabelSelector:   metav1.LabelSelector{},
 		},
 		{
 			name: "no user defined orLabelSelector or LabelSelector, just create cluster activation LabelSelector",
@@ -893,7 +892,7 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 					},
 				},
 			},
-			wantLabelSelector: v1.LabelSelector{},
+			wantLabelSelector: metav1.LabelSelector{},
 		},
 		{
 			name: "using user defined orLabelSelector, no cluster activation LabelSelector",
@@ -928,7 +927,7 @@ func Test_addRestoreLabelSelector(t *testing.T) {
 					},
 				},
 			},
-			wantLabelSelector: v1.LabelSelector{},
+			wantLabelSelector: metav1.LabelSelector{},
 		},
 		{
 			name: "using user defined LabelSelector, set cluster activation LabelSelectors as usual",

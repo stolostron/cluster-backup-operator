@@ -26,7 +26,6 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -612,7 +611,7 @@ func retrieveRestoreDetails(
 	restoreKeys := make([]ResourceType, 0, restoreLength)
 	for key := range veleroBackupNames {
 		if key == ValidationSchedule ||
-			(restoreOnlyManagedClusters && !(key == ManagedClusters || key == ResourcesGeneric || key == Credentials)) {
+			(restoreOnlyManagedClusters && key != ManagedClusters && key != ResourcesGeneric && key != Credentials) {
 			// ignore validation backup; this is used for the policy
 			// to validate that there are backups schedules enabled
 			// also ignore all but managed clusters when only this is restored
@@ -754,7 +753,7 @@ func setOptionalProperties(
 ) {
 	// set includeClusterResources for all restores except credentials
 	if key == Resources || key == ManagedClusters || key == ResourcesGeneric {
-		var clusterResource bool = true
+		var clusterResource = true
 		veleroRestore.Spec.IncludeClusterResources = &clusterResource
 	}
 
@@ -800,7 +799,7 @@ func setUserRestoreFilters(
 	}
 
 	if len(acmRestore.Spec.OrLabelSelectors) > 0 {
-		veleroRestore.Spec.OrLabelSelectors = make([]*v1.LabelSelector, 0, len(acmRestore.Spec.OrLabelSelectors))
+		veleroRestore.Spec.OrLabelSelectors = make([]*metav1.LabelSelector, 0, len(acmRestore.Spec.OrLabelSelectors))
 		for i := range acmRestore.Spec.OrLabelSelectors {
 			// make a copy of the label selector
 			veleroRestore.Spec.OrLabelSelectors = append(veleroRestore.Spec.OrLabelSelectors,
