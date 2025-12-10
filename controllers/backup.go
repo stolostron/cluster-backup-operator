@@ -152,7 +152,7 @@ func setResourcesBackupInfo(
 	backupNS string,
 	c client.Client,
 ) {
-	var clusterResource bool = true
+	var clusterResource = true
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 
 	// exclude backup chart NS
@@ -211,7 +211,7 @@ func setGenericResourcesBackupInfo(
 	resourcesToBackup []string,
 ) {
 
-	var clusterResource bool = true // check global resources
+	var clusterResource = true // check global resources
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 
 	veleroBackupTemplate.ExcludedResources = getResourcesByBackupType(
@@ -239,7 +239,7 @@ func setGenericResourcesBackupInfo(
 func setCredsBackupInfo(
 	veleroBackupTemplate *veleroapi.BackupSpec,
 ) {
-	var clusterResource bool = false
+	var clusterResource = false
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 
 	for i := range backupCredsResources { // secrets and configmaps
@@ -285,7 +285,7 @@ func setManagedClustersBackupInfo(
 	veleroBackupTemplate *veleroapi.BackupSpec,
 	resourcesToBackup []string,
 ) {
-	var clusterResource bool = true // include cluster level resources
+	var clusterResource = true // include cluster level resources
 	veleroBackupTemplate.IncludeClusterResources = &clusterResource
 
 	veleroBackupTemplate.ExcludedNamespaces = appendUnique(
@@ -558,7 +558,7 @@ func cleanupExpiredValidationBackups(
 		for i := range veleroBackupList.Items {
 			backup := veleroBackupList.Items[i]
 			if backup.Status.Expiration != nil &&
-				v1.Now().Time.After(backup.Status.Expiration.Time) {
+				v1.Now().After(backup.Status.Expiration.Time) {
 				backupLogger.Info(fmt.Sprintf("validation backup %s expired, attempt to delete it",
 					backup.Name))
 				if err = deleteBackup(ctx, &backup, c); err == nil {
@@ -578,8 +578,8 @@ func deleteBackup(
 ) error {
 	// delete backup now
 	backupLogger := log.FromContext(ctx)
-	backupName := backup.ObjectMeta.Name
-	backupNamespace := backup.ObjectMeta.Namespace
+	backupName := backup.Name
+	backupNamespace := backup.Namespace
 	backupLogger.Info(fmt.Sprintf("delete backup %s", backupName))
 
 	backupDeleteIdentity := types.NamespacedName{

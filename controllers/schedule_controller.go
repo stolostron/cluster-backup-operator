@@ -207,7 +207,7 @@ func (r *BackupScheduleReconciler) Reconcile(
 		clusterID, _ := getHubIdentification(ctx, r.Client)
 		err := r.initVeleroSchedules(ctx, mapper, backupSchedule, clusterID)
 		if err != nil {
-			msg := fmt.Errorf(FailedPhaseMsg+": %v", err)
+			msg := fmt.Errorf(FailedPhaseMsg+": %v", err) //nolint:staticcheck  // for capitalized err msg
 			scheduleLogger.Error(err, err.Error())
 			backupSchedule.Status.LastMessage = msg.Error()
 			backupSchedule.Status.Phase = v1beta1.SchedulePhaseFailed
@@ -287,7 +287,7 @@ func (r *BackupScheduleReconciler) isValidateConfiguration(
 
 	// don't create schedules if backup storage location doesn't exist or is not avaialable
 	veleroStorageLocations := &veleroapi.BackupStorageLocationList{}
-	if err := r.Client.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
+	if err := r.List(ctx, veleroStorageLocations, &client.ListOptions{}); err != nil ||
 		len(veleroStorageLocations.Items) == 0 {
 
 		msg := "velero.io.BackupStorageLocation resources not found. " +
