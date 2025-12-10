@@ -38,11 +38,11 @@ func RandStringBytesMask(n int) string {
 
 var _ = Describe("Backup", func() {
 	var (
-		backupName                      string = "the-backup-name"
-		veleroNamespaceName                    = "velero"
-		veleroManagedClustersBackupName        = "acm-managed-clusters-schedule-20210910181336"
-		veleroResourcesBackupName              = "acm-resources-schedule-20210910181336"
-		veleroCredentialsBackupName            = "acm-credentials-schedule-20210910181336"
+		backupName                      = "the-backup-name"
+		veleroNamespaceName             = "velero"
+		veleroManagedClustersBackupName = "acm-managed-clusters-schedule-20210910181336"
+		veleroResourcesBackupName       = "acm-resources-schedule-20210910181336"
+		veleroCredentialsBackupName     = "acm-credentials-schedule-20210910181336"
 
 		labelsCls123 = map[string]string{
 			"velero.io/schedule-name":  "acm-resources-schedule",
