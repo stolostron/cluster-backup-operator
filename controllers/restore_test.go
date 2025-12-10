@@ -31,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
@@ -1239,17 +1238,13 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 			name: "Credentials restore with ManagedCluster latest and sync, should return true",
 			args: args{
 				restype: Credentials,
-				acmRestore: func() *v1beta1.Restore {
-					r := createACMRestore("acm-restore", "ns").
-						syncRestoreWithNewBackups(true).
-						restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
-						cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
-						veleroManagedClustersBackupName(latestBackupStr).
-						veleroCredentialsBackupName(latestBackupStr).
-						veleroResourcesBackupName(latestBackupStr).object
-					r.Status.Phase = v1beta1.RestorePhaseEnabled
-					return r
-				}(),
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
 				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
 					Credentials:     createRestore("credentials-restore", "ns").object,
 					ManagedClusters: createRestore("clusters-restore", "ns").object,
@@ -1298,17 +1293,13 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 			name: "Generic Res restore with ManagedCluster and sync, should return false and active",
 			args: args{
 				restype: ResourcesGeneric,
-				acmRestore: func() *v1beta1.Restore {
-					r := createACMRestore("acm-restore", "ns").
-						syncRestoreWithNewBackups(true).
-						restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
-						cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
-						veleroManagedClustersBackupName(latestBackupStr).
-						veleroCredentialsBackupName(latestBackupStr).
-						veleroResourcesBackupName(latestBackupStr).object
-					r.Status.Phase = v1beta1.RestorePhaseEnabled
-					return r
-				}(),
+				acmRestore: createACMRestore("acm-restore", "ns").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).object,
 				veleroRestoresToCreate: map[ResourceType]*veleroapi.Restore{
 					Resources:        createRestore("resources-restore", "ns").object,
 					ResourcesGeneric: createRestore("generic-restore", "ns").object,
@@ -1322,9 +1313,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fakeClient := fake.NewClientBuilder().Build()
-			got := updateLabelsForActiveResources(context.Background(), fakeClient,
-				tt.args.acmRestore, tt.args.restype, tt.args.veleroRestoresToCreate)
+			got := updateLabelsForActiveResources(tt.args.acmRestore, tt.args.restype, tt.args.veleroRestoresToCreate)
 			if got != tt.want {
 				t.Error(tt.name)
 			}
