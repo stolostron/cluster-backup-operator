@@ -7,7 +7,7 @@ VERSION ?= 0.0.1
 
 # Helper software versions
 GOLANGCI_VERSION := v2.7.2
-CONTROLLER_TOOLS_VERSION := v0.16.1
+CONTROLLER_TOOLS_VERSION := v0.17.3
 ENVTEST_K8S_VERSION = 1.30
 
 # CHANNELS define the bundle channels used in the bundle.
