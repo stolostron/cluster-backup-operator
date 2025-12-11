@@ -609,17 +609,6 @@ func postRestoreActivation(
 			continue
 		}
 
-		// Add immediate-import annotation to trigger reimport even with ImportOnly strategy (ACM 2.14+)
-		annotations := managedCluster.GetAnnotations()
-		if annotations == nil {
-			annotations = make(map[string]string)
-			managedCluster.SetAnnotations(annotations)
-		}
-		annotations[immediateImportAnnotation] = ""
-		if err := c.Update(ctx, &managedCluster); err != nil {
-			logger.Error(err, "Error adding immediate-import annotation to ManagedCluster", "name", clusterName)
-		}
-
 		// Get MSA secrets for this cluster
 		var clusterMSASecrets []corev1.Secret
 		for _, secret := range msaSecrets {
@@ -667,6 +656,17 @@ func postRestoreActivation(
 			}
 			logger.Info(msg)
 			activationMessages = append(activationMessages, msg)
+		}
+
+		// Add immediate-import annotation to trigger reimport even with ImportOnly strategy (ACM 2.14+)
+		annotations := managedCluster.GetAnnotations()
+		if annotations == nil {
+			annotations = make(map[string]string)
+			managedCluster.SetAnnotations(annotations)
+		}
+		annotations[immediateImportAnnotation] = ""
+		if err := c.Update(ctx, &managedCluster); err != nil {
+			logger.Error(err, "Error adding immediate-import annotation to ManagedCluster", "name", clusterName)
 		}
 
 		// create an auto-import-secret for this managed cluster
