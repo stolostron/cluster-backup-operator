@@ -45,6 +45,8 @@ const (
 	keepAutoImportSecret = "managedcluster-import-controller.open-cluster-management.io/keeping-auto-import-secret"
 	/* #nosec G101 -- This is a false positive */
 	autoImportSecretName = "auto-import-secret"
+	// immediateImportAnnotation triggers auto-import even when ImportOnly strategy is set (ACM 2.14+)
+	immediateImportAnnotation = "import.open-cluster-management.io/immediate-import"
 )
 
 // resources should be restored in this order, higher priority starting from 0

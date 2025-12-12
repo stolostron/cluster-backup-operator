@@ -644,6 +644,22 @@ func postRestoreActivation(
 			activationMessages = append(activationMessages, msg)
 		}
 
+		// Add immediate-import annotation to trigger reimport even with ImportOnly strategy (ACM 2.14+)
+		for i := range managedClusters {
+			if managedClusters[i].Name == clusterName {
+				annotations := managedClusters[i].GetAnnotations()
+				if annotations == nil {
+					annotations = make(map[string]string)
+					managedClusters[i].SetAnnotations(annotations)
+				}
+				annotations[immediateImportAnnotation] = ""
+				if err := c.Update(ctx, &managedClusters[i]); err != nil {
+					logger.Error(err, "Error adding immediate-import annotation to ManagedCluster", "name", clusterName)
+				}
+				break
+			}
+		}
+
 		// create an auto-import-secret for this managed cluster
 		if err := createAutoImportSecret(ctx, c, clusterName, accessToken, url); err != nil {
 			msg := fmt.Sprintf("Failed to create auto-import-secret for (%s)",
