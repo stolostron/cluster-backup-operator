@@ -1,0 +1,131 @@
+Restore Validation Webhook - Test Cases
+========================================
+
+This document describes the test cases for the Restore validation webhook.
+
+Validation Rules (when syncRestoreWithNewBackups=true)
+------------------------------------------------------
+1. veleroManagedClustersBackupName: must be 'skip' or 'latest'
+2. veleroCredentialsBackupName: must be 'latest'
+3. veleroResourcesBackupName: must be 'latest'
+4. On initial create (Phase != Enabled): MC must be 'skip' first
+
+
+INVALID Test Cases (should be REJECTED)
+---------------------------------------
+
+Test 1: MC with specific backup name
+Expected Error: "syncRestoreWithNewBackups requires veleroManagedClustersBackupName to be 'skip' or 'latest', got: acm-managed-clusters-backup-123"
+
+oc apply -f - <<EOF
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: test-invalid-1
+  namespace: open-cluster-management-backup
+spec:
+  syncRestoreWithNewBackups: true
+  cleanupBeforeRestore: CleanupRestored
+  veleroManagedClustersBackupName: acm-managed-clusters-backup-123
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
+EOF
+
+
+Test 2: Credentials not latest
+Expected Error: "syncRestoreWithNewBackups requires veleroCredentialsBackupName to be 'latest', got: acm-creds-backup-123"
+
+oc apply -f - <<EOF
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: test-invalid-2
+  namespace: open-cluster-management-backup
+spec:
+  syncRestoreWithNewBackups: true
+  cleanupBeforeRestore: CleanupRestored
+  veleroManagedClustersBackupName: skip
+  veleroCredentialsBackupName: acm-creds-backup-123
+  veleroResourcesBackupName: latest
+EOF
+
+
+Test 3: Resources not latest
+Expected Error: "syncRestoreWithNewBackups requires veleroResourcesBackupName to be 'latest', got: acm-resources-backup-123"
+
+oc apply -f - <<EOF
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: test-invalid-3
+  namespace: open-cluster-management-backup
+spec:
+  syncRestoreWithNewBackups: true
+  cleanupBeforeRestore: CleanupRestored
+  veleroManagedClustersBackupName: skip
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: acm-resources-backup-123
+EOF
+
+
+Test 4: MC=latest on initial create
+Expected Error: "when syncRestoreWithNewBackups is true, veleroManagedClustersBackupName must initially be set to 'skip'. To activate managed clusters, edit the restore to set veleroManagedClustersBackupName to 'latest'"
+
+oc apply -f - <<EOF
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: test-invalid-4
+  namespace: open-cluster-management-backup
+spec:
+  syncRestoreWithNewBackups: true
+  cleanupBeforeRestore: CleanupRestored
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
+EOF
+
+
+VALID Test Cases (should be ACCEPTED)
+-------------------------------------
+
+Test 5: Correct sync configuration
+Expected Result: restore.cluster.open-cluster-management.io/test-valid-sync created
+
+oc apply -f - <<EOF
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: test-valid-sync
+  namespace: open-cluster-management-backup
+spec:
+  syncRestoreWithNewBackups: true
+  cleanupBeforeRestore: CleanupRestored
+  veleroManagedClustersBackupName: skip
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
+EOF
+
+
+Test 6: Non-sync restore (no validation)
+Expected Result: restore.cluster.open-cluster-management.io/test-valid-nonsync created
+
+oc apply -f - <<EOF
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: test-valid-nonsync
+  namespace: open-cluster-management-backup
+spec:
+  syncRestoreWithNewBackups: false
+  cleanupBeforeRestore: CleanupRestored
+  veleroManagedClustersBackupName: acm-managed-clusters-backup-123
+  veleroCredentialsBackupName: acm-creds-backup-123
+  veleroResourcesBackupName: acm-resources-backup-123
+EOF
+
+
+Cleanup
+-------
+oc delete restore -n open-cluster-management-backup test-valid-sync test-valid-nonsync 2>/dev/null
+
