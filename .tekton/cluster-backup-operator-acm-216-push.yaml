@@ -37,6 +37,9 @@ spec:
     - linux/arm64
   - name: dockerfile
     value: Dockerfile.rhtap
+  - name: build-args
+    value:
+    - ACM_VERSION=2.16
   - name: path-context
     value: .
   - name: send-slack-notification
