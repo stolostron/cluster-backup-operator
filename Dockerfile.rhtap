@@ -1,3 +1,5 @@
+ARG ACM_VERSION="unknown"
+
 # Build the manager binary
 FROM brew.registry.redhat.io/rh-osbs/openshift-golang-builder:rhel_9_1.25 AS builder
 
@@ -23,9 +25,12 @@ RUN CGO_ENABLED=1 GOFLAGS='-mod=readonly' go build -tags strictfipsruntime -a -o
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM registry.redhat.io/ubi9/ubi-minimal:latest
+
+ARG ACM_VERSION
+
 LABEL \
     name="rhacm2/cluster-backup-rhel9-operator" \
-    cpe="cpe:/a:redhat:acm:2.16::el9" \
+    cpe="cpe:/a:redhat:acm:${ACM_VERSION}::el9" \
     com.redhat.component="cluster-backup-operator" \
     description="The Cluster Backup and Restore Operator runs on the hub cluster, providing disaster recovery \
     solutions for Red Hat Advanced Cluster Management in the event of hub cluster failures." \
