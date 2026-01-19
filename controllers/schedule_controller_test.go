@@ -1553,6 +1553,18 @@ var _ = Describe("BackupSchedule controller", func() {
 				// Step 1: Create managed clusters and MSA resources that should be processed
 				By("creating managed clusters and MSA resources that should be processed by prepareImportedClusters")
 
+				// Create ClusterManagementAddOn for managed-serviceaccount (required for MSA component to be considered enabled)
+				clusterMgmtAddon := &unstructured.Unstructured{}
+				clusterMgmtAddon.SetUnstructuredContent(map[string]interface{}{
+					"apiVersion": "addon.open-cluster-management.io/v1alpha1",
+					"kind":       "ClusterManagementAddOn",
+					"metadata": map[string]interface{}{
+						"name": "managed-serviceaccount",
+					},
+					"spec": map[string]interface{}{},
+				})
+				Expect(k8sClient.Create(ctx, clusterMgmtAddon)).Should(Succeed())
+
 				// Create managed clusters
 				managedCluster1 := createManagedCluster("test-cluster-1", false)
 				managedCluster2 := createManagedCluster("test-cluster-2", false)
