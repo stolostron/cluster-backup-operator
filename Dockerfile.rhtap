@@ -25,7 +25,8 @@ RUN CGO_ENABLED=1 GOFLAGS='-mod=readonly' go build -tags strictfipsruntime -a -o
 FROM registry.redhat.io/ubi9/ubi-minimal:latest
 
 LABEL \
-    name="cluster-backup-operator" \
+    name="rhacm2/cluster-backup-rhel9-operator" \
+    cpe="cpe:/a:redhat:acm:2.11::el9" \
     com.redhat.component="cluster-backup-operator" \
     description="The Cluster Backup and Restore Operator runs on the hub cluster, providing disaster recovery \
     solutions for Red Hat Advanced Cluster Management in the event of hub cluster failures." \
@@ -33,7 +34,8 @@ LABEL \
     solutions for Red Hat Advanced Cluster Management in the event of hub cluster failures." \
     summary="An ACM operator that delivers disaster recovery solutions for hub cluster failures." \
     io.k8s.display-name="Red Hat Advanced Cluster Management Cluster Backup and Restore Operator" \
-    io.openshift.tags="acm cluster-backup-operator"
+    io.openshift.tags="acm cluster-backup-operator" \
+    url="https://github.com/stolostron/cluster-backup-operator"
 WORKDIR /
 COPY --from=builder /workspace/manager .
 
