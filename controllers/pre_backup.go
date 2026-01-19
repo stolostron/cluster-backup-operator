@@ -48,18 +48,21 @@ const (
 	// manifest work suffix used and created in 2.8.2
 	mwork_custom_282 = "-custom"
 	// manifest work suffix used and created 2.8.3 and onward
-	mwork_custom_283      = "-custom-2"
-	hive_label            = "hive.openshift.io/disable-creation-webhook-for-dr"
-	hive_label_path       = "/metadata/labels/hive.openshift.io~1disable-creation-webhook-for-dr"
-	msa_addon             = "managed-serviceaccount"
-	msa_service_name      = "auto-import-account"
-	msa_service_name_pair = "auto-import-account-pair" // #nosec G101 -- This is a false positive
-	msa_label             = "authentication.open-cluster-management.io/is-managed-serviceaccount"
-	backup_label          = "msa"
-	addon_work_label      = "open-cluster-management.io/addon-name-work"
-	addon_label           = "open-cluster-management.io/addon-name-work"
-	role_name             = "klusterlet-bootstrap-kubeconfig"
-	msa_api               = "authentication.open-cluster-management.io/v1beta1"
+	mwork_custom_283 = "-custom-2"
+	hive_label       = "hive.openshift.io/disable-creation-webhook-for-dr"
+	hive_label_path  = "/metadata/labels/hive.openshift.io~1disable-creation-webhook-for-dr"
+	msa_addon        = "managed-serviceaccount"
+	// ClusterManagementAddOn name for managed-serviceaccount
+	// This resource exists when the MSA component is enabled on MCE
+	msa_cluster_mgmt_addon = "managed-serviceaccount"
+	msa_service_name       = "auto-import-account"
+	msa_service_name_pair  = "auto-import-account-pair" // #nosec G101 -- This is a false positive
+	msa_label              = "authentication.open-cluster-management.io/is-managed-serviceaccount"
+	backup_label           = "msa"
+	addon_work_label       = "open-cluster-management.io/addon-name-work"
+	addon_label            = "open-cluster-management.io/addon-name-work"
+	role_name              = "klusterlet-bootstrap-kubeconfig"
+	msa_api                = "authentication.open-cluster-management.io/v1beta1"
 
 	manifest_work_name                   = "addon-" + msa_addon + "-import"
 	manifest_work_name_pair              = "addon-" + msa_addon + "-import-pair"
@@ -91,6 +94,28 @@ const (
 	update_msg = "Updated secret %s in ns %s"
 )
 
+// isMSAComponentEnabled checks if the managed-serviceaccount component is actually enabled
+// by verifying the existence of the ClusterManagementAddOn resource.
+// The CRD may exist even when the component is disabled, so we need to check for the
+// ClusterManagementAddOn which is only present when the component is enabled on MCE.
+func isMSAComponentEnabled(ctx context.Context, c client.Client) bool {
+	logger := log.FromContext(ctx)
+
+	// Check if ClusterManagementAddOn for managed-serviceaccount exists
+	// This resource is created by MCE when the managedserviceaccount component is enabled
+	// and is deleted when the component is disabled
+	clusterMgmtAddon := &addonv1alpha1.ClusterManagementAddOn{}
+	err := c.Get(ctx, types.NamespacedName{Name: msa_cluster_mgmt_addon}, clusterMgmtAddon)
+	if err != nil {
+		logger.Info("ClusterManagementAddOn for managed-serviceaccount not found, component is disabled",
+			"error", err.Error())
+		return false
+	}
+
+	logger.Info("ClusterManagementAddOn for managed-serviceaccount found, component is enabled")
+	return true
+}
+
 // the prepareForBackup task is executed before each run of a backup schedule
 // any settings that need to be applied to the resources before the backpu starts, are being called here
 
@@ -115,23 +140,38 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 	msaMapping, err := mapper.RESTMapping(msaKind, "")
 	var dr dynamic.NamespaceableResourceInterface
 	if err == nil {
-		logger.Info("ManagedServiceAccounts is enabled, generate MSA accounts if needed", "useMSA", useMSA)
-		dr = r.DynamicClient.Resource(msaMapping.Resource)
-		if dr != nil {
-			if useMSA {
-				if err := prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule); err != nil {
-					logger.Error(err, "prepareForBackup: error preparing imported clusters")
-					return err
+		// CRD exists, but we also need to verify the component is actually enabled
+		// by checking for the ClusterManagementAddOn resource
+		msaComponentEnabled := isMSAComponentEnabled(ctx, r.Client)
+
+		if msaComponentEnabled {
+			logger.Info("ManagedServiceAccounts component is enabled, generate MSA accounts if needed", "useMSA", useMSA)
+			dr = r.DynamicClient.Resource(msaMapping.Resource)
+			if dr != nil {
+				if useMSA {
+					if err := prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule); err != nil {
+						logger.Error(err, "prepareForBackup: error preparing imported clusters")
+						return err
+					}
+				} else {
+					if err := cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping); err != nil {
+						logger.Error(err, "prepareForBackup: error cleaning up MSA for imported clusters")
+						return err
+					}
 				}
-			} else {
-				if err := cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping); err != nil {
-					logger.Error(err, "prepareForBackup: error cleaning up MSA for imported clusters")
-					return err
-				}
+			}
+		} else {
+			// MSA component is disabled (ClusterManagementAddOn not found)
+			// Clean up any existing MSA resources created by the backup controller
+			logger.Info("ManagedServiceAccounts component is disabled, cleaning up MSA resources")
+			dr = r.DynamicClient.Resource(msaMapping.Resource)
+			if err := cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping); err != nil {
+				logger.Error(err, "prepareForBackup: error cleaning up MSA for imported clusters")
+				return err
 			}
 		}
 	} else {
-		logger.Info("ManagedServiceAccounts are not enabled")
+		logger.Info("ManagedServiceAccounts CRD not found")
 	}
 
 	hiveDeploymentMapping, _ := mapper.RESTMapping(schema.GroupKind{
