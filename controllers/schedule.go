@@ -26,7 +26,6 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/restmapper"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -478,38 +477,26 @@ func verifyMSAOption(
 	mapper *restmapper.DeferredDiscoveryRESTMapper,
 	backupSchedule *v1beta1.BackupSchedule,
 ) (ctrl.Result, bool, error) {
-	msaKind := schema.GroupKind{
-		Group: msa_group,
-		Kind:  msa_kind,
-	}
-
 	scheduleLogger := log.FromContext(ctx)
 	msg := "UseManagedServiceAccount option cannot be used, managedserviceaccount component is not enabled"
-	if useMSA := backupSchedule.Spec.UseManagedServiceAccount; useMSA {
 
-		// First check if the ManagedServiceAccount CRD exists
-		if _, err := mapper.RESTMapping(msaKind, ""); err != nil {
-			scheduleLogger.Info("ManagedServiceAccount CRD not found")
-			cleanupMSAErr := cleanupMSAForImportedClusters(ctx, c, nil, nil)
-			if cleanupMSAErr != nil {
-				scheduleLogger.Error(cleanupMSAErr, "error cleaning up MSA for imported clusters")
-				// Not returning error here, below will set a failed response msg and requeue
-			}
-			// return error
-			return createFailedValidationResponse(ctx, c, backupSchedule,
-				msg, true) // want to requeue, if CRD is installed after
+	if useMSA := backupSchedule.Spec.UseManagedServiceAccount; useMSA {
+		// Check if MSA component is enabled (CRD exists and ClusterManagementAddOn exists)
+		msaEnabled, err := isMSAComponentEnabled(ctx, c, mapper)
+		if err != nil {
+			// API error - requeue to retry
+			scheduleLogger.Error(err, "Error checking if MSA component is enabled")
+			return ctrl.Result{RequeueAfter: failureInterval}, false, err
 		}
 
-		// CRD exists, but also verify the component is actually enabled
-		// by checking for the ClusterManagementAddOn resource
-		if !isMSAComponentEnabled(ctx, c) {
-			scheduleLogger.Info("ManagedServiceAccount CRD exists but component is disabled (ClusterManagementAddOn not found)")
+		if !msaEnabled {
+			scheduleLogger.Info("ManagedServiceAccount component is not enabled")
 			cleanupMSAErr := cleanupMSAForImportedClusters(ctx, c, nil, nil)
 			if cleanupMSAErr != nil {
 				scheduleLogger.Error(cleanupMSAErr, "error cleaning up MSA for imported clusters")
 				// Not returning error here, below will set a failed response msg and requeue
 			}
-			// return error - component is disabled
+			// return error - component is not enabled
 			return createFailedValidationResponse(ctx, c, backupSchedule,
 				msg, true) // want to requeue, if component is enabled after
 		}
