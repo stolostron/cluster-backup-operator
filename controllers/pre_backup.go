@@ -164,7 +164,7 @@ func (r *BackupScheduleReconciler) processMSAResources(
 		logger.Info("ManagedServiceAccounts component is enabled, preparing imported clusters")
 		if prepErr := prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule); prepErr != nil {
 			logger.Error(prepErr, "processMSAResources: error preparing imported clusters")
-			return true, prepErr
+			return false, prepErr
 		}
 		return true, nil
 	}
@@ -175,11 +175,11 @@ func (r *BackupScheduleReconciler) processMSAResources(
 		logger.Info("Cleaning up MSA resources", "msaComponentEnabled", msaComponentEnabled, "useMSA", useMSA)
 		if cleanupErr := cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping); cleanupErr != nil {
 			logger.Error(cleanupErr, "processMSAResources: error cleaning up MSA for imported clusters")
-			return msaComponentEnabled, cleanupErr
+			return false, cleanupErr
 		}
 	}
 
-	return msaComponentEnabled, nil
+	return false, nil
 }
 
 // the prepareForBackup task is executed before each run of a backup schedule
@@ -206,8 +206,8 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 	updateAISecrets(ctx, r.Client)
 	updateMetalSecrets(ctx, r.Client)
 
-	// If MSA is enabled and user wants to use it, add backup labels to MSA resources
-	if msaEnabled && backupSchedule.Spec.UseManagedServiceAccount {
+	// If MSA is enabled (useMSA=true AND component enabled), add backup labels to MSA resources
+	if msaEnabled {
 		msaKind := schema.GroupKind{Group: msa_group, Kind: msa_kind}
 		if msaMapping, mappingErr := mapper.RESTMapping(msaKind, ""); mappingErr == nil {
 			dr := r.DynamicClient.Resource(msaMapping.Resource)
