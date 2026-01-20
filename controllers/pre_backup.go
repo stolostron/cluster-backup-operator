@@ -95,14 +95,28 @@ const (
 	update_msg = "Updated secret %s in ns %s"
 )
 
-// isMSAComponentEnabled checks if the managed-serviceaccount component is actually enabled
-// by verifying the existence of the ClusterManagementAddOn resource.
-// The CRD may exist even when the component is disabled, so we need to check for the
-// ClusterManagementAddOn which is only present when the component is enabled on MCE.
-func isMSAComponentEnabled(ctx context.Context, c client.Client) bool {
+// isMSAComponentEnabled checks if the managedserviceaccount component is enabled in MCE
+// It first checks if the ManagedServiceAccount CRD exists, then verifies the component
+// is actually enabled by checking for the ClusterManagementAddOn resource.
+// Returns (enabled, error) - error is returned for API errors to allow reconcile retry.
+func isMSAComponentEnabled(
+	ctx context.Context,
+	c client.Client,
+	mapper *restmapper.DeferredDiscoveryRESTMapper,
+) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	// Check if ClusterManagementAddOn for managed-serviceaccount exists
+	// First check if the ManagedServiceAccount CRD exists
+	msaKind := schema.GroupKind{
+		Group: msa_group,
+		Kind:  msa_kind,
+	}
+	if _, err := mapper.RESTMapping(msaKind, ""); err != nil {
+		logger.Info("ManagedServiceAccount CRD not found")
+		return false, nil // CRD not found is not an error, just means MSA is not installed
+	}
+
+	// CRD exists, now check if ClusterManagementAddOn for managed-serviceaccount exists
 	// This resource is created by MCE when the managedserviceaccount component is enabled
 	// and is deleted when the component is disabled
 	clusterMgmtAddon := &addonv1alpha1.ClusterManagementAddOn{}
@@ -110,55 +124,69 @@ func isMSAComponentEnabled(ctx context.Context, c client.Client) bool {
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			logger.Info("ClusterManagementAddOn for managed-serviceaccount not found, component is disabled")
-		} else {
-			logger.Error(err, "Error checking ClusterManagementAddOn for managed-serviceaccount")
+			return false, nil
 		}
-		return false
+		// API error - return error to allow reconcile retry
+		logger.Error(err, "Error checking ClusterManagementAddOn for managed-serviceaccount")
+		return false, err
 	}
 
 	logger.Info("ClusterManagementAddOn for managed-serviceaccount found, component is enabled")
-	return true
+	return true, nil
 }
 
 // processMSAResources handles MSA resource creation or cleanup based on component status
+// Returns (msaEnabled, error) to indicate if MSA component is enabled and any errors
 func (r *BackupScheduleReconciler) processMSAResources(
 	ctx context.Context,
-	dr dynamic.NamespaceableResourceInterface,
-	msaMapping *meta.RESTMapping,
+	mapper *restmapper.DeferredDiscoveryRESTMapper,
 	backupSchedule *v1beta1.BackupSchedule,
-	useMSA bool,
-) error {
+) (bool, error) {
 	logger := log.FromContext(ctx)
+	useMSA := backupSchedule.Spec.UseManagedServiceAccount
 
-	// Check if MSA component is actually enabled (ClusterManagementAddOn exists)
-	msaComponentEnabled := isMSAComponentEnabled(ctx, r.Client)
+	// Check if MSA component is actually enabled (CRD exists and ClusterManagementAddOn exists)
+	msaComponentEnabled, err := isMSAComponentEnabled(ctx, r.Client, mapper)
+	if err != nil {
+		return false, err
+	}
+
+	// Get MSA mapping and dynamic resource interface if CRD exists
+	msaKind := schema.GroupKind{Group: msa_group, Kind: msa_kind}
+	msaMapping, mappingErr := mapper.RESTMapping(msaKind, "")
+	var dr dynamic.NamespaceableResourceInterface
+	if mappingErr == nil {
+		dr = r.DynamicClient.Resource(msaMapping.Resource)
+	}
 
 	// If component is disabled, clean up any existing MSA resources
 	if !msaComponentEnabled {
 		logger.Info("ManagedServiceAccounts component is disabled, cleaning up MSA resources")
-		if err := cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping); err != nil {
-			logger.Error(err, "processMSAResources: error cleaning up MSA for imported clusters")
-			return err
+		if dr != nil {
+			if cleanupErr := cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping); cleanupErr != nil {
+				logger.Error(cleanupErr, "processMSAResources: error cleaning up MSA for imported clusters")
+				return false, cleanupErr
+			}
 		}
-		return nil
+		return false, nil
 	}
 
 	logger.Info("ManagedServiceAccounts component is enabled", "useMSA", useMSA)
 
 	// Component is enabled, process based on useMSA setting
 	if useMSA {
-		if err := prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule); err != nil {
-			logger.Error(err, "processMSAResources: error preparing imported clusters")
-			return err
+		if prepErr := prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule); prepErr != nil {
+			logger.Error(prepErr, "processMSAResources: error preparing imported clusters")
+			return true, prepErr
 		}
 	} else {
-		if err := cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping); err != nil {
-			logger.Error(err, "processMSAResources: error cleaning up MSA for imported clusters")
-			return err
+		if cleanupErr := cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping); cleanupErr != nil {
+			logger.Error(cleanupErr, "processMSAResources: error cleaning up MSA for imported clusters")
+			return true, cleanupErr
 		}
 	}
 
-	return nil
+	return true, nil
 }
 
 // the prepareForBackup task is executed before each run of a backup schedule
@@ -170,28 +198,10 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 	mapper *restmapper.DeferredDiscoveryRESTMapper,
 	backupSchedule *v1beta1.BackupSchedule,
 ) error {
-	logger := log.FromContext(ctx)
-
-	// check if user has checked the UseManagedServiceAccount option
-	useMSA := backupSchedule.Spec.UseManagedServiceAccount
-
-	// check if ManagedServiceAccount CRD exists
-	msaKind := schema.GroupKind{
-		Group: msa_group,
-		Kind:  msa_kind,
-	}
-
-	msaMapping, err := mapper.RESTMapping(msaKind, "")
-	var dr dynamic.NamespaceableResourceInterface
-
-	// If CRD doesn't exist, skip MSA processing
+	// Process MSA resources and get component status
+	msaEnabled, err := r.processMSAResources(ctx, mapper, backupSchedule)
 	if err != nil {
-		logger.Info("ManagedServiceAccounts CRD not found")
-	} else {
-		dr = r.DynamicClient.Resource(msaMapping.Resource)
-		if err := r.processMSAResources(ctx, dr, msaMapping, backupSchedule, useMSA); err != nil {
-			return err
-		}
+		return err
 	}
 
 	hiveDeploymentMapping, _ := mapper.RESTMapping(schema.GroupKind{
@@ -203,9 +213,13 @@ func (r *BackupScheduleReconciler) prepareForBackup(
 	updateAISecrets(ctx, r.Client)
 	updateMetalSecrets(ctx, r.Client)
 
-	if useMSA && err == nil && dr != nil && isMSAComponentEnabled(ctx, r.Client) {
-		// managedserviceaccount is enabled, add backup labels
-		updateMSAResources(ctx, r.Client, dr)
+	// If MSA is enabled and user wants to use it, add backup labels to MSA resources
+	if msaEnabled && backupSchedule.Spec.UseManagedServiceAccount {
+		msaKind := schema.GroupKind{Group: msa_group, Kind: msa_kind}
+		if msaMapping, mappingErr := mapper.RESTMapping(msaKind, ""); mappingErr == nil {
+			dr := r.DynamicClient.Resource(msaMapping.Resource)
+			updateMSAResources(ctx, r.Client, dr)
+		}
 	}
 
 	return nil
