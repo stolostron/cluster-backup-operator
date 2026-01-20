@@ -1,0 +1,87 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: clustermanagementaddons.addon.open-cluster-management.io
+spec:
+  group: addon.open-cluster-management.io
+  names:
+    kind: ClusterManagementAddOn
+    listKind: ClusterManagementAddOnList
+    plural: clustermanagementaddons
+    singular: clustermanagementaddon
+  preserveUnknownFields: false
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ClusterManagementAddOn represents the registration of an add-on
+          to the cluster manager.
+        properties:
+          apiVersion:
+            description: APIVersion defines the versioned schema of this representation
+              of an object.
+            type: string
+          kind:
+            description: Kind is a string value representing the REST resource this
+              object represents.
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec represents the desired configuration of the add-on.
+            properties:
+              addOnMeta:
+                description: addOnMeta is a reference to the metadata information for
+                  the add-on.
+                properties:
+                  description:
+                    description: description represents the detailed description of
+                      the add-on.
+                    type: string
+                  displayName:
+                    description: displayName represents the name of add-on that will
+                      be displayed.
+                    type: string
+                type: object
+              supportedConfigs:
+                description: supportedConfigs is a list of configuration types supported
+                  by add-on.
+                items:
+                  properties:
+                    defaultConfig:
+                      description: defaultConfig represents the namespace and name
+                        of the default add-on configuration.
+                      properties:
+                        name:
+                          description: name of the add-on configuration.
+                          minLength: 1
+                          type: string
+                        namespace:
+                          description: namespace of the add-on configuration.
+                          minLength: 1
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    group:
+                      description: group of the add-on configuration.
+                      type: string
+                    resource:
+                      description: resource of the add-on configuration.
+                      minLength: 1
+                      type: string
+                  required:
+                  - resource
+                  type: object
+                type: array
+            type: object
+          status:
+            description: status represents the current status of the add-on.
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+

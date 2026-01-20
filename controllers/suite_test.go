@@ -302,6 +302,7 @@ func setupAddonAPIResources(resourceLists map[string]*metav1.APIResourceList) {
 		GroupVersion: "addon.open-cluster-management.io/v1alpha1",
 		APIResources: []metav1.APIResource{
 			{Name: "managedclusteraddons", Namespaced: true, Kind: "ManagedClusterAddOn"},
+			{Name: "clustermanagementaddons", Namespaced: false, Kind: "ClusterManagementAddOn"},
 		},
 	}
 }
@@ -601,6 +602,8 @@ func setupGVRMappings() map[schema.GroupVersionResource]string {
 			Resource: "subscriptions"}: "SubscriptionList",
 		{Group: "addon.open-cluster-management.io", Version: "v1alpha1",
 			Resource: "managedclusteraddons"}: "ManagedClusterAddOnList",
+		{Group: "addon.open-cluster-management.io", Version: "v1alpha1",
+			Resource: "clustermanagementaddons"}: "ClusterManagementAddOnList",
 	}
 }
 
