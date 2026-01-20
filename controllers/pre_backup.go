@@ -159,34 +159,27 @@ func (r *BackupScheduleReconciler) processMSAResources(
 		dr = r.DynamicClient.Resource(msaMapping.Resource)
 	}
 
-	// If component is disabled, clean up any existing MSA resources
-	if !msaComponentEnabled {
-		logger.Info("ManagedServiceAccounts component is disabled, cleaning up MSA resources")
-		if dr != nil {
-			if cleanupErr := cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping); cleanupErr != nil {
-				logger.Error(cleanupErr, "processMSAResources: error cleaning up MSA for imported clusters")
-				return false, cleanupErr
-			}
-		}
-		return false, nil
-	}
-
-	logger.Info("ManagedServiceAccounts component is enabled", "useMSA", useMSA)
-
-	// Component is enabled, process based on useMSA setting
-	if useMSA {
+	// Only prepare MSA resources if both component is enabled AND user wants to use MSA
+	if useMSA && msaComponentEnabled {
+		logger.Info("ManagedServiceAccounts component is enabled, preparing imported clusters")
 		if prepErr := prepareImportedClusters(ctx, r.Client, dr, msaMapping, backupSchedule); prepErr != nil {
 			logger.Error(prepErr, "processMSAResources: error preparing imported clusters")
 			return true, prepErr
 		}
-	} else {
+		return true, nil
+	}
+
+	// Otherwise, clean up any existing MSA resources created by backup controller
+	// This covers: component disabled, or component enabled but useMSA=false
+	if dr != nil {
+		logger.Info("Cleaning up MSA resources", "msaComponentEnabled", msaComponentEnabled, "useMSA", useMSA)
 		if cleanupErr := cleanupMSAForImportedClusters(ctx, r.Client, dr, msaMapping); cleanupErr != nil {
 			logger.Error(cleanupErr, "processMSAResources: error cleaning up MSA for imported clusters")
-			return true, cleanupErr
+			return msaComponentEnabled, cleanupErr
 		}
 	}
 
-	return true, nil
+	return msaComponentEnabled, nil
 }
 
 // the prepareForBackup task is executed before each run of a backup schedule
