@@ -1751,12 +1751,89 @@ var _ = Describe("BackupSchedule controller", func() {
 					return hasVeleroSchedules, nil
 				}, timeout, interval).Should(BeTrue())
 
-				// Cleanup test namespaces
+				// Cleanup test namespaces and ClusterManagementAddOn
 				var zero int64 = 0
 				Expect(k8sClient.Delete(ctx, testNs1, &client.DeleteOptions{GracePeriodSeconds: &zero})).Should(Succeed())
 				Expect(k8sClient.Delete(ctx, testNs2, &client.DeleteOptions{GracePeriodSeconds: &zero})).Should(Succeed())
+
+				// Cleanup ClusterManagementAddOn to not affect subsequent tests
+				clusterMgmtAddonToDelete := &unstructured.Unstructured{}
+				clusterMgmtAddonToDelete.SetGroupVersionKind(schema.GroupVersionKind{
+					Group:   "addon.open-cluster-management.io",
+					Version: "v1alpha1",
+					Kind:    "ClusterManagementAddOn",
+				})
+				clusterMgmtAddonToDelete.SetName("managed-serviceaccount")
+				_ = k8sClient.Delete(ctx, clusterMgmtAddonToDelete, &client.DeleteOptions{GracePeriodSeconds: &zero})
 			})
 		})
+
+		// Test Case: MSA Component Disabled (CRD exists but ClusterManagementAddOn not found)
+		//
+		// This test validates that the controller properly handles the scenario where:
+		// 1. The ManagedServiceAccount CRD exists (installed on cluster)
+		// 2. But the ClusterManagementAddOn for managed-serviceaccount does NOT exist
+		//    (component is disabled in MCE)
+		// 3. BackupSchedule has useManagedServiceAccount=true
+		//
+		// Expected behavior: Validation should fail because the MSA component is disabled
+		Context("when MSA component is disabled (ClusterManagementAddOn not found)", func() {
+			BeforeEach(func() {
+				// Ensure ClusterManagementAddOn does NOT exist (cleanup from any previous test)
+				clusterMgmtAddonToDelete := &unstructured.Unstructured{}
+				clusterMgmtAddonToDelete.SetGroupVersionKind(schema.GroupVersionKind{
+					Group:   "addon.open-cluster-management.io",
+					Version: "v1alpha1",
+					Kind:    "ClusterManagementAddOn",
+				})
+				clusterMgmtAddonToDelete.SetName("managed-serviceaccount")
+				_ = k8sClient.Delete(ctx, clusterMgmtAddonToDelete) // Ignore error if not found
+
+				// Create a BackupSchedule with MSA enabled but WITHOUT creating ClusterManagementAddOn
+				// This simulates the scenario where MSA component is disabled in MCE
+				rhacmBackupSchedule = *createBackupSchedule(backupScheduleName, veleroNamespace.Name).
+					schedule(backupSchedule).
+					veleroTTL(metav1.Duration{Duration: defaultVeleroTTL}).
+					useManagedServiceAccount(true).
+					object
+				// Note: We intentionally do NOT create ClusterManagementAddOn here
+			})
+
+			It("should fail validation when useManagedServiceAccount is true but component is disabled", func() {
+				scheduleLookupKey := createLookupKey(backupScheduleName, veleroNamespace.Name)
+				createdSchedule := v1beta1.BackupSchedule{}
+
+				// Step 1: Verify BackupSchedule is created
+				By("waiting for backup schedule to be created")
+				Eventually(func() error {
+					return k8sClient.Get(ctx, scheduleLookupKey, &createdSchedule)
+				}, timeout, interval).Should(Succeed())
+
+				// Verify MSA option is set
+				Expect(createdSchedule.Spec.UseManagedServiceAccount).Should(BeTrue())
+
+				// Step 2: Verify controller fails validation because ClusterManagementAddOn doesn't exist
+				By("backup schedule should fail validation when MSA component is disabled")
+				Eventually(func() v1beta1.SchedulePhase {
+					err := k8sClient.Get(ctx, scheduleLookupKey, &createdSchedule)
+					if err != nil {
+						return v1beta1.SchedulePhaseNew
+					}
+					return createdSchedule.Status.Phase
+				}, timeout, interval).Should(Equal(v1beta1.SchedulePhaseFailedValidation))
+
+				// Step 3: Verify the error message indicates MSA component is not enabled
+				By("error message should indicate MSA component is not enabled")
+				Eventually(func() string {
+					err := k8sClient.Get(ctx, scheduleLookupKey, &createdSchedule)
+					if err != nil {
+						return ""
+					}
+					return createdSchedule.Status.LastMessage
+				}, timeout, interval).Should(ContainSubstring("managedserviceaccount component is not enabled"))
+			})
+		})
+
 	})
 
 	Context("when no backup storage location resources exist", func() {
