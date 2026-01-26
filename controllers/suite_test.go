@@ -22,6 +22,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -89,6 +90,17 @@ const (
 	testServiceName  = "auto-import-service"
 )
 
+// TestMain sets up the logger for all tests in this package (both regular Go tests and Ginkgo tests).
+// This runs before any Test functions or Ginkgo suites, ensuring consistent logging.
+func TestMain(m *testing.M) {
+	// Set up logger to write to GinkgoWriter
+	// GinkgoWriter buffers output and displays it when tests fail
+	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+
+	// Run all tests
+	os.Exit(m.Run())
+}
+
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
@@ -99,8 +111,7 @@ func TestAPIs(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
-
+	// Logger is already set up in TestMain
 	By("setting up test environment")
 
 	// STEP 1: Setup Mock API Discovery

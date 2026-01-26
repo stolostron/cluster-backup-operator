@@ -1895,7 +1895,12 @@ var _ = Describe("BackupSchedule controller", func() {
 					return ""
 				}
 				return createdSchedule.Status.LastMessage
-			}, timeout, interval).Should(And(
+			}, time.Second*120, time.Second*10).Should(And(
+				// Long timeout here as we were hitting timeout issues with unit tests
+				// where BackupStorageLocations were not deleted yet (still in the
+				// client cache) and then the schedule controller will requeue (since
+				// the BackupStorageLocations were not valid), but it requeues
+				// for 1m - so we need to wait longer
 				ContainSubstring("velero.io.BackupStorageLocation resources not found"),
 				ContainSubstring("Verify you have created a konveyor.openshift.io.Velero or "+
 					"oadp.openshift.io.DataProtectionApplications resource"),
