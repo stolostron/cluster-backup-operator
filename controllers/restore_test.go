@@ -33,12 +33,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Test_isVeleroRestoreFinished tests the detection of completed Velero restore operations.
@@ -2933,8 +2931,6 @@ func Test_isPVCInitializationStep(t *testing.T) {
 // ensuring proper timing and state management while restore operations
 // complete, particularly for storage-related components and PVC initialization.
 func Test_processRestoreWait(t *testing.T) {
-	logf.SetLogger(klog.NewKlogr())
-
 	type args struct {
 		ctx              context.Context
 		c                client.Client
@@ -3101,8 +3097,6 @@ func hasActivationLabel(
 // different restore types, preventing activation logic from being applied to
 // managed cluster restores when it should only affect credential restores.
 func Test_actLabelNotOnManagedClsRestore(t *testing.T) {
-	logf.SetLogger(klog.NewKlogr())
-
 	orLabelSelector := []*metav1.LabelSelector{
 		{
 			MatchLabels: map[string]string{
@@ -3266,8 +3260,6 @@ func Test_actLabelNotOnManagedClsRestore(t *testing.T) {
 //
 //nolint:funlen
 func TestRestoreReconciler_finalizeRestore(t *testing.T) {
-	logf.SetLogger(klog.NewKlogr())
-
 	ns1 := *createNamespace("backup-ns")
 	acmRestore1 := *createACMRestore("acm-restore", "backup-ns").
 		cleanupBeforeRestore(v1beta1.CleanupTypeNone).syncRestoreWithNewBackups(true).
@@ -3405,8 +3397,6 @@ func TestRestoreReconciler_finalizeRestore(t *testing.T) {
 // cleanup order and prevent resource deletion before restoration is complete,
 // maintaining data integrity during restore operations.
 func Test_addOrRemoveResourcesFinalizer(t *testing.T) {
-	logf.SetLogger(klog.NewKlogr())
-
 	mchObjAdd := newUnstructured("operator.open-cluster-management.io/v1", "InternalHubComponent",
 		"ns1", "cluster-backup")
 
