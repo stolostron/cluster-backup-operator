@@ -7,13 +7,7 @@
   "dependencyDashboard": true,
   "timezone": "America/New_York",
   "dockerfile": {
-    "managerFilePatterns": [
-      "Dockerfile.rhtap"
-    ],
-    "ignorePaths": [
-      "**/Dockerfile"
-    ],
-    "pinDigests": false
+    "enabled": false
   },
   "gomod": {
     "packageRules": [
@@ -41,13 +35,5 @@
   "vulnerabilityAlerts": {
     "enabled": true
   },
-  "osvVulnerabilityAlerts": true,
-  "packageRules": [
-    {
-      "groupName": "containerfile images ({{{baseBranch}}})",
-      "matchManagers": [
-        "dockerfile"
-      ]
-    }
-  ]
+  "osvVulnerabilityAlerts": true
 }
