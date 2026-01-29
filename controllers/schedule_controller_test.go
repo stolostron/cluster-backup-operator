@@ -360,6 +360,23 @@ var _ = Describe("BackupSchedule controller", func() {
 		Expect(k8sClient.Create(ctx, acmNamespace)).Should(Succeed())
 		Expect(k8sClient.Create(ctx, chartsv1NS)).Should(Succeed())
 
+		// Create ClusterManagementAddOn for managed-serviceaccount (required for MSA component to be considered enabled)
+		// Use IgnoreAlreadyExists since this is a cluster-scoped resource that may already exist from previous tests
+		clusterMgmtAddon := &addonv1alpha1.ClusterManagementAddOn{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "managed-serviceaccount",
+			},
+			Spec: addonv1alpha1.ClusterManagementAddOnSpec{
+				InstallStrategy: addonv1alpha1.InstallStrategy{
+					Type: addonv1alpha1.AddonInstallStrategyManual,
+				},
+			},
+		}
+		err := k8sClient.Create(ctx, clusterMgmtAddon)
+		if err != nil {
+			Expect(client.IgnoreAlreadyExists(err)).Should(Succeed())
+		}
+
 		if managedClusterNS != nil {
 			Expect(k8sClient.Create(ctx, managedClusterNS)).Should(Succeed())
 
