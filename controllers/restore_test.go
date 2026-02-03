@@ -3781,3 +3781,560 @@ func Test_processFinalizersPredicate(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// RESTORE SCENARIOS FROM restore_scenarios.txt
+// =============================================================================
+//
+// These tests cover the scenarios documented in hack/restore_scenarios.txt
+// to ensure comprehensive test coverage of all restore use cases.
+
+// Test_RestoreScenario_SyncIgnoredMessage tests sync validation scenarios from restore_scenarios.txt:
+//
+// NOTE: There are TWO levels of sync validation:
+//
+// 1. WEBHOOK VALIDATION (api/v1beta1/restore_webhook.go - validateSyncMode):
+//   - On INITIAL CREATE: ManagedClusters must be "skip" (not "latest")
+//   - On UPDATE (when Phase=Enabled): ManagedClusters can be changed to "latest" (activation)
+//   - This enforces the proper workflow: passive sync first, then activate
+//
+// 2. CONTROLLER VALIDATION (controllers/restore.go - isValidSyncOptions):
+//   - ManagedClusters can be "skip" OR "latest" (both valid)
+//   - Credentials must be "latest"
+//   - Resources must be "latest"
+//   - This is more lenient because webhook already validated the initial creation
+//
+// This test validates the CONTROLLER behavior (isValidSyncOptions).
+// Webhook tests are in api/v1beta1/restore_webhook_test.go.
+//
+// Case 1 from restore_scenarios.txt: sync=true with ManagedClusters=latest
+// - Controller: VALID (allows latest)
+// - Webhook on create: INVALID (must be skip initially)
+// - Webhook on update (Phase=Enabled): VALID (activation allowed)
+//
+// Case 2 from restore_scenarios.txt: sync=true with specific backup names
+// - Both controller and webhook: INVALID
+//
+// Case 3: Valid sync scenario with ManagedClusters=skip, Credentials=latest, Resources=latest
+// - Both controller and webhook: VALID
+func Test_RestoreScenario_SyncIgnoredMessage(t *testing.T) {
+	latestBackupStr := "latest"
+	specificBackupName := "acm-managed-clusters-schedule-20251103183521"
+
+	tests := []struct {
+		name                   string
+		managedClustersBackup  string
+		credentialsBackup      string
+		resourcesBackup        string
+		syncEnabled            bool
+		wantValidSync          bool
+		wantIgnoredMsgContains string
+	}{
+		{
+			// Case 1 from restore_scenarios.txt - ManagedClusters=latest is VALID for sync
+			// The sync will proceed normally but restore will finish (not stay in Enabled state)
+			// because managed clusters are being restored
+			name:                  "Case1: sync=true with ManagedClusters=latest is valid sync config",
+			managedClustersBackup: latestBackupStr,
+			credentialsBackup:     latestBackupStr,
+			resourcesBackup:       latestBackupStr,
+			syncEnabled:           true,
+			wantValidSync:         true, // latest is valid for ManagedClusters in sync
+		},
+		{
+			// Case 2 from restore_scenarios.txt - specific backup name is INVALID for sync
+			name:                   "Case2: sync=true with ManagedClusters=specific backup name is invalid sync",
+			managedClustersBackup:  specificBackupName,
+			credentialsBackup:      "acm-credentials-schedule-20251103183520",
+			resourcesBackup:        "acm-resources-schedule-20251103183521",
+			syncEnabled:            true,
+			wantValidSync:          false,
+			wantIgnoredMsgContains: "VeleroManagedClustersBackupName should be set to skip or latest",
+		},
+		{
+			// Case 2 variant - specific backup name for credentials is also invalid
+			name:                   "Case2-variant: sync=true with specific Credentials backup name is invalid sync",
+			managedClustersBackup:  skipRestoreStr,
+			credentialsBackup:      "acm-credentials-schedule-20251103183520",
+			resourcesBackup:        latestBackupStr,
+			syncEnabled:            true,
+			wantValidSync:          false,
+			wantIgnoredMsgContains: "VeleroCredentialsBackupName should be set to latest",
+		},
+		{
+			// Case 2 variant - specific backup name for resources is also invalid
+			name:                   "Case2-variant: sync=true with specific Resources backup name is invalid sync",
+			managedClustersBackup:  skipRestoreStr,
+			credentialsBackup:      latestBackupStr,
+			resourcesBackup:        "acm-resources-schedule-20251103183521",
+			syncEnabled:            true,
+			wantValidSync:          false,
+			wantIgnoredMsgContains: "VeleroResourcesBackupName should be set to latest",
+		},
+		{
+			// Case 3 from restore_scenarios.txt - valid sync scenario
+			name:                  "Case3: sync=true with ManagedClusters=skip should be valid sync",
+			managedClustersBackup: skipRestoreStr,
+			credentialsBackup:     latestBackupStr,
+			resourcesBackup:       latestBackupStr,
+			syncEnabled:           true,
+			wantValidSync:         true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			restore := createACMRestore("restore-acm-all-sync", "open-cluster-management-backup").
+				cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+				syncRestoreWithNewBackups(tt.syncEnabled).
+				restoreSyncInterval(metav1.Duration{Duration: time.Minute * 10}).
+				veleroManagedClustersBackupName(tt.managedClustersBackup).
+				veleroCredentialsBackupName(tt.credentialsBackup).
+				veleroResourcesBackupName(tt.resourcesBackup).object
+
+			isValid, msg := isValidSyncOptions(restore)
+
+			if isValid != tt.wantValidSync {
+				t.Errorf("isValidSyncOptions() = %v, want %v", isValid, tt.wantValidSync)
+			}
+
+			if !tt.wantValidSync && tt.wantIgnoredMsgContains != "" {
+				if !strings.Contains(msg, tt.wantIgnoredMsgContains) {
+					t.Errorf("Expected message to contain %q, got %q", tt.wantIgnoredMsgContains, msg)
+				}
+			}
+		})
+	}
+}
+
+// Test_RestoreScenario_PassiveSyncToActivation tests Case 3.1.1 from restore_scenarios.txt:
+// A restore that was in passive sync mode (ManagedClusters=skip) transitions to
+// activation mode when veleroManagedClustersBackupName is changed to "latest".
+//
+// This tests the activation step behavior when in RestorePhaseEnabled (real sync mode):
+// - Credentials and ResourcesGeneric WILL get activation label (In cluster-activation)
+// - The -active suffix is added to restore names during sync activation
+//
+// Per the code in shouldAddActivationLabelForKey():
+// - isRealSyncMode = sync && phase == Enabled
+// - When isRealSyncMode is true, activation labels ARE added
+func Test_RestoreScenario_PassiveSyncToActivation(t *testing.T) {
+	latestBackupStr := "latest"
+
+	tests := []struct {
+		name                  string
+		resourceType          ResourceType
+		wantActivationLabel   bool
+		wantIsCredsActiveStep bool
+		wantActiveSuffix      bool
+		description           string
+	}{
+		{
+			name:                  "Credentials activation from sync (Enabled phase) - should have activation label",
+			resourceType:          Credentials,
+			wantActivationLabel:   true, // In real sync mode (Enabled phase), activation label IS added
+			wantIsCredsActiveStep: true,
+			wantActiveSuffix:      true, // -active suffix added in sync mode
+			description:           "When activating from sync (Enabled phase), credentials gets activation label",
+		},
+		{
+			name:                  "ResourcesGeneric activation from sync (Enabled phase) - should have activation label",
+			resourceType:          ResourcesGeneric,
+			wantActivationLabel:   true, // In real sync mode, activation label IS added
+			wantIsCredsActiveStep: false,
+			wantActiveSuffix:      true, // -active suffix added in sync mode
+			description:           "ResourcesGeneric during activation (Enabled phase) gets activation label",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create ACM restore that was in sync mode and now activating
+			// (ManagedClusters changed from skip to latest)
+			// Key: phase is RestorePhaseEnabled which triggers "real sync mode"
+			acmRestore := createACMRestore("restore-acm-passive-sync", "open-cluster-management-backup").
+				cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+				syncRestoreWithNewBackups(true).
+				restoreSyncInterval(metav1.Duration{Duration: time.Minute * 10}).
+				phase(v1beta1.RestorePhaseEnabled).               // Was in Enabled state (passive sync) - triggers real sync mode
+				veleroManagedClustersBackupName(latestBackupStr). // Now activating
+				veleroCredentialsBackupName(latestBackupStr).
+				veleroResourcesBackupName(latestBackupStr).object
+
+			// Create velero restores map
+			veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+				ManagedClusters: createRestore("clusters-restore", "open-cluster-management-backup").object,
+			}
+
+			if tt.resourceType == Credentials {
+				veleroRestoresToCreate[Credentials] = createRestore("credentials-restore", "open-cluster-management-backup").object
+			} else {
+				veleroRestoresToCreate[ResourcesGeneric] = createRestore("generic-restore", "open-cluster-management-backup").object
+				veleroRestoresToCreate[Resources] = createRestore("resources-restore", "open-cluster-management-backup").object
+			}
+
+			fakeClient := fake.NewClientBuilder().Build()
+			isCredsClsOnActiveStep := updateLabelsForActiveResources(
+				context.Background(), fakeClient, acmRestore, tt.resourceType, veleroRestoresToCreate,
+			)
+
+			// Verify isCredsClsOnActiveStep
+			if isCredsClsOnActiveStep != tt.wantIsCredsActiveStep {
+				t.Errorf("%s: Expected isCredsClsOnActiveStep=%v, got %v",
+					tt.description, tt.wantIsCredsActiveStep, isCredsClsOnActiveStep)
+			}
+
+			// Verify label selector
+			restoreObj := veleroRestoresToCreate[tt.resourceType]
+			hasLabel := hasActivationLabel(*restoreObj)
+
+			if hasLabel != tt.wantActivationLabel {
+				t.Errorf("%s: Expected activation label=%v, got %v",
+					tt.description, tt.wantActivationLabel, hasLabel)
+			}
+
+			// Verify -active suffix
+			hasActiveSuffix := strings.HasSuffix(restoreObj.Name, "-active")
+			if hasActiveSuffix != tt.wantActiveSuffix {
+				t.Errorf("%s: Expected -active suffix=%v, got %v (name: %s)",
+					tt.description, tt.wantActiveSuffix, hasActiveSuffix, restoreObj.Name)
+			}
+		})
+	}
+}
+
+// Test_RestoreScenario_PVCWaitingWithSync tests Cases 1.1, 2.2, 3.1.2 from restore_scenarios.txt:
+// When a PVC is required (tracked via ConfigMap with backup-pvc label) and doesn't exist,
+// the restore should wait for the PVC to be created before proceeding.
+//
+// This test validates the isPVCInitializationStep function behavior for different
+// sync and activation scenarios.
+func Test_RestoreScenario_PVCWaitingWithSync(t *testing.T) {
+	latestBackupStr := "latest"
+	specificBackupName := "acm-credentials-schedule-20251103183520"
+
+	tests := []struct {
+		name                  string
+		managedClustersBackup string
+		credentialsBackup     string
+		resourcesBackup       string
+		syncEnabled           bool
+		veleroRestores        []veleroapi.Restore
+		wantIsPVCStep         bool
+		description           string
+	}{
+		{
+			// Case 1.1: sync=true, ManagedClusters=latest, no velero restores yet
+			// Per isPVCInitializationStep(): when isActiveDataBeingRestored=true and no restores exist,
+			// it still checks for PVC step because we're about to restore active data
+			name:                  "Case1.1: sync=true, ManagedClusters=latest, no restores - at PVC step",
+			managedClustersBackup: latestBackupStr,
+			credentialsBackup:     latestBackupStr,
+			resourcesBackup:       latestBackupStr,
+			syncEnabled:           true,
+			veleroRestores:        []veleroapi.Restore{},
+			wantIsPVCStep:         true, // Active data being restored, so at PVC step
+			description:           "With ManagedClusters=latest and no restores, we're at PVC initialization step",
+		},
+		{
+			// Case 1.1 continued: sync=true, ManagedClusters=latest, credentials restore exists
+			name:                  "Case1.1: sync=true, ManagedClusters=latest, creds restored - should be at PVC step",
+			managedClustersBackup: latestBackupStr,
+			credentialsBackup:     latestBackupStr,
+			resourcesBackup:       latestBackupStr,
+			syncEnabled:           true,
+			veleroRestores: []veleroapi.Restore{
+				*createRestore("creds-restore", "ns").
+					scheduleName(veleroScheduleNames[Credentials]).object,
+			},
+			wantIsPVCStep: true,
+			description:   "With credentials restored and ManagedClusters=latest, should be at PVC step",
+		},
+		{
+			// Case 2.2: sync=true, ManagedClusters=specific backup, credentials restore exists
+			name:                  "Case2.2: sync=true, ManagedClusters=specific, creds restored - should be at PVC step",
+			managedClustersBackup: specificBackupName,
+			credentialsBackup:     specificBackupName,
+			resourcesBackup:       specificBackupName,
+			syncEnabled:           true,
+			veleroRestores: []veleroapi.Restore{
+				*createRestore("creds-restore", "ns").
+					scheduleName(veleroScheduleNames[Credentials]).object,
+			},
+			wantIsPVCStep: true,
+			description:   "With credentials restored and specific backup name, should be at PVC step",
+		},
+		{
+			// Case 3: Valid sync with ManagedClusters=skip - should NOT wait for PVC
+			name:                  "Case3: sync=true, ManagedClusters=skip - should NOT be at PVC step",
+			managedClustersBackup: skipRestoreStr,
+			credentialsBackup:     latestBackupStr,
+			resourcesBackup:       latestBackupStr,
+			syncEnabled:           true,
+			veleroRestores: []veleroapi.Restore{
+				*createRestore("creds-restore", "ns").
+					scheduleName(veleroScheduleNames[Credentials]).object,
+			},
+			wantIsPVCStep: false,
+			description:   "With ManagedClusters=skip (passive sync), no PVC waiting needed",
+		},
+		{
+			// Case 3.1.2: Activation from sync with credentials restored
+			name:                  "Case3.1.2: activation from sync, creds+generic restored - should be at PVC step",
+			managedClustersBackup: latestBackupStr, // Changed from skip to latest
+			credentialsBackup:     latestBackupStr,
+			resourcesBackup:       latestBackupStr,
+			syncEnabled:           true,
+			veleroRestores: []veleroapi.Restore{
+				*createRestore("creds-restore", "ns").
+					scheduleName(veleroScheduleNames[Credentials]).object,
+				*createRestore("generic-restore", "ns").
+					scheduleName(veleroScheduleNames[ResourcesGeneric]).object,
+			},
+			wantIsPVCStep: true,
+			description:   "Activating from sync with creds+generic, should be at PVC step",
+		},
+		{
+			// Case 4/5: No sync, ManagedClusters=specific, all restores done - NOT at PVC step
+			name:                  "Case4/5: no sync, all restores complete - should NOT be at PVC step",
+			managedClustersBackup: specificBackupName,
+			credentialsBackup:     specificBackupName,
+			resourcesBackup:       specificBackupName,
+			syncEnabled:           false,
+			veleroRestores: []veleroapi.Restore{
+				*createRestore("creds-restore", "ns").
+					scheduleName(veleroScheduleNames[Credentials]).object,
+				*createRestore("generic-restore", "ns").
+					scheduleName(veleroScheduleNames[ResourcesGeneric]).object,
+				*createRestore("clusters-restore", "ns").
+					scheduleName(veleroScheduleNames[ManagedClusters]).object,
+			},
+			wantIsPVCStep: false,
+			description:   "With all restores done, not at PVC step anymore",
+		},
+		{
+			// Case 6: Skip ManagedClusters, no sync - should NOT wait for PVC
+			name:                  "Case6: no sync, ManagedClusters=skip - should NOT be at PVC step",
+			managedClustersBackup: skipRestoreStr,
+			credentialsBackup:     latestBackupStr,
+			resourcesBackup:       latestBackupStr,
+			syncEnabled:           false,
+			veleroRestores: []veleroapi.Restore{
+				*createRestore("creds-restore", "ns").
+					scheduleName(veleroScheduleNames[Credentials]).object,
+			},
+			wantIsPVCStep: false,
+			description:   "With ManagedClusters=skip and no sync, no PVC waiting needed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			restoreBuilder := createACMRestore("restore-acm-all-sync", "open-cluster-management-backup").
+				cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+				veleroManagedClustersBackupName(tt.managedClustersBackup).
+				veleroCredentialsBackupName(tt.credentialsBackup).
+				veleroResourcesBackupName(tt.resourcesBackup)
+
+			if tt.syncEnabled {
+				restoreBuilder = restoreBuilder.syncRestoreWithNewBackups(true).
+					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 10})
+			}
+
+			acmRestore := restoreBuilder.object
+
+			veleroRestoreList := veleroapi.RestoreList{
+				Items: tt.veleroRestores,
+			}
+
+			isPVCStep := isPVCInitializationStep(acmRestore, veleroRestoreList)
+
+			if isPVCStep != tt.wantIsPVCStep {
+				t.Errorf("%s: isPVCInitializationStep() = %v, want %v",
+					tt.description, isPVCStep, tt.wantIsPVCStep)
+			}
+		})
+	}
+}
+
+// Test_RestoreScenario_LabelSelectorForSkipClusters tests Case 6 from restore_scenarios.txt:
+// When veleroManagedClustersBackupName=skip, activation resources should NOT be restored.
+// The credentials and generic restores should have "NotIn cluster-activation" label selector
+// when using the passive data restoration path.
+//
+// This validates that skipping managed clusters properly excludes activation resources.
+func Test_RestoreScenario_LabelSelectorForSkipClusters(t *testing.T) {
+	latestBackupStr := "latest"
+	specificBackupName := "acm-credentials-schedule-20251103183520"
+
+	tests := []struct {
+		name                  string
+		managedClustersBackup string
+		credentialsBackup     string
+		resourcesBackup       string
+		syncEnabled           bool
+		resourceType          ResourceType
+		wantNoLabelSelector   bool // True means NO label selector should be added
+		description           string
+	}{
+		{
+			// Case 6 first variant: skip + latest
+			name:                  "Case6: skip clusters + latest creds - Credentials should have NO label selector",
+			managedClustersBackup: skipRestoreStr,
+			credentialsBackup:     latestBackupStr,
+			resourcesBackup:       latestBackupStr,
+			syncEnabled:           false,
+			resourceType:          Credentials,
+			wantNoLabelSelector:   true,
+			description:           "Skip clusters with latest creds - no label selector for credentials",
+		},
+		{
+			// Case 6 first variant: skip + latest
+			name:                  "Case6: skip clusters + latest resources - ResourcesGeneric should have NO label selector",
+			managedClustersBackup: skipRestoreStr,
+			credentialsBackup:     latestBackupStr,
+			resourcesBackup:       latestBackupStr,
+			syncEnabled:           false,
+			resourceType:          ResourcesGeneric,
+			wantNoLabelSelector:   true,
+			description:           "Skip clusters with latest resources - no label selector for generic",
+		},
+		{
+			// Case 6 second variant: skip + specific backup name
+			name:                  "Case6: skip clusters + specific creds - Credentials should have NO label selector",
+			managedClustersBackup: skipRestoreStr,
+			credentialsBackup:     specificBackupName,
+			resourcesBackup:       "acm-resources-schedule-20251103183521",
+			syncEnabled:           false,
+			resourceType:          Credentials,
+			wantNoLabelSelector:   true,
+			description:           "Skip clusters with specific backup - no label selector for credentials",
+		},
+		{
+			// Case 6 second variant: skip + specific backup name
+			name:                  "Case6: skip clusters + specific resources - ResourcesGeneric should have NO label selector",
+			managedClustersBackup: skipRestoreStr,
+			credentialsBackup:     specificBackupName,
+			resourcesBackup:       "acm-resources-schedule-20251103183521",
+			syncEnabled:           false,
+			resourceType:          ResourcesGeneric,
+			wantNoLabelSelector:   true,
+			description:           "Skip clusters with specific backup - no label selector for generic",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			restoreBuilder := createACMRestore("restore-acm-all-sync", "open-cluster-management-backup").
+				cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+				veleroManagedClustersBackupName(tt.managedClustersBackup).
+				veleroCredentialsBackupName(tt.credentialsBackup).
+				veleroResourcesBackupName(tt.resourcesBackup)
+
+			if tt.syncEnabled {
+				restoreBuilder = restoreBuilder.syncRestoreWithNewBackups(true).
+					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 10})
+			}
+
+			acmRestore := restoreBuilder.object
+
+			// Create velero restores map - no ManagedClusters since it's skipped
+			veleroRestoresToCreate := make(map[ResourceType]*veleroapi.Restore)
+
+			if tt.resourceType == Credentials {
+				veleroRestoresToCreate[Credentials] = createRestore("credentials-restore", "ns").object
+			} else {
+				veleroRestoresToCreate[ResourcesGeneric] = createRestore("generic-restore", "ns").object
+				veleroRestoresToCreate[Resources] = createRestore("resources-restore", "ns").object
+			}
+
+			fakeClient := fake.NewClientBuilder().Build()
+			updateLabelsForActiveResources(
+				context.Background(), fakeClient, acmRestore, tt.resourceType, veleroRestoresToCreate,
+			)
+
+			// Verify label selector
+			restoreObj := veleroRestoresToCreate[tt.resourceType]
+			hasLabel := hasActivationLabel(*restoreObj)
+
+			if tt.wantNoLabelSelector && hasLabel {
+				t.Errorf("%s: Expected NO label selector, but found one", tt.description)
+			}
+			if !tt.wantNoLabelSelector && !hasLabel {
+				t.Errorf("%s: Expected label selector, but none found", tt.description)
+			}
+		})
+	}
+}
+
+// Test_RestoreScenario_FullRestoreWithBackupNames tests Case 4 from restore_scenarios.txt:
+// Valid restore all with specific backup names (no sync).
+// All resources should be restored without label selectors (no -active suffix).
+func Test_RestoreScenario_FullRestoreWithBackupNames(t *testing.T) {
+	specificManagedClustersBackup := "acm-managed-clusters-schedule-20251103183521"
+	specificCredentialsBackup := "acm-credentials-schedule-20251103183520"
+	specificResourcesBackup := "acm-resources-schedule-20251103183521"
+
+	tests := []struct {
+		name                string
+		resourceType        ResourceType
+		wantNoLabelSelector bool
+		wantNoActiveSuffix  bool
+		description         string
+	}{
+		{
+			name:                "Case4: Credentials with specific backup names - no label selector",
+			resourceType:        Credentials,
+			wantNoLabelSelector: true,
+			wantNoActiveSuffix:  true,
+			description:         "Full restore with specific backup names - credentials should have no label selector",
+		},
+		{
+			name:                "Case4: ResourcesGeneric with specific backup names - no label selector",
+			resourceType:        ResourcesGeneric,
+			wantNoLabelSelector: true,
+			wantNoActiveSuffix:  true,
+			description:         "Full restore with specific backup names - generic should have no label selector",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			acmRestore := createACMRestore("restore-acm-all-sync", "open-cluster-management-backup").
+				cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+				veleroManagedClustersBackupName(specificManagedClustersBackup).
+				veleroCredentialsBackupName(specificCredentialsBackup).
+				veleroResourcesBackupName(specificResourcesBackup).object
+
+			// Create velero restores map with ManagedClusters
+			veleroRestoresToCreate := map[ResourceType]*veleroapi.Restore{
+				ManagedClusters: createRestore("clusters-restore", "ns").object,
+			}
+
+			if tt.resourceType == Credentials {
+				veleroRestoresToCreate[Credentials] = createRestore("credentials-restore", "ns").object
+			} else {
+				veleroRestoresToCreate[ResourcesGeneric] = createRestore("generic-restore", "ns").object
+				veleroRestoresToCreate[Resources] = createRestore("resources-restore", "ns").object
+			}
+
+			fakeClient := fake.NewClientBuilder().Build()
+			updateLabelsForActiveResources(
+				context.Background(), fakeClient, acmRestore, tt.resourceType, veleroRestoresToCreate,
+			)
+
+			// Verify label selector
+			restoreObj := veleroRestoresToCreate[tt.resourceType]
+			hasLabel := hasActivationLabel(*restoreObj)
+
+			if tt.wantNoLabelSelector && hasLabel {
+				t.Errorf("%s: Expected NO label selector, but found one", tt.description)
+			}
+
+			// Verify no -active suffix
+			if tt.wantNoActiveSuffix && strings.HasSuffix(restoreObj.Name, "-active") {
+				t.Errorf("%s: Expected no -active suffix, but found one", tt.description)
+			}
+		})
+	}
+}
