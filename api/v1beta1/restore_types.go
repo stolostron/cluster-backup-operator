@@ -35,6 +35,9 @@ const (
 	RestorePhaseFinishedWithErrors = "FinishedWithErrors"
 	// RestorePhaseError means the restore is in error phase and was unable to execute
 	RestorePhaseError = "Error"
+	// RestorePhaseEnabledError means the restore is in enabled phase
+	// but the sync restore process had encountered some errors
+	RestorePhaseEnabledError = "EnabledWithErrors"
 	// RestorePhaseUnknown means the restore is in unknown phase
 	RestorePhaseUnknown = "Unknown"
 	// RestorePhaseEnabled means the restore is enabled and will continue syncing with new backups

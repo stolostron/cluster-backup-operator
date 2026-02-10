@@ -966,17 +966,18 @@ var _ = Describe("Basic Restore controller", func() {
 					return createdRestore.Status.VeleroResourcesRestoreName
 				}, timeout, interval).ShouldNot(BeEmpty())
 
+				// Use the actual restore names from the status
 				veleroRestores := veleroapi.RestoreList{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "RestoreList",
 					},
 					Items: []veleroapi.Restore{
-						*createRestore("acm-credentials-restore", veleroNamespace.Name).
+						*createRestore(createdRestore.Status.VeleroCredentialsRestoreName, veleroNamespace.Name).
 							backupName("acm-credentials-backup").
 							phase("").
 							object,
-						*createRestore("acm-resources-restore", veleroNamespace.Name).
+						*createRestore(createdRestore.Status.VeleroResourcesRestoreName, veleroNamespace.Name).
 							backupName("acm-resources-backup").
 							phase(veleroapi.RestorePhaseCompleted).
 							object,
