@@ -301,7 +301,7 @@ func setRestorePhase(
 
 			isValidSync, _ := isValidSyncOptions(restore)
 			// if this is a sync restore, set the status to enabled error
-			if strings.HasPrefix(string(restore.Status.Phase), v1beta1.RestorePhaseEnabled) ||
+			if isRestorePhaseEnabled(restore) ||
 				isValidSync {
 				restore.Status.Phase = v1beta1.RestorePhaseEnabledError
 			} else {
