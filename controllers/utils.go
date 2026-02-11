@@ -631,8 +631,3 @@ func getLocalClusterName(ctx context.Context, c client.Client) (string, error) {
 
 	return localMgdClusterList.Items[0].Name, nil
 }
-
-// isRestorePhaseEnabled returns true if the restore phase is Enabled or EnabledWithErrors
-func isRestorePhaseEnabled(restore *v1beta1.Restore) bool {
-	return strings.HasPrefix(string(restore.Status.Phase), v1beta1.RestorePhaseEnabled)
-}

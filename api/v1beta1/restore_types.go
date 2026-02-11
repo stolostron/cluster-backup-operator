@@ -17,6 +17,8 @@ limitations under the License.
 package v1beta1
 
 import (
+	"strings"
+
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -239,4 +241,9 @@ type RestoreList struct {
 
 func init() {
 	SchemeBuilder.Register(&Restore{}, &RestoreList{})
+}
+
+// IsPhaseEnabled returns true if the restore phase is Enabled or EnabledWithErrors
+func (r *Restore) IsPhaseEnabled() bool {
+	return strings.HasPrefix(string(r.Status.Phase), RestorePhaseEnabled)
 }

@@ -256,7 +256,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	isValidSync, msg := isValidSyncOptions(restore)
-	sync := isValidSync && isRestorePhaseEnabled(restore)
+	sync := isValidSync && restore.IsPhaseEnabled()
 	isPVCStep := isPVCInitializationStep(restore, veleroRestoreList)
 	initRestoreCond := len(veleroRestoreList.Items) == 0 || sync
 
@@ -387,7 +387,7 @@ func (r *RestoreReconciler) cleanupOnRestore(
 
 func sendResult(restore *v1beta1.Restore, err error) (ctrl.Result, error) {
 	if restore.Spec.SyncRestoreWithNewBackups &&
-		isRestorePhaseEnabled(restore) {
+		restore.IsPhaseEnabled() {
 
 		tryAgain := restoreSyncInterval
 		if restore.Spec.RestoreSyncInterval.Duration != 0 {
@@ -713,7 +713,7 @@ func updateLabelsForActiveResources(
 	// Only add activation label when in true sync mode or when resources were originally skipped
 	// Don't add it when sync=true but managedClusters=latest from the start (non-sync scenario)
 	isRealSyncMode := restore.Spec.SyncRestoreWithNewBackups &&
-		isRestorePhaseEnabled(restore)
+		restore.IsPhaseEnabled()
 
 	// Check if credentials-active Velero restore exists (indicates activation scenario)
 	credsActiveExists := false
