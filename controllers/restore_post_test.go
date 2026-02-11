@@ -1305,13 +1305,85 @@ func Test_deleteDynamicResource_GlobalResources(t *testing.T) {
 // are properly cleaned up according to the configured cleanup policies,
 // preventing resource leaks and maintaining cluster hygiene.
 func Test_cleanupDeltaResources(t *testing.T) {
+	namespace := "velero-ns"
+	credentialsRestoreName := "restore-credentials-123"
+	resourcesRestoreName := "restore-resources-123"
+	managedClustersRestoreName := "restore-clusters-123"
+	backupName := "backup-123"
+
 	scheme1 := runtime.NewScheme()
 	err := veleroapi.AddToScheme(scheme1)
 	if err != nil {
 		t.Fatalf("Error adding api to scheme: %s", err.Error())
 	}
+	err = corev1.AddToScheme(scheme1)
+	if err != nil {
+		t.Fatalf("Error adding api to scheme: %s", err.Error())
+	}
+
+	// Create Velero restores with different phases
+	veleroCredentialsRestore := createRestore(credentialsRestoreName, namespace).
+		backupName(backupName).
+		phase(veleroapi.RestorePhaseCompleted).object
+	veleroResourcesRestore := createRestore(resourcesRestoreName, namespace).
+		backupName(backupName).
+		phase(veleroapi.RestorePhaseCompleted).object
+	veleroManagedClustersRestore := createRestore(managedClustersRestoreName, namespace).
+		backupName(backupName).
+		phase(veleroapi.RestorePhaseCompleted).object
+
+	// Create Velero restores with FailedValidation phase
+	credentialsRestoreNameFailed := "restore-credentials-failed-123"
+	resourcesRestoreNameFailed := "restore-resources-failed-123"
+	managedClustersRestoreNameFailed := "restore-clusters-failed-123"
+	veleroCredentialsRestoreFailed := createRestore(credentialsRestoreNameFailed, namespace).
+		backupName(backupName).
+		phase(veleroapi.RestorePhaseFailedValidation).object
+	veleroResourcesRestoreFailed := createRestore(resourcesRestoreNameFailed, namespace).
+		backupName(backupName).
+		phase(veleroapi.RestorePhaseFailedValidation).object
+	veleroManagedClustersRestoreFailed := createRestore(managedClustersRestoreNameFailed, namespace).
+		backupName(backupName).
+		phase(veleroapi.RestorePhaseFailedValidation).object
+
+	// Create backup
+	veleroBackup := createBackup(backupName, namespace).object
+
 	k8sClient1 := fake.NewClientBuilder().
 		WithScheme(scheme1).
+		Build()
+
+	// Client with completed restores
+	k8sClientWithRestores := fake.NewClientBuilder().
+		WithScheme(scheme1).
+		WithObjects(
+			veleroCredentialsRestore,
+			veleroResourcesRestore,
+			veleroManagedClustersRestore,
+			veleroBackup,
+		).
+		Build()
+
+	// Client with failed validation restores
+	k8sClientWithFailedRestores := fake.NewClientBuilder().
+		WithScheme(scheme1).
+		WithObjects(
+			veleroCredentialsRestoreFailed,
+			veleroResourcesRestoreFailed,
+			veleroManagedClustersRestoreFailed,
+			veleroBackup,
+		).
+		Build()
+
+	// Client with mixed phases
+	k8sClientMixed := fake.NewClientBuilder().
+		WithScheme(scheme1).
+		WithObjects(
+			veleroCredentialsRestore,     // Completed
+			veleroResourcesRestoreFailed, // FailedValidation
+			veleroManagedClustersRestore, // Completed
+			veleroBackup,
+		).
 		Build()
 
 	type args struct {
@@ -1390,6 +1462,63 @@ func Test_cleanupDeltaResources(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name: "cleanup should run with all restores completed successfully",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClientWithRestores,
+				restore: createACMRestore("Restore", namespace).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).
+					veleroCredentialsRestoreName(credentialsRestoreName).
+					veleroResourcesRestoreName(resourcesRestoreName).
+					veleroManagedClustersRestoreName(managedClustersRestoreName).
+					phase(v1beta1.RestorePhaseFinished).object,
+				cleanupOnRestore: false,
+				restoreOptions:   RestoreOptions{},
+			},
+			want: true,
+		},
+		{
+			name: "cleanup should skip when all restores have FailedValidation phase",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClientWithFailedRestores,
+				restore: createACMRestore("Restore", namespace).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).
+					veleroCredentialsRestoreName(credentialsRestoreNameFailed).
+					veleroResourcesRestoreName(resourcesRestoreNameFailed).
+					veleroManagedClustersRestoreName(managedClustersRestoreNameFailed).
+					phase(v1beta1.RestorePhaseFinished).object,
+				cleanupOnRestore: false,
+				restoreOptions:   RestoreOptions{},
+			},
+			want: true,
+		},
+		{
+			name: "cleanup should run but skip resources with FailedValidation phase in mixed scenario",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClientMixed,
+				restore: createACMRestore("Restore", namespace).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).
+					veleroCredentialsRestoreName(credentialsRestoreName).         // Completed
+					veleroResourcesRestoreName(resourcesRestoreNameFailed).       // FailedValidation
+					veleroManagedClustersRestoreName(managedClustersRestoreName). // Completed
+					phase(v1beta1.RestorePhaseFinished).object,
+				cleanupOnRestore: false,
+				restoreOptions:   RestoreOptions{},
+			},
+			want: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1434,6 +1563,7 @@ func Test_getBackupInfoFromRestore(t *testing.T) {
 	backupName := "passive-sync-2-acm-credentials-schedule-20220929220007"
 	validRestoreName := "restore-acm-passive-sync-2-acm-credentials-schedule-2022092922123"
 	validRestoreNameWBackup := "restore-acm-" + backupName
+	validRestoreNameFailed := "restore-acm-failed-validation"
 
 	scheme1 := runtime.NewScheme()
 	err := veleroapi.AddToScheme(scheme1)
@@ -1448,12 +1578,16 @@ func Test_getBackupInfoFromRestore(t *testing.T) {
 	ns1 := *createNamespace(namespace)
 	veleroRestore := *createRestore(validRestoreName, namespace).object
 	veleroRestoreWBackup := *createRestore(validRestoreNameWBackup, namespace).
-		backupName(backupName).object
+		backupName(backupName).
+		phase(veleroapi.RestorePhaseCompleted).object
+	veleroRestoreFailed := *createRestore(validRestoreNameFailed, namespace).
+		backupName(backupName).
+		phase(veleroapi.RestorePhaseFailedValidation).object
 	veleroBackup := *createBackup(backupName, namespace).object
 
 	k8sClient1 := fake.NewClientBuilder().
 		WithScheme(scheme1).
-		WithObjects(&ns1, &veleroRestore, &veleroRestoreWBackup, &veleroBackup).
+		WithObjects(&ns1, &veleroRestore, &veleroRestoreWBackup, &veleroRestoreFailed, &veleroBackup).
 		Build()
 
 	type args struct {
@@ -1463,9 +1597,10 @@ func Test_getBackupInfoFromRestore(t *testing.T) {
 		namespace   string
 	}
 	tests := []struct {
-		name           string
-		args           args
-		wantBackupName string
+		name             string
+		args             args
+		wantBackupName   string
+		wantRestorePhase veleroapi.RestorePhase
 	}{
 		{
 			name: "restore name is empty",
@@ -1475,7 +1610,8 @@ func Test_getBackupInfoFromRestore(t *testing.T) {
 				restoreName: "",
 				namespace:   namespace,
 			},
-			wantBackupName: "",
+			wantBackupName:   "",
+			wantRestorePhase: veleroapi.RestorePhase(""),
 		},
 		{
 			name: "restore name not found",
@@ -1485,17 +1621,8 @@ func Test_getBackupInfoFromRestore(t *testing.T) {
 				restoreName: "some-restore",
 				namespace:   namespace,
 			},
-			wantBackupName: "",
-		},
-		{
-			name: "restore name not found",
-			args: args{
-				ctx:         context.Background(),
-				c:           k8sClient1,
-				restoreName: "some-restore",
-				namespace:   namespace,
-			},
-			wantBackupName: "",
+			wantBackupName:   "",
+			wantRestorePhase: veleroapi.RestorePhase(""),
 		},
 		{
 			name: "restore found but no backup",
@@ -1505,25 +1632,42 @@ func Test_getBackupInfoFromRestore(t *testing.T) {
 				restoreName: validRestoreName,
 				namespace:   namespace,
 			},
-			wantBackupName: "",
+			wantBackupName:   "",
+			wantRestorePhase: veleroapi.RestorePhase(""),
 		},
 		{
-			name: "restore found with backup",
+			name: "restore found with backup and completed phase",
 			args: args{
 				ctx:         context.Background(),
 				c:           k8sClient1,
 				restoreName: validRestoreNameWBackup,
 				namespace:   namespace,
 			},
-			wantBackupName: backupName,
+			wantBackupName:   backupName,
+			wantRestorePhase: veleroapi.RestorePhaseCompleted,
+		},
+		{
+			name: "restore found with backup and FailedValidation phase",
+			args: args{
+				ctx:         context.Background(),
+				c:           k8sClient1,
+				restoreName: validRestoreNameFailed,
+				namespace:   namespace,
+			},
+			wantBackupName:   backupName,
+			wantRestorePhase: veleroapi.RestorePhaseFailedValidation,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got, _ := getBackupInfoFromRestore(tt.args.ctx, tt.args.c,
-				tt.args.restoreName, tt.args.namespace); got != tt.wantBackupName {
-				t.Errorf("getBackupInfoFromRestore() returns = %v, want %v", got, tt.wantBackupName)
+			gotBackupName, _, gotPhase := getBackupInfoFromRestore(tt.args.ctx, tt.args.c,
+				tt.args.restoreName, tt.args.namespace)
+			if gotBackupName != tt.wantBackupName {
+				t.Errorf("getBackupInfoFromRestore() backupName = %v, want %v", gotBackupName, tt.wantBackupName)
+			}
+			if gotPhase != tt.wantRestorePhase {
+				t.Errorf("getBackupInfoFromRestore() phase = %v, want %v", gotPhase, tt.wantRestorePhase)
 			}
 		})
 	}

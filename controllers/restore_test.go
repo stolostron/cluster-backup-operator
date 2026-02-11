@@ -1706,6 +1706,93 @@ func Test_isNewBackupAvailable(t *testing.T) {
 				&restoreCredNewBackup,
 			},
 		},
+		{
+			name: "Retry scenario: same backup, EnabledError state, should trigger retry (line 498)",
+			args: args{
+				ctx:          context.Background(),
+				resourceType: Credentials,
+				restore: createACMRestore(passiveStr, veleroNamespaceName).
+					syncRestoreWithNewBackups(true).
+					phase(v1beta1.RestorePhaseEnabledError).
+					lastMessage("Velero restore failed with errors").
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(latestBackup).
+					veleroCredentialsRestoreName(restoreName).object,
+			},
+			want:        true, // Should trigger retry
+			setupScheme: true,
+			setupObjects: []client.Object{
+				&veleroNamespace,
+				&backup,
+				&veleroRestore, // Same backup already exists
+			},
+		},
+		{
+			name: "Same backup, EnabledError with BSL message, should NOT trigger retry",
+			args: args{
+				ctx:          context.Background(),
+				resourceType: Credentials,
+				restore: createACMRestore(passiveStr, veleroNamespaceName).
+					syncRestoreWithNewBackups(true).
+					phase(v1beta1.RestorePhaseEnabledError).
+					lastMessage("the BackupStorageLocation is unavailable").
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(latestBackup).
+					veleroCredentialsRestoreName(restoreName).object,
+			},
+			want:        false, // Should NOT retry - BSL issue handled elsewhere
+			setupScheme: true,
+			setupObjects: []client.Object{
+				&veleroNamespace,
+				&backup,
+				&veleroRestore,
+			},
+		},
+		{
+			name: "Same backup, Enabled state (not error), should NOT trigger retry",
+			args: args{
+				ctx:          context.Background(),
+				resourceType: Credentials,
+				restore: createACMRestore(passiveStr, veleroNamespaceName).
+					syncRestoreWithNewBackups(true).
+					phase(v1beta1.RestorePhaseEnabled).
+					lastMessage("Restore is enabled").
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(latestBackup).
+					veleroCredentialsRestoreName(restoreName).object,
+			},
+			want:        false, // Not in error state, no retry needed
+			setupScheme: true,
+			setupObjects: []client.Object{
+				&veleroNamespace,
+				&backup,
+				&veleroRestore,
+			},
+		},
+		{
+			name: "Same backup, EnabledError but empty restore name, should NOT trigger retry",
+			args: args{
+				ctx:          context.Background(),
+				resourceType: Credentials,
+				restore: createACMRestore(passiveStr, veleroNamespaceName).
+					syncRestoreWithNewBackups(true).
+					phase(v1beta1.RestorePhaseEnabledError).
+					lastMessage("Velero restore failed").
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(latestBackup).
+					veleroCredentialsRestoreName("").object, // Empty restore name
+			},
+			want:        false, // Empty restore name, should not retry
+			setupScheme: true,
+			setupObjects: []client.Object{
+				&veleroNamespace,
+				&backup,
+			},
+		},
 	}
 
 	for _, tt := range tests {

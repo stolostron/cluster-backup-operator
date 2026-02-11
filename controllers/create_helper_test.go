@@ -413,6 +413,11 @@ func (b *ACMRestoreHelper) phase(phase v1beta1.RestorePhase) *ACMRestoreHelper {
 	return b
 }
 
+func (b *ACMRestoreHelper) lastMessage(message string) *ACMRestoreHelper {
+	b.object.Status.LastMessage = message
+	return b
+}
+
 func (b *ACMRestoreHelper) veleroCredentialsRestoreName(name string) *ACMRestoreHelper {
 	b.object.Status.VeleroCredentialsRestoreName = name
 	return b

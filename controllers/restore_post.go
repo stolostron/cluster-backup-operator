@@ -205,21 +205,38 @@ func cleanupDeltaResources(
 		logger := log.FromContext(ctx)
 		logger.Info("enter cleanupDeltaResources ")
 
-		// clean up credentials
-		backupName, veleroBackup := getBackupInfoFromRestore(ctx, c,
+		// clean up credentials - skip if restore has FailedValidation
+		backupName, veleroBackup, restorePhase := getBackupInfoFromRestore(ctx, c,
 			acmRestore.Status.VeleroCredentialsRestoreName, acmRestore.Namespace)
-		cleanupDeltaForCredentials(ctx, c,
-			backupName, veleroBackup, acmRestore.Spec.CleanupBeforeRestore,
-			*acmRestore.Spec.VeleroManagedClustersBackupName != skipRestoreStr)
+		if restorePhase != veleroapi.RestorePhaseFailedValidation {
+			cleanupDeltaForCredentials(ctx, c,
+				backupName, veleroBackup, acmRestore.Spec.CleanupBeforeRestore,
+				*acmRestore.Spec.VeleroManagedClustersBackupName != skipRestoreStr)
+		} else {
+			logger.Info("Skipping credentials cleanup - restore has FailedValidation phase",
+				"restore", acmRestore.Status.VeleroCredentialsRestoreName)
+		}
 
-		// clean up resources and generic resources
-		cleanupDeltaForResourcesBackup(ctx, c, restoreOptions, acmRestore)
+		// clean up resources and generic resources - skip if restore has FailedValidation
+		_, _, restorePhase = getBackupInfoFromRestore(ctx, c,
+			acmRestore.Status.VeleroResourcesRestoreName, acmRestore.Namespace)
+		if restorePhase != veleroapi.RestorePhaseFailedValidation {
+			cleanupDeltaForResourcesBackup(ctx, c, restoreOptions, acmRestore)
+		} else {
+			logger.Info("Skipping resources cleanup - restore has FailedValidation phase",
+				"restore", acmRestore.Status.VeleroResourcesRestoreName)
+		}
 
-		// clean up managed cluster resources
-		backupName, veleroBackup = getBackupInfoFromRestore(ctx, c,
+		// clean up managed cluster resources - skip if restore has FailedValidation
+		backupName, veleroBackup, restorePhase = getBackupInfoFromRestore(ctx, c,
 			acmRestore.Status.VeleroManagedClustersRestoreName, acmRestore.Namespace)
-		cleanupDeltaForClustersBackup(ctx, c, restoreOptions,
-			backupName, veleroBackup)
+		if restorePhase != veleroapi.RestorePhaseFailedValidation {
+			cleanupDeltaForClustersBackup(ctx, c, restoreOptions,
+				backupName, veleroBackup)
+		} else {
+			logger.Info("Skipping managed clusters cleanup - restore has FailedValidation phase",
+				"restore", acmRestore.Status.VeleroManagedClustersRestoreName)
+		}
 
 		logger.Info("exit cleanupDeltaResources ")
 	}
@@ -385,7 +402,7 @@ func cleanupDeltaForResourcesBackup(
 	restoreOptions RestoreOptions,
 	acmRestore *v1beta1.Restore,
 ) {
-	backupName, veleroBackup := getBackupInfoFromRestore(ctx, c,
+	backupName, veleroBackup, _ := getBackupInfoFromRestore(ctx, c,
 		acmRestore.Status.VeleroResourcesRestoreName, acmRestore.Namespace)
 
 	if backupName == "" {
@@ -396,7 +413,7 @@ func cleanupDeltaForResourcesBackup(
 	deleteDynamicResourcesForBackup(ctx, c, restoreOptions, veleroBackup, "")
 
 	// delete generic resources
-	genericBackupName, genericBackup := getBackupInfoFromRestore(ctx, c,
+	genericBackupName, genericBackup, _ := getBackupInfoFromRestore(ctx, c,
 		acmRestore.Status.VeleroGenericResourcesRestoreName, acmRestore.Namespace)
 	if genericBackupName == "" {
 		// nothing to clean up
@@ -545,15 +562,17 @@ func getBackupInfoFromRestore(
 	c client.Client,
 	restoreName string,
 	namespace string,
-) (string, *veleroapi.Backup) {
+) (string, *veleroapi.Backup, veleroapi.RestorePhase) {
 	backupName := ""
 	veleroBackup := veleroapi.Backup{}
+	restorePhase := veleroapi.RestorePhase("")
 	if restoreName != "" {
 		veleroRestore := veleroapi.Restore{}
 		if err := c.Get(ctx, types.NamespacedName{
 			Name:      restoreName,
 			Namespace: namespace,
 		}, &veleroRestore); err == nil {
+			restorePhase = veleroRestore.Status.Phase
 			if err := c.Get(ctx, types.NamespacedName{
 				Name:      veleroRestore.Spec.BackupName,
 				Namespace: namespace,
@@ -562,7 +581,7 @@ func getBackupInfoFromRestore(
 			}
 		}
 	}
-	return backupName, &veleroBackup
+	return backupName, &veleroBackup, restorePhase
 }
 
 // activate managed clusters by creating auto-import-secret
