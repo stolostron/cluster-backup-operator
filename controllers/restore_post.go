@@ -199,6 +199,9 @@ func cleanupDeltaResources(
 	restoreCompleted := (acmRestore.Status.Phase == v1beta1.RestorePhaseFinished ||
 		acmRestore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors)
 
+	// Run cleanup when:
+	// - cleanupOnRestore is true (set by setRestorePhase when transitioning to Enabled or EnabledError)
+	// - restore is completed (Finished or FinishedWithErrors)
 	if cleanupOnRestore || restoreCompleted {
 		// clean up delta resources, restored resources not created by the latest restore
 		processed = true
@@ -217,14 +220,21 @@ func cleanupDeltaResources(
 				"restore", acmRestore.Status.VeleroCredentialsRestoreName)
 		}
 
-		// clean up resources and generic resources - skip if restore has FailedValidation
-		_, _, restorePhase = getBackupInfoFromRestore(ctx, c,
+		// clean up resources and generic resources - skip if BOTH have FailedValidation
+		_, _, resourcesRestorePhase := getBackupInfoFromRestore(ctx, c,
 			acmRestore.Status.VeleroResourcesRestoreName, acmRestore.Namespace)
-		if restorePhase != veleroapi.RestorePhaseFailedValidation {
+		_, _, genericRestorePhase := getBackupInfoFromRestore(ctx, c,
+			acmRestore.Status.VeleroGenericResourcesRestoreName, acmRestore.Namespace)
+
+		// Call cleanup if at least one restore is not in FailedValidation state
+		// The cleanup function will handle each restore individually
+		if resourcesRestorePhase != veleroapi.RestorePhaseFailedValidation ||
+			genericRestorePhase != veleroapi.RestorePhaseFailedValidation {
 			cleanupDeltaForResourcesBackup(ctx, c, restoreOptions, acmRestore)
 		} else {
-			logger.Info("Skipping resources cleanup - restore has FailedValidation phase",
-				"restore", acmRestore.Status.VeleroResourcesRestoreName)
+			logger.Info("Skipping resources cleanup - both restores have FailedValidation phase",
+				"resourcesRestore", acmRestore.Status.VeleroResourcesRestoreName,
+				"genericRestore", acmRestore.Status.VeleroGenericResourcesRestoreName)
 		}
 
 		// clean up managed cluster resources - skip if restore has FailedValidation
@@ -405,18 +415,18 @@ func cleanupDeltaForResourcesBackup(
 	backupName, veleroBackup, _ := getBackupInfoFromRestore(ctx, c,
 		acmRestore.Status.VeleroResourcesRestoreName, acmRestore.Namespace)
 
-	if backupName == "" {
-		// nothing to clean up
-		return
+	if backupName != "" {
+		// Clean up resources if the restore exists
+		deleteDynamicResourcesForBackup(ctx, c, restoreOptions, veleroBackup, "")
 	}
 
-	deleteDynamicResourcesForBackup(ctx, c, restoreOptions, veleroBackup, "")
-
-	// delete generic resources
+	// Always check and clean up generic resources separately
+	// Don't return early if Resources restore doesn't exist
+	// because ResourcesGeneric might still need cleanup (e.g., in sync mode with resources=skip)
 	genericBackupName, genericBackup, _ := getBackupInfoFromRestore(ctx, c,
 		acmRestore.Status.VeleroGenericResourcesRestoreName, acmRestore.Namespace)
 	if genericBackupName == "" {
-		// nothing to clean up
+		// nothing to clean up for generic resources
 		return
 	}
 

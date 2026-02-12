@@ -288,6 +288,8 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			)
 		}
 	}
+	// Run cleanup when not initializing restores
+	// In sync mode, cleanup still runs because cleanupOnEnabled flag is set when appropriate
 	if !initRestoreCond {
 		r.cleanupOnRestore(ctx, restore)
 	}
@@ -633,8 +635,23 @@ func (r *RestoreReconciler) initVeleroRestores(
 		restore.Status.Phase = v1beta1.RestorePhaseStarted
 		restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
 	} else {
-		restore.Status.Phase = v1beta1.RestorePhaseFinished
-		restore.Status.LastMessage = fmt.Sprintf("Restore %s completed", restore.Name)
+		// No new restores were created
+		// For sync mode, this could mean:
+		// 1. All restores already exist and are complete
+		// 2. Retry was not needed because restores are not in failed state
+		// In sync mode, we should transition to Enabled, not Finished
+		isValidSync, _ := isValidSyncOptions(restore)
+		if isValidSync && restore.Spec.VeleroManagedClustersBackupName != nil &&
+			*restore.Spec.VeleroManagedClustersBackupName == skipRestoreStr {
+			// This is sync mode - should stay in Enabled state
+			restore.Status.Phase = v1beta1.RestorePhaseEnabled
+			restore.Status.LastMessage = "Velero restores have run to completion, " +
+				"restore will continue to sync with new backups"
+		} else {
+			// Not sync mode - can finish
+			restore.Status.Phase = v1beta1.RestorePhaseFinished
+			restore.Status.LastMessage = fmt.Sprintf("Restore %s completed", restore.Name)
+		}
 	}
 	return false, "", nil
 }

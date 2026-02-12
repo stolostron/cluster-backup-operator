@@ -1386,6 +1386,24 @@ func Test_cleanupDeltaResources(t *testing.T) {
 		).
 		Build()
 
+	// Create Velero restores for ResourcesGeneric with FailedValidation phase
+	genericResourcesRestoreNameFailed := "restore-resources-generic-failed-123"
+	veleroGenericResourcesRestoreFailed := createRestore(genericResourcesRestoreNameFailed, namespace).
+		backupName(backupName).
+		phase(veleroapi.RestorePhaseFailedValidation).object
+
+	// Client with both Resources and ResourcesGeneric in FailedValidation phase
+	k8sClientWithBothResourcesFailed := fake.NewClientBuilder().
+		WithScheme(scheme1).
+		WithObjects(
+			veleroCredentialsRestore,            // Completed
+			veleroResourcesRestoreFailed,        // FailedValidation
+			veleroGenericResourcesRestoreFailed, // FailedValidation
+			veleroManagedClustersRestore,        // Completed
+			veleroBackup,
+		).
+		Build()
+
 	type args struct {
 		ctx              context.Context
 		c                client.Client
@@ -1513,6 +1531,26 @@ func Test_cleanupDeltaResources(t *testing.T) {
 					veleroCredentialsRestoreName(credentialsRestoreName).         // Completed
 					veleroResourcesRestoreName(resourcesRestoreNameFailed).       // FailedValidation
 					veleroManagedClustersRestoreName(managedClustersRestoreName). // Completed
+					phase(v1beta1.RestorePhaseFinished).object,
+				cleanupOnRestore: false,
+				restoreOptions:   RestoreOptions{},
+			},
+			want: true,
+		},
+		{
+			name: "cleanup should skip resources when BOTH Resources and ResourcesGeneric have FailedValidation",
+			args: args{
+				ctx: context.Background(),
+				c:   k8sClientWithBothResourcesFailed,
+				restore: createACMRestore("Restore", namespace).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).
+					veleroCredentialsRestoreName(credentialsRestoreName).                 // Completed
+					veleroResourcesRestoreName(resourcesRestoreNameFailed).               // FailedValidation
+					veleroGenericResourcesRestoreName(genericResourcesRestoreNameFailed). // FailedValidation
+					veleroManagedClustersRestoreName(managedClustersRestoreName).         // Completed
 					phase(v1beta1.RestorePhaseFinished).object,
 				cleanupOnRestore: false,
 				restoreOptions:   RestoreOptions{},
