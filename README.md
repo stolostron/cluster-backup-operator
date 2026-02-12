@@ -33,12 +33,17 @@ Cluster Back up and Restore Operator
       - [Primary cluster must be shut down](#primary-cluster-must-be-shut-down)
     - [Restoring all resources](#restoring-all-resources)
   - [Cleaning up the hub before restore](#cleaning-up-the-hub-before-restore)
+  - [Restore validation webhook](#restore-validation-webhook)
+    - [Validation rules for sync mode](#validation-rules-for-sync-mode)
+    - [Managed cluster activation workflow](#managed-cluster-activation-workflow)
+    - [Validation error examples](#validation-error-examples)
   - [View restore events](#view-restore-events)
 - [Restoring imported managed clusters](#restoring-imported-managed-clusters)
   - [Automatically connecting clusters using ManagedServiceAccount](#automatically-connecting-clusters-using-managedserviceaccount)
   - [Enabling the automatic import feature](#enabling-the-automatic-import-feature)
   - [Limitations with the automatic import feature](#limitations-with-the-automatic-import-feature)
 - [Backup validation using a Policy](#backup-validation-using-a-policy)
+  - [Cluster backup component validation](#cluster-backup-component-validation)
   - [OADP channel validation](#oadp-channel-validation)
   - [Pod validation](#pod-validation)
   - [Data Protection Application validation](#data-protection-application-validation)
@@ -116,7 +121,7 @@ The Cluster Back up and Restore Operator chart in turn automatically installs th
 
 
 ### Policy to inform on backup configuration issues
-The Cluster Back up and Restore Operator chart installs the [backup-restore-enabled](https://github.com/stolostron/cluster-backup-chart/blob/main/stable/cluster-backup-chart/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. The Policy templates check if the required pods are running, storage location is available, backups are available at the defined location and no error status is reported by the main resources. This Policy is intended to help notify the Hub admin of any backup issues as the hub is active and expected to produce backups.
+The Cluster Back up and Restore Operator chart installs the [backup-restore-enabled](https://github.com/stolostron/multiclusterhub-operator/blob/main/pkg/templates/charts/toggle/cluster-backup/templates/hub-backup-pod.yaml) Policy, used to inform on issues with the backup and restore component. The Policy templates check if the required pods are running, storage location is available, backups are available at the defined location and no error status is reported by the main resources. This Policy is intended to help notify the Hub admin of any backup issues as the hub is active and expected to produce backups.
 
 ### Resource Requests and Limits Customization
 When Velero is initially installed, Velero pod is set with default cpu and memory limits as defined below.
@@ -457,6 +462,66 @@ spec:
   veleroResourcesBackupName: latest
 ```
 
+### Restore validation webhook
+
+The Cluster Backup and Restore Operator includes a validation webhook for the `Restore` resource. This webhook validates restore configurations on create and update operations to ensure proper usage, particularly for the passive sync feature.
+
+#### Validation rules for sync mode
+
+When `syncRestoreWithNewBackups` is set to `true`, the webhook enforces the following rules:
+
+1. **All backup names must be set**: `veleroManagedClustersBackupName`, `veleroCredentialsBackupName`, and `veleroResourcesBackupName` must all be specified.
+
+2. **`veleroManagedClustersBackupName`**: Must be set to `skip` or `latest`. Specific backup names are not allowed.
+
+3. **`veleroCredentialsBackupName`**: Must be set to `latest`.
+
+4. **`veleroResourcesBackupName`**: Must be set to `latest`.
+
+5. **Initial creation requirement**: When creating a new restore with `syncRestoreWithNewBackups: true`, the `veleroManagedClustersBackupName` must initially be set to `skip`. This ensures the restore starts in passive sync mode.
+
+#### Managed cluster activation workflow
+
+The webhook enforces a two-step workflow for activating managed clusters when using sync mode:
+
+1. **Step 1 - Create passive sync restore**: Create the restore with `veleroManagedClustersBackupName: skip`. The restore will sync passive data and eventually reach the `Enabled` phase.
+
+2. **Step 2 - Activate managed clusters**: Once the restore is in `Enabled` phase, edit the restore to set `veleroManagedClustersBackupName: latest`. This triggers the activation of managed clusters on the new hub.
+
+Example of a valid passive sync restore configuration:
+
+```yaml
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-passive-sync
+  namespace: open-cluster-management-backup
+spec:
+  syncRestoreWithNewBackups: true
+  restoreSyncInterval: 10m
+  cleanupBeforeRestore: CleanupRestored
+  veleroManagedClustersBackupName: skip    # Must be 'skip' on initial create
+  veleroCredentialsBackupName: latest       # Must be 'latest'
+  veleroResourcesBackupName: latest         # Must be 'latest'
+```
+
+#### Validation error examples
+
+The webhook will reject invalid configurations with descriptive error messages:
+
+- Creating a sync restore with `veleroManagedClustersBackupName: latest` on initial create:
+  ```
+  Error: when syncRestoreWithNewBackups is true, veleroManagedClustersBackupName must initially be set to 'skip'. 
+  To activate managed clusters, edit the restore to set veleroManagedClustersBackupName to 'latest'
+  ```
+
+- Using a specific backup name instead of `latest` for credentials:
+  ```
+  Error: syncRestoreWithNewBackups requires veleroCredentialsBackupName to be 'latest', got: acm-credentials-backup-123
+  ```
+
+<b>Note:</b> The validation webhook only applies when `syncRestoreWithNewBackups` is set to `true`. Non-sync restores can use any valid backup name configuration.
+
 ### View restore events
 
 Use the `oc describe Restore.cluster.open-cluster-management.io -n <oadp-n> <restore-name>` command to get information about restore events.
@@ -620,6 +685,16 @@ spec:
 The Cluster Backup and Restore Operator [helm chart](https://github.com/stolostron/multiclusterhub-operator/tree/main/pkg/templates/charts/toggle/cluster-backup) installs the [backup-restore-enabled](https://github.com/stolostron/multiclusterhub-operator/blob/main/pkg/templates/charts/toggle/cluster-backup/templates/hub-backup-pod.yaml) policy, which is designed to provide information about issues with the backup and restore component. 
 
 This policy includes a set of templates that check for the following constraints and alert when any of them are violated.
+
+The backup validation policy is automatically applied to hub clusters using a unified [Placement](https://github.com/stolostron/multiclusterhub-operator/blob/main/pkg/templates/charts/toggle/cluster-backup/templates/hub-backup-placement.yaml) resource that targets clusters matching any of the following criteria (using OR logic):
+- `local-cluster=true` - local hub clusters
+- `is-hub=true` - managed clusters with ACM Hub installed
+- `feature.open-cluster-management.io/addon-multicluster-global-hub-controller` exists - clusters with global hub controller addon
+
+This means the backup validation policy is automatically enabled on managed hubs in a global hub scenario, without requiring manual configuration.
+
+### Cluster backup component validation
+- `acm-cluster-backup-enabled` template checks if the `cluster-backup` component is enabled in the MultiClusterHub resource. This template validates that the backup functionality is properly configured at the MultiClusterHub level. If the `cluster-backup` component is disabled (`enabled: false`) in the `spec.overrides.components` section of the MultiClusterHub resource, the policy reports a NonCompliant status with instructions to enable it.
 
 ### OADP channel validation
 When you enable the backup component on the MultiClusterHub, the cluster backup and restore operator Helm chart can automatically install the OADP operator in the open-cluster-management-backup namespace, or you can install it manually in that namespace. The OADP channel you select for manual installation must match or exceed the version set by the Red Hat Advanced Cluster Management backup and restore operator Helm chart. Since the OADP Operator and Velero Custom Resource Definitions (CRDs) are cluster-scoped, you cannot have multiple versions on the same cluster. You must install the same version in the open-cluster-management-backup namespace and any other namespaces.
