@@ -128,7 +128,7 @@ func (r *Restore) validateSyncMode() error {
 	// Validate MC=skip on first creation (Phase != Enabled)
 	// When Phase=Enabled, the restore was already created with MC=skip
 	// and is now being edited to MC=latest (activation)
-	if r.Status.Phase != RestorePhaseEnabled &&
+	if !r.IsPhaseEnabled() &&
 		mcBackup != "skip" &&
 		r.Status.VeleroManagedClustersRestoreName == "" {
 		return fmt.Errorf(

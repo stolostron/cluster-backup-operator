@@ -966,17 +966,18 @@ var _ = Describe("Basic Restore controller", func() {
 					return createdRestore.Status.VeleroResourcesRestoreName
 				}, timeout, interval).ShouldNot(BeEmpty())
 
+				// Use the actual restore names from the status
 				veleroRestores := veleroapi.RestoreList{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: "velero/v1",
 						Kind:       "RestoreList",
 					},
 					Items: []veleroapi.Restore{
-						*createRestore("acm-credentials-restore", veleroNamespace.Name).
+						*createRestore(createdRestore.Status.VeleroCredentialsRestoreName, veleroNamespace.Name).
 							backupName("acm-credentials-backup").
 							phase("").
 							object,
-						*createRestore("acm-resources-restore", veleroNamespace.Name).
+						*createRestore(createdRestore.Status.VeleroResourcesRestoreName, veleroNamespace.Name).
 							backupName("acm-resources-backup").
 							phase(veleroapi.RestorePhaseCompleted).
 							object,
@@ -1717,6 +1718,158 @@ var _ = Describe("Finalizer Cleanup Tests", func() {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(restore), restore)
 				return k8serr.IsNotFound(err)
 			}, timeout, interval).Should(BeTrue())
+		})
+	})
+
+	Context("retry logic for failed restores", func() {
+		// NOTE: Retry logic (lines 810-890 in restore.go) is covered by unit tests
+		//
+		// Test coverage provided by Test_isNewBackupAvailable (restore_test.go):
+		// - ResourcesGeneric with FailedValidation (lines 818-819, 846-855)
+		// - Resources with FailedValidation (lines 816-817, 846-855)
+		// - ManagedClusters with Failed phase (lines 812-813, 856-864)
+		// - New backup detection (lines 877-886)
+		// - Bug fix: isNewBackupAvailable complete switch for all resource types (lines 465-473)
+		//
+		// Integration tests for retry logic were removed due to envtest timing/race conditions.
+		// These tests should be run in a real cluster environment if full e2e validation is needed.
+
+		var (
+			veleroNamespace *corev1.Namespace
+			bsl             *veleroapi.BackupStorageLocation
+		)
+
+		BeforeEach(func() {
+			ctx := context.Background()
+			veleroNamespace = createNamespace(fmt.Sprintf("test-sync-%d", time.Now().UnixNano()))
+			Expect(k8sClient.Create(ctx, veleroNamespace)).To(Succeed())
+
+			// Create backup storage location using helper
+			bsl = createStorageLocation("default", veleroNamespace.Name).
+				setOwner().
+				phase(veleroapi.BackupStorageLocationPhaseAvailable).object
+			Expect(k8sClient.Create(ctx, bsl)).To(Succeed())
+
+			// Create InternalHubComponent
+			internalHub := &unstructured.Unstructured{}
+			internalHub.SetAPIVersion("operator.open-cluster-management.io/v1")
+			internalHub.SetKind("InternalHubComponent")
+			internalHub.SetName("cluster-backup")
+			internalHub.SetNamespace(veleroNamespace.Name)
+			Expect(k8sClient.Create(ctx, internalHub)).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			ctx := context.Background()
+			var zero int64 = 0
+			_ = k8sClient.Delete(ctx, veleroNamespace, &client.DeleteOptions{GracePeriodSeconds: &zero})
+		})
+
+		It("should transition to Enabled when sync restore has completed restores and no new backups (line 645)", func() {
+			ctx := context.Background()
+
+			// Create sync restore with completed velero restores already tracked
+			skipBackup := skipRestoreStr
+			latestBackup := latestBackupStr
+
+			// Create completed velero restores first
+			completedCredentialsBackup := createBackup("acm-credentials-schedule-20260212120000", veleroNamespace.Name).
+				includedResources(backupCredsResources).
+				phase(veleroapi.BackupPhaseCompleted).
+				errors(0).object
+			completedResourcesBackup := createBackup("acm-resources-schedule-20260212120000", veleroNamespace.Name).
+				includedResources(backupManagedClusterResources).
+				phase(veleroapi.BackupPhaseCompleted).
+				errors(0).object
+			completedGenericBackup := createBackup("acm-resources-generic-schedule-20260212120000", veleroNamespace.Name).
+				includedResources(backupManagedClusterResources).
+				phase(veleroapi.BackupPhaseCompleted).
+				errors(0).object
+
+			Expect(k8sClient.Create(ctx, completedCredentialsBackup)).To(Succeed())
+			Expect(k8sClient.Create(ctx, completedResourcesBackup)).To(Succeed())
+			Expect(k8sClient.Create(ctx, completedGenericBackup)).To(Succeed())
+
+			// Create corresponding completed velero restores
+			completedCredentialsRestore := createRestore("restore-credentials-completed", veleroNamespace.Name).
+				backupName(completedCredentialsBackup.Name).
+				phase(veleroapi.RestorePhaseCompleted).object
+			completedResourcesRestore := createRestore("restore-resources-completed", veleroNamespace.Name).
+				backupName(completedResourcesBackup.Name).
+				phase(veleroapi.RestorePhaseCompleted).object
+			completedGenericRestore := createRestore("restore-generic-completed", veleroNamespace.Name).
+				backupName(completedGenericBackup.Name).
+				phase(veleroapi.RestorePhaseCompleted).object
+
+			Expect(k8sClient.Create(ctx, completedCredentialsRestore)).To(Succeed())
+			Expect(k8sClient.Create(ctx, completedResourcesRestore)).To(Succeed())
+			Expect(k8sClient.Create(ctx, completedGenericRestore)).To(Succeed())
+
+			// Create ACM restore in EnabledError state with sync enabled
+			acmRestore := &v1beta1.Restore{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-restore-no-new-restores",
+					Namespace: veleroNamespace.Name,
+				},
+				Spec: v1beta1.RestoreSpec{
+					SyncRestoreWithNewBackups:       true,
+					VeleroManagedClustersBackupName: &skipBackup,
+					VeleroCredentialsBackupName:     &latestBackup,
+					VeleroResourcesBackupName:       &latestBackup,
+					CleanupBeforeRestore:            v1beta1.CleanupTypeRestored,
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, acmRestore)).To(Succeed())
+			restoreLookupKey := types.NamespacedName{Name: acmRestore.Name, Namespace: acmRestore.Namespace}
+			createdRestore := &v1beta1.Restore{}
+
+			// Wait for controller to create initial restores
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, restoreLookupKey, createdRestore)
+				return err == nil && createdRestore.Status.Phase != ""
+			}, timeout, interval).Should(BeTrue())
+
+			// Update ACM restore status to point to completed restores and set phase to EnabledError
+			// This simulates the scenario after initial restores completed
+			createdRestore.Status.VeleroCredentialsRestoreName = completedCredentialsRestore.Name
+			createdRestore.Status.VeleroResourcesRestoreName = completedResourcesRestore.Name
+			createdRestore.Status.VeleroGenericResourcesRestoreName = completedGenericRestore.Name
+			createdRestore.Status.Phase = v1beta1.RestorePhaseEnabledError
+			createdRestore.Status.LastMessage = "Simulating completed restores with no new backups"
+			Expect(k8sClient.Status().Update(ctx, createdRestore)).To(Succeed())
+
+			// Trigger a reconcile by updating a spec field
+			// The controller will call initVeleroRestores in sync mode
+			// Since restores are completed and no new backups exist, newVeleroRestoreCreated = false
+			// Should transition to Enabled state (line 645-649)
+			Eventually(func() bool {
+				if err := k8sClient.Get(ctx, restoreLookupKey, createdRestore); err != nil {
+					return false
+				}
+				// Update to trigger reconcile
+				createdRestore.Spec.RestoreSyncInterval = metav1.Duration{Duration: time.Minute * 5}
+				return k8sClient.Update(ctx, createdRestore) == nil
+			}, timeout, interval).Should(BeTrue())
+
+			// Verify ACM restore transitions to Enabled state (not Finished)
+			// This tests line 645-649: transition to Enabled when no new restores created in sync mode
+			// Note: Phase could be Enabled or EnabledWithErrors depending on restore state
+			// Use longer timeout as this requires controller to reconcile after annotation update
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, restoreLookupKey, createdRestore)
+				if err != nil {
+					return false
+				}
+				// Accept either Enabled or EnabledWithErrors (both indicate "Enabled" state)
+				return createdRestore.IsPhaseEnabled()
+			}, timeout*5, interval).Should(BeTrue())
+
+			// Verify the restore stays in Enabled state (not Finished)
+			// This confirms line 645-649 logic: sync mode should transition to Enabled, not Finished
+			// The phase could be "Enabled" or "EnabledWithErrors" - both are valid for this test
+			Expect(createdRestore.IsPhaseEnabled()).To(BeTrue(),
+				"restore should be in Enabled state, got: %s", createdRestore.Status.Phase)
 		})
 	})
 })

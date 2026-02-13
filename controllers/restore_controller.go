@@ -219,6 +219,27 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			r.Client.Status().Update(ctx, restore),
 			msg,
 		)
+	} else if restore.Status.Phase == v1beta1.RestorePhaseEnabledError &&
+		strings.Contains(restore.Status.LastMessage, "BackupStorageLocation") {
+		// if the restore is in enabled error phase, and the storage location is available,
+		// update status based on velero restore status
+
+		// get the list of velero restore resources created by this acm restore
+		veleroRestoreList := veleroapi.RestoreList{}
+		if err := r.List(
+			ctx,
+			&veleroRestoreList,
+			client.InNamespace(restore.Namespace),
+			client.MatchingFields{restoreOwnerKey: restore.Name},
+		); err == nil {
+
+			setRestorePhase(&veleroRestoreList, restore)
+		}
+		// retry after failureInterval
+		return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
+			r.Client.Status().Update(ctx, restore),
+			msg,
+		)
 	}
 
 	if restore.Spec.CleanupBeforeRestore != v1beta1.CleanupTypeNone &&
@@ -235,7 +256,7 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	isValidSync, msg := isValidSyncOptions(restore)
-	sync := isValidSync && restore.Status.Phase == v1beta1.RestorePhaseEnabled
+	sync := isValidSync && restore.IsPhaseEnabled()
 	isPVCStep := isPVCInitializationStep(restore, veleroRestoreList)
 	initRestoreCond := len(veleroRestoreList.Items) == 0 || sync
 
@@ -267,6 +288,8 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			)
 		}
 	}
+	// Run cleanup when not initializing restores
+	// In sync mode, cleanup still runs because cleanupOnEnabled flag is set when appropriate
 	if !initRestoreCond {
 		r.cleanupOnRestore(ctx, restore)
 	}
@@ -366,7 +389,7 @@ func (r *RestoreReconciler) cleanupOnRestore(
 
 func sendResult(restore *v1beta1.Restore, err error) (ctrl.Result, error) {
 	if restore.Spec.SyncRestoreWithNewBackups &&
-		restore.Status.Phase == v1beta1.RestorePhaseEnabled {
+		restore.IsPhaseEnabled() {
 
 		tryAgain := restoreSyncInterval
 		if restore.Spec.RestoreSyncInterval.Duration != 0 {
@@ -612,8 +635,23 @@ func (r *RestoreReconciler) initVeleroRestores(
 		restore.Status.Phase = v1beta1.RestorePhaseStarted
 		restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
 	} else {
-		restore.Status.Phase = v1beta1.RestorePhaseFinished
-		restore.Status.LastMessage = fmt.Sprintf("Restore %s completed", restore.Name)
+		// No new restores were created
+		// For sync mode, this could mean:
+		// 1. All restores already exist and are complete
+		// 2. Retry was not needed because restores are not in failed state
+		// In sync mode, we should transition to Enabled, not Finished
+		isValidSync, _ := isValidSyncOptions(restore)
+		if isValidSync && restore.Spec.VeleroManagedClustersBackupName != nil &&
+			*restore.Spec.VeleroManagedClustersBackupName == skipRestoreStr {
+			// This is sync mode - should stay in Enabled state
+			restore.Status.Phase = v1beta1.RestorePhaseEnabled
+			restore.Status.LastMessage = "Velero restores have run to completion, " +
+				"restore will continue to sync with new backups"
+		} else {
+			// Not sync mode - can finish
+			restore.Status.Phase = v1beta1.RestorePhaseFinished
+			restore.Status.LastMessage = fmt.Sprintf("Restore %s completed", restore.Name)
+		}
 	}
 	return false, "", nil
 }
@@ -692,7 +730,7 @@ func updateLabelsForActiveResources(
 	// Only add activation label when in true sync mode or when resources were originally skipped
 	// Don't add it when sync=true but managedClusters=latest from the start (non-sync scenario)
 	isRealSyncMode := restore.Spec.SyncRestoreWithNewBackups &&
-		(restore.Status.Phase == v1beta1.RestorePhaseEnabled)
+		restore.IsPhaseEnabled()
 
 	// Check if credentials-active Velero restore exists (indicates activation scenario)
 	credsActiveExists := false

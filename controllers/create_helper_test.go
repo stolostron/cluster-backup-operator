@@ -413,8 +413,28 @@ func (b *ACMRestoreHelper) phase(phase v1beta1.RestorePhase) *ACMRestoreHelper {
 	return b
 }
 
+func (b *ACMRestoreHelper) lastMessage(message string) *ACMRestoreHelper {
+	b.object.Status.LastMessage = message
+	return b
+}
+
 func (b *ACMRestoreHelper) veleroCredentialsRestoreName(name string) *ACMRestoreHelper {
 	b.object.Status.VeleroCredentialsRestoreName = name
+	return b
+}
+
+func (b *ACMRestoreHelper) veleroResourcesRestoreName(name string) *ACMRestoreHelper {
+	b.object.Status.VeleroResourcesRestoreName = name
+	return b
+}
+
+func (b *ACMRestoreHelper) veleroGenericResourcesRestoreName(name string) *ACMRestoreHelper {
+	b.object.Status.VeleroGenericResourcesRestoreName = name
+	return b
+}
+
+func (b *ACMRestoreHelper) veleroManagedClustersRestoreName(name string) *ACMRestoreHelper {
+	b.object.Status.VeleroManagedClustersRestoreName = name
 	return b
 }
 

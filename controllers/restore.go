@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
@@ -174,6 +175,12 @@ func updateRestoreStatus(
 	logger.Info(msg)
 
 	restore.Status.Phase = status
+	if status == v1beta1.RestorePhaseError {
+		if isValid, _ := isValidSyncOptions(restore); isValid {
+			// if the restore is in enabled phase set the status to enabled error
+			restore.Status.Phase = v1beta1.RestorePhaseEnabledError
+		}
+	}
 	restore.Status.LastMessage = msg
 
 	// set CompletionTimestamp when restore is completed
@@ -184,6 +191,50 @@ func updateRestoreStatus(
 		rightNow := metav1.Now()
 		restore.Status.CompletionTimestamp = &rightNow
 	}
+}
+
+// filterLatestVeleroRestores filters the velero restore list to only include
+// the latest restores that are currently tracked in the Restore status.
+// This prevents old/previous restores from affecting the current status,
+// which is especially important for sync mode where new restores are created periodically.
+func filterLatestVeleroRestores(
+	veleroRestoreList *veleroapi.RestoreList,
+	restore *v1beta1.Restore,
+) []veleroapi.Restore {
+	if veleroRestoreList == nil || len(veleroRestoreList.Items) == 0 {
+		return []veleroapi.Restore{}
+	}
+
+	// Build a set of current velero restore names from the status
+	currentRestoreNames := make(map[string]bool)
+	if restore.Status.VeleroManagedClustersRestoreName != "" {
+		currentRestoreNames[restore.Status.VeleroManagedClustersRestoreName] = true
+	}
+	if restore.Status.VeleroResourcesRestoreName != "" {
+		currentRestoreNames[restore.Status.VeleroResourcesRestoreName] = true
+	}
+	if restore.Status.VeleroGenericResourcesRestoreName != "" {
+		currentRestoreNames[restore.Status.VeleroGenericResourcesRestoreName] = true
+	}
+	if restore.Status.VeleroCredentialsRestoreName != "" {
+		currentRestoreNames[restore.Status.VeleroCredentialsRestoreName] = true
+	}
+
+	// If no current restores are tracked yet, return all restores
+	// (this happens during initial restore creation)
+	if len(currentRestoreNames) == 0 {
+		return veleroRestoreList.Items
+	}
+
+	// Filter to only include restores that are currently tracked
+	latestRestores := []veleroapi.Restore{}
+	for i := range veleroRestoreList.Items {
+		if currentRestoreNames[veleroRestoreList.Items[i].Name] {
+			latestRestores = append(latestRestores, veleroRestoreList.Items[i])
+		}
+	}
+
+	return latestRestores
 }
 
 // set cumulative status of restores
@@ -212,10 +263,14 @@ func setRestorePhase(
 		return restore.Status.Phase, cleanupOnEnabled
 	}
 
+	// Filter to only check the latest velero restores (the ones currently tracked in status)
+	// This prevents old failed restores from affecting the status, especially for sync mode
+	latestRestores := filterLatestVeleroRestores(veleroRestoreList, restore)
+
 	// get all velero restores and check status for each
 	partiallyFailed := false
-	for i := range veleroRestoreList.Items {
-		veleroRestore := veleroRestoreList.Items[i].DeepCopy()
+	for i := range latestRestores {
+		veleroRestore := latestRestores[i].DeepCopy()
 
 		if veleroRestore.Status.Phase == "" {
 			restore.Status.Phase = v1beta1.RestorePhaseUnknown
@@ -243,7 +298,19 @@ func setRestorePhase(
 		}
 		if veleroRestore.Status.Phase == veleroapi.RestorePhaseFailed ||
 			veleroRestore.Status.Phase == veleroapi.RestorePhaseFailedValidation {
-			restore.Status.Phase = v1beta1.RestorePhaseError
+
+			isValidSync, _ := isValidSyncOptions(restore)
+			// if this is a sync restore, set the status to enabled error
+			if restore.IsPhaseEnabled() ||
+				isValidSync {
+				restore.Status.Phase = v1beta1.RestorePhaseEnabledError
+				// Set cleanup flag to run cleanup for any completed restores
+				// even though some restores failed
+				cleanupOnEnabled = true
+			} else {
+				restore.Status.Phase = v1beta1.RestorePhaseError
+			}
+
 			restore.Status.LastMessage = fmt.Sprintf(
 				"Velero restore %s has failed validation or encountered errors",
 				veleroRestore.Name,
@@ -398,8 +465,12 @@ func isNewBackupAvailable(
 		switch resourceType {
 		case Resources:
 			latestVeleroRestoreName = restore.Status.VeleroResourcesRestoreName
-		case Credentials:
+		case ResourcesGeneric:
+			latestVeleroRestoreName = restore.Status.VeleroGenericResourcesRestoreName
+		case Credentials, CredentialsHive, CredentialsCluster:
 			latestVeleroRestoreName = restore.Status.VeleroCredentialsRestoreName
+		case ManagedClusters:
+			latestVeleroRestoreName = restore.Status.VeleroManagedClustersRestoreName
 		}
 		if latestVeleroRestoreName == "" {
 			logger.Info(
@@ -413,9 +484,6 @@ func isNewBackupAvailable(
 		}
 
 		newVeleroRestoreName := getValidKsRestoreName(restore.Name, newVeleroBackupName)
-		if latestVeleroRestoreName == newVeleroRestoreName {
-			return false
-		}
 
 		latestVeleroRestore := veleroapi.Restore{}
 		if err = c.Get(
@@ -427,6 +495,17 @@ func isNewBackupAvailable(
 			&latestVeleroRestore,
 		); err != nil {
 			return true // restore not found
+		}
+
+		if latestVeleroRestoreName == newVeleroRestoreName {
+			// Same backup, but check if we should retry due to failure
+			if newVeleroRestoreName != "" &&
+				restore.Status.Phase == v1beta1.RestorePhaseEnabledError &&
+				!strings.Contains(restore.Status.LastMessage, "BackupStorageLocation") {
+				return true // trigger retry
+			}
+
+			return false
 		}
 
 		// compare the backup name and timestamp of newVeleroBackupName
@@ -724,7 +803,114 @@ func processRetrieveRestoreDetails(
 					return veleroRestoresToCreate, err
 				}
 			} else {
-				veleroRestore.Name = getValidKsRestoreName(acmRestore.Name, veleroBackupName)
+				baseRestoreName := getValidKsRestoreName(acmRestore.Name, veleroBackupName)
+
+				// Check if this is a retry scenario (same backup, but previous restore failed or doesn't exist)
+				// Generate retry name if ACM restore is in EnabledError state
+				// This handles cases where some restores succeeded but others failed
+				shouldRetry := false
+				if acmRestore.Status.Phase == v1beta1.RestorePhaseEnabledError {
+					// Get the currently tracked restore name for this resource type
+					trackedRestoreName := ""
+					switch key {
+					case ManagedClusters:
+						trackedRestoreName = acmRestore.Status.VeleroManagedClustersRestoreName
+					case Credentials, CredentialsHive, CredentialsCluster:
+						trackedRestoreName = acmRestore.Status.VeleroCredentialsRestoreName
+					case Resources:
+						trackedRestoreName = acmRestore.Status.VeleroResourcesRestoreName
+					case ResourcesGeneric:
+						trackedRestoreName = acmRestore.Status.VeleroGenericResourcesRestoreName
+					}
+
+					// Only apply retry logic if we're dealing with the same backup that was already tracked
+					// If the baseRestoreName is different from the tracked name, this is a new backup
+					// and we should create a normal restore, not a retry
+					// Note: trackedRestoreName might have a retry suffix (e.g., "base-retry-123")
+					// so we check if it starts with baseRestoreName
+					isTrackedRestore := trackedRestoreName != "" && strings.HasPrefix(trackedRestoreName, baseRestoreName)
+
+					if isTrackedRestore {
+						// This is the same backup we've already attempted
+						// Check the status of the tracked restore to see if it needs retrying
+						existingRestore := &veleroapi.Restore{}
+						err := c.Get(ctx, types.NamespacedName{
+							Name:      trackedRestoreName, // Check the TRACKED restore, not baseRestoreName
+							Namespace: acmRestore.Namespace,
+						}, existingRestore)
+
+						if err != nil {
+							// Tracked restore doesn't exist (shouldn't happen, but handle gracefully)
+							shouldRetry = true
+							restoreLogger.Info(
+								"Retry scenario: tracked restore doesn't exist, will create it",
+								"trackedRestoreName", trackedRestoreName,
+								"resourceType", key,
+							)
+						} else if existingRestore.Status.Phase == veleroapi.RestorePhaseFailedValidation {
+							// Restore exists but failed validation, need to retry because the restore
+							// has failed the controller validation and so it was not run
+							shouldRetry = true
+							restoreLogger.Info(
+								"Retry scenario: creating new restore for failed validation",
+								"trackedRestore", trackedRestoreName,
+								"failedPhase", existingRestore.Status.Phase,
+								"resourceType", key,
+							)
+						} else if existingRestore.Status.Phase == veleroapi.RestorePhaseFailed {
+							// Restore exists but failed, need to retry
+							shouldRetry = true
+							restoreLogger.Info(
+								"Retry scenario: creating new restore for failed restore",
+								"trackedRestore", trackedRestoreName,
+								"failedPhase", existingRestore.Status.Phase,
+								"resourceType", key,
+							)
+						} else {
+							// Restore exists and is not in a failed state (Completed, InProgress, etc.)
+							// Skip creating a new restore - this backup has already been successfully restored
+							restoreLogger.Info(
+								"Skipping restore creation: tracked restore already completed successfully",
+								"trackedRestoreName", trackedRestoreName,
+								"phase", existingRestore.Status.Phase,
+								"resourceType", key,
+							)
+							// Skip this restore - continue to next resource type
+							continue
+						}
+					} else {
+						// This is a new backup, not a retry scenario
+						// Create a normal restore without retry suffix
+						restoreLogger.Info(
+							"New backup detected, creating normal restore (not a retry)",
+							"newRestoreName", baseRestoreName,
+							"previousRestoreName", trackedRestoreName,
+							"resourceType", key,
+						)
+					}
+				}
+
+				// Generate unique name with timestamp for retries
+				if shouldRetry {
+					timestamp := time.Now().Format("20060102150405")
+					retrySuffix := "-retry-" + timestamp // 18 chars: "-retry-YYYYMMDDHHMMSS"
+
+					// Ensure final name doesn't exceed 252 chars
+					maxBaseLen := 252 - len(retrySuffix)
+					if len(baseRestoreName) > maxBaseLen {
+						baseRestoreName = baseRestoreName[:maxBaseLen]
+					}
+
+					veleroRestore.Name = baseRestoreName + retrySuffix
+					restoreLogger.Info(
+						"Generated retry restore name",
+						"originalName", baseRestoreName,
+						"retryName", veleroRestore.Name,
+						"length", len(veleroRestore.Name),
+					)
+				} else {
+					veleroRestore.Name = baseRestoreName
+				}
 
 				veleroRestore.Namespace = acmRestore.Namespace
 				veleroRestore.Spec.BackupName = veleroBackupName
