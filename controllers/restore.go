@@ -304,6 +304,9 @@ func setRestorePhase(
 			if restore.IsPhaseEnabled() ||
 				isValidSync {
 				restore.Status.Phase = v1beta1.RestorePhaseEnabledError
+				// Set cleanup flag to run cleanup for any completed restores
+				// even though some restores failed
+				cleanupOnEnabled = true
 			} else {
 				restore.Status.Phase = v1beta1.RestorePhaseError
 			}
@@ -462,8 +465,12 @@ func isNewBackupAvailable(
 		switch resourceType {
 		case Resources:
 			latestVeleroRestoreName = restore.Status.VeleroResourcesRestoreName
-		case Credentials:
+		case ResourcesGeneric:
+			latestVeleroRestoreName = restore.Status.VeleroGenericResourcesRestoreName
+		case Credentials, CredentialsHive, CredentialsCluster:
 			latestVeleroRestoreName = restore.Status.VeleroCredentialsRestoreName
+		case ManagedClusters:
+			latestVeleroRestoreName = restore.Status.VeleroManagedClustersRestoreName
 		}
 		if latestVeleroRestoreName == "" {
 			logger.Info(
@@ -803,28 +810,81 @@ func processRetrieveRestoreDetails(
 				// This handles cases where some restores succeeded but others failed
 				shouldRetry := false
 				if acmRestore.Status.Phase == v1beta1.RestorePhaseEnabledError {
-					existingRestore := &veleroapi.Restore{}
-					err := c.Get(ctx, types.NamespacedName{
-						Name:      baseRestoreName,
-						Namespace: acmRestore.Namespace,
-					}, existingRestore)
+					// Get the currently tracked restore name for this resource type
+					trackedRestoreName := ""
+					switch key {
+					case ManagedClusters:
+						trackedRestoreName = acmRestore.Status.VeleroManagedClustersRestoreName
+					case Credentials, CredentialsHive, CredentialsCluster:
+						trackedRestoreName = acmRestore.Status.VeleroCredentialsRestoreName
+					case Resources:
+						trackedRestoreName = acmRestore.Status.VeleroResourcesRestoreName
+					case ResourcesGeneric:
+						trackedRestoreName = acmRestore.Status.VeleroGenericResourcesRestoreName
+					}
 
-					if err != nil {
-						// Restore doesn't exist, need to retry creating it
-						shouldRetry = true
+					// Only apply retry logic if we're dealing with the same backup that was already tracked
+					// If the baseRestoreName is different from the tracked name, this is a new backup
+					// and we should create a normal restore, not a retry
+					// Note: trackedRestoreName might have a retry suffix (e.g., "base-retry-123")
+					// so we check if it starts with baseRestoreName
+					isTrackedRestore := trackedRestoreName != "" && strings.HasPrefix(trackedRestoreName, baseRestoreName)
+
+					if isTrackedRestore {
+						// This is the same backup we've already attempted
+						// Check the status of the tracked restore to see if it needs retrying
+						existingRestore := &veleroapi.Restore{}
+						err := c.Get(ctx, types.NamespacedName{
+							Name:      trackedRestoreName, // Check the TRACKED restore, not baseRestoreName
+							Namespace: acmRestore.Namespace,
+						}, existingRestore)
+
+						if err != nil {
+							// Tracked restore doesn't exist (shouldn't happen, but handle gracefully)
+							shouldRetry = true
+							restoreLogger.Info(
+								"Retry scenario: tracked restore doesn't exist, will create it",
+								"trackedRestoreName", trackedRestoreName,
+								"resourceType", key,
+							)
+						} else if existingRestore.Status.Phase == veleroapi.RestorePhaseFailedValidation {
+							// Restore exists but failed validation, need to retry because the restore
+							// has failed the controller validation and so it was not run
+							shouldRetry = true
+							restoreLogger.Info(
+								"Retry scenario: creating new restore for failed validation",
+								"trackedRestore", trackedRestoreName,
+								"failedPhase", existingRestore.Status.Phase,
+								"resourceType", key,
+							)
+						} else if existingRestore.Status.Phase == veleroapi.RestorePhaseFailed {
+							// Restore exists but failed, need to retry
+							shouldRetry = true
+							restoreLogger.Info(
+								"Retry scenario: creating new restore for failed restore",
+								"trackedRestore", trackedRestoreName,
+								"failedPhase", existingRestore.Status.Phase,
+								"resourceType", key,
+							)
+						} else {
+							// Restore exists and is not in a failed state (Completed, InProgress, etc.)
+							// Skip creating a new restore - this backup has already been successfully restored
+							restoreLogger.Info(
+								"Skipping restore creation: tracked restore already completed successfully",
+								"trackedRestoreName", trackedRestoreName,
+								"phase", existingRestore.Status.Phase,
+								"resourceType", key,
+							)
+							// Skip this restore - continue to next resource type
+							continue
+						}
+					} else {
+						// This is a new backup, not a retry scenario
+						// Create a normal restore without retry suffix
 						restoreLogger.Info(
-							"Retry scenario: restore doesn't exist, will create it",
-							"restoreName", baseRestoreName,
-							"resourceType", key,
-						)
-					} else if existingRestore.Status.Phase == veleroapi.RestorePhaseFailedValidation {
-						// Restore exists but failed validation, need to retry because the restore
-						// has failed the controller validation and so it was not run
-						shouldRetry = true
-						restoreLogger.Info(
-							"Retry scenario: creating new restore for failed validation",
-							"originalRestore", baseRestoreName,
-							"failedPhase", existingRestore.Status.Phase,
+							"New backup detected, creating normal restore (not a retry)",
+							"newRestoreName", baseRestoreName,
+							"previousRestoreName", trackedRestoreName,
 							"resourceType", key,
 						)
 					}

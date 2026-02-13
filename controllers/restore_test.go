@@ -1103,7 +1103,7 @@ func Test_setRestorePhase(t *testing.T) {
 				},
 			},
 			wantPhase:            v1beta1.RestorePhaseEnabledError,
-			wantCleanupOnEnabled: false,
+			wantCleanupOnEnabled: true, // Changed from false - cleanup should run for completed restores even when some fail
 		},
 		{
 			name: "Sync restore already in Enabled phase uses early return - does not re-evaluate velero restores",
@@ -1547,6 +1547,39 @@ func Test_isNewBackupAvailable(t *testing.T) {
 		phase(veleroapi.BackupPhaseCompleted).
 		errors(0).object
 
+	// Create backups for other resource types
+	// For ResourcesGeneric, it derives the backup name from the Resources backup timestamp
+	resourcesBackupName := "acm-resources-schedule-20220922170041"
+	resourcesBackup := *createBackup(resourcesBackupName, veleroNamespaceName).
+		labels(map[string]string{
+			BackupVeleroLabel:          "aa",
+			BackupScheduleClusterLabel: "abcd",
+			BackupScheduleTypeLabel:    string(Resources),
+		}).
+		phase(veleroapi.BackupPhaseCompleted).
+		errors(0).object
+
+	// ResourcesGeneric backup must have same timestamp as Resources backup
+	genericBackupName := "acm-resources-generic-schedule-20220922170041"
+	genericBackup := *createBackup(genericBackupName, veleroNamespaceName).
+		labels(map[string]string{
+			BackupVeleroLabel:          "aa",
+			BackupScheduleClusterLabel: "abcd",
+			BackupScheduleTypeLabel:    string(ResourcesGeneric),
+		}).
+		phase(veleroapi.BackupPhaseCompleted).
+		errors(0).object
+
+	managedClustersBackupName := "acm-managed-clusters-schedule-20220922170041"
+	managedClustersBackup := *createBackup(managedClustersBackupName, veleroNamespaceName).
+		labels(map[string]string{
+			BackupVeleroLabel:          "aa",
+			BackupScheduleClusterLabel: "abcd",
+			BackupScheduleTypeLabel:    string(ManagedClusters),
+		}).
+		phase(veleroapi.BackupPhaseCompleted).
+		errors(0).object
+
 	veleroRestore := veleroapi.Restore{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "velero/v1",
@@ -1791,6 +1824,107 @@ func Test_isNewBackupAvailable(t *testing.T) {
 			setupObjects: []client.Object{
 				&veleroNamespace,
 				&backup,
+			},
+		},
+		{
+			name: "ResourcesGeneric with FailedValidation should trigger retry (line 818-819, 846-855)",
+			args: args{
+				ctx:          context.Background(),
+				resourceType: ResourcesGeneric,
+				restore: createACMRestore(passiveStr, veleroNamespaceName).
+					syncRestoreWithNewBackups(true).
+					phase(v1beta1.RestorePhaseEnabledError).
+					lastMessage("Velero restore failed validation").
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(resourcesBackupName).                                 // Uses Resources backup name
+					veleroGenericResourcesRestoreName(passiveStr + "-" + genericBackupName).object, // Tracks generic restore
+			},
+			want:        true, // Should trigger retry for FailedValidation
+			setupScheme: true,
+			setupObjects: []client.Object{
+				&veleroNamespace,
+				&resourcesBackup, // Need the resources backup for timestamp extraction
+				&genericBackup,   // And the actual generic backup
+				createRestore(passiveStr+"-"+genericBackupName, veleroNamespaceName).
+					backupName(genericBackupName).
+					phase(veleroapi.RestorePhaseFailedValidation). // FailedValidation phase
+					object,
+			},
+		},
+		{
+			name: "Resources with FailedValidation should trigger retry (line 816-817, 846-855)",
+			args: args{
+				ctx:          context.Background(),
+				resourceType: Resources,
+				restore: createACMRestore(passiveStr, veleroNamespaceName).
+					syncRestoreWithNewBackups(true).
+					phase(v1beta1.RestorePhaseEnabledError).
+					lastMessage("Velero restore failed validation").
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(resourcesBackupName).
+					veleroResourcesRestoreName(passiveStr + "-" + resourcesBackupName).object,
+			},
+			want:        true, // Should trigger retry for FailedValidation
+			setupScheme: true,
+			setupObjects: []client.Object{
+				&veleroNamespace,
+				&resourcesBackup,
+				createRestore(passiveStr+"-"+resourcesBackupName, veleroNamespaceName).
+					backupName(resourcesBackupName).
+					phase(veleroapi.RestorePhaseFailedValidation).
+					object,
+			},
+		},
+		{
+			name: "ManagedClusters with Failed should trigger retry (line 812-813, 856-864)",
+			args: args{
+				ctx:          context.Background(),
+				resourceType: ManagedClusters,
+				restore: createACMRestore(passiveStr, veleroNamespaceName).
+					syncRestoreWithNewBackups(true).
+					phase(v1beta1.RestorePhaseEnabledError).
+					lastMessage("Velero restore failed").
+					veleroManagedClustersBackupName(managedClustersBackupName).
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(latestBackup).
+					veleroManagedClustersRestoreName(passiveStr + "-" + managedClustersBackupName).object,
+			},
+			want:        true, // Should trigger retry
+			setupScheme: true,
+			setupObjects: []client.Object{
+				&veleroNamespace,
+				&managedClustersBackup,
+				createRestore(passiveStr+"-"+managedClustersBackupName, veleroNamespaceName).
+					backupName(managedClustersBackupName).
+					phase(veleroapi.RestorePhaseFailed).
+					object,
+			},
+		},
+		{
+			name: "New backup detected - different backup name (line 877-886)",
+			args: args{
+				ctx:          context.Background(),
+				resourceType: Credentials,
+				restore: createACMRestore(passiveStr, veleroNamespaceName).
+					syncRestoreWithNewBackups(true).
+					phase(v1beta1.RestorePhaseEnabledError).
+					lastMessage("Checking for new backups").
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(latestBackup).
+					veleroResourcesBackupName(latestBackup).
+					veleroCredentialsRestoreName("restore-old-backup-20260211210031").object, // Old backup
+			},
+			want:        true, // Should create restore for new backup (not a retry)
+			setupScheme: true,
+			setupObjects: []client.Object{
+				&veleroNamespace,
+				&backup, // This is a newer backup with different name
+				createRestore("restore-old-backup-20260211210031", veleroNamespaceName).
+					backupName("old-backup-20260211210031").
+					phase(veleroapi.RestorePhaseCompleted). // Old restore completed
+					object,
 			},
 		},
 	}
@@ -2053,7 +2187,6 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 	veleroNamespaceName := "default"
 	invalidBackupName := ""
 	backupName := "backup-name"
-	latestBackupStr := "latest"
 
 	backup := *createBackup(backupName, veleroNamespaceName).
 		phase(veleroapi.BackupPhaseCompleted).
@@ -2067,13 +2200,14 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 		veleroCredentialsBackupName(skipRestore).
 		veleroResourcesBackupName(backupName).object
 
+	// Test for line 763-771: empty backup name with ManagedClusters also empty/skip
 	restoreCredsInvalidBackupName := *createACMRestore("restore1", veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
 		restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
-		veleroManagedClustersBackupName(latestBackupStr).
+		veleroManagedClustersBackupName(skipRestore). // Skip so no override at line 753-759
 		veleroCredentialsBackupName(skipRestore).
-		veleroResourcesBackupName(invalidBackupName).object
+		veleroResourcesBackupName(invalidBackupName).object // Empty backup name
 
 	type args struct {
 		ctx                        context.Context
@@ -2083,6 +2217,7 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 		restoreOnlyManagedClusters bool
 		setupObjects               []client.Object
 	}
+
 	tests := []struct {
 		name string
 		args args
@@ -2100,7 +2235,7 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 			want: false, // has error, restore not found
 		},
 		{
-			name: "retrieveRestoreDetails has error, no backup name",
+			name: "retrieveRestoreDetails has error, no backup name (line 763-771)",
 			args: args{
 				ctx:                        context.Background(),
 				s:                          runtime.NewScheme(),
