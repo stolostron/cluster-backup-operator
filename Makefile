@@ -97,7 +97,7 @@ $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 test: manifests generate fmt vet lint envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./controllers/... -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./controllers/... ./pkg/... -coverprofile cover.out
 
 ##@ Build
 
