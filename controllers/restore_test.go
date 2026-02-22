@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -482,6 +483,496 @@ func Test_sendResults(t *testing.T) {
 	}
 }
 
+// Test_updateRestoreStatus tests the restore status update logic including
+// the conversion of RestorePhaseError to RestorePhaseEnabledError for sync restores.
+//
+// This test validates that when a restore with valid sync options encounters an error,
+// the status is set to RestorePhaseEnabledError instead of RestorePhaseError.
+//
+// Test Coverage:
+// - Error status for non-sync restore -> RestorePhaseError
+// - Error status for sync restore with valid options -> RestorePhaseEnabledError
+// - Error status for sync restore with invalid options -> RestorePhaseError
+// - Non-error status for sync restore -> unchanged
+// - Completion timestamp setting for finished states
+//
+// Business Logic:
+// Sync restores that encounter errors should be set to EnabledError state
+// so they can recover when new backups become available, unlike regular
+// restores which move to Error state (terminal).
+func Test_updateRestoreStatus(t *testing.T) {
+	skipRestore := "skip"
+	latestBackupStr := "latest"
+
+	tests := []struct {
+		name             string
+		inputStatus      v1beta1.RestorePhase
+		inputMessage     string
+		restore          *v1beta1.Restore
+		expectedPhase    v1beta1.RestorePhase
+		expectedMessage  string
+		expectCompletion bool
+		description      string
+	}{
+		{
+			name:         "Error status for non-sync restore becomes RestorePhaseError",
+			inputStatus:  v1beta1.RestorePhaseError,
+			inputMessage: "restore failed",
+			restore: createACMRestore("test-restore", "test-ns").
+				syncRestoreWithNewBackups(false).
+				veleroManagedClustersBackupName(latestBackupStr).
+				veleroCredentialsBackupName(latestBackupStr).
+				veleroResourcesBackupName(latestBackupStr).object,
+			expectedPhase:    v1beta1.RestorePhaseError,
+			expectedMessage:  "restore failed",
+			expectCompletion: true,
+			description:      "Non-sync restore error should be RestorePhaseError",
+		},
+		{
+			name:         "Error status for sync restore with valid options becomes RestorePhaseEnabledError",
+			inputStatus:  v1beta1.RestorePhaseError,
+			inputMessage: "velero restore failed",
+			restore: createACMRestore("test-restore", "test-ns").
+				syncRestoreWithNewBackups(true).
+				veleroManagedClustersBackupName(skipRestore).
+				veleroCredentialsBackupName(latestBackupStr).
+				veleroResourcesBackupName(latestBackupStr).object,
+			expectedPhase:    v1beta1.RestorePhaseEnabledError,
+			expectedMessage:  "velero restore failed",
+			expectCompletion: false, // EnabledError is not terminal - can recover on next sync
+			description:      "Sync restore error with valid options should be RestorePhaseEnabledError (line 180)",
+		},
+		{
+			name:         "Error status for sync restore with invalid options becomes RestorePhaseError",
+			inputStatus:  v1beta1.RestorePhaseError,
+			inputMessage: "invalid configuration",
+			restore: createACMRestore("test-restore", "test-ns").
+				syncRestoreWithNewBackups(true).
+				veleroManagedClustersBackupName(latestBackupStr). // invalid: should be skip or latest
+				veleroCredentialsBackupName(skipRestore).         // invalid: should be latest
+				veleroResourcesBackupName(skipRestore).object,    // invalid: should be latest
+			expectedPhase:    v1beta1.RestorePhaseError,
+			expectedMessage:  "invalid configuration",
+			expectCompletion: true,
+			description:      "Sync restore with invalid options should be RestorePhaseError",
+		},
+		{
+			name:         "Finished status remains unchanged",
+			inputStatus:  v1beta1.RestorePhaseFinished,
+			inputMessage: "restore completed successfully",
+			restore: createACMRestore("test-restore", "test-ns").
+				syncRestoreWithNewBackups(true).
+				veleroManagedClustersBackupName(skipRestore).
+				veleroCredentialsBackupName(latestBackupStr).
+				veleroResourcesBackupName(latestBackupStr).object,
+			expectedPhase:    v1beta1.RestorePhaseFinished,
+			expectedMessage:  "restore completed successfully",
+			expectCompletion: true,
+			description:      "Finished status should remain unchanged",
+		},
+		{
+			name:         "Running status remains unchanged and no completion timestamp",
+			inputStatus:  v1beta1.RestorePhaseRunning,
+			inputMessage: "restore in progress",
+			restore: createACMRestore("test-restore", "test-ns").
+				syncRestoreWithNewBackups(true).
+				veleroManagedClustersBackupName(skipRestore).
+				veleroCredentialsBackupName(latestBackupStr).
+				veleroResourcesBackupName(latestBackupStr).object,
+			expectedPhase:    v1beta1.RestorePhaseRunning,
+			expectedMessage:  "restore in progress",
+			expectCompletion: false,
+			description:      "Running status should not set completion timestamp",
+		},
+		{
+			name:         "FinishedWithErrors status sets completion timestamp",
+			inputStatus:  v1beta1.RestorePhaseFinishedWithErrors,
+			inputMessage: "restore completed with errors",
+			restore: createACMRestore("test-restore", "test-ns").
+				syncRestoreWithNewBackups(false).
+				veleroManagedClustersBackupName(latestBackupStr).
+				veleroCredentialsBackupName(latestBackupStr).
+				veleroResourcesBackupName(latestBackupStr).object,
+			expectedPhase:    v1beta1.RestorePhaseFinishedWithErrors,
+			expectedMessage:  "restore completed with errors",
+			expectCompletion: true,
+			description:      "FinishedWithErrors should set completion timestamp",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear any existing completion timestamp
+			tt.restore.Status.CompletionTimestamp = nil
+
+			// Call the function with a discard logger (no output needed for unit test)
+			updateRestoreStatus(logr.Discard(), tt.inputStatus, tt.inputMessage, tt.restore)
+
+			// Verify the phase
+			if tt.restore.Status.Phase != tt.expectedPhase {
+				t.Errorf("%s: updateRestoreStatus() phase = %v, want %v",
+					tt.description, tt.restore.Status.Phase, tt.expectedPhase)
+			}
+
+			// Verify the message
+			if tt.restore.Status.LastMessage != tt.expectedMessage {
+				t.Errorf("%s: updateRestoreStatus() message = %q, want %q",
+					tt.description, tt.restore.Status.LastMessage, tt.expectedMessage)
+			}
+
+			// Verify completion timestamp
+			if tt.expectCompletion {
+				if tt.restore.Status.CompletionTimestamp == nil {
+					t.Errorf("%s: updateRestoreStatus() expected completion timestamp to be set, but it's nil",
+						tt.description)
+				}
+			} else {
+				if tt.restore.Status.CompletionTimestamp != nil {
+					t.Errorf("%s: updateRestoreStatus() expected completion timestamp to be nil, but it's set",
+						tt.description)
+				}
+			}
+		})
+	}
+}
+
+// Test_getLatestVeleroRestores tests the filtering logic that ensures only
+// the latest/current velero restores are evaluated for restore status.
+//
+// This test validates the core filtering mechanism that prevents old or failed
+// velero restores from affecting the current restore status, which is critical
+// for sync mode where new velero restores are created periodically.
+//
+// Test Coverage:
+// - Nil velero restore list handling
+// - Empty velero restore list handling
+// - No restore names tracked in status (initial state) - returns all restores
+// - Single restore type tracked - filters correctly
+// - Multiple restore types tracked - filters all correctly
+// - All restore types tracked (managed clusters, resources, generic, credentials)
+// - Mix of tracked and untracked restores - only returns tracked ones
+// - Old/failed restores mixed with new ones - correctly filters old ones out
+//
+// Business Logic:
+// This filtering is essential for sync restore mode, where the operator creates
+// new velero restores when new backups are available. Without filtering, old
+// failed restores would continue to set the restore phase to error even after
+// new successful restores have been created.
+func Test_getLatestVeleroRestores(t *testing.T) {
+	type args struct {
+		veleroRestoreList *veleroapi.RestoreList
+		restore           *v1beta1.Restore
+	}
+	tests := []struct {
+		name         string
+		args         args
+		wantCount    int
+		wantRestores []string // names of expected restores in result
+		description  string
+	}{
+		{
+			name: "Nil velero restore list returns empty",
+			args: args{
+				veleroRestoreList: nil,
+				restore: createACMRestore("test-restore", "test-ns").
+					veleroCredentialsRestoreName("creds-restore").object,
+			},
+			wantCount:    0,
+			wantRestores: []string{},
+			description:  "Should return empty slice when velero restore list is nil",
+		},
+		{
+			name: "Empty velero restore list returns empty",
+			args: args{
+				veleroRestoreList: &veleroapi.RestoreList{
+					Items: []veleroapi.Restore{},
+				},
+				restore: createACMRestore("test-restore", "test-ns").
+					veleroCredentialsRestoreName("creds-restore").object,
+			},
+			wantCount:    0,
+			wantRestores: []string{},
+			description:  "Should return empty slice when velero restore list is empty",
+		},
+		{
+			name: "No restore names in status (initial state) returns all restores",
+			args: args{
+				veleroRestoreList: &veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "restore-1"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "restore-2"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "restore-3"},
+						},
+					},
+				},
+				restore: createACMRestore("test-restore", "test-ns").object,
+			},
+			wantCount:    3,
+			wantRestores: []string{"restore-1", "restore-2", "restore-3"},
+			description:  "Should return all restores when no restore names are tracked in status (initial creation)",
+		},
+		{
+			name: "Single restore type tracked filters correctly",
+			args: args{
+				veleroRestoreList: &veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "creds-restore"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "old-restore"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "another-old-restore"},
+						},
+					},
+				},
+				restore: createACMRestore("test-restore", "test-ns").
+					veleroCredentialsRestoreName("creds-restore").object,
+			},
+			wantCount:    1,
+			wantRestores: []string{"creds-restore"},
+			description:  "Should only return the tracked credentials restore",
+		},
+		{
+			name: "Multiple restore types tracked filters all correctly",
+			args: args{
+				veleroRestoreList: &veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "creds-restore"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "resources-restore"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "old-restore-1"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "old-restore-2"},
+						},
+					},
+				},
+				restore: createACMRestore("test-restore", "test-ns").
+					veleroCredentialsRestoreName("creds-restore").
+					veleroResourcesRestoreName("resources-restore").object,
+			},
+			wantCount:    2,
+			wantRestores: []string{"creds-restore", "resources-restore"},
+			description:  "Should return both tracked restores and ignore old ones",
+		},
+		{
+			name: "All restore types tracked - comprehensive filtering",
+			args: args{
+				veleroRestoreList: &veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "managed-clusters-restore"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "resources-restore"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "generic-restore"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "creds-restore"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "old-failed-restore"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "another-old-restore"},
+						},
+					},
+				},
+				restore: createACMRestore("test-restore", "test-ns").
+					veleroManagedClustersRestoreName("managed-clusters-restore").
+					veleroResourcesRestoreName("resources-restore").
+					veleroGenericResourcesRestoreName("generic-restore").
+					veleroCredentialsRestoreName("creds-restore").object,
+			},
+			wantCount: 4,
+			wantRestores: []string{
+				"managed-clusters-restore",
+				"resources-restore",
+				"generic-restore",
+				"creds-restore",
+			},
+			description: "Should return all 4 tracked restores and filter out 2 old ones",
+		},
+		{
+			name: "Sync mode scenario - new restores replace old failed ones",
+			args: args{
+				veleroRestoreList: &veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						// Old failed restores from previous sync cycle
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "creds-restore-old-failed"},
+							Status: veleroapi.RestoreStatus{
+								Phase: veleroapi.RestorePhaseFailed,
+							},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "resources-restore-old-failed"},
+							Status: veleroapi.RestoreStatus{
+								Phase: veleroapi.RestorePhaseFailed,
+							},
+						},
+						// New restores from current sync cycle
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "creds-restore-new"},
+							Status: veleroapi.RestoreStatus{
+								Phase: veleroapi.RestorePhaseCompleted,
+							},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "resources-restore-new"},
+							Status: veleroapi.RestoreStatus{
+								Phase: veleroapi.RestorePhaseCompleted,
+							},
+						},
+					},
+				},
+				restore: createACMRestore("test-restore", "test-ns").
+					veleroCredentialsRestoreName("creds-restore-new").
+					veleroResourcesRestoreName("resources-restore-new").object,
+			},
+			wantCount:    2,
+			wantRestores: []string{"creds-restore-new", "resources-restore-new"},
+			description:  "Should only return new successful restores, ignoring old failed ones",
+		},
+		{
+			name: "No matching restores - all are old",
+			args: args{
+				veleroRestoreList: &veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "old-restore-1"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "old-restore-2"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "old-restore-3"},
+						},
+					},
+				},
+				restore: createACMRestore("test-restore", "test-ns").
+					veleroCredentialsRestoreName("current-creds-restore").
+					veleroResourcesRestoreName("current-resources-restore").object,
+			},
+			wantCount:    0,
+			wantRestores: []string{},
+			description:  "Should return empty when none of the velero restores match the status",
+		},
+		{
+			name: "Empty string restore names in status are ignored",
+			args: args{
+				veleroRestoreList: &veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "creds-restore"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "other-restore"},
+						},
+					},
+				},
+				restore: createACMRestore("test-restore", "test-ns").
+					veleroCredentialsRestoreName("creds-restore").
+					veleroResourcesRestoreName("").        // empty string
+					veleroGenericResourcesRestoreName(""). // empty string
+					object,
+			},
+			wantCount:    1,
+			wantRestores: []string{"creds-restore"},
+			description:  "Should only track non-empty restore names",
+		},
+		{
+			name: "Includes both regular and -active suffix restores from same batch",
+			args: args{
+				veleroRestoreList: &veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "restore-acm-credentials-schedule-20260219150039"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "restore-acm-credentials-schedule-20260219150039-active"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "restore-acm-resources-generic-schedule-20260219150039-active"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "restore-acm-managed-clusters-schedule-20260219150039"},
+						},
+						{
+							ObjectMeta: metav1.ObjectMeta{Name: "restore-acm-credentials-schedule-old-failed"},
+						},
+					},
+				},
+				restore: createACMRestore("test-restore", "test-ns").
+					veleroCredentialsRestoreName("restore-acm-credentials-schedule-20260219150039").
+					veleroGenericResourcesRestoreName("restore-acm-resources-generic-schedule-20260219150039-active").
+					veleroManagedClustersRestoreName("restore-acm-managed-clusters-schedule-20260219150039").object,
+			},
+			wantCount: 4,
+			wantRestores: []string{
+				"restore-acm-credentials-schedule-20260219150039",
+				"restore-acm-credentials-schedule-20260219150039-active",
+				"restore-acm-resources-generic-schedule-20260219150039-active",
+				"restore-acm-managed-clusters-schedule-20260219150039",
+			},
+			description: "Should include both regular credentials and credentials-active from same batch",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getLatestVeleroRestores(tt.args.veleroRestoreList, tt.args.restore)
+
+			// Check count
+			if len(got) != tt.wantCount {
+				t.Errorf("%s: getLatestVeleroRestores() returned %d restores, want %d",
+					tt.description, len(got), tt.wantCount)
+			}
+
+			// Check that all expected restores are present
+			gotNames := make(map[string]bool)
+			for _, restore := range got {
+				gotNames[restore.Name] = true
+			}
+
+			for _, wantName := range tt.wantRestores {
+				if !gotNames[wantName] {
+					t.Errorf("%s: getLatestVeleroRestores() missing expected restore %q",
+						tt.description, wantName)
+				}
+			}
+
+			// Check that no unexpected restores are present
+			for gotName := range gotNames {
+				found := false
+				for _, wantName := range tt.wantRestores {
+					if gotName == wantName {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("%s: getLatestVeleroRestores() returned unexpected restore %q",
+						tt.description, gotName)
+				}
+			}
+		})
+	}
+}
+
 // Test_setRestorePhase tests restore phase management and state transitions.
 //
 // This test validates the logic that determines and sets appropriate restore phases
@@ -609,6 +1100,43 @@ func Test_setRestorePhase(t *testing.T) {
 				},
 			},
 			wantPhase:            v1beta1.RestorePhaseEnabled,
+			wantCleanupOnEnabled: true,
+		},
+		{
+			name: "Sync restore with failed velero restore should return RestorePhaseEnabledError",
+			args: args{
+				restore: createACMRestore("Restore", "velero-ns").
+					syncRestoreWithNewBackups(true).
+					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).
+					phase(v1beta1.RestorePhaseRunning).
+					veleroCredentialsRestoreName("failed-restore").object,
+
+				restoreList: &veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						{
+							TypeMeta: metav1.TypeMeta{
+								APIVersion: "velero/v1",
+								Kind:       "Restore",
+							},
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "failed-restore",
+								Namespace: "velero-ns",
+							},
+							Spec: veleroapi.RestoreSpec{
+								BackupName: "backup",
+							},
+							Status: veleroapi.RestoreStatus{
+								Phase: veleroapi.RestorePhaseFailed,
+							},
+						},
+					},
+				},
+			},
+			wantPhase:            v1beta1.RestorePhaseEnabledError,
 			wantCleanupOnEnabled: true,
 		},
 	}

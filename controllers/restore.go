@@ -174,6 +174,12 @@ func updateRestoreStatus(
 	logger.Info(msg)
 
 	restore.Status.Phase = status
+	if status == v1beta1.RestorePhaseError {
+		if isValid, _ := isValidSyncOptions(restore); isValid {
+			// if the restore is in enabled phase set the status to enabled error
+			restore.Status.Phase = v1beta1.RestorePhaseEnabledError
+		}
+	}
 	restore.Status.LastMessage = msg
 
 	// set CompletionTimestamp when restore is completed
@@ -184,6 +190,63 @@ func updateRestoreStatus(
 		rightNow := metav1.Now()
 		restore.Status.CompletionTimestamp = &rightNow
 	}
+}
+
+// getLatestVeleroRestores filters the velero restore list to return only the "latest" restores.
+// Latest restores are those currently tracked in the ACM Restore status, plus their related variants
+// (e.g., restores with -active suffix).
+//
+// This is important for sync mode where old failed restores should not affect the status.
+func getLatestVeleroRestores(
+	veleroRestoreList *veleroapi.RestoreList,
+	restore *v1beta1.Restore,
+) []veleroapi.Restore {
+	if veleroRestoreList == nil || len(veleroRestoreList.Items) == 0 {
+		return []veleroapi.Restore{}
+	}
+
+	// Build a set of current velero restore names from the status
+	currentRestoreNames := make(map[string]bool)
+	if restore.Status.VeleroManagedClustersRestoreName != "" {
+		currentRestoreNames[restore.Status.VeleroManagedClustersRestoreName] = true
+	}
+	if restore.Status.VeleroResourcesRestoreName != "" {
+		currentRestoreNames[restore.Status.VeleroResourcesRestoreName] = true
+	}
+	if restore.Status.VeleroGenericResourcesRestoreName != "" {
+		currentRestoreNames[restore.Status.VeleroGenericResourcesRestoreName] = true
+	}
+	if restore.Status.VeleroCredentialsRestoreName != "" {
+		currentRestoreNames[restore.Status.VeleroCredentialsRestoreName] = true
+	}
+
+	// If no current restores are tracked yet, return all restores
+	// (this happens during initial restore creation)
+	if len(currentRestoreNames) == 0 {
+		return veleroRestoreList.Items
+	}
+
+	// Build a set of base restore names (without -active suffix) to catch related restores
+	// For example, if status tracks "restore-creds-20260219-active", we want to also include
+	// "restore-creds-20260219" and vice versa
+	baseRestoreNames := make(map[string]bool)
+	for name := range currentRestoreNames {
+		// Remove -active suffix if present
+		baseName := strings.TrimSuffix(name, "-active")
+		baseRestoreNames[baseName] = true
+	}
+
+	// Filter to include restores that are currently tracked OR match a base name
+	latestRestores := make([]veleroapi.Restore, 0, len(veleroRestoreList.Items))
+	for _, veleroRestore := range veleroRestoreList.Items {
+		restoreName := veleroRestore.Name
+		baseNameWithoutActive := strings.TrimSuffix(restoreName, "-active")
+		if currentRestoreNames[restoreName] || baseRestoreNames[baseNameWithoutActive] {
+			latestRestores = append(latestRestores, veleroRestore)
+		}
+	}
+
+	return latestRestores
 }
 
 // set cumulative status of restores
@@ -212,10 +275,14 @@ func setRestorePhase(
 		return restore.Status.Phase, cleanupOnEnabled
 	}
 
+	// Filter to only check the latest velero restores (the ones currently tracked in status)
+	// This prevents old failed restores from affecting the status, especially for sync mode
+	latestRestores := getLatestVeleroRestores(veleroRestoreList, restore)
+
 	// get all velero restores and check status for each
 	partiallyFailed := false
-	for i := range veleroRestoreList.Items {
-		veleroRestore := veleroRestoreList.Items[i].DeepCopy()
+	for i := range latestRestores {
+		veleroRestore := latestRestores[i].DeepCopy()
 
 		if veleroRestore.Status.Phase == "" {
 			restore.Status.Phase = v1beta1.RestorePhaseUnknown
@@ -243,7 +310,19 @@ func setRestorePhase(
 		}
 		if veleroRestore.Status.Phase == veleroapi.RestorePhaseFailed ||
 			veleroRestore.Status.Phase == veleroapi.RestorePhaseFailedValidation {
-			restore.Status.Phase = v1beta1.RestorePhaseError
+
+			isValidSync, _ := isValidSyncOptions(restore)
+			// if this is a sync restore, set the status to enabled error
+			if restore.IsPhaseEnabled() ||
+				isValidSync {
+				restore.Status.Phase = v1beta1.RestorePhaseEnabledError
+				// Set cleanup flag to run cleanup for any completed restores
+				// even though some restores failed
+				cleanupOnEnabled = true
+			} else {
+				restore.Status.Phase = v1beta1.RestorePhaseError
+			}
+
 			restore.Status.LastMessage = fmt.Sprintf(
 				"Velero restore %s has failed validation or encountered errors",
 				veleroRestore.Name,
