@@ -28,12 +28,10 @@ import (
 	"time"
 
 	ocinfrav1 "github.com/openshift/api/config/v1"
-	"github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	backupv1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -144,7 +142,7 @@ func initVeleroScheduleTypes() *veleroapi.ScheduleList {
 func Test_parseCronSchedule(t *testing.T) {
 	type args struct {
 		ctx            context.Context
-		backupSchedule *v1beta1.BackupSchedule
+		backupSchedule *backupv1beta1.BackupSchedule
 	}
 	tests := []struct {
 		name string
@@ -183,12 +181,12 @@ func Test_parseCronSchedule(t *testing.T) {
 func Test_setSchedulePhase(t *testing.T) {
 	type args struct {
 		schedules      *veleroapi.ScheduleList
-		backupSchedule *v1beta1.BackupSchedule
+		backupSchedule *backupv1beta1.BackupSchedule
 	}
 	tests := []struct {
 		name string
 		args args
-		want v1beta1.SchedulePhase
+		want backupv1beta1.SchedulePhase
 	}{
 		{
 			name: "nil schedule",
@@ -196,7 +194,7 @@ func Test_setSchedulePhase(t *testing.T) {
 				schedules:      nil,
 				backupSchedule: createBackupSchedule("name", "ns").schedule("no matter").object,
 			},
-			want: v1beta1.SchedulePhaseNew,
+			want: backupv1beta1.SchedulePhaseNew,
 		},
 		{
 			name: "schedule in collision",
@@ -205,10 +203,10 @@ func Test_setSchedulePhase(t *testing.T) {
 				backupSchedule: createBackupSchedule(
 					"name",
 					"ns",
-				).phase(v1beta1.SchedulePhaseBackupCollision).
+				).phase(backupv1beta1.SchedulePhaseBackupCollision).
 					object,
 			},
-			want: v1beta1.SchedulePhaseBackupCollision,
+			want: backupv1beta1.SchedulePhaseBackupCollision,
 		},
 		{
 			name: "new",
@@ -217,7 +215,7 @@ func Test_setSchedulePhase(t *testing.T) {
 					metav1.Duration{Duration: time.Second * 5}),
 				backupSchedule: createBackupSchedule("name", "ns").schedule("0 8 * * *").object,
 			},
-			want: v1beta1.SchedulePhaseNew,
+			want: backupv1beta1.SchedulePhaseNew,
 		},
 		{
 			name: "failed validation",
@@ -229,7 +227,7 @@ func Test_setSchedulePhase(t *testing.T) {
 				),
 				backupSchedule: createBackupSchedule("name", "ns").schedule("0 8 * * *").object,
 			},
-			want: v1beta1.SchedulePhaseFailedValidation,
+			want: backupv1beta1.SchedulePhaseFailedValidation,
 		},
 		{
 			name: "enabled",
@@ -238,7 +236,7 @@ func Test_setSchedulePhase(t *testing.T) {
 					metav1.Duration{Duration: time.Second * 5}),
 				backupSchedule: createBackupSchedule("name", "ns").schedule("0 8 * * *").object,
 			},
-			want: v1beta1.SchedulePhaseEnabled,
+			want: backupv1beta1.SchedulePhaseEnabled,
 		},
 	}
 	for _, tt := range tests {
@@ -369,7 +367,7 @@ func Test_getSchedulesWithUpdatedResources(t *testing.T) {
 func Test_isScheduleSpecUpdated(t *testing.T) {
 	type args struct {
 		schedules      *veleroapi.ScheduleList
-		backupSchedule *v1beta1.BackupSchedule
+		backupSchedule *backupv1beta1.BackupSchedule
 	}
 	tests := []struct {
 		name string
@@ -493,7 +491,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 	type argsDelete struct {
 		ctx            context.Context
 		c              client.Client
-		backupSchedule *v1beta1.BackupSchedule
+		backupSchedule *backupv1beta1.BackupSchedule
 		schedules      *veleroapi.ScheduleList
 	}
 
@@ -575,7 +573,7 @@ func Test_deleteVeleroSchedules(t *testing.T) {
 	type argsUpdate struct {
 		ctx               context.Context
 		c                 client.Client
-		backupSchedule    *v1beta1.BackupSchedule
+		backupSchedule    *backupv1beta1.BackupSchedule
 		schedules         *veleroapi.ScheduleList
 		resourcesToBackup []string
 	}
@@ -761,7 +759,7 @@ func Test_isRestoreRunning(t *testing.T) {
 
 	latestRestore := "latest"
 	rhacmRestore := *createACMRestore("restore-name", veleroNamespaceName).
-		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+		cleanupBeforeRestore(backupv1beta1.CleanupTypeRestored).
 		veleroManagedClustersBackupName(latestRestore).
 		veleroCredentialsBackupName(latestRestore).
 		veleroResourcesBackupName(latestRestore).object
@@ -769,7 +767,7 @@ func Test_isRestoreRunning(t *testing.T) {
 	type args struct {
 		ctx            context.Context
 		c              client.Client
-		backupSchedule *v1beta1.BackupSchedule
+		backupSchedule *backupv1beta1.BackupSchedule
 	}
 	tests := []struct {
 		name string
@@ -889,7 +887,7 @@ func Test_createInitialBackupForSchedule(t *testing.T) {
 	type args struct {
 		ctx            context.Context
 		c              client.Client
-		backupSchedule *v1beta1.BackupSchedule
+		backupSchedule *backupv1beta1.BackupSchedule
 		veleroSchedule *veleroapi.Schedule
 	}
 	tests := []struct {
@@ -987,7 +985,7 @@ func Test_createFailedValidationResponse(t *testing.T) {
 	type args struct {
 		ctx            context.Context
 		c              client.Client
-		backupSchedule *v1beta1.BackupSchedule
+		backupSchedule *backupv1beta1.BackupSchedule
 		msg            string
 		requeue        bool
 	}
@@ -1157,7 +1155,7 @@ func Test_verifyMSAOptione(t *testing.T) {
 		schedule("0 */6 * * *").object
 
 	// create resources which should be found
-	_, err = resInterface.Namespace("default").Create(context.Background(), res_local_ns, v1.CreateOptions{})
+	_, err = resInterface.Namespace("default").Create(context.Background(), res_local_ns, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Error creating resource: %s", err.Error())
 	}
@@ -1171,7 +1169,7 @@ func Test_verifyMSAOptione(t *testing.T) {
 	type args struct {
 		ctx            context.Context
 		c              client.Client
-		backupSchedule *v1beta1.BackupSchedule
+		backupSchedule *backupv1beta1.BackupSchedule
 		mapper         *restmapper.DeferredDiscoveryRESTMapper
 	}
 	tests := []struct {

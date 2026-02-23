@@ -27,7 +27,6 @@ import (
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -305,7 +304,7 @@ func Test_sendResults(t *testing.T) {
 			args: args{
 				restore: createACMRestore("Restore", "veleroNamespace").
 					syncRestoreWithNewBackups(true).
-					restoreSyncInterval(v1.Duration{Duration: time.Minute * 15}).
+					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(skipRestore).
@@ -359,7 +358,7 @@ func Test_setRestorePhase(t *testing.T) {
 			args: args{
 				restore: createACMRestore("Restore", "veleroNamespace").
 					syncRestoreWithNewBackups(true).
-					restoreSyncInterval(v1.Duration{Duration: time.Minute * 15}).
+					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(skipRestore).
@@ -376,7 +375,7 @@ func Test_setRestorePhase(t *testing.T) {
 			args: args{
 				restore: createACMRestore("Restore", "veleroNamespace").
 					syncRestoreWithNewBackups(true).
-					restoreSyncInterval(v1.Duration{Duration: time.Minute * 15}).
+					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
 					veleroManagedClustersBackupName(latestBackupStr).
 					veleroCredentialsBackupName(skipRestore).
@@ -393,7 +392,7 @@ func Test_setRestorePhase(t *testing.T) {
 			args: args{
 				restore: createACMRestore("Restore", "veleroNamespace").
 					syncRestoreWithNewBackups(true).
-					restoreSyncInterval(v1.Duration{Duration: time.Minute * 15}).
+					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(latestBackupStr).
@@ -410,7 +409,7 @@ func Test_setRestorePhase(t *testing.T) {
 			args: args{
 				restore: createACMRestore("Restore", "veleroNamespace").
 					syncRestoreWithNewBackups(true).
-					restoreSyncInterval(v1.Duration{Duration: time.Minute * 15}).
+					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 15}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
 					veleroManagedClustersBackupName(skipRestore).
 					veleroCredentialsBackupName(latestBackupStr).
@@ -717,7 +716,7 @@ func Test_isNewBackupAvailable(t *testing.T) {
 
 	restoreCreds := *createACMRestore(passiveStr, veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
-		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+		restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 		veleroManagedClustersBackupName(skipRestore).
 		veleroCredentialsBackupName(latestBackup).
@@ -725,7 +724,7 @@ func Test_isNewBackupAvailable(t *testing.T) {
 
 	restoreCredSameBackup := *createACMRestore(passiveStr, veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
-		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+		restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 		veleroManagedClustersBackupName(skipRestore).
 		veleroCredentialsBackupName(latestBackup).
@@ -1002,7 +1001,7 @@ func Test_setOptionalProperties(t *testing.T) {
 				restype: Credentials,
 				acmRestore: createACMRestore("acm-restore", "ns").
 					syncRestoreWithNewBackups(true).
-					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName("skip").
 					veleroCredentialsBackupName(latestBackupStr).
@@ -1042,7 +1041,7 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 
 	restoreCredsNoError := *createACMRestore("restore1", veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
-		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+		restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 		veleroManagedClustersBackupName(skipRestore).
 		veleroCredentialsBackupName(skipRestore).
@@ -1050,7 +1049,7 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 
 	restoreCredsInvalidBackupName := *createACMRestore("restore1", veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
-		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+		restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 		veleroManagedClustersBackupName(latestBackupStr).
 		veleroCredentialsBackupName(skipRestore).
@@ -1149,7 +1148,7 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 
 	restore := *createACMRestore(restoreName, veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
-		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+		restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 		veleroManagedClustersBackupName(latestBackupStr).
 		veleroCredentialsBackupName(skipRestoreStr).
@@ -1157,7 +1156,7 @@ func Test_isOtherResourcesRunning(t *testing.T) {
 
 	restoreOther := *createACMRestore("other-"+restoreName, veleroNamespaceName).
 		syncRestoreWithNewBackups(true).
-		restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+		restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 		veleroManagedClustersBackupName(latestBackupStr).
 		veleroCredentialsBackupName(skipRestoreStr).
@@ -1330,7 +1329,7 @@ func Test_updateLabelsForActiveResources(t *testing.T) {
 				restype: Credentials,
 				acmRestore: createACMRestore("acm-restore", "ns").
 					syncRestoreWithNewBackups(true).
-					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestoreStr).
 					veleroCredentialsBackupName(latestBackupStr).
@@ -1459,7 +1458,7 @@ func Test_isPVCInitializationStep(t *testing.T) {
 			args: args{
 				acmRestore: createACMRestore("acm-restore", "ns").
 					syncRestoreWithNewBackups(true).
-					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(skipRestoreStr).
 					veleroCredentialsBackupName(latestBackupStr).
@@ -1492,7 +1491,7 @@ func Test_isPVCInitializationStep(t *testing.T) {
 			args: args{
 				acmRestore: createACMRestore("acm-restore", "ns").
 					syncRestoreWithNewBackups(true).
-					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(latestBackupStr).
 					veleroCredentialsBackupName(latestBackupStr).
@@ -1512,7 +1511,7 @@ func Test_isPVCInitializationStep(t *testing.T) {
 			args: args{
 				acmRestore: createACMRestore("acm-restore", "ns").
 					syncRestoreWithNewBackups(true).
-					restoreSyncInterval(v1.Duration{Duration: time.Minute * 20}).
+					restoreSyncInterval(metav1.Duration{Duration: time.Minute * 20}).
 					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
 					veleroManagedClustersBackupName(latestBackupStr).
 					veleroCredentialsBackupName(latestBackupStr).
