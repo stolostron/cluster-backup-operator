@@ -219,6 +219,23 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			r.Client.Status().Update(ctx, restore),
 			msg,
 		)
+	} else if restore.Status.Phase == v1beta1.RestorePhaseEnabledError &&
+		strings.Contains(restore.Status.LastMessage, "BackupStorageLocation") {
+		// if the restore is in enabled error phase, and the storage location is available,
+		// update status based on velero restore status
+		// This allows recovery from BSL errors by reprocessing the restore
+		// get the list of velero restore resources created by this acm restore
+		veleroRestoreList := veleroapi.RestoreList{}
+		if err := r.List(
+			ctx,
+			&veleroRestoreList,
+			client.InNamespace(restore.Namespace),
+			client.MatchingFields{restoreOwnerKey: restore.Name},
+		); err == nil {
+
+			setRestorePhase(&veleroRestoreList, restore)
+		}
+		return ctrl.Result{}, r.Client.Status().Update(ctx, restore)
 	}
 
 	if restore.Spec.CleanupBeforeRestore != v1beta1.CleanupTypeNone &&
@@ -235,12 +252,12 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	isValidSync, msg := isValidSyncOptions(restore)
-	sync := isValidSync && restore.Status.Phase == v1beta1.RestorePhaseEnabled
+	sync := isValidSync && restore.IsPhaseEnabled()
 	isPVCStep := isPVCInitializationStep(restore, veleroRestoreList)
 	initRestoreCond := len(veleroRestoreList.Items) == 0 || sync
 
 	if initRestoreCond || isPVCStep {
-		mustwait, waitmsg, err := r.initVeleroRestores(ctx, restore, sync)
+		mustwait, waitmsg, err := r.initVeleroRestores(ctx, restore, sync, &veleroRestoreList)
 		if err != nil {
 			msg := fmt.Sprintf(
 				"unable to initialize Velero restores for restore %s/%s: %v",
@@ -270,6 +287,10 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if !initRestoreCond {
 		r.cleanupOnRestore(ctx, restore)
 	}
+
+	// Always check for orphaned Velero restores (whose backing backups are gone)
+	// This handles cases where backups are deleted/expired from storage
+	r.cleanupOrphanedVeleroRestores(ctx, restore)
 
 	if restore.Spec.SyncRestoreWithNewBackups && !isValidSync {
 		restore.Status.LastMessage = restore.Status.LastMessage +
@@ -364,9 +385,101 @@ func (r *RestoreReconciler) cleanupOnRestore(
 	}
 }
 
+// cleanupOrphanedVeleroRestores deletes Velero restores whose backing Velero backups
+// are missing, being deleted, or in FailedValidation state.
+// It excludes "latest" restores (those currently tracked in ACM restore status) to avoid
+// triggering unwanted new restores.
+//
+//nolint:funlen
+func (r *RestoreReconciler) cleanupOrphanedVeleroRestores(
+	ctx context.Context,
+	acmRestore *v1beta1.Restore,
+) {
+	restoreLogger := log.FromContext(ctx)
+
+	// Get all Velero restores owned by this ACM restore
+	veleroRestoreList := veleroapi.RestoreList{}
+	if err := r.List(
+		ctx,
+		&veleroRestoreList,
+		client.InNamespace(acmRestore.Namespace),
+		client.MatchingFields{restoreOwnerKey: acmRestore.Name},
+	); err != nil {
+		restoreLogger.Error(err, "Failed to list Velero restores for orphan cleanup")
+		return
+	}
+
+	// Use getLatestVeleroRestores to identify which restores to KEEP
+	// This includes both tracked restores and their -active variants
+	latestRestores := getLatestVeleroRestores(&veleroRestoreList, acmRestore)
+	latestRestoreNames := make(map[string]bool)
+	for i := range latestRestores {
+		latestRestoreNames[latestRestores[i].Name] = true
+	}
+
+	// Check each restore to see if its backing backup still exists
+	for i := range veleroRestoreList.Items {
+		restore := &veleroRestoreList.Items[i]
+
+		// Skip if this is a current/latest restore - we don't want to delete it
+		if latestRestoreNames[restore.Name] {
+			continue
+		}
+
+		// Skip if restore is already being deleted
+		if !restore.DeletionTimestamp.IsZero() {
+			continue
+		}
+
+		// Skip if no backup name specified
+		if restore.Spec.BackupName == "" {
+			continue
+		}
+
+		// Check if the backup exists
+		backup := &veleroapi.Backup{}
+		backupKey := types.NamespacedName{
+			Name:      restore.Spec.BackupName,
+			Namespace: restore.Namespace,
+		}
+
+		err := r.Get(ctx, backupKey, backup)
+		if err != nil {
+			if k8serr.IsNotFound(err) {
+				// Backup doesn't exist - delete the orphaned restore
+				restoreLogger.Info(
+					"Deleting orphaned Velero restore - backing backup not found",
+					"restore", restore.Name,
+					"backup", restore.Spec.BackupName,
+				)
+				if delErr := r.Delete(ctx, restore); delErr != nil && !k8serr.IsNotFound(delErr) {
+					restoreLogger.Error(delErr, "Failed to delete orphaned restore", "restore", restore.Name)
+				}
+			}
+			// Other errors are ignored - we'll check again on next reconcile
+			continue
+		}
+
+		// Check if backup is being deleted or in an invalid state
+		if !backup.DeletionTimestamp.IsZero() ||
+			backup.Status.Phase == veleroapi.BackupPhaseDeleting ||
+			backup.Status.Phase == veleroapi.BackupPhaseFailedValidation {
+			restoreLogger.Info(
+				"Deleting orphaned Velero restore - backing backup is being deleted or invalid",
+				"restore", restore.Name,
+				"backup", backup.Name,
+				"backupPhase", backup.Status.Phase,
+			)
+			if delErr := r.Delete(ctx, restore); delErr != nil && !k8serr.IsNotFound(delErr) {
+				restoreLogger.Error(delErr, "Failed to delete restore", "restore", restore.Name)
+			}
+		}
+	}
+}
+
 func sendResult(restore *v1beta1.Restore, err error) (ctrl.Result, error) {
 	if restore.Spec.SyncRestoreWithNewBackups &&
-		restore.Status.Phase == v1beta1.RestorePhaseEnabled {
+		restore.IsPhaseEnabled() {
 
 		tryAgain := restoreSyncInterval
 		if restore.Spec.RestoreSyncInterval.Duration != 0 {
@@ -489,6 +602,36 @@ func (backups mostRecent) Less(i, j int) bool {
 	return backups[j].Status.StartTimestamp.Before(backups[i].Status.StartTimestamp)
 }
 
+// areTrackedRestoresMissing checks if any tracked Velero restore is missing from the cluster
+func areTrackedRestoresMissing(
+	restore *v1beta1.Restore,
+	veleroRestoreList *veleroapi.RestoreList,
+) bool {
+	if veleroRestoreList == nil {
+		return true
+	}
+
+	existingRestores := make(map[string]bool)
+	for i := range veleroRestoreList.Items {
+		existingRestores[veleroRestoreList.Items[i].Name] = true
+	}
+
+	trackedNames := []string{
+		restore.Status.VeleroManagedClustersRestoreName,
+		restore.Status.VeleroResourcesRestoreName,
+		restore.Status.VeleroGenericResourcesRestoreName,
+		restore.Status.VeleroCredentialsRestoreName,
+	}
+
+	for _, name := range trackedNames {
+		if name != "" && !existingRestores[name] {
+			return true
+		}
+	}
+
+	return false
+}
+
 // create velero.io.Restore resource for each resource type
 //
 //nolint:funlen
@@ -496,13 +639,16 @@ func (r *RestoreReconciler) initVeleroRestores(
 	ctx context.Context,
 	restore *v1beta1.Restore,
 	sync bool,
+	veleroRestoreList *veleroapi.RestoreList,
 ) (bool, string, error) {
 	restoreLogger := log.FromContext(ctx)
 
 	restoreOnlyManagedClusters := false
 	if sync {
-		if isNewBackupAvailable(ctx, r.Client, restore, Resources) ||
-			isNewBackupAvailable(ctx, r.Client, restore, Credentials) {
+		newBackupsAvailable := isNewBackupAvailable(ctx, r.Client, restore, Resources) ||
+			isNewBackupAvailable(ctx, r.Client, restore, Credentials)
+
+		if newBackupsAvailable {
 			restoreLogger.Info(
 				"new backups available to sync with for this restore",
 				"name", restore.Name,
@@ -514,7 +660,16 @@ func (r *RestoreReconciler) initVeleroRestores(
 			// allow that now
 			restoreOnlyManagedClusters = true
 		} else {
-			return false, "", nil
+			// check if any tracked restore is missing from the cluster
+			trackedRestoresMissing := areTrackedRestoresMissing(restore, veleroRestoreList)
+			if !trackedRestoresMissing {
+				return false, "", nil
+			}
+			restoreLogger.Info(
+				"tracked Velero restore(s) missing, will recreate",
+				"name", restore.Name,
+				"namespace", restore.Namespace,
+			)
 		}
 	}
 

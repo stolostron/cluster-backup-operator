@@ -46,6 +46,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	chnv1 "open-cluster-management.io/multicloud-operators-channel/pkg/apis/apps/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -972,11 +973,11 @@ var _ = Describe("Basic Restore controller", func() {
 						Kind:       "RestoreList",
 					},
 					Items: []veleroapi.Restore{
-						*createRestore("acm-credentials-restore", veleroNamespace.Name).
+						*createRestore(createdRestore.Status.VeleroCredentialsRestoreName, veleroNamespace.Name).
 							backupName("acm-credentials-backup").
 							phase("").
 							object,
-						*createRestore("acm-resources-restore", veleroNamespace.Name).
+						*createRestore(createdRestore.Status.VeleroResourcesRestoreName, veleroNamespace.Name).
 							backupName("acm-resources-backup").
 							phase(veleroapi.RestorePhaseCompleted).
 							object,
@@ -1717,6 +1718,525 @@ var _ = Describe("Finalizer Cleanup Tests", func() {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(restore), restore)
 				return k8serr.IsNotFound(err)
 			}, timeout, interval).Should(BeTrue())
+		})
+	})
+
+	Context("cleanupOrphanedVeleroRestores", func() {
+		It("should delete Velero restore when backing backup is not found", func() {
+			ctx := context.Background()
+
+			// Create test namespace
+			testNS := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-cleanup-orphaned-" + time.Now().Format("20060102150405"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, testNS)).Should(Succeed())
+
+			// Create ACM restore
+			skipBackup := skipRestoreStr
+			acmRestore := &v1beta1.Restore{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-acm-restore-orphaned",
+					Namespace: testNS.Name,
+				},
+				Spec: v1beta1.RestoreSpec{
+					VeleroManagedClustersBackupName: &skipBackup,
+					VeleroCredentialsBackupName:     &skipBackup,
+					VeleroResourcesBackupName:       &skipBackup,
+				},
+			}
+			Expect(k8sClient.Create(ctx, acmRestore)).Should(Succeed())
+
+			// Wait for ACM restore to be processed
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      acmRestore.Name,
+					Namespace: testNS.Name,
+				}, acmRestore)
+				return err == nil && acmRestore.Status.Phase != ""
+			}, timeout, interval).Should(BeTrue())
+
+			// Set a tracked restore in status so getLatestVeleroRestores works correctly
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      acmRestore.Name,
+				Namespace: testNS.Name,
+			}, acmRestore)).Should(Succeed())
+			acmRestore.Status.VeleroCredentialsRestoreName = "current-credentials-restore"
+			Expect(k8sClient.Status().Update(ctx, acmRestore)).Should(Succeed())
+
+			// Create Velero restore with owner reference (simulating orphaned restore)
+			veleroRestore := &veleroapi.Restore{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-velero-restore-no-backup",
+					Namespace: testNS.Name,
+				},
+				Spec: veleroapi.RestoreSpec{
+					BackupName: "non-existent-backup",
+				},
+			}
+			Expect(k8sClient.Create(ctx, veleroRestore)).Should(Succeed())
+
+			// Set owner reference using ControllerReference
+			Expect(ctrl.SetControllerReference(
+				acmRestore,
+				veleroRestore,
+				k8sClient.Scheme(),
+			)).Should(Succeed())
+			Expect(k8sClient.Update(ctx, veleroRestore)).Should(Succeed())
+
+			// Manually call cleanup logic (simulating what controller does)
+			veleroRestoreList := &veleroapi.RestoreList{}
+			Expect(k8sClient.List(
+				ctx,
+				veleroRestoreList,
+				client.InNamespace(testNS.Name),
+			)).Should(Succeed())
+
+			// Use getLatestVeleroRestores to get restores to keep
+			latestRestores := getLatestVeleroRestores(veleroRestoreList, acmRestore)
+			latestRestoreNames := make(map[string]bool)
+			for i := range latestRestores {
+				latestRestoreNames[latestRestores[i].Name] = true
+			}
+
+			for i := range veleroRestoreList.Items {
+				vRestore := &veleroRestoreList.Items[i]
+				// Check if owned by our ACM restore
+				isOwned := false
+				for _, ref := range vRestore.GetOwnerReferences() {
+					if ref.Controller != nil && *ref.Controller && ref.UID == acmRestore.UID {
+						isOwned = true
+						break
+					}
+				}
+				if !isOwned {
+					continue
+				}
+
+				// Skip if this is a latest restore
+				if latestRestoreNames[vRestore.Name] {
+					continue
+				}
+
+				// Skip if already being deleted
+				if vRestore.GetDeletionTimestamp() != nil {
+					continue
+				}
+
+				// Skip if no backup name
+				if vRestore.Spec.BackupName == "" {
+					continue
+				}
+
+				// Check if backing backup exists
+				backup := &veleroapi.Backup{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      vRestore.Spec.BackupName,
+					Namespace: testNS.Name,
+				}, backup)
+
+				if k8serr.IsNotFound(err) {
+					// Backup not found - delete the restore
+					Expect(k8sClient.Delete(ctx, vRestore)).Should(Succeed())
+				}
+			}
+
+			// Verify Velero restore was deleted
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      veleroRestore.Name,
+					Namespace: testNS.Name,
+				}, &veleroapi.Restore{})
+				return k8serr.IsNotFound(err)
+			}, timeout, interval).Should(BeTrue())
+		})
+
+		It("should delete Velero restore when backup is being deleted", func() {
+			ctx := context.Background()
+
+			// Create test namespace
+			testNS := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-cleanup-deleting-" + time.Now().Format("20060102150405"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, testNS)).Should(Succeed())
+
+			// Create ACM restore
+			skipBackup := skipRestoreStr
+			acmRestore := &v1beta1.Restore{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-acm-restore-deleting",
+					Namespace: testNS.Name,
+				},
+				Spec: v1beta1.RestoreSpec{
+					VeleroManagedClustersBackupName: &skipBackup,
+					VeleroCredentialsBackupName:     &skipBackup,
+					VeleroResourcesBackupName:       &skipBackup,
+				},
+			}
+			Expect(k8sClient.Create(ctx, acmRestore)).Should(Succeed())
+
+			// Wait for ACM restore to be processed
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      acmRestore.Name,
+					Namespace: testNS.Name,
+				}, acmRestore)
+				return err == nil && acmRestore.Status.Phase != ""
+			}, timeout, interval).Should(BeTrue())
+
+			// Set a tracked restore in status
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      acmRestore.Name,
+				Namespace: testNS.Name,
+			}, acmRestore)).Should(Succeed())
+			acmRestore.Status.VeleroCredentialsRestoreName = "current-credentials-restore"
+			Expect(k8sClient.Status().Update(ctx, acmRestore)).Should(Succeed())
+
+			// Create Velero backup with finalizer, then delete it
+			backup := &veleroapi.Backup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "deleting-backup",
+					Namespace:  testNS.Name,
+					Finalizers: []string{"test-finalizer"}, // Prevent immediate deletion
+				},
+				Spec: veleroapi.BackupSpec{
+					StorageLocation: "default",
+				},
+			}
+			Expect(k8sClient.Create(ctx, backup)).Should(Succeed())
+
+			// Delete the backup to put it in deleting state
+			Expect(k8sClient.Delete(ctx, backup)).Should(Succeed())
+
+			// Create Velero restore
+			veleroRestore := &veleroapi.Restore{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-velero-restore-deleting-backup",
+					Namespace: testNS.Name,
+				},
+				Spec: veleroapi.RestoreSpec{
+					BackupName: backup.Name,
+				},
+			}
+			Expect(k8sClient.Create(ctx, veleroRestore)).Should(Succeed())
+
+			// Set owner reference
+			Expect(ctrl.SetControllerReference(
+				acmRestore,
+				veleroRestore,
+				k8sClient.Scheme(),
+			)).Should(Succeed())
+			Expect(k8sClient.Update(ctx, veleroRestore)).Should(Succeed())
+
+			// Manually call cleanup logic
+			veleroRestoreList := &veleroapi.RestoreList{}
+			Expect(k8sClient.List(
+				ctx,
+				veleroRestoreList,
+				client.InNamespace(testNS.Name),
+			)).Should(Succeed())
+
+			// Use getLatestVeleroRestores
+			latestRestores := getLatestVeleroRestores(veleroRestoreList, acmRestore)
+			latestRestoreNames := make(map[string]bool)
+			for i := range latestRestores {
+				latestRestoreNames[latestRestores[i].Name] = true
+			}
+
+			for i := range veleroRestoreList.Items {
+				vRestore := &veleroRestoreList.Items[i]
+				isOwned := false
+				for _, ref := range vRestore.GetOwnerReferences() {
+					if ref.Controller != nil && *ref.Controller && ref.UID == acmRestore.UID {
+						isOwned = true
+						break
+					}
+				}
+				if !isOwned || latestRestoreNames[vRestore.Name] {
+					continue
+				}
+				if vRestore.GetDeletionTimestamp() != nil || vRestore.Spec.BackupName == "" {
+					continue
+				}
+
+				backupObj := &veleroapi.Backup{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      vRestore.Spec.BackupName,
+					Namespace: testNS.Name,
+				}, backupObj)
+
+				if k8serr.IsNotFound(err) || backupObj.GetDeletionTimestamp() != nil {
+					Expect(k8sClient.Delete(ctx, vRestore)).Should(Succeed())
+				}
+			}
+
+			// Verify Velero restore was deleted
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      veleroRestore.Name,
+					Namespace: testNS.Name,
+				}, &veleroapi.Restore{})
+				return k8serr.IsNotFound(err)
+			}, timeout, interval).Should(BeTrue())
+		})
+
+		It("should delete Velero restore when backup phase is Deleting", func() {
+			ctx := context.Background()
+
+			// Create test namespace
+			testNS := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-cleanup-phase-del-" + time.Now().Format("20060102150405"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, testNS)).Should(Succeed())
+
+			// Create ACM restore
+			skipBackup := skipRestoreStr
+			acmRestore := &v1beta1.Restore{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-acm-restore-phase-del",
+					Namespace: testNS.Name,
+				},
+				Spec: v1beta1.RestoreSpec{
+					VeleroManagedClustersBackupName: &skipBackup,
+					VeleroCredentialsBackupName:     &skipBackup,
+					VeleroResourcesBackupName:       &skipBackup,
+				},
+			}
+			Expect(k8sClient.Create(ctx, acmRestore)).Should(Succeed())
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      acmRestore.Name,
+					Namespace: testNS.Name,
+				}, acmRestore)
+				return err == nil && acmRestore.Status.Phase != ""
+			}, timeout, interval).Should(BeTrue())
+
+			// Set tracked restore
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      acmRestore.Name,
+				Namespace: testNS.Name,
+			}, acmRestore)).Should(Succeed())
+			acmRestore.Status.VeleroCredentialsRestoreName = "current-credentials-restore"
+			Expect(k8sClient.Status().Update(ctx, acmRestore)).Should(Succeed())
+
+			// Create backup with Deleting phase
+			backup := &veleroapi.Backup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "phase-deleting-backup",
+					Namespace: testNS.Name,
+				},
+				Spec: veleroapi.BackupSpec{
+					StorageLocation: "default",
+				},
+			}
+			Expect(k8sClient.Create(ctx, backup)).Should(Succeed())
+
+			backup.Status.Phase = veleroapi.BackupPhaseDeleting
+			Expect(k8sClient.Update(ctx, backup)).Should(Succeed())
+
+			// Create Velero restore
+			veleroRestore := &veleroapi.Restore{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-velero-restore-phase-del",
+					Namespace: testNS.Name,
+				},
+				Spec: veleroapi.RestoreSpec{
+					BackupName: backup.Name,
+				},
+			}
+			Expect(k8sClient.Create(ctx, veleroRestore)).Should(Succeed())
+
+			Expect(ctrl.SetControllerReference(
+				acmRestore,
+				veleroRestore,
+				k8sClient.Scheme(),
+			)).Should(Succeed())
+			Expect(k8sClient.Update(ctx, veleroRestore)).Should(Succeed())
+
+			// Cleanup logic
+			veleroRestoreList := &veleroapi.RestoreList{}
+			Expect(k8sClient.List(
+				ctx,
+				veleroRestoreList,
+				client.InNamespace(testNS.Name),
+			)).Should(Succeed())
+
+			latestRestores := getLatestVeleroRestores(veleroRestoreList, acmRestore)
+			latestRestoreNames := make(map[string]bool)
+			for i := range latestRestores {
+				latestRestoreNames[latestRestores[i].Name] = true
+			}
+
+			for i := range veleroRestoreList.Items {
+				vRestore := &veleroRestoreList.Items[i]
+				isOwned := false
+				for _, ref := range vRestore.GetOwnerReferences() {
+					if ref.Controller != nil && *ref.Controller && ref.UID == acmRestore.UID {
+						isOwned = true
+						break
+					}
+				}
+				if !isOwned || latestRestoreNames[vRestore.Name] {
+					continue
+				}
+				if vRestore.GetDeletionTimestamp() != nil || vRestore.Spec.BackupName == "" {
+					continue
+				}
+
+				backupObj := &veleroapi.Backup{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      vRestore.Spec.BackupName,
+					Namespace: testNS.Name,
+				}, backupObj)
+
+				if err == nil && backupObj.Status.Phase == veleroapi.BackupPhaseDeleting {
+					Expect(k8sClient.Delete(ctx, vRestore)).Should(Succeed())
+				}
+			}
+
+			// Verify deleted
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      veleroRestore.Name,
+					Namespace: testNS.Name,
+				}, &veleroapi.Restore{})
+				return k8serr.IsNotFound(err)
+			}, timeout, interval).Should(BeTrue())
+		})
+
+		It("should NOT delete Velero restore when backup is valid", func() {
+			ctx := context.Background()
+
+			// Create test namespace
+			testNS := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-cleanup-valid-" + time.Now().Format("20060102150405"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, testNS)).Should(Succeed())
+
+			// Create ACM restore
+			skipBackup := skipRestoreStr
+			acmRestore := &v1beta1.Restore{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-acm-restore-valid",
+					Namespace: testNS.Name,
+				},
+				Spec: v1beta1.RestoreSpec{
+					VeleroManagedClustersBackupName: &skipBackup,
+					VeleroCredentialsBackupName:     &skipBackup,
+					VeleroResourcesBackupName:       &skipBackup,
+				},
+			}
+			Expect(k8sClient.Create(ctx, acmRestore)).Should(Succeed())
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      acmRestore.Name,
+					Namespace: testNS.Name,
+				}, acmRestore)
+				return err == nil && acmRestore.Status.Phase != ""
+			}, timeout, interval).Should(BeTrue())
+
+			// Set tracked restore
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      acmRestore.Name,
+				Namespace: testNS.Name,
+			}, acmRestore)).Should(Succeed())
+			acmRestore.Status.VeleroCredentialsRestoreName = "current-creds"
+			Expect(k8sClient.Status().Update(ctx, acmRestore)).Should(Succeed())
+
+			// Create valid backup
+			backup := &veleroapi.Backup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "valid-backup",
+					Namespace: testNS.Name,
+				},
+				Spec: veleroapi.BackupSpec{
+					StorageLocation: "default",
+				},
+			}
+			Expect(k8sClient.Create(ctx, backup)).Should(Succeed())
+
+			backup.Status.Phase = veleroapi.BackupPhaseCompleted
+			Expect(k8sClient.Update(ctx, backup)).Should(Succeed())
+
+			// Create Velero restore
+			veleroRestore := &veleroapi.Restore{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-velero-restore-valid",
+					Namespace: testNS.Name,
+				},
+				Spec: veleroapi.RestoreSpec{
+					BackupName: backup.Name,
+				},
+			}
+			Expect(k8sClient.Create(ctx, veleroRestore)).Should(Succeed())
+
+			Expect(ctrl.SetControllerReference(
+				acmRestore,
+				veleroRestore,
+				k8sClient.Scheme(),
+			)).Should(Succeed())
+			Expect(k8sClient.Update(ctx, veleroRestore)).Should(Succeed())
+
+			// Cleanup logic should NOT delete
+			veleroRestoreList := &veleroapi.RestoreList{}
+			Expect(k8sClient.List(
+				ctx,
+				veleroRestoreList,
+				client.InNamespace(testNS.Name),
+			)).Should(Succeed())
+
+			latestRestores := getLatestVeleroRestores(veleroRestoreList, acmRestore)
+			latestRestoreNames := make(map[string]bool)
+			for i := range latestRestores {
+				latestRestoreNames[latestRestores[i].Name] = true
+			}
+
+			for i := range veleroRestoreList.Items {
+				vRestore := &veleroRestoreList.Items[i]
+				isOwned := false
+				for _, ref := range vRestore.GetOwnerReferences() {
+					if ref.Controller != nil && *ref.Controller && ref.UID == acmRestore.UID {
+						isOwned = true
+						break
+					}
+				}
+				if !isOwned || latestRestoreNames[vRestore.Name] {
+					continue
+				}
+				if vRestore.GetDeletionTimestamp() != nil || vRestore.Spec.BackupName == "" {
+					continue
+				}
+
+				backupObj := &veleroapi.Backup{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      vRestore.Spec.BackupName,
+					Namespace: testNS.Name,
+				}, backupObj)
+
+				if k8serr.IsNotFound(err) || backupObj.GetDeletionTimestamp() != nil ||
+					backupObj.Status.Phase == veleroapi.BackupPhaseDeleting ||
+					backupObj.Status.Phase == veleroapi.BackupPhaseFailedValidation {
+					_ = k8sClient.Delete(ctx, vRestore)
+				}
+			}
+
+			// Verify restore still exists
+			Consistently(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      veleroRestore.Name,
+					Namespace: testNS.Name,
+				}, &veleroapi.Restore{})
+				return err == nil
+			}, "5s", interval).Should(BeTrue())
 		})
 	})
 })

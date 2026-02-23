@@ -17,6 +17,8 @@ limitations under the License.
 package v1beta1
 
 import (
+	"strings"
+
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -37,6 +39,9 @@ const (
 	RestorePhaseError = "Error"
 	// RestorePhaseUnknown means the restore is in unknown phase
 	RestorePhaseUnknown = "Unknown"
+	// RestorePhaseEnabledError means the restore is in enabled phase
+	// but encountered errors during sync (used in sync mode when errors occur)
+	RestorePhaseEnabledError = "EnabledWithErrors"
 	// RestorePhaseEnabled means the restore is enabled and will continue syncing with new backups
 	RestorePhaseEnabled = "Enabled"
 )
@@ -232,6 +237,12 @@ type RestoreList struct {
 	metav1.TypeMeta `          json:",inline"`
 	metav1.ListMeta `          json:"metadata,omitempty"`
 	Items           []Restore `json:"items"`
+}
+
+// IsPhaseEnabled returns true if the restore phase is Enabled or starts with Enabled
+// (e.g., Enabled, EnabledWithErrors)
+func (r *Restore) IsPhaseEnabled() bool {
+	return strings.HasPrefix(string(r.Status.Phase), RestorePhaseEnabled)
 }
 
 func init() {
