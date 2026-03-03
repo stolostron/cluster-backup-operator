@@ -1,0 +1,32 @@
+# Following similar steps as for adding labels to issues
+name: Auto Label Release Branch PRs
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+jobs:
+  label-release-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Create label if does not exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          REPO: ${{ github.repository }}
+          LABEL_COLOR: "d166ff" # pinkish purple color
+
+        run: |
+          gh label create $BASE_BRANCH --repo $REPO --color $LABEL_COLOR --force
+
+      - name: Label PR with base branch name
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr edit $PR_NUM --repo $REPO --add-label $BASE_BRANCH
