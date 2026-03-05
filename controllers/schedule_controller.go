@@ -49,10 +49,9 @@ const (
 	ManagedClusters ResourceType = "managedClusters"
 	// Credentials resource type for user created credentials
 	Credentials ResourceType = "credentials"
-	// CredentialsHive resource type for hive secrets
-	CredentialsHive ResourceType = "credentialsHive"
-	// CredentialsCluster Credentials resource type for managed cluster secrets
-	CredentialsCluster ResourceType = "credentialsCluster"
+	// CredentialsActive resource type for active secrets
+	CredentialsActive      ResourceType = "credentialsActive"
+	ResourcesGenericActive ResourceType = "resourcesGenericActive"
 	// Resources related to applications and policies
 	Resources ResourceType = "resources"
 	// schedule used by the backup Policy to validate that there are active backups running

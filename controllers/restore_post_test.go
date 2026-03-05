@@ -441,9 +441,22 @@ func Test_postRestoreActivation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Create managedClusters in the client for this test case
+			for i := range tt.args.managedClusters {
+				cluster := tt.args.managedClusters[i]
+				// Try to create, ignore if already exists
+				_ = k8sClient1.Create(tt.args.ctx, &cluster)
+			}
+
 			if got, _ := postRestoreActivation(tt.args.ctx, k8sClient1,
 				tt.args.secrets, tt.args.managedClusters, "local-cluster", tt.args.currentTime); len(got) != len(tt.want) {
 				t.Errorf("postRestoreActivation() returns = %v, want %v", got, tt.want)
+			}
+
+			// Clean up managedClusters after test
+			for i := range tt.args.managedClusters {
+				cluster := tt.args.managedClusters[i]
+				_ = k8sClient1.Delete(tt.args.ctx, &cluster)
 			}
 		})
 	}
@@ -1787,7 +1800,7 @@ func Test_deleteSecretsWithLabelSelector(t *testing.T) {
 // secrets based on their relationship to specific backup types and timestamps.
 //
 // Test Coverage:
-// - Backup type filtering (Credentials, CredentialsHive, etc.)
+// - Backup type filtering (Credentials, CredentialsActive, etc.)
 // - Timestamp-based backup correlation and matching
 // - Secret preservation based on backup proximity and relevance
 // - Complex backup relationship scenarios with multiple timestamps
@@ -1835,41 +1848,41 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 	aFewSecondsAgoTime := aFewSecondsAgo.Format("20060102150405")
 
 	secretKeepCloseToCredsBackup := *createSecret("secret-keep-close-to-creds-backup", namespace, map[string]string{
-		backupCredsHiveLabel:  "hive",
-		BackupNameVeleroLabel: "acm-credentials-hive-schedule-" + aFewSecondsAgoTime,
-	}, nil, nil) // matches backup label from hive backup and it has the hive backup; keep it
+		backupCredsHiveLabel:  "creds",
+		BackupNameVeleroLabel: "acm-credentials-schedule-" + aFewSecondsAgoTime,
+	}, nil, nil) // matches backup label from credentials backup and it has the creds backup; keep it
 
 	secretKeepIgnoredCloseToCredsBackup := *createSecret("secret-keep-ignored-close-to-creds-backup", namespace,
 		map[string]string{
-			BackupNameVeleroLabel: "acm-credentials-hive-schedule-" + aFewSecondsAgoTime,
-		}, nil, nil) // matches backup label from hive backup and it DOES NOT have the hive backup; keep it, ignore it
+			BackupNameVeleroLabel: "acm-credentials-schedule-" + aFewSecondsAgoTime,
+		}, nil, nil) // matches backup label from credentials backup and it DOES NOT have the creds backup; keep it, ignore it
 
 	secretKeep2 := *createSecret("aws-creds-keep2", namespace, map[string]string{
 		"velero.io/backup-name-dummy": "name2",
 	}, nil, nil) // no backup label
 
 	deleteSecretFromOldBackup := *createSecret("delete-secret-from-old-backup", namespace, map[string]string{
-		backupCredsHiveLabel:  "hive",
-		BackupNameVeleroLabel: "acm-credentials-hive-schedule-" + tenHourAgoTime,
+		backupCredsHiveLabel:  "creds",
+		BackupNameVeleroLabel: "acm-credentials-schedule-" + tenHourAgoTime,
 	}, nil, nil) // from the old backup, delete
 
 	ignoreSecretFromOldBackup := *createSecret("ignore-secret-from-old-backup", namespace, map[string]string{
-		BackupNameVeleroLabel: "acm-credentials-hive-schedule-" + tenHourAgoTime,
-	}, nil, nil) // from the old backup, ignore since it doesn't have the hive label
+		BackupNameVeleroLabel: "acm-credentials-schedule-" + tenHourAgoTime,
+	}, nil, nil) // from the old backup, ignore since it doesn't have the creds label
 
 	secretDelete := *createSecret("creds-delete", namespace, map[string]string{
-		backupCredsHiveLabel:  "hive",
-		BackupNameVeleroLabel: "name2", // doesn't match the CloseToCredsBackup and it has the hive label
+		backupCredsHiveLabel:  "creds",
+		BackupNameVeleroLabel: "name2", // doesn't match the CloseToCredsBackup and it has the creds label
 	}, nil, nil)
 
 	keepSecretNoHiveLabel := *createSecret("keep-secret-no-hive-label", namespace, map[string]string{
-		BackupNameVeleroLabel: "name2", // doesn't match the CloseToCredsBackup but it DOES NOT have the hive label, ignore it
+		BackupNameVeleroLabel: "name2", // doesn't match CloseToCredsBackup, no creds label
 	}, nil, nil)
 
 	relatedCredentialsBackup := *createBackup("acm-credentials-schedule-"+currentTime, namespace).
 		labels(map[string]string{
 			BackupScheduleTypeLabel: string(Credentials),
-			BackupScheduleNameLabel: "acm-credentials-hive-schedule-" + currentTime,
+			BackupScheduleNameLabel: "acm-credentials-schedule-" + currentTime,
 		}).
 		phase(veleroapi.BackupPhaseCompleted).
 		startTimestamp(rightNow).
@@ -1886,7 +1899,6 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 			&ignoreSecretFromOldBackup,
 			&deleteSecretFromOldBackup,
 			&secretDelete,
-			&relatedCredentialsBackup,
 		).
 		Build()
 
@@ -1925,7 +1937,7 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 			args: args{
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
-				backupType:          CredentialsHive,
+				backupType:          CredentialsActive,
 				cleanupType:         v1beta1.CleanupTypeAll,
 				relatedVeleroBackup: relatedCredentialsBackup,
 				otherLabels:         []labels.Requirement{*hiveCredsLabel},
@@ -1936,7 +1948,7 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 			args: args{
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
-				backupType:          CredentialsHive,
+				backupType:          CredentialsActive,
 				cleanupType:         v1beta1.CleanupTypeAll,
 				relatedVeleroBackup: relatedCredentialsBackup,
 				otherLabels:         []labels.Requirement{*hiveCredsLabel},
@@ -1947,7 +1959,7 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 			args: args{
 				ctx:                 context.Background(),
 				c:                   k8sClient1,
-				backupType:          CredentialsHive,
+				backupType:          CredentialsActive,
 				cleanupType:         v1beta1.CleanupTypeAll,
 				relatedVeleroBackup: relatedCredentialsBackup,
 				otherLabels:         []labels.Requirement{*hiveCredsLabel},
@@ -1957,33 +1969,37 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 
 	for index, tt := range tests {
 
+		// Add CredentialsActive backups incrementally for each test case
 		if index == 1 {
-			hiveOldBackup := *createBackup("acm-credentials-hive-schedule-"+tenHourAgoTime, namespace).
+			// Add an old CredentialsActive backup
+			credsOldBackup := *createBackup("acm-credentials-schedule-"+tenHourAgoTime, namespace).
 				labels(map[string]string{
-					BackupScheduleTypeLabel: string(CredentialsHive),
-					BackupScheduleNameLabel: "acm-credentials-hive-schedule-" + tenHourAgoTime,
+					BackupScheduleTypeLabel: string(CredentialsActive),
+					BackupScheduleNameLabel: "acm-credentials-schedule-" + tenHourAgoTime,
 				}).
 				phase(veleroapi.BackupPhaseCompleted).
 				startTimestamp(metav1.NewTime(tenHourAgo)).
 				object
 
-			err := k8sClient1.Create(ctx, &hiveOldBackup)
+			err := k8sClient1.Create(ctx, &credsOldBackup)
 			if err != nil {
 				t.Errorf("Error creating: %s", err.Error())
 			}
 		}
 
 		if index == 2 {
-			hiveCloseToCredsBackup := *createBackup("acm-credentials-hive-schedule-"+aFewSecondsAgoTime, namespace).
+			// Add both a recent and an old CredentialsActive backup
+			// This should trigger cleanup of secrets from the old backup
+			credsCloseToCredsBackup := *createBackup("acm-credentials-schedule-"+aFewSecondsAgoTime, namespace).
 				labels(map[string]string{
-					BackupScheduleTypeLabel: string(CredentialsHive),
-					BackupScheduleNameLabel: "acm-credentials-hive-schedule-" + aFewSecondsAgoTime,
+					BackupScheduleTypeLabel: string(CredentialsActive),
+					BackupScheduleNameLabel: "acm-credentials-schedule-" + aFewSecondsAgoTime,
 				}).
 				phase(veleroapi.BackupPhaseCompleted).
 				startTimestamp(metav1.NewTime(aFewSecondsAgo)).
 				object
 
-			err := k8sClient1.Create(ctx, &hiveCloseToCredsBackup)
+			err := k8sClient1.Create(ctx, &credsCloseToCredsBackup)
 			if err != nil {
 				t.Errorf("Error creating: %s", err.Error())
 			}

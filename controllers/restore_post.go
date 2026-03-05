@@ -277,29 +277,6 @@ func cleanupDeltaForCredentials(
 		}
 		deleteSecretsWithLabelSelector(ctx, c, backupName, cleanupType, otherLabels)
 
-	} else {
-		// clean up credentials based on backup type, secrets should be stored in 3 separate files
-
-		// now get related backups
-		// get hive backup and delete related secrets
-		hiveCredsLabel, _ := labels.NewRequirement(backupCredsHiveLabel,
-			selection.Exists, []string{})
-		deleteSecretsForBackupType(ctx, c, CredentialsHive, *veleroBackup,
-			cleanupType,
-			[]labels.Requirement{
-				*hiveCredsLabel,
-			})
-		///
-
-		// get cluster secrets backup and delete related secrets
-		clsCredsLabel, _ := labels.NewRequirement(backupCredsClusterLabel,
-			selection.Exists, []string{})
-		deleteSecretsForBackupType(ctx, c, CredentialsCluster, *veleroBackup,
-			cleanupType,
-			[]labels.Requirement{
-				*clsCredsLabel,
-			})
-		///
 	}
 	logger.Info("exit cleanupDeltaForCredentials ")
 }
