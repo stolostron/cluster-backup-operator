@@ -418,6 +418,21 @@ func (b *ACMRestoreHelper) veleroCredentialsRestoreName(name string) *ACMRestore
 	return b
 }
 
+func (b *ACMRestoreHelper) veleroResourcesRestoreName(name string) *ACMRestoreHelper {
+	b.object.Status.VeleroResourcesRestoreName = name
+	return b
+}
+
+func (b *ACMRestoreHelper) veleroGenericResourcesRestoreName(name string) *ACMRestoreHelper {
+	b.object.Status.VeleroGenericResourcesRestoreName = name
+	return b
+}
+
+func (b *ACMRestoreHelper) veleroManagedClustersRestoreName(name string) *ACMRestoreHelper {
+	b.object.Status.VeleroManagedClustersRestoreName = name
+	return b
+}
+
 func (b *ACMRestoreHelper) preserveNodePorts(preserve bool) *ACMRestoreHelper {
 	b.object.Spec.PreserveNodePorts = &preserve
 	return b
