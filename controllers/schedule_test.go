@@ -1889,3 +1889,195 @@ func Test_isRestoreHubAfterSchedule(t *testing.T) {
 		})
 	}
 }
+
+// Test_thisHubRestoredAfterBackup verifies the DR failback collision bypass.
+//
+// When another hub's backup is the latest in storage but this hub performed
+// a managed-clusters restore AFTER that backup, the collision should be
+// skipped (returns true). If the foreign backup is newer than our restore,
+// it's a real collision (returns false).
+func Test_thisHubRestoredAfterBackup(t *testing.T) {
+	veleroNamespaceName := "backup-ns"
+	veleroNamespace := *createNamespace(veleroNamespaceName)
+
+	thisClusterID := "hub-a-id"
+	otherClusterID := "hub-b-id"
+
+	crWithVersion := createClusterVersion("version", "hub-a-id", nil)
+
+	baseTime := time.Now()
+	foreignBackupTime := metav1.NewTime(baseTime.Add(-1 * time.Hour))
+	restoreTime := metav1.NewTime(baseTime.Add(-30 * time.Minute))
+	lateBackupTime := metav1.NewTime(baseTime.Add(-10 * time.Minute))
+
+	type args struct {
+		ctx            context.Context
+		c              client.Client
+		veleroSchedule *veleroapi.Schedule
+		foreignBackup  *veleroapi.Backup
+	}
+	tests := []struct {
+		name         string
+		args         args
+		want         bool
+		setupObjects []client.Object
+	}{
+		{
+			name: "true: this hub restored after foreign backup (DR failback)",
+			args: args{
+				ctx:            context.Background(),
+				veleroSchedule: createSchedule("sched-1", veleroNamespaceName).object,
+				foreignBackup: func() *veleroapi.Backup {
+					b := createBackup("foreign-backup", veleroNamespaceName).
+						labels(map[string]string{
+							BackupScheduleClusterLabel: otherClusterID,
+							BackupVeleroLabel:          veleroScheduleNames[Resources],
+						}).
+						startTimestamp(foreignBackupTime).
+						phase(veleroapi.BackupPhaseCompleted).object
+					b.CreationTimestamp = foreignBackupTime
+					return b
+				}(),
+			},
+			want: true,
+			setupObjects: []client.Object{
+				&veleroNamespace, crWithVersion,
+				func() *veleroapi.Backup {
+					b := createBackup("acm-restore-clusters-1", veleroNamespaceName).
+						labels(map[string]string{
+							RestoreClusterLabel: thisClusterID,
+						}).
+						phase(veleroapi.BackupPhaseCompleted).object
+					b.CreationTimestamp = restoreTime
+					return b
+				}(),
+			},
+		},
+		{
+			name: "false: foreign backup is newer than our restore (real collision)",
+			args: args{
+				ctx:            context.Background(),
+				veleroSchedule: createSchedule("sched-2", veleroNamespaceName).object,
+				foreignBackup: func() *veleroapi.Backup {
+					b := createBackup("foreign-backup-late", veleroNamespaceName).
+						labels(map[string]string{
+							BackupScheduleClusterLabel: otherClusterID,
+							BackupVeleroLabel:          veleroScheduleNames[Resources],
+						}).
+						startTimestamp(lateBackupTime).
+						phase(veleroapi.BackupPhaseCompleted).object
+					b.CreationTimestamp = lateBackupTime
+					return b
+				}(),
+			},
+			want: false,
+			setupObjects: []client.Object{
+				&veleroNamespace, crWithVersion,
+				func() *veleroapi.Backup {
+					b := createBackup("acm-restore-clusters-2", veleroNamespaceName).
+						labels(map[string]string{
+							RestoreClusterLabel: thisClusterID,
+						}).
+						phase(veleroapi.BackupPhaseCompleted).object
+					b.CreationTimestamp = metav1.NewTime(baseTime.Add(-1 * time.Hour))
+					return b
+				}(),
+			},
+		},
+		{
+			name: "false: another hub restored, not this one",
+			args: args{
+				ctx:            context.Background(),
+				veleroSchedule: createSchedule("sched-3", veleroNamespaceName).object,
+				foreignBackup: func() *veleroapi.Backup {
+					b := createBackup("foreign-backup-3", veleroNamespaceName).
+						labels(map[string]string{
+							BackupScheduleClusterLabel: otherClusterID,
+							BackupVeleroLabel:          veleroScheduleNames[Resources],
+						}).
+						startTimestamp(foreignBackupTime).
+						phase(veleroapi.BackupPhaseCompleted).object
+					b.CreationTimestamp = foreignBackupTime
+					return b
+				}(),
+			},
+			want: false,
+			setupObjects: []client.Object{
+				&veleroNamespace, crWithVersion,
+				func() *veleroapi.Backup {
+					b := createBackup("acm-restore-clusters-3", veleroNamespaceName).
+						labels(map[string]string{
+							RestoreClusterLabel: otherClusterID,
+						}).
+						phase(veleroapi.BackupPhaseCompleted).object
+					b.CreationTimestamp = restoreTime
+					return b
+				}(),
+			},
+		},
+		{
+			name: "false: no restore-clusters backups exist",
+			args: args{
+				ctx:            context.Background(),
+				veleroSchedule: createSchedule("sched-4", veleroNamespaceName).object,
+				foreignBackup: func() *veleroapi.Backup {
+					b := createBackup("foreign-backup-4", veleroNamespaceName).
+						labels(map[string]string{
+							BackupScheduleClusterLabel: otherClusterID,
+							BackupVeleroLabel:          veleroScheduleNames[Resources],
+						}).
+						startTimestamp(foreignBackupTime).
+						phase(veleroapi.BackupPhaseCompleted).object
+					b.CreationTimestamp = foreignBackupTime
+					return b
+				}(),
+			},
+			want:         false,
+			setupObjects: []client.Object{&veleroNamespace, crWithVersion},
+		},
+		{
+			name: "true: uses StartTimestamp over CreationTimestamp for foreign backup",
+			args: args{
+				ctx:            context.Background(),
+				veleroSchedule: createSchedule("sched-5", veleroNamespaceName).object,
+				foreignBackup: func() *veleroapi.Backup {
+					b := createBackup("foreign-backup-5", veleroNamespaceName).
+						labels(map[string]string{
+							BackupScheduleClusterLabel: otherClusterID,
+							BackupVeleroLabel:          veleroScheduleNames[Resources],
+						}).
+						startTimestamp(foreignBackupTime).
+						phase(veleroapi.BackupPhaseCompleted).object
+					// CreationTimestamp is AFTER restore but StartTimestamp is BEFORE
+					b.CreationTimestamp = metav1.NewTime(baseTime)
+					return b
+				}(),
+			},
+			want: true,
+			setupObjects: []client.Object{
+				&veleroNamespace, crWithVersion,
+				func() *veleroapi.Backup {
+					b := createBackup("acm-restore-clusters-5", veleroNamespaceName).
+						labels(map[string]string{
+							RestoreClusterLabel: thisClusterID,
+						}).
+						phase(veleroapi.BackupPhaseCompleted).object
+					b.CreationTimestamp = restoreTime
+					return b
+				}(),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeClient := CreateScheduleTestClient(tt.setupObjects...)
+			tt.args.c = fakeClient
+
+			got := thisHubRestoredAfterBackup(tt.args.ctx, tt.args.c, tt.args.veleroSchedule, tt.args.foreignBackup)
+			if got != tt.want {
+				t.Errorf("thisHubRestoredAfterBackup() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

@@ -35,6 +35,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	ocinfrav1 "github.com/openshift/api/config/v1"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -927,6 +928,137 @@ var _ = Describe("BackupSchedule controller", func() {
 					return createdSchedule.Status.Phase, nil
 				}, 1*time.Second, interval).Should(Equal(v1beta1.SchedulePhaseBackupCollision))
 
+			})
+		})
+
+		Context("when testing DR failback collision bypass", func() {
+			BeforeEach(func() {
+				rhacmBackupSchedule = *createBackupSchedule(backupScheduleName, veleroNamespace.Name).
+					schedule(backupSchedule).
+					veleroTTL(metav1.Duration{Duration: defaultVeleroTTL}).
+					object
+			})
+
+			// Test Case: DR Failback - Collision Skipped
+			//
+			// Simulates the DR drill scenario:
+			//   1. Hub A has a running schedule
+			//   2. Hub A pauses the schedule
+			//   3. Hub B takes over (failover), writes backups
+			//   4. Hub A restores managed clusters back (failback)
+			//   5. Hub A unpauses the schedule
+			//
+			// The schedule should NOT go into BackupCollision because this hub
+			// performed the latest managed-clusters restore after the foreign backup.
+			It("should skip collision when this hub restored managed clusters after foreign backups", func() {
+				scheduleLookupKey := createLookupKey(backupScheduleName, veleroNamespace.Name)
+				createdSchedule := v1beta1.BackupSchedule{}
+				ourClusterID := "dr-hub-a"
+				otherClusterID := "dr-hub-b"
+
+				// Step 1: Create a ClusterVersion so getHubIdentification returns our ID
+				By("creating ClusterVersion with this hub's ID")
+				cv := &ocinfrav1.ClusterVersion{
+					ObjectMeta: metav1.ObjectMeta{Name: "version"},
+					Spec:       ocinfrav1.ClusterVersionSpec{ClusterID: ocinfrav1.ClusterID(ourClusterID)},
+				}
+				Expect(k8sClient.Create(ctx, cv)).Should(Succeed())
+
+				// Step 2: Wait for BackupSchedule and Velero schedules to be created
+				By("waiting for backup schedule and velero schedules")
+				Eventually(func() error {
+					return k8sClient.Get(ctx, scheduleLookupKey, &createdSchedule)
+				}, timeout, interval).Should(Succeed())
+
+				expectedScheduleCount := len(veleroScheduleNames)
+				Eventually(func() (int, error) {
+					list := &veleroapi.ScheduleList{}
+					err := k8sClient.List(ctx, list, client.InNamespace(veleroNamespace.Name))
+					if err != nil {
+						return 0, err
+					}
+					return len(list.Items), nil
+				}, timeout, interval).Should(Equal(expectedScheduleCount))
+
+				// Step 3: Create a foreign backup from Hub B (simulates Hub B writing while Hub A was paused).
+				// Use a far-future timestamp to guarantee this is the latest acm-resources-schedule
+				// backup across all namespaces (scheduleOwnsLatestStorageBackups lists globally).
+				By("creating a foreign backup from the other hub")
+				foreignBackupTime := time.Now().Add(20 * time.Minute)
+				foreignBackup := &veleroapi.Backup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-resources-schedule-foreign-dr",
+						Namespace: veleroNamespace.Name,
+						Labels: map[string]string{
+							BackupScheduleClusterLabel: otherClusterID,
+							BackupVeleroLabel:          veleroScheduleNames[Resources],
+						},
+						CreationTimestamp: metav1.NewTime(foreignBackupTime),
+					},
+					Spec: veleroapi.BackupSpec{
+						StorageLocation: "default",
+						TTL:             metav1.Duration{Duration: defaultVeleroTTL},
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseCompleted,
+						StartTimestamp: &metav1.Time{Time: foreignBackupTime},
+					},
+				}
+				Expect(k8sClient.Create(ctx, foreignBackup)).Should(Succeed())
+
+				// Step 4: Create a managed-clusters restore backup from THIS hub,
+				// with a timestamp AFTER the foreign backup (simulates failback).
+				By("creating a restore-clusters backup from this hub after the foreign backup")
+				restoreBackupTime := time.Now().Add(30 * time.Minute)
+				restoreBackup := &veleroapi.Backup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "acm-restore-clusters-dr-failback",
+						Namespace: veleroNamespace.Name,
+						Labels: map[string]string{
+							RestoreClusterLabel: ourClusterID,
+						},
+						CreationTimestamp: metav1.NewTime(restoreBackupTime),
+					},
+					Spec: veleroapi.BackupSpec{
+						StorageLocation: "default",
+						TTL:             metav1.Duration{Duration: defaultVeleroTTL},
+					},
+					Status: veleroapi.BackupStatus{
+						Phase:          veleroapi.BackupPhaseCompleted,
+						StartTimestamp: &metav1.Time{Time: restoreBackupTime},
+					},
+				}
+				Expect(k8sClient.Create(ctx, restoreBackup)).Should(Succeed())
+
+				// Step 5: Wait for velero schedules to be older than 5 seconds
+				// (the collision check requires this)
+				By("waiting for velero schedules to be older than 5 seconds")
+				Eventually(func() (bool, error) {
+					list := &veleroapi.ScheduleList{}
+					err := k8sClient.List(ctx, list, client.InNamespace(veleroNamespace.Name))
+					if err != nil {
+						return false, err
+					}
+					if len(list.Items) == 0 {
+						return false, nil
+					}
+					return time.Since(list.Items[0].CreationTimestamp.Time).Seconds() > 5, nil
+				}, timeout*2, interval).Should(BeTrue())
+
+				// Step 6: Verify the schedule does NOT go into BackupCollision.
+				// It should remain in an active phase (Enabled or similar) because
+				// thisHubRestoredAfterBackup returns true.
+				By("verifying the schedule does NOT enter BackupCollision")
+				Consistently(func() (bool, error) {
+					if err := k8sClient.Get(ctx, scheduleLookupKey, &createdSchedule); err != nil {
+						return false, err
+					}
+					return createdSchedule.Status.Phase != v1beta1.SchedulePhaseBackupCollision, nil
+				}, 3*time.Second, interval).Should(BeTrue(),
+					"schedule should NOT be in BackupCollision because this hub restored after the foreign backup")
+
+				// Clean up the ClusterVersion (cluster-scoped resource)
+				Expect(k8sClient.Delete(ctx, cv)).Should(Succeed())
 			})
 		})
 

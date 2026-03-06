@@ -174,16 +174,22 @@ func (r *BackupScheduleReconciler) Reconcile(
 			return ctrl.Result{}, err
 		}
 		if !isThisTheOwner {
-			// set exception status, because another cluster is creating backups
-			// and storing them at the same location
-			// we risk a backup collision, as more then one cluster seems to be
-			// backing up data in the same location
-			collisionMsg = fmt.Sprintf(BackupCollisionPhaseMsg,
-				lastBackup.GetName(),
-				lastBackup.GetLabels()[BackupScheduleClusterLabel],
-				veleroScheduleList.Items[0].GetLabels()[BackupScheduleClusterLabel],
-			)
-			scheduleLogger.Info(collisionMsg)
+			// Before declaring collision, check if this hub performed a
+			// managed-clusters restore after the foreign backup (DR failback).
+			// If so, this hub is the rightful active hub and the stale backups
+			// from the other hub should not cause a collision.
+			if thisHubRestoredAfterBackup(ctx, r.Client, &veleroScheduleList.Items[0], lastBackup) {
+				scheduleLogger.Info("Stale backups from another hub detected, " +
+					"but this hub performed a managed-clusters restore after " +
+					"the last foreign backup. Skipping collision.")
+			} else {
+				collisionMsg = fmt.Sprintf(BackupCollisionPhaseMsg,
+					lastBackup.GetName(),
+					lastBackup.GetLabels()[BackupScheduleClusterLabel],
+					veleroScheduleList.Items[0].GetLabels()[BackupScheduleClusterLabel],
+				)
+				scheduleLogger.Info(collisionMsg)
+			}
 		} else {
 			// check if an existing hub restore was created
 			// after this backup schedule and report a collision
