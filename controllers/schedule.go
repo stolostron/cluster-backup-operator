@@ -627,3 +627,36 @@ func isRestoreHubAfterSchedule(
 
 	return false, ""
 }
+
+// thisHubRestoredAfterBackup returns true when this hub performed the latest
+// managed-clusters restore AND that restore happened after the given foreign
+// backup. This covers the DR failback scenario: pause schedule, failover to
+// another hub, test, failover back, unpause -- the stale backups from the
+// other hub should not cause a collision.
+func thisHubRestoredAfterBackup(
+	ctx context.Context,
+	c client.Client,
+	veleroSchedule *veleroapi.Schedule,
+	foreignBackup *veleroapi.Backup,
+) bool {
+	restoreClustersBackups := &veleroapi.BackupList{}
+	if err := c.List(ctx, restoreClustersBackups,
+		client.InNamespace(veleroSchedule.Namespace),
+		client.HasLabels{RestoreClusterLabel}); err != nil || len(restoreClustersBackups.Items) == 0 {
+		return false
+	}
+	sort.Sort(mostRecent(restoreClustersBackups.Items))
+	latestRestore := restoreClustersBackups.Items[0]
+
+	restoreHubID := latestRestore.GetLabels()[RestoreClusterLabel]
+	hubID, _ := getHubIdentification(ctx, c)
+	if hubID == "" || hubID == "unknown" || hubID != restoreHubID {
+		return false
+	}
+
+	foreignTS := foreignBackup.CreationTimestamp.Time
+	if foreignBackup.Status.StartTimestamp != nil {
+		foreignTS = foreignBackup.Status.StartTimestamp.Time
+	}
+	return foreignTS.Before(latestRestore.CreationTimestamp.Time)
+}
