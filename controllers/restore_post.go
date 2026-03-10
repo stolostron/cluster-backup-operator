@@ -195,18 +195,16 @@ func deleteOlderRestoreClustersBackups(
 	restoreClustersBackups := &veleroapi.BackupList{}
 	if err := c.List(ctx, restoreClustersBackups,
 		client.InNamespace(currentBackup.Namespace),
-		client.HasLabels{RestoreClusterLabel}); err != nil {
-		logger.Error(err, "Failed to list restore-clusters backups for cleanup")
-		return
-	}
+		client.HasLabels{RestoreClusterLabel}); err == nil {
 
-	for i := range restoreClustersBackups.Items {
-		backup := restoreClustersBackups.Items[i]
-		if backup.Name == currentBackup.Name {
-			continue
+		for i := range restoreClustersBackups.Items {
+			backup := restoreClustersBackups.Items[i]
+			if backup.Name == currentBackup.Name {
+				continue
+			}
+			logger.Info("Deleting old restore-clusters backup", "name", backup.Name)
+			deleteBackup(ctx, &backup, c) //nolint:errcheck
 		}
-		logger.Info("Deleting old restore-clusters backup", "name", backup.Name)
-		deleteBackup(ctx, &backup, c) //nolint:errcheck
 	}
 }
 
