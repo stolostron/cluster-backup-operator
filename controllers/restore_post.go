@@ -174,8 +174,40 @@ func recordClustersRestoreOperation(
 			"name", veleroBackup.Name,
 			"namespace", veleroBackup.Namespace,
 		)
+	} else {
+		// only the latest acm-restore-clusters backup matters; clean up older ones
+		deleteOlderRestoreClustersBackups(ctx, c, veleroBackup)
 	}
 	logger.Info("exit recordClustersRestoreOperation ")
+}
+
+// deleteOlderRestoreClustersBackups removes all acm-restore-clusters backups
+// except the one just created. Only the latest backup is needed to identify
+// which hub is the active cluster; older ones clutter the backup view,
+// especially during repeated DR simulation tests.
+func deleteOlderRestoreClustersBackups(
+	ctx context.Context,
+	c client.Client,
+	currentBackup *veleroapi.Backup,
+) {
+	logger := log.FromContext(ctx)
+
+	restoreClustersBackups := &veleroapi.BackupList{}
+	if err := c.List(ctx, restoreClustersBackups,
+		client.InNamespace(currentBackup.Namespace),
+		client.HasLabels{RestoreClusterLabel}); err != nil {
+		logger.Error(err, "Failed to list restore-clusters backups for cleanup")
+		return
+	}
+
+	for i := range restoreClustersBackups.Items {
+		backup := restoreClustersBackups.Items[i]
+		if backup.Name == currentBackup.Name {
+			continue
+		}
+		logger.Info("Deleting old restore-clusters backup", "name", backup.Name)
+		deleteBackup(ctx, &backup, c) //nolint:errcheck
+	}
 }
 
 // clean up resources with a restore label

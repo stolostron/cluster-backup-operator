@@ -2973,3 +2973,98 @@ func verifyResourcesKept(
 		}
 	}
 }
+
+func Test_deleteOlderRestoreClustersBackups(t *testing.T) {
+	ns := "backup-ns"
+	namespace := *createNamespace(ns)
+
+	currentBackup := createBackup("acm-restore-clusters-20260309120000", ns).
+		labels(map[string]string{
+			RestoreClusterLabel: "hub-a",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).object
+
+	oldBackup1 := createBackup("acm-restore-clusters-20260308100000", ns).
+		labels(map[string]string{
+			RestoreClusterLabel: "hub-a",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).object
+
+	oldBackup2 := createBackup("acm-restore-clusters-20260307090000", ns).
+		labels(map[string]string{
+			RestoreClusterLabel: "hub-b",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).object
+
+	unrelatedBackup := createBackup("acm-resources-schedule-20260309", ns).
+		labels(map[string]string{
+			BackupScheduleClusterLabel: "hub-a",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).object
+
+	tests := []struct {
+		name                string
+		setupObjects        []client.Object
+		currentBackup       *veleroapi.Backup
+		wantDeleteRequests  []string // DeleteBackupRequest should be created for these
+		wantNoDeleteRequest []string // no DeleteBackupRequest should be created for these
+	}{
+		{
+			name: "creates DeleteBackupRequests for older restore-clusters backups",
+			setupObjects: []client.Object{
+				&namespace, currentBackup, oldBackup1, oldBackup2, unrelatedBackup,
+			},
+			currentBackup: currentBackup,
+			wantDeleteRequests: []string{
+				"acm-restore-clusters-20260308100000",
+				"acm-restore-clusters-20260307090000",
+			},
+			wantNoDeleteRequest: []string{
+				"acm-restore-clusters-20260309120000",
+				"acm-resources-schedule-20260309",
+			},
+		},
+		{
+			name: "no older backups -- no DeleteBackupRequests created",
+			setupObjects: []client.Object{
+				&namespace, currentBackup, unrelatedBackup,
+			},
+			currentBackup:      currentBackup,
+			wantDeleteRequests: []string{},
+			wantNoDeleteRequest: []string{
+				"acm-restore-clusters-20260309120000",
+				"acm-resources-schedule-20260309",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeClient := CreateScheduleTestClient(tt.setupObjects...)
+
+			deleteOlderRestoreClustersBackups(
+				context.Background(), fakeClient, tt.currentBackup)
+
+			// verify DeleteBackupRequest was created for old backups
+			for _, name := range tt.wantDeleteRequests {
+				req := &veleroapi.DeleteBackupRequest{}
+				err := fakeClient.Get(context.Background(),
+					types.NamespacedName{Name: name, Namespace: ns}, req)
+				if err != nil {
+					t.Errorf("expected DeleteBackupRequest for %s to be created, but not found: %v",
+						name, err)
+				}
+			}
+
+			// verify no DeleteBackupRequest was created for current/unrelated backups
+			for _, name := range tt.wantNoDeleteRequest {
+				req := &veleroapi.DeleteBackupRequest{}
+				err := fakeClient.Get(context.Background(),
+					types.NamespacedName{Name: name, Namespace: ns}, req)
+				if err == nil {
+					t.Errorf("expected no DeleteBackupRequest for %s, but one was created", name)
+				}
+			}
+		})
+	}
+}
