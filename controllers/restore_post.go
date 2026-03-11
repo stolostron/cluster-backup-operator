@@ -214,7 +214,9 @@ func deleteOlderRestoreClustersBackups(
 				continue
 			}
 			logger.Info("Deleting old restore-clusters backup", "name", backup.Name)
-			deleteBackup(ctx, &backup, c) //nolint:errcheck
+			if err := deleteBackup(ctx, &backup, c); err != nil {
+				logger.Error(err, "Failed to delete old restore-clusters backup", "name", backup.Name)
+			}
 		}
 	}
 }
