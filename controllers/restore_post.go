@@ -182,9 +182,9 @@ func recordClustersRestoreOperation(
 }
 
 // deleteOlderRestoreClustersBackups removes all acm-restore-clusters backups
-// except the one just created. Only the latest backup is needed to identify
-// which hub is the active cluster; older ones clutter the backup view,
-// especially during repeated DR simulation tests.
+// except the newest one. Only the latest backup is needed to identify which
+// hub is the active cluster; older ones clutter the backup view, especially
+// during repeated DR simulation tests.
 func deleteOlderRestoreClustersBackups(
 	ctx context.Context,
 	c client.Client,
@@ -197,9 +197,20 @@ func deleteOlderRestoreClustersBackups(
 		client.InNamespace(currentBackup.Namespace),
 		client.HasLabels{RestoreClusterLabel}); err == nil {
 
+		// find the newest backup by creation timestamp
+		newestName := currentBackup.Name
+		newestTime := currentBackup.CreationTimestamp
+		for i := range restoreClustersBackups.Items {
+			b := &restoreClustersBackups.Items[i]
+			if b.CreationTimestamp.After(newestTime.Time) {
+				newestName = b.Name
+				newestTime = b.CreationTimestamp
+			}
+		}
+
 		for i := range restoreClustersBackups.Items {
 			backup := restoreClustersBackups.Items[i]
-			if backup.Name == currentBackup.Name {
+			if backup.Name == newestName {
 				continue
 			}
 			logger.Info("Deleting old restore-clusters backup", "name", backup.Name)
