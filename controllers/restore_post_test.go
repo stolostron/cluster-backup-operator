@@ -2973,3 +2973,219 @@ func verifyResourcesKept(
 		}
 	}
 }
+
+func Test_recordClustersRestoreOperation(t *testing.T) {
+	ns := "backup-ns"
+	namespace := *createNamespace(ns)
+
+	clusterVersion := createClusterVersion("version", "hub-restore-id", nil)
+
+	veleroClsRestore := createRestore("cls-restore-1", ns).
+		backupName("acm-managed-clusters-schedule-20260309").object
+	veleroClsRestore.Labels = map[string]string{
+		BackupScheduleClusterLabel: "hub-backup-id",
+	}
+
+	oldRestoreBackup := createBackup("acm-restore-clusters-20260308100000", ns).
+		labels(map[string]string{
+			RestoreClusterLabel: "hub-old",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).object
+
+	tests := []struct {
+		name                 string
+		setupObjects         []client.Object
+		acmRestore           *v1beta1.Restore
+		wantBackupCreated    bool
+		wantOldBackupDeleted bool
+		wantLabels           map[string]string
+	}{
+		{
+			name: "creates backup with correct labels and deletes older backups",
+			setupObjects: []client.Object{
+				&namespace, clusterVersion, veleroClsRestore, oldRestoreBackup,
+			},
+			acmRestore: createACMRestore("my-restore", ns).
+				veleroManagedClustersRestoreName("cls-restore-1").
+				phase(v1beta1.RestorePhaseFinished).object,
+			wantBackupCreated:    true,
+			wantOldBackupDeleted: true,
+			wantLabels: map[string]string{
+				BackupScheduleClusterLabel:                            "hub-backup-id",
+				"cluster.open-cluster-management.io/acm-hub-dr":       "true",
+				"cluster.open-cluster-management.io/acm-restore-name": "my-restore",
+				veleroBackupNames[ManagedClusters]:                    "acm-managed-clusters-schedule-20260309",
+				RestoreClusterLabel:                                   "hub-restore-id",
+			},
+		},
+		{
+			name: "creates backup even when velero restore not found (labels partial)",
+			setupObjects: []client.Object{
+				&namespace, clusterVersion,
+			},
+			acmRestore: createACMRestore("my-restore-2", ns).
+				veleroManagedClustersRestoreName("nonexistent-restore").
+				phase(v1beta1.RestorePhaseFinished).object,
+			wantBackupCreated:    true,
+			wantOldBackupDeleted: false,
+			wantLabels: map[string]string{
+				"cluster.open-cluster-management.io/acm-hub-dr":       "true",
+				"cluster.open-cluster-management.io/acm-restore-name": "my-restore-2",
+				RestoreClusterLabel: "hub-restore-id",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeClient := CreateScheduleTestClient(tt.setupObjects...)
+
+			recordClustersRestoreOperation(context.Background(), fakeClient, tt.acmRestore)
+
+			// verify a new acm-restore-clusters-* backup was created
+			backupList := &veleroapi.BackupList{}
+			if err := fakeClient.List(context.Background(), backupList,
+				client.InNamespace(ns),
+				client.HasLabels{RestoreClusterLabel}); err != nil {
+				t.Fatalf("failed to list backups: %v", err)
+			}
+
+			var createdBackup *veleroapi.Backup
+			for i := range backupList.Items {
+				b := &backupList.Items[i]
+				if b.Name != oldRestoreBackup.Name {
+					createdBackup = b
+					break
+				}
+			}
+
+			if tt.wantBackupCreated {
+				if createdBackup == nil {
+					t.Fatal("expected a new acm-restore-clusters backup to be created, but none found")
+				}
+
+				for k, v := range tt.wantLabels {
+					got := createdBackup.GetLabels()[k]
+					if got != v {
+						t.Errorf("label %s = %q, want %q", k, got, v)
+					}
+				}
+
+				if len(createdBackup.Spec.IncludedNamespaces) == 0 ||
+					createdBackup.Spec.IncludedNamespaces[0] != ns {
+					t.Errorf("IncludedNamespaces = %v, want [%s]", createdBackup.Spec.IncludedNamespaces, ns)
+				}
+				if len(createdBackup.Spec.IncludedResources) == 0 ||
+					createdBackup.Spec.IncludedResources[0] != "Restore" {
+					t.Errorf("IncludedResources = %v, want [Restore]", createdBackup.Spec.IncludedResources)
+				}
+			}
+
+			if tt.wantOldBackupDeleted {
+				// deleteOlderRestoreClustersBackups creates a DeleteBackupRequest
+				req := &veleroapi.DeleteBackupRequest{}
+				err := fakeClient.Get(context.Background(),
+					types.NamespacedName{Name: oldRestoreBackup.Name, Namespace: ns}, req)
+				if err != nil {
+					t.Errorf("expected DeleteBackupRequest for old backup %s, but not found: %v",
+						oldRestoreBackup.Name, err)
+				}
+			}
+		})
+	}
+}
+
+func Test_deleteOlderRestoreClustersBackups(t *testing.T) {
+	ns := "backup-ns"
+	namespace := *createNamespace(ns)
+
+	currentBackup := createBackup("acm-restore-clusters-20260309120000", ns).
+		labels(map[string]string{
+			RestoreClusterLabel: "hub-a",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).object
+
+	oldBackup1 := createBackup("acm-restore-clusters-20260308100000", ns).
+		labels(map[string]string{
+			RestoreClusterLabel: "hub-a",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).object
+
+	oldBackup2 := createBackup("acm-restore-clusters-20260307090000", ns).
+		labels(map[string]string{
+			RestoreClusterLabel: "hub-b",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).object
+
+	unrelatedBackup := createBackup("acm-resources-schedule-20260309", ns).
+		labels(map[string]string{
+			BackupScheduleClusterLabel: "hub-a",
+		}).
+		phase(veleroapi.BackupPhaseCompleted).object
+
+	tests := []struct {
+		name                string
+		setupObjects        []client.Object
+		currentBackup       *veleroapi.Backup
+		wantDeleteRequests  []string // DeleteBackupRequest should be created for these
+		wantNoDeleteRequest []string // no DeleteBackupRequest should be created for these
+	}{
+		{
+			name: "creates DeleteBackupRequests for older restore-clusters backups",
+			setupObjects: []client.Object{
+				&namespace, currentBackup, oldBackup1, oldBackup2, unrelatedBackup,
+			},
+			currentBackup: currentBackup,
+			wantDeleteRequests: []string{
+				"acm-restore-clusters-20260308100000",
+				"acm-restore-clusters-20260307090000",
+			},
+			wantNoDeleteRequest: []string{
+				"acm-restore-clusters-20260309120000",
+				"acm-resources-schedule-20260309",
+			},
+		},
+		{
+			name: "no older backups -- no DeleteBackupRequests created",
+			setupObjects: []client.Object{
+				&namespace, currentBackup, unrelatedBackup,
+			},
+			currentBackup:      currentBackup,
+			wantDeleteRequests: []string{},
+			wantNoDeleteRequest: []string{
+				"acm-restore-clusters-20260309120000",
+				"acm-resources-schedule-20260309",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeClient := CreateScheduleTestClient(tt.setupObjects...)
+
+			deleteOlderRestoreClustersBackups(
+				context.Background(), fakeClient, tt.currentBackup)
+
+			// verify DeleteBackupRequest was created for old backups
+			for _, name := range tt.wantDeleteRequests {
+				req := &veleroapi.DeleteBackupRequest{}
+				err := fakeClient.Get(context.Background(),
+					types.NamespacedName{Name: name, Namespace: ns}, req)
+				if err != nil {
+					t.Errorf("expected DeleteBackupRequest for %s to be created, but not found: %v",
+						name, err)
+				}
+			}
+
+			// verify no DeleteBackupRequest was created for current/unrelated backups
+			for _, name := range tt.wantNoDeleteRequest {
+				req := &veleroapi.DeleteBackupRequest{}
+				err := fakeClient.Get(context.Background(),
+					types.NamespacedName{Name: name, Namespace: ns}, req)
+				if err == nil {
+					t.Errorf("expected no DeleteBackupRequest for %s, but one was created", name)
+				}
+			}
+		})
+	}
+}
