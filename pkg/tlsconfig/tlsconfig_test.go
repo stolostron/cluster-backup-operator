@@ -87,12 +87,10 @@ func TestBuildTLSConfig_EnablesHTTP2WhenRequested(t *testing.T) {
 	tlsConfig := &tls.Config{}
 	ApplyTLSOptions(config.TLSOpts, tlsConfig)
 
-	// When HTTP/2 is enabled, NextProtos should NOT be set to just http/1.1
-	// (it should be empty or include h2)
-	for _, proto := range tlsConfig.NextProtos {
-		if proto == "http/1.1" && len(tlsConfig.NextProtos) == 1 {
-			t.Error("BuildTLSConfig() with HTTP/2 enabled should not restrict to http/1.1 only")
-		}
+	// When HTTP/2 is enabled, NextProtos should be empty (letting Go handle default negotiation)
+	// or explicitly include "h2". It should NOT be restricted to just "http/1.1".
+	if len(tlsConfig.NextProtos) == 1 && tlsConfig.NextProtos[0] == "http/1.1" {
+		t.Error("BuildTLSConfig() with HTTP/2 enabled should not restrict to http/1.1 only")
 	}
 }
 
@@ -286,5 +284,230 @@ func TestConfig_TLSProfileSpecIsPreserved(t *testing.T) {
 	if config.TLSProfileSpec.MinTLSVersion != profile.MinTLSVersion {
 		t.Errorf("BuildTLSConfig() TLSProfileSpec.MinTLSVersion = %v, want %v",
 			config.TLSProfileSpec.MinTLSVersion, profile.MinTLSVersion)
+	}
+}
+
+func TestProfilesMatch(t *testing.T) {
+	tests := []struct {
+		name     string
+		a        ocinfrav1.TLSProfileSpec
+		b        ocinfrav1.TLSProfileSpec
+		expected bool
+	}{
+		{
+			name: "identical profiles",
+			a: ocinfrav1.TLSProfileSpec{
+				MinTLSVersion: ocinfrav1.VersionTLS12,
+				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-GCM-SHA384"},
+			},
+			b: ocinfrav1.TLSProfileSpec{
+				MinTLSVersion: ocinfrav1.VersionTLS12,
+				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-GCM-SHA384"},
+			},
+			expected: true,
+		},
+		{
+			name: "different TLS versions",
+			a: ocinfrav1.TLSProfileSpec{
+				MinTLSVersion: ocinfrav1.VersionTLS12,
+				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256"},
+			},
+			b: ocinfrav1.TLSProfileSpec{
+				MinTLSVersion: ocinfrav1.VersionTLS13,
+				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256"},
+			},
+			expected: false,
+		},
+		{
+			name: "different cipher count",
+			a: ocinfrav1.TLSProfileSpec{
+				MinTLSVersion: ocinfrav1.VersionTLS12,
+				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256"},
+			},
+			b: ocinfrav1.TLSProfileSpec{
+				MinTLSVersion: ocinfrav1.VersionTLS12,
+				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-GCM-SHA384"},
+			},
+			expected: false,
+		},
+		{
+			name: "same ciphers different order",
+			a: ocinfrav1.TLSProfileSpec{
+				MinTLSVersion: ocinfrav1.VersionTLS12,
+				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-GCM-SHA384"},
+			},
+			b: ocinfrav1.TLSProfileSpec{
+				MinTLSVersion: ocinfrav1.VersionTLS12,
+				Ciphers:       []string{"ECDHE-RSA-AES256-GCM-SHA384", "ECDHE-RSA-AES128-GCM-SHA256"},
+			},
+			expected: false,
+		},
+		{
+			name: "both empty ciphers",
+			a: ocinfrav1.TLSProfileSpec{
+				MinTLSVersion: ocinfrav1.VersionTLS13,
+				Ciphers:       []string{},
+			},
+			b: ocinfrav1.TLSProfileSpec{
+				MinTLSVersion: ocinfrav1.VersionTLS13,
+				Ciphers:       []string{},
+			},
+			expected: true,
+		},
+		{
+			name: "one empty ciphers one not",
+			a: ocinfrav1.TLSProfileSpec{
+				MinTLSVersion: ocinfrav1.VersionTLS12,
+				Ciphers:       []string{},
+			},
+			b: ocinfrav1.TLSProfileSpec{
+				MinTLSVersion: ocinfrav1.VersionTLS12,
+				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256"},
+			},
+			expected: false,
+		},
+		{
+			name: "nil vs empty ciphers",
+			a: ocinfrav1.TLSProfileSpec{
+				MinTLSVersion: ocinfrav1.VersionTLS13,
+				Ciphers:       nil,
+			},
+			b: ocinfrav1.TLSProfileSpec{
+				MinTLSVersion: ocinfrav1.VersionTLS13,
+				Ciphers:       []string{},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := profilesMatch(tt.a, tt.b)
+			if result != tt.expected {
+				t.Errorf("profilesMatch() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetTLSProfileType_OldProfile(t *testing.T) {
+	// Test the Old profile type which was not covered before
+	oldProfile := ocinfrav1.TLSProfiles[ocinfrav1.TLSProfileOldType]
+	if oldProfile == nil {
+		t.Skip("Old TLS profile not defined in OpenShift API")
+	}
+
+	result := GetTLSProfileType(*oldProfile)
+	if result != string(ocinfrav1.TLSProfileOldType) {
+		t.Errorf("GetTLSProfileType() for Old profile = %v, want %v",
+			result, string(ocinfrav1.TLSProfileOldType))
+	}
+}
+
+func TestApplyTLSOptions_EmptyOptions(t *testing.T) {
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+
+	// Apply empty options - should not panic or modify config
+	ApplyTLSOptions([]func(*tls.Config){}, tlsConfig)
+
+	// Config should remain unchanged
+	if tlsConfig.MinVersion != tls.VersionTLS12 {
+		t.Errorf("ApplyTLSOptions() with empty options should not modify config, MinVersion = %v",
+			tlsConfig.MinVersion)
+	}
+}
+
+func TestApplyTLSOptions_NilOptions(t *testing.T) {
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+
+	// Apply nil options - should not panic
+	ApplyTLSOptions(nil, tlsConfig)
+
+	// Config should remain unchanged
+	if tlsConfig.MinVersion != tls.VersionTLS12 {
+		t.Errorf("ApplyTLSOptions() with nil options should not modify config, MinVersion = %v",
+			tlsConfig.MinVersion)
+	}
+}
+
+func TestBuildTLSConfig_EmptyCiphersForTLS12(t *testing.T) {
+	logger := ctrl.Log.WithName("test")
+
+	// TLS 1.2 with empty ciphers - unusual but should not panic
+	profile := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS12,
+		Ciphers:       []string{},
+	}
+
+	config := BuildTLSConfig(profile, true, logger)
+
+	if config == nil {
+		t.Fatal("BuildTLSConfig() returned nil")
+	}
+
+	// Apply the options to a tls.Config
+	tlsConfig := &tls.Config{}
+	ApplyTLSOptions(config.TLSOpts, tlsConfig)
+
+	// MinVersion should still be set correctly
+	if tlsConfig.MinVersion != tls.VersionTLS12 {
+		t.Errorf("BuildTLSConfig() MinVersion = %v, want %v",
+			tlsConfig.MinVersion, tls.VersionTLS12)
+	}
+}
+
+func TestGetDefaultTLSProfile_CipherContent(t *testing.T) {
+	profile := GetDefaultTLSProfile()
+
+	// Verify the actual cipher content matches, not just the length
+	for i, cipher := range profile.Ciphers {
+		if cipher != openshifttls.DefaultTLSCiphers[i] {
+			t.Errorf("GetDefaultTLSProfile() Ciphers[%d] = %v, want %v",
+				i, cipher, openshifttls.DefaultTLSCiphers[i])
+		}
+	}
+}
+
+func TestGetTLSProfileType_EmptyProfile(t *testing.T) {
+	// Empty profile should return Custom
+	emptyProfile := ocinfrav1.TLSProfileSpec{}
+
+	result := GetTLSProfileType(emptyProfile)
+	if result != "Custom" {
+		t.Errorf("GetTLSProfileType() for empty profile = %v, want Custom", result)
+	}
+}
+
+func TestBuildTLSConfig_PreservesAllFields(t *testing.T) {
+	logger := ctrl.Log.WithName("test")
+
+	ciphers := []string{"ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-GCM-SHA384"}
+	profile := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS12,
+		Ciphers:       ciphers,
+	}
+
+	config := BuildTLSConfig(profile, false, logger)
+
+	// Verify TLSProfileSpec is fully preserved
+	if config.TLSProfileSpec.MinTLSVersion != profile.MinTLSVersion {
+		t.Errorf("BuildTLSConfig() TLSProfileSpec.MinTLSVersion = %v, want %v",
+			config.TLSProfileSpec.MinTLSVersion, profile.MinTLSVersion)
+	}
+
+	if len(config.TLSProfileSpec.Ciphers) != len(profile.Ciphers) {
+		t.Errorf("BuildTLSConfig() TLSProfileSpec.Ciphers length = %d, want %d",
+			len(config.TLSProfileSpec.Ciphers), len(profile.Ciphers))
+	}
+
+	for i, cipher := range config.TLSProfileSpec.Ciphers {
+		if cipher != profile.Ciphers[i] {
+			t.Errorf("BuildTLSConfig() TLSProfileSpec.Ciphers[%d] = %v, want %v",
+				i, cipher, profile.Ciphers[i])
+		}
 	}
 }

@@ -152,7 +152,11 @@ func main() {
 
 	// Fetch the TLS profile from the APIServer configuration.
 	// This determines the minimum TLS version and cipher suites for the webhook server.
-	tlsProfileSpec := tlsconfig.FetchTLSProfile(ctx, tempClient, setupLog)
+	tlsProfileSpec, err := tlsconfig.FetchTLSProfile(ctx, tempClient)
+	if err != nil {
+		setupLog.Error(err, "unable to fetch TLS profile from APIServer")
+		os.Exit(1)
+	}
 
 	setupLog.Info("Using TLS profile for webhook server",
 		"minTLSVersion", tlsProfileSpec.MinTLSVersion,
@@ -264,10 +268,10 @@ func main() {
 		InitialTLSProfileSpec: tlsConfig.TLSProfileSpec,
 		OnProfileChange: func(ctx context.Context, oldProfile, newProfile ocinfrav1.TLSProfileSpec) {
 			setupLog.Info("TLS security profile has changed, initiating graceful shutdown to reload configuration",
+				"oldProfileType", tlsconfig.GetTLSProfileType(oldProfile),
+				"newProfileType", tlsconfig.GetTLSProfileType(newProfile),
 				"oldMinTLSVersion", oldProfile.MinTLSVersion,
-				"newMinTLSVersion", newProfile.MinTLSVersion,
-				"oldCiphers", oldProfile.Ciphers,
-				"newCiphers", newProfile.Ciphers)
+				"newMinTLSVersion", newProfile.MinTLSVersion)
 			// Cancel the context to trigger a graceful shutdown of the manager.
 			// The operator will be restarted by the deployment controller.
 			cancel()

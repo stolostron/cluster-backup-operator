@@ -40,17 +40,14 @@ type Config struct {
 }
 
 // FetchTLSProfile fetches the TLS profile from the APIServer configuration.
-// If the fetch fails, it returns the default Intermediate profile.
-func FetchTLSProfile(ctx context.Context, k8sClient client.Client, logger logr.Logger) ocinfrav1.TLSProfileSpec {
+// Returns an error if the profile cannot be fetched (e.g., RBAC permission issues).
+func FetchTLSProfile(ctx context.Context, k8sClient client.Client) (ocinfrav1.TLSProfileSpec, error) {
 	tlsProfileSpec, err := openshifttls.FetchAPIServerTLSProfile(ctx, k8sClient)
 	if err != nil {
-		logger.Info("Failed to fetch TLS profile from APIServer, using default Intermediate profile",
-			"error", err)
-		// Use the default Intermediate profile if we can't fetch the cluster's profile.
-		return GetDefaultTLSProfile()
+		return ocinfrav1.TLSProfileSpec{}, err
 	}
 
-	return tlsProfileSpec
+	return tlsProfileSpec, nil
 }
 
 // GetDefaultTLSProfile returns the default TLS profile (Intermediate).
@@ -74,17 +71,20 @@ func BuildTLSConfig(tlsProfileSpec ocinfrav1.TLSProfileSpec, enableHTTP2 bool, l
 	// Build webhook TLS options.
 	var webhookTLSOpts []func(*tls.Config)
 
+	// Apply the TLS profile configuration first.
+	webhookTLSOpts = append(webhookTLSOpts, tlsConfigFunc)
+
 	// Disable HTTP/2 by default due to CVE-2023-44487 (HTTP/2 Rapid Reset Attack).
+	// Applied AFTER the profile config to ensure it takes precedence over any
+	// NextProtos settings from the profile.
+	// Log the decision once here, not inside the closure which may be called multiple times.
 	if !enableHTTP2 {
+		logger.Info("Disabling HTTP/2 for webhook server")
 		disableHTTP2 := func(c *tls.Config) {
-			logger.Info("Disabling HTTP/2 for webhook server")
 			c.NextProtos = []string{"http/1.1"}
 		}
 		webhookTLSOpts = append(webhookTLSOpts, disableHTTP2)
 	}
-
-	// Apply the TLS profile configuration.
-	webhookTLSOpts = append(webhookTLSOpts, tlsConfigFunc)
 
 	return &Config{
 		TLSProfileSpec:     tlsProfileSpec,
@@ -106,12 +106,26 @@ func ApplyTLSOptions(tlsOpts []func(*tls.Config), tlsConfig *tls.Config) {
 func GetTLSProfileType(profile ocinfrav1.TLSProfileSpec) string {
 	// Check against known profiles
 	for profileType, knownProfile := range ocinfrav1.TLSProfiles {
-		if knownProfile != nil &&
-			profile.MinTLSVersion == knownProfile.MinTLSVersion &&
-			len(profile.Ciphers) == len(knownProfile.Ciphers) {
-			// Simple check - in practice you might want a more thorough comparison
+		if knownProfile != nil && profilesMatch(profile, *knownProfile) {
 			return string(profileType)
 		}
 	}
 	return "Custom"
+}
+
+// profilesMatch compares two TLS profile specs for equality.
+func profilesMatch(a, b ocinfrav1.TLSProfileSpec) bool {
+	if a.MinTLSVersion != b.MinTLSVersion {
+		return false
+	}
+	if len(a.Ciphers) != len(b.Ciphers) {
+		return false
+	}
+	// Compare cipher lists - they should be in the same order for known profiles
+	for i, cipher := range a.Ciphers {
+		if cipher != b.Ciphers[i] {
+			return false
+		}
+	}
+	return true
 }
