@@ -14,6 +14,7 @@ COPY go.sum go.sum
 COPY api/. api/
 COPY config/. config/
 COPY controllers/ controllers/
+COPY pkg/ pkg/
 
 # Copy the go source
 RUN  CGO_ENABLED=1 GOFLAGS='-mod=readonly' go mod vendor

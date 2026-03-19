@@ -30,9 +30,11 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	ocinfrav1 "github.com/openshift/api/config/v1"
+	openshifttls "github.com/openshift/controller-runtime-common/pkg/tls"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	backupv1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	"github.com/stolostron/cluster-backup-operator/controllers"
+	"github.com/stolostron/cluster-backup-operator/pkg/tlsconfig"
 	certsv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -86,6 +88,7 @@ func main() {
 	var leaseDuration time.Duration
 	var renewDeadline time.Duration
 	var retryPeriod time.Duration
+	var enableHTTP2 bool
 
 	flag.StringVar(
 		&metricsAddr,
@@ -115,6 +118,9 @@ func main() {
 	flag.DurationVar(&retryPeriod, "leader-election-retry-period", 26*time.Second, ""+
 		"The duration the clients should wait between attempting acquisition and renewal "+
 		"of a leadership. This is only applicable if leader election is enabled.")
+	flag.BoolVar(&enableHTTP2, "enable-http2", false,
+		"If set, HTTP/2 will be enabled for the webhook server. "+
+			"HTTP/2 is disabled by default due to CVE-2023-44487.")
 
 	opts := zap.Options{
 		Development: true,
@@ -130,13 +136,46 @@ func main() {
 		"renewDeadline", renewDeadline,
 		"retryPeriod", retryPeriod)
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	// Create a context that can be cancelled when there is a need to shut down the manager
+	// (e.g., when the TLS profile changes).
+	ctx, cancel := context.WithCancel(ctrl.SetupSignalHandler())
+	defer cancel()
+
+	// Create a temporary client to fetch the TLS profile before the manager starts.
+	// This is needed because the manager's client is not available until the manager starts.
+	restConfig := ctrl.GetConfigOrDie()
+	tempClient, err := client.New(restConfig, client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Error(err, "unable to create temporary client for TLS profile fetch")
+		os.Exit(1)
+	}
+
+	// Fetch the TLS profile from the APIServer configuration.
+	// This determines the minimum TLS version and cipher suites for the webhook server.
+	// If no profile is configured, the default profile is returned.
+	// (at the time of writing, this is the intermediate profile)
+	tlsProfileSpec, err := openshifttls.FetchAPIServerTLSProfile(ctx, tempClient)
+	if err != nil {
+		setupLog.Error(err, "unable to fetch TLS profile from APIServer")
+		os.Exit(1)
+	}
+
+	setupLog.Info("Using TLS profile for webhook server",
+		"minTLSVersion", tlsProfileSpec.MinTLSVersion,
+		"ciphers", tlsProfileSpec.Ciphers,
+		"profileType", tlsconfig.GetTLSProfileType(tlsProfileSpec))
+
+	// Build the TLS configuration from the profile.
+	tlsConfig := tlsconfig.BuildTLSConfig(tlsProfileSpec, enableHTTP2, setupLog)
+
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: metricsAddr,
 		},
 		WebhookServer: webhook.NewServer(webhook.Options{
-			Port: 9443,
+			Port:    9443,
+			TLSOpts: tlsConfig.TLSOpts,
 		}),
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
@@ -222,6 +261,28 @@ func main() {
 		setupLog.Error(err, "unable to create webhook", "webhook", "Restore")
 		os.Exit(1)
 	}
+
+	// Setup TLS Security Profile Watcher to monitor for TLS profile changes.
+	// When the cluster's TLS profile changes, the operator will gracefully shutdown
+	// and restart to pick up the new configuration.
+	tlsProfileWatcher := &openshifttls.SecurityProfileWatcher{
+		Client:                mgr.GetClient(),
+		InitialTLSProfileSpec: tlsConfig.TLSProfileSpec,
+		OnProfileChange: func(ctx context.Context, oldProfile, newProfile ocinfrav1.TLSProfileSpec) {
+			setupLog.Info("TLS security profile has changed, initiating graceful shutdown to reload configuration",
+				"oldProfileType", tlsconfig.GetTLSProfileType(oldProfile),
+				"newProfileType", tlsconfig.GetTLSProfileType(newProfile),
+				"oldMinTLSVersion", oldProfile.MinTLSVersion,
+				"newMinTLSVersion", newProfile.MinTLSVersion)
+			// Cancel the context to trigger a graceful shutdown of the manager.
+			// The operator will be restarted by the deployment controller.
+			cancel()
+		},
+	}
+	if err := tlsProfileWatcher.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to set up TLS security profile watcher")
+		os.Exit(1)
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -234,7 +295,7 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

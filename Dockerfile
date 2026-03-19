@@ -9,6 +9,7 @@ COPY go.sum go.sum
 COPY api/. api/
 COPY config/. config/
 COPY controllers/ controllers/
+COPY pkg/ pkg/
 
 # Copy the go source
 RUN  CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go mod vendor
