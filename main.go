@@ -152,7 +152,9 @@ func main() {
 
 	// Fetch the TLS profile from the APIServer configuration.
 	// This determines the minimum TLS version and cipher suites for the webhook server.
-	tlsProfileSpec, err := tlsconfig.FetchTLSProfile(ctx, tempClient)
+	// If no profile is configured, the default profile is returned.
+	// (at the time of writing, this is the intermediate profile)
+	tlsProfileSpec, err := openshifttls.FetchAPIServerTLSProfile(ctx, tempClient)
 	if err != nil {
 		setupLog.Error(err, "unable to fetch TLS profile from APIServer")
 		os.Exit(1)

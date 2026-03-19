@@ -25,29 +25,20 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-func TestGetDefaultTLSProfile(t *testing.T) {
-	profile := GetDefaultTLSProfile()
-
-	// Verify the default profile uses Intermediate settings
-	if profile.MinTLSVersion != openshifttls.DefaultMinTLSVersion {
-		t.Errorf("GetDefaultTLSProfile() MinTLSVersion = %v, want %v",
-			profile.MinTLSVersion, openshifttls.DefaultMinTLSVersion)
-	}
-
-	if len(profile.Ciphers) == 0 {
-		t.Error("GetDefaultTLSProfile() Ciphers should not be empty")
-	}
-
-	// Verify it matches the expected Intermediate profile ciphers
-	if len(profile.Ciphers) != len(openshifttls.DefaultTLSCiphers) {
-		t.Errorf("GetDefaultTLSProfile() Ciphers length = %d, want %d",
-			len(profile.Ciphers), len(openshifttls.DefaultTLSCiphers))
+// applyTLSOptions applies the TLS options to a tls.Config.
+// This is a test helper function.
+func applyTLSOptions(tlsOpts []func(*tls.Config), tlsConfig *tls.Config) {
+	for _, opt := range tlsOpts {
+		opt(tlsConfig)
 	}
 }
 
 func TestBuildTLSConfig_DisablesHTTP2ByDefault(t *testing.T) {
 	logger := ctrl.Log.WithName("test")
-	profile := GetDefaultTLSProfile()
+	profile := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: openshifttls.DefaultMinTLSVersion,
+		Ciphers:       openshifttls.DefaultTLSCiphers,
+	}
 
 	// Build config with HTTP/2 disabled (default)
 	config := BuildTLSConfig(profile, false, logger)
@@ -63,7 +54,7 @@ func TestBuildTLSConfig_DisablesHTTP2ByDefault(t *testing.T) {
 
 	// Apply the options to a tls.Config and verify HTTP/2 is disabled
 	tlsConfig := &tls.Config{}
-	ApplyTLSOptions(config.TLSOpts, tlsConfig)
+	applyTLSOptions(config.TLSOpts, tlsConfig)
 
 	// When HTTP/2 is disabled, NextProtos should be ["http/1.1"]
 	if len(tlsConfig.NextProtos) != 1 || tlsConfig.NextProtos[0] != "http/1.1" {
@@ -74,7 +65,10 @@ func TestBuildTLSConfig_DisablesHTTP2ByDefault(t *testing.T) {
 
 func TestBuildTLSConfig_EnablesHTTP2WhenRequested(t *testing.T) {
 	logger := ctrl.Log.WithName("test")
-	profile := GetDefaultTLSProfile()
+	profile := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: openshifttls.DefaultMinTLSVersion,
+		Ciphers:       openshifttls.DefaultTLSCiphers,
+	}
 
 	// Build config with HTTP/2 enabled
 	config := BuildTLSConfig(profile, true, logger)
@@ -85,7 +79,7 @@ func TestBuildTLSConfig_EnablesHTTP2WhenRequested(t *testing.T) {
 
 	// Apply the options to a tls.Config
 	tlsConfig := &tls.Config{}
-	ApplyTLSOptions(config.TLSOpts, tlsConfig)
+	applyTLSOptions(config.TLSOpts, tlsConfig)
 
 	// When HTTP/2 is enabled, NextProtos should be empty (letting Go handle default negotiation)
 	// or explicitly include "h2". It should NOT be restricted to just "http/1.1".
@@ -125,7 +119,7 @@ func TestBuildTLSConfig_AppliesMinTLSVersion(t *testing.T) {
 
 			// Apply the options to a tls.Config
 			tlsConfig := &tls.Config{}
-			ApplyTLSOptions(config.TLSOpts, tlsConfig)
+			applyTLSOptions(config.TLSOpts, tlsConfig)
 
 			if tlsConfig.MinVersion != tt.expectedMinVersion {
 				t.Errorf("BuildTLSConfig() MinVersion = %v, want %v",
@@ -148,7 +142,7 @@ func TestBuildTLSConfig_AppliesCipherSuites(t *testing.T) {
 
 	// Apply the options to a tls.Config
 	tlsConfig := &tls.Config{}
-	ApplyTLSOptions(config.TLSOpts, tlsConfig)
+	applyTLSOptions(config.TLSOpts, tlsConfig)
 
 	// For TLS 1.2, cipher suites should be configured
 	if len(tlsConfig.CipherSuites) == 0 {
@@ -169,68 +163,12 @@ func TestBuildTLSConfig_TLS13DoesNotConfigureCipherSuites(t *testing.T) {
 
 	// Apply the options to a tls.Config
 	tlsConfig := &tls.Config{}
-	ApplyTLSOptions(config.TLSOpts, tlsConfig)
+	applyTLSOptions(config.TLSOpts, tlsConfig)
 
 	// For TLS 1.3, cipher suites should NOT be configured (Go manages them)
 	if len(tlsConfig.CipherSuites) != 0 {
 		t.Errorf("BuildTLSConfig() with TLS 1.3 should not configure CipherSuites, got %v",
 			tlsConfig.CipherSuites)
-	}
-}
-
-func TestBuildTLSConfig_ReturnsUnsupportedCiphers(t *testing.T) {
-	logger := ctrl.Log.WithName("test")
-
-	// Include an unsupported cipher
-	profile := ocinfrav1.TLSProfileSpec{
-		MinTLSVersion: ocinfrav1.VersionTLS12,
-		Ciphers: []string{
-			"ECDHE-RSA-AES128-GCM-SHA256", // Supported
-			"FAKE-CIPHER-NOT-REAL",        // Not supported
-		},
-	}
-
-	config := BuildTLSConfig(profile, true, logger)
-
-	// Should report the unsupported cipher
-	if len(config.UnsupportedCiphers) == 0 {
-		t.Error("BuildTLSConfig() should report unsupported ciphers")
-	}
-
-	found := false
-	for _, cipher := range config.UnsupportedCiphers {
-		if cipher == "FAKE-CIPHER-NOT-REAL" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("BuildTLSConfig() UnsupportedCiphers should contain 'FAKE-CIPHER-NOT-REAL', got %v",
-			config.UnsupportedCiphers)
-	}
-}
-
-func TestApplyTLSOptions(t *testing.T) {
-	// Test that ApplyTLSOptions correctly applies multiple options
-	tlsConfig := &tls.Config{}
-
-	opts := []func(*tls.Config){
-		func(c *tls.Config) {
-			c.MinVersion = tls.VersionTLS12
-		},
-		func(c *tls.Config) {
-			c.NextProtos = []string{"http/1.1"}
-		},
-	}
-
-	ApplyTLSOptions(opts, tlsConfig)
-
-	if tlsConfig.MinVersion != tls.VersionTLS12 {
-		t.Errorf("ApplyTLSOptions() MinVersion = %v, want %v", tlsConfig.MinVersion, tls.VersionTLS12)
-	}
-
-	if len(tlsConfig.NextProtos) != 1 || tlsConfig.NextProtos[0] != "http/1.1" {
-		t.Errorf("ApplyTLSOptions() NextProtos = %v, want [http/1.1]", tlsConfig.NextProtos)
 	}
 }
 
@@ -399,36 +337,6 @@ func TestGetTLSProfileType_OldProfile(t *testing.T) {
 	}
 }
 
-func TestApplyTLSOptions_EmptyOptions(t *testing.T) {
-	tlsConfig := &tls.Config{
-		MinVersion: tls.VersionTLS12,
-	}
-
-	// Apply empty options - should not panic or modify config
-	ApplyTLSOptions([]func(*tls.Config){}, tlsConfig)
-
-	// Config should remain unchanged
-	if tlsConfig.MinVersion != tls.VersionTLS12 {
-		t.Errorf("ApplyTLSOptions() with empty options should not modify config, MinVersion = %v",
-			tlsConfig.MinVersion)
-	}
-}
-
-func TestApplyTLSOptions_NilOptions(t *testing.T) {
-	tlsConfig := &tls.Config{
-		MinVersion: tls.VersionTLS12,
-	}
-
-	// Apply nil options - should not panic
-	ApplyTLSOptions(nil, tlsConfig)
-
-	// Config should remain unchanged
-	if tlsConfig.MinVersion != tls.VersionTLS12 {
-		t.Errorf("ApplyTLSOptions() with nil options should not modify config, MinVersion = %v",
-			tlsConfig.MinVersion)
-	}
-}
-
 func TestBuildTLSConfig_EmptyCiphersForTLS12(t *testing.T) {
 	logger := ctrl.Log.WithName("test")
 
@@ -446,24 +354,12 @@ func TestBuildTLSConfig_EmptyCiphersForTLS12(t *testing.T) {
 
 	// Apply the options to a tls.Config
 	tlsConfig := &tls.Config{}
-	ApplyTLSOptions(config.TLSOpts, tlsConfig)
+	applyTLSOptions(config.TLSOpts, tlsConfig)
 
 	// MinVersion should still be set correctly
 	if tlsConfig.MinVersion != tls.VersionTLS12 {
 		t.Errorf("BuildTLSConfig() MinVersion = %v, want %v",
 			tlsConfig.MinVersion, tls.VersionTLS12)
-	}
-}
-
-func TestGetDefaultTLSProfile_CipherContent(t *testing.T) {
-	profile := GetDefaultTLSProfile()
-
-	// Verify the actual cipher content matches, not just the length
-	for i, cipher := range profile.Ciphers {
-		if cipher != openshifttls.DefaultTLSCiphers[i] {
-			t.Errorf("GetDefaultTLSProfile() Ciphers[%d] = %v, want %v",
-				i, cipher, openshifttls.DefaultTLSCiphers[i])
-		}
 	}
 }
 

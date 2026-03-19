@@ -18,13 +18,11 @@ limitations under the License.
 package tlsconfig
 
 import (
-	"context"
 	"crypto/tls"
 
 	"github.com/go-logr/logr"
 	ocinfrav1 "github.com/openshift/api/config/v1"
 	openshifttls "github.com/openshift/controller-runtime-common/pkg/tls"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Config holds the TLS configuration for the webhook server.
@@ -34,28 +32,6 @@ type Config struct {
 
 	// TLSOpts are the TLS configuration functions to apply to the webhook server.
 	TLSOpts []func(*tls.Config)
-
-	// UnsupportedCiphers are cipher names from the profile that are not supported.
-	UnsupportedCiphers []string
-}
-
-// FetchTLSProfile fetches the TLS profile from the APIServer configuration.
-// Returns an error if the profile cannot be fetched (e.g., RBAC permission issues).
-func FetchTLSProfile(ctx context.Context, k8sClient client.Client) (ocinfrav1.TLSProfileSpec, error) {
-	tlsProfileSpec, err := openshifttls.FetchAPIServerTLSProfile(ctx, k8sClient)
-	if err != nil {
-		return ocinfrav1.TLSProfileSpec{}, err
-	}
-
-	return tlsProfileSpec, nil
-}
-
-// GetDefaultTLSProfile returns the default TLS profile (Intermediate).
-func GetDefaultTLSProfile() ocinfrav1.TLSProfileSpec {
-	return ocinfrav1.TLSProfileSpec{
-		Ciphers:       openshifttls.DefaultTLSCiphers,
-		MinTLSVersion: openshifttls.DefaultMinTLSVersion,
-	}
 }
 
 // BuildTLSConfig builds the TLS configuration from the given profile and options.
@@ -87,17 +63,8 @@ func BuildTLSConfig(tlsProfileSpec ocinfrav1.TLSProfileSpec, enableHTTP2 bool, l
 	}
 
 	return &Config{
-		TLSProfileSpec:     tlsProfileSpec,
-		TLSOpts:            webhookTLSOpts,
-		UnsupportedCiphers: unsupportedCiphers,
-	}
-}
-
-// ApplyTLSOptions applies the TLS options to a tls.Config.
-// This is useful for testing the TLS configuration.
-func ApplyTLSOptions(tlsOpts []func(*tls.Config), tlsConfig *tls.Config) {
-	for _, opt := range tlsOpts {
-		opt(tlsConfig)
+		TLSProfileSpec: tlsProfileSpec,
+		TLSOpts:        webhookTLSOpts,
 	}
 }
 
