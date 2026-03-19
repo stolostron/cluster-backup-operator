@@ -287,106 +287,101 @@ func TestConfig_TLSProfileSpecIsPreserved(t *testing.T) {
 	}
 }
 
-func TestProfilesMatch(t *testing.T) {
-	tests := []struct {
-		name     string
-		a        ocinfrav1.TLSProfileSpec
-		b        ocinfrav1.TLSProfileSpec
-		expected bool
-	}{
-		{
-			name: "identical profiles",
-			a: ocinfrav1.TLSProfileSpec{
-				MinTLSVersion: ocinfrav1.VersionTLS12,
-				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-GCM-SHA384"},
-			},
-			b: ocinfrav1.TLSProfileSpec{
-				MinTLSVersion: ocinfrav1.VersionTLS12,
-				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-GCM-SHA384"},
-			},
-			expected: true,
-		},
-		{
-			name: "different TLS versions",
-			a: ocinfrav1.TLSProfileSpec{
-				MinTLSVersion: ocinfrav1.VersionTLS12,
-				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256"},
-			},
-			b: ocinfrav1.TLSProfileSpec{
-				MinTLSVersion: ocinfrav1.VersionTLS13,
-				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256"},
-			},
-			expected: false,
-		},
-		{
-			name: "different cipher count",
-			a: ocinfrav1.TLSProfileSpec{
-				MinTLSVersion: ocinfrav1.VersionTLS12,
-				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256"},
-			},
-			b: ocinfrav1.TLSProfileSpec{
-				MinTLSVersion: ocinfrav1.VersionTLS12,
-				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-GCM-SHA384"},
-			},
-			expected: false,
-		},
-		{
-			name: "same ciphers different order",
-			a: ocinfrav1.TLSProfileSpec{
-				MinTLSVersion: ocinfrav1.VersionTLS12,
-				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-GCM-SHA384"},
-			},
-			b: ocinfrav1.TLSProfileSpec{
-				MinTLSVersion: ocinfrav1.VersionTLS12,
-				Ciphers:       []string{"ECDHE-RSA-AES256-GCM-SHA384", "ECDHE-RSA-AES128-GCM-SHA256"},
-			},
-			expected: false,
-		},
-		{
-			name: "both empty ciphers",
-			a: ocinfrav1.TLSProfileSpec{
-				MinTLSVersion: ocinfrav1.VersionTLS13,
-				Ciphers:       []string{},
-			},
-			b: ocinfrav1.TLSProfileSpec{
-				MinTLSVersion: ocinfrav1.VersionTLS13,
-				Ciphers:       []string{},
-			},
-			expected: true,
-		},
-		{
-			name: "one empty ciphers one not",
-			a: ocinfrav1.TLSProfileSpec{
-				MinTLSVersion: ocinfrav1.VersionTLS12,
-				Ciphers:       []string{},
-			},
-			b: ocinfrav1.TLSProfileSpec{
-				MinTLSVersion: ocinfrav1.VersionTLS12,
-				Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256"},
-			},
-			expected: false,
-		},
-		{
-			name: "nil vs empty ciphers",
-			a: ocinfrav1.TLSProfileSpec{
-				MinTLSVersion: ocinfrav1.VersionTLS13,
-				Ciphers:       nil,
-			},
-			b: ocinfrav1.TLSProfileSpec{
-				MinTLSVersion: ocinfrav1.VersionTLS13,
-				Ciphers:       []string{},
-			},
-			expected: true,
-		},
+func TestProfilesMatch_IdenticalProfiles(t *testing.T) {
+	a := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS12,
+		Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-GCM-SHA384"},
 	}
+	b := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS12,
+		Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-GCM-SHA384"},
+	}
+	if !profilesMatch(a, b) {
+		t.Error("profilesMatch() should return true for identical profiles")
+	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := profilesMatch(tt.a, tt.b)
-			if result != tt.expected {
-				t.Errorf("profilesMatch() = %v, want %v", result, tt.expected)
-			}
-		})
+func TestProfilesMatch_DifferentTLSVersions(t *testing.T) {
+	a := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS12,
+		Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256"},
+	}
+	b := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS13,
+		Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256"},
+	}
+	if profilesMatch(a, b) {
+		t.Error("profilesMatch() should return false for different TLS versions")
+	}
+}
+
+func TestProfilesMatch_DifferentCipherCount(t *testing.T) {
+	a := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS12,
+		Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256"},
+	}
+	b := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS12,
+		Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-GCM-SHA384"},
+	}
+	if profilesMatch(a, b) {
+		t.Error("profilesMatch() should return false for different cipher count")
+	}
+}
+
+func TestProfilesMatch_SameCiphersDifferentOrder(t *testing.T) {
+	a := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS12,
+		Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256", "ECDHE-RSA-AES256-GCM-SHA384"},
+	}
+	b := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS12,
+		Ciphers:       []string{"ECDHE-RSA-AES256-GCM-SHA384", "ECDHE-RSA-AES128-GCM-SHA256"},
+	}
+	if profilesMatch(a, b) {
+		t.Error("profilesMatch() should return false for same ciphers in different order")
+	}
+}
+
+func TestProfilesMatch_BothEmptyCiphers(t *testing.T) {
+	a := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS13,
+		Ciphers:       []string{},
+	}
+	b := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS13,
+		Ciphers:       []string{},
+	}
+	if !profilesMatch(a, b) {
+		t.Error("profilesMatch() should return true for both empty ciphers")
+	}
+}
+
+func TestProfilesMatch_OneEmptyCiphers(t *testing.T) {
+	a := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS12,
+		Ciphers:       []string{},
+	}
+	b := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS12,
+		Ciphers:       []string{"ECDHE-RSA-AES128-GCM-SHA256"},
+	}
+	if profilesMatch(a, b) {
+		t.Error("profilesMatch() should return false when one has empty ciphers")
+	}
+}
+
+func TestProfilesMatch_NilVsEmptyCiphers(t *testing.T) {
+	a := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS13,
+		Ciphers:       nil,
+	}
+	b := ocinfrav1.TLSProfileSpec{
+		MinTLSVersion: ocinfrav1.VersionTLS13,
+		Ciphers:       []string{},
+	}
+	if !profilesMatch(a, b) {
+		t.Error("profilesMatch() should return true for nil vs empty ciphers")
 	}
 }
 
