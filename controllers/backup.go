@@ -25,6 +25,7 @@ import (
 	"github.com/robfig/cron/v3"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -579,9 +580,13 @@ func deleteBackup(
 		veleroDeleteBackup.Namespace = backupDeleteIdentity.Namespace
 
 		if err := c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{}); err != nil {
-			backupLogger.Error(err,
-				fmt.Sprintf("Unable to create DeleteBackupRequest %s", veleroDeleteBackup.Name),
-			)
+			if !k8serr.IsAlreadyExists(err) {
+				// log the error only if it is not an already exists error
+				backupLogger.Error(err,
+					fmt.Sprintf("Unable to create DeleteBackupRequest %s", veleroDeleteBackup.Name),
+				)
+			}
+
 		}
 
 		return nil

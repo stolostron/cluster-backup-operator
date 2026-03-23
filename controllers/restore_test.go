@@ -4811,10 +4811,11 @@ func Test_RestoreScenario_FullRestoreWithBackupNames(t *testing.T) {
 	}
 }
 
-// failVeleroRestoreCreateClient fails Create for velero.io.Restore objects so initVeleroRestores logs
-// the non-AlreadyExists path (restore_controller.go ~734–740).
+// failVeleroRestoreCreateClient fails Create for velero.io.Restore objects and counts attempts.
+// Used to exercise initVeleroRestores when r.Create returns a non-AlreadyExists error (restore_controller.go).
 type failVeleroRestoreCreateClient struct {
 	client.Client
+	veleroRestoreCreateCalls int
 }
 
 func (f *failVeleroRestoreCreateClient) Create(
@@ -4823,14 +4824,17 @@ func (f *failVeleroRestoreCreateClient) Create(
 	opts ...client.CreateOption,
 ) error {
 	if _, ok := obj.(*veleroapi.Restore); ok {
+		f.veleroRestoreCreateCalls++
 		return errors.New("simulated Velero Restore Create failure")
 	}
 	return f.Client.Create(ctx, obj, opts...)
 }
 
-// Test_initVeleroRestores_createNonAlreadyExistsError_logsInfo covers restore_controller.go lines that
-// log when r.Create(velero restore) fails with an error other than AlreadyExists.
-func Test_initVeleroRestores_createNonAlreadyExistsError_logsInfo(t *testing.T) {
+// Test_initVeleroRestores_nonAlreadyExistsCreateFailure_returnsNil verifies that when every
+// Velero Restore Create fails with a non-AlreadyExists error, initVeleroRestores still returns
+// (nil, nil, nil) and attempts Create once per restore to create (here: credentials, resources,
+// resources-generic — managed clusters and active restores skipped for this spec).
+func Test_initVeleroRestores_nonAlreadyExistsCreateFailure_returnsNil(t *testing.T) {
 	ctx := context.Background()
 	ns := "default"
 	ts := "20240101120000"
@@ -4879,5 +4883,10 @@ func Test_initVeleroRestores_createNonAlreadyExistsError_logsInfo(t *testing.T) 
 	_, _, err := r.initVeleroRestores(ctx, acm, false, &emptyVelero)
 	if err != nil {
 		t.Fatalf("initVeleroRestores: %v", err)
+	}
+	const wantVeleroRestoreCreates = 3
+	if c.veleroRestoreCreateCalls != wantVeleroRestoreCreates {
+		t.Fatalf("Velero Restore Create calls = %d, want %d (each planned restore should attempt Create)",
+			c.veleroRestoreCreateCalls, wantVeleroRestoreCreates)
 	}
 }
