@@ -956,9 +956,6 @@ func getInternalHubResource(
 	dyn dynamic.Interface,
 ) (*unstructured.Unstructured, error) {
 
-	reqLogger := log.FromContext(ctx)
-	reqLogger.Info("get cluster-backup  internalhubcomponent")
-
 	mchGVRList := schema.GroupVersionResource{Group: ihcGroup,
 		Version: "v1", Resource: "internalhubcomponents"}
 
@@ -966,8 +963,6 @@ func getInternalHubResource(
 	if err != nil {
 		return &unstructured.Unstructured{}, err
 	}
-	//
-	reqLogger.Info("get cluster-backup  internalhubcomponent")
 	for i := range mchList.Items {
 		item := mchList.Items[i]
 

@@ -4810,3 +4810,83 @@ func Test_RestoreScenario_FullRestoreWithBackupNames(t *testing.T) {
 		})
 	}
 }
+
+// failVeleroRestoreCreateClient fails Create for velero.io.Restore objects and counts attempts.
+// Used to exercise initVeleroRestores when r.Create returns a non-AlreadyExists error (restore_controller.go).
+type failVeleroRestoreCreateClient struct {
+	client.Client
+	veleroRestoreCreateCalls int
+}
+
+func (f *failVeleroRestoreCreateClient) Create(
+	ctx context.Context,
+	obj client.Object,
+	opts ...client.CreateOption,
+) error {
+	if _, ok := obj.(*veleroapi.Restore); ok {
+		f.veleroRestoreCreateCalls++
+		return errors.New("simulated Velero Restore Create failure")
+	}
+	return f.Client.Create(ctx, obj, opts...)
+}
+
+// Test_initVeleroRestores_nonAlreadyExistsCreateFailure_returnsNil verifies that when every
+// Velero Restore Create fails with a non-AlreadyExists error, initVeleroRestores still returns
+// (nil, nil, nil) and attempts Create once per restore to create (here: credentials, resources,
+// resources-generic — managed clusters and active restores skipped for this spec).
+func Test_initVeleroRestores_nonAlreadyExistsCreateFailure_returnsNil(t *testing.T) {
+	ctx := context.Background()
+	ns := "default"
+	ts := "20240101120000"
+	clusterLbl := map[string]string{
+		BackupVeleroLabel:          "aa",
+		BackupScheduleClusterLabel: "cls",
+	}
+	cred := *createBackup("acm-credentials-schedule-"+ts, ns).labels(clusterLbl).object
+	res := *createBackup("acm-resources-schedule-"+ts, ns).labels(clusterLbl).object
+	gen := *createBackup("acm-resources-generic-schedule-"+ts, ns).labels(clusterLbl).object
+
+	acm := createACMRestore("restore-init-create-err", ns).
+		syncRestoreWithNewBackups(false).
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+		veleroManagedClustersBackupName(skipRestoreStr).
+		veleroCredentialsBackupName(latestBackupStr).
+		veleroResourcesBackupName(latestBackupStr).
+		phase(v1beta1.RestorePhaseStarted).
+		object
+
+	scheme := runtime.NewScheme()
+	if err := v1beta1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := veleroapi.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+
+	base := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(acm, &cred, &res, &gen).
+		Build()
+
+	c := &failVeleroRestoreCreateClient{Client: base}
+
+	r := &RestoreReconciler{
+		Client:   c,
+		Scheme:   scheme,
+		Recorder: record.NewFakeRecorder(100),
+	}
+
+	emptyVelero := veleroapi.RestoreList{}
+	_, _, err := r.initVeleroRestores(ctx, acm, false, &emptyVelero)
+	if err != nil {
+		t.Fatalf("initVeleroRestores: %v", err)
+	}
+	const wantVeleroRestoreCreates = 3
+	if c.veleroRestoreCreateCalls != wantVeleroRestoreCreates {
+		t.Fatalf("Velero Restore Create calls = %d, want %d (each planned restore should attempt Create)",
+			c.veleroRestoreCreateCalls, wantVeleroRestoreCreates)
+	}
+}

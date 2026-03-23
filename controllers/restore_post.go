@@ -142,7 +142,6 @@ func recordClustersRestoreOperation(
 		Name:      managedClustersRestore,
 		Namespace: acmRestore.Namespace,
 	}, veleroClsRestore); err == nil {
-		logger.Info("Get backup hub cluster id")
 		labels[BackupScheduleClusterLabel] = veleroClsRestore.GetLabels()[BackupScheduleClusterLabel]
 	}
 
@@ -213,7 +212,6 @@ func deleteOlderRestoreClustersBackups(
 			if backup.Name == newestName {
 				continue
 			}
-			logger.Info("Deleting old restore-clusters backup", "name", backup.Name)
 			if err := deleteBackup(ctx, &backup, c); err != nil {
 				logger.Error(err, "Failed to delete old restore-clusters backup", "name", backup.Name)
 			}
