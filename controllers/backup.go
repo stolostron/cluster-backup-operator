@@ -578,20 +578,14 @@ func deleteBackup(
 		veleroDeleteBackup.Name = backupDeleteIdentity.Name
 		veleroDeleteBackup.Namespace = backupDeleteIdentity.Namespace
 
-		backupLogger.Info(
-			fmt.Sprintf("Attempt to create DeleteBackupRequest %s", veleroDeleteBackup.Name),
-		)
-		if err := c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{}); err == nil {
-			backupLogger.Info(
-				fmt.Sprintf("Created DeleteBackupRequest %s", veleroDeleteBackup.Name),
+		if err := c.Create(ctx, veleroDeleteBackup, &client.CreateOptions{}); err != nil {
+			backupLogger.Error(err,
+				fmt.Sprintf("Unable to create DeleteBackupRequest %s", veleroDeleteBackup.Name),
 			)
 		}
 
 		return nil
 	}
-	backupLogger.Info(
-		fmt.Sprintf("DeleteBackupRequest already exists, skip request creation %s", backupName),
-	)
 	if veleroDeleteBackup.Status.Errors != nil {
 		// delete the backup now
 		if err := c.Delete(ctx, backup); err != nil {

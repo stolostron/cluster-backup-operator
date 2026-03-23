@@ -33,6 +33,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"strings"
 	"testing"
@@ -42,8 +43,10 @@ import (
 	. "github.com/onsi/gomega"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -584,5 +587,64 @@ func Test_deleteBackup(t *testing.T) {
 
 			t.Logf("Test '%s': %s - Result: error=%v", tt.name, tt.description, err != nil)
 		})
+	}
+}
+
+// failCreateOnDeleteBackupRequestClient returns NotFound on Get(DeleteBackupRequest) and fails Create,
+// exercising deleteBackup's error log when DeleteBackupRequest cannot be created (backup.go ~581–587).
+type failCreateOnDeleteBackupRequestClient struct {
+	client.Client
+}
+
+func (f *failCreateOnDeleteBackupRequestClient) Get(
+	ctx context.Context,
+	key client.ObjectKey,
+	obj client.Object,
+	opts ...client.GetOption,
+) error {
+	if _, ok := obj.(*veleroapi.DeleteBackupRequest); ok {
+		return k8serr.NewNotFound(
+			schema.GroupResource{Group: "velero.io", Resource: "deletebackuprequests"},
+			key.Name,
+		)
+	}
+	return f.Client.Get(ctx, key, obj, opts...)
+}
+
+func (f *failCreateOnDeleteBackupRequestClient) Create(
+	ctx context.Context,
+	obj client.Object,
+	opts ...client.CreateOption,
+) error {
+	if _, ok := obj.(*veleroapi.DeleteBackupRequest); ok {
+		return errors.New("simulated Create failure for DeleteBackupRequest")
+	}
+	return f.Client.Create(ctx, obj, opts...)
+}
+
+func Test_deleteBackup_whenCreateDeleteBackupRequestFails_returnsNil(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := veleroapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("velero AddToScheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("corev1 AddToScheme: %v", err)
+	}
+
+	ns := "velero-ns"
+	base := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(
+			createNamespace(ns),
+			createBackup("blocked-create", ns).object,
+		).
+		Build()
+
+	c := &failCreateOnDeleteBackupRequestClient{Client: base}
+	backup := createBackup("blocked-create", ns).object
+
+	err := deleteBackup(context.Background(), backup, c)
+	if err != nil {
+		t.Fatalf("deleteBackup returns nil when Create(DeleteBackupRequest) fails; got %v", err)
 	}
 }

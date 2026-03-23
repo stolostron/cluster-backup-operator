@@ -60,7 +60,6 @@ func (r *Restore) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Obj
 	if !ok {
 		return nil, fmt.Errorf("expected a Restore object but got %T", newObj)
 	}
-	restorelog.Info("validate update", "name", restore.Name)
 
 	return restore.validateRestore()
 }
