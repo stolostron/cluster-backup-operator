@@ -224,7 +224,10 @@ func (r *BackupScheduleReconciler) Reconcile(
 		if err == nil { // Don't mask previous error
 			err = statusUpdateErr
 		}
-		return ctrl.Result{RequeueAfter: collisionControlInterval}, err
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: collisionControlInterval}, nil
 	}
 
 	// if any velero schedule is deleted manually, recreate them all to have the same backup due time
@@ -232,10 +235,10 @@ func (r *BackupScheduleReconciler) Reconcile(
 		if err := deleteVeleroSchedules(ctx, r.Client, backupSchedule, &veleroScheduleList); err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: collisionControlInterval}, errors.Wrap(
-			r.Client.Status().Update(ctx, backupSchedule),
-			updateStatusFailedMsg,
-		)
+		if updErr := r.Client.Status().Update(ctx, backupSchedule); updErr != nil {
+			return ctrl.Result{}, errors.Wrap(updErr, updateStatusFailedMsg)
+		}
+		return ctrl.Result{RequeueAfter: collisionControlInterval}, nil
 	}
 
 	// check for any updates that are required for velero schedules based on backupSchedule and hub resources
@@ -250,15 +253,17 @@ func (r *BackupScheduleReconciler) Reconcile(
 	}
 	setSchedulePhase(&veleroScheduleList, backupSchedule)
 
-	err := r.Client.Status().Update(ctx, backupSchedule)
-	return ctrl.Result{RequeueAfter: collisionControlInterval}, errors.Wrap(
-		err,
-		fmt.Sprintf(
-			"could not update status for schedule %s/%s",
-			backupSchedule.Namespace,
-			backupSchedule.Name,
-		),
-	)
+	if updErr := r.Client.Status().Update(ctx, backupSchedule); updErr != nil {
+		return ctrl.Result{}, errors.Wrap(
+			updErr,
+			fmt.Sprintf(
+				"could not update status for schedule %s/%s",
+				backupSchedule.Namespace,
+				backupSchedule.Name,
+			),
+		)
+	}
+	return ctrl.Result{RequeueAfter: collisionControlInterval}, nil
 }
 
 // validate backup configuration
