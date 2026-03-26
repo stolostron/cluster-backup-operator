@@ -208,17 +208,16 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 		updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseError, msg, restore)
 
-		if retry {
-			// retry after failureInterval
-			return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
-				r.Client.Status().Update(ctx, restore),
-				msg,
-			)
+		if err := r.Client.Status().Update(ctx, restore); err != nil {
+			return ctrl.Result{}, errors.Wrap(err, msg)
 		}
-		return ctrl.Result{}, errors.Wrap(
-			r.Client.Status().Update(ctx, restore),
-			msg,
-		)
+
+		if retry {
+			return ctrl.Result{RequeueAfter: failureInterval}, nil
+		}
+
+		return ctrl.Result{}, nil
+
 	} else if restore.Status.Phase == v1beta1.RestorePhaseEnabledError &&
 		strings.Contains(restore.Status.LastMessage, "BackupStorageLocation") {
 		// if the restore is in enabled error phase, and the storage location is available,
@@ -270,19 +269,19 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 			// set error status for all errors from initVeleroRestores
 			updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseError, err.Error(), restore)
-			return ctrl.Result{RequeueAfter: failureInterval}, errors.Wrap(
-				r.Client.Status().Update(ctx, restore),
-				msg,
-			)
+			if updErr := r.Client.Status().Update(ctx, restore); updErr != nil {
+				return ctrl.Result{}, errors.Wrap(updErr, msg)
+			}
+			return ctrl.Result{RequeueAfter: failureInterval}, nil
 		}
 
 		if mustwait {
 			restore.Status.Phase = v1beta1.RestorePhaseStarted
 			restore.Status.LastMessage = waitmsg
-			return ctrl.Result{RequeueAfter: pvcWaitInterval}, errors.Wrap(
-				r.Client.Status().Update(ctx, restore),
-				waitmsg,
-			)
+			if updErr := r.Client.Status().Update(ctx, restore); updErr != nil {
+				return ctrl.Result{}, errors.Wrap(updErr, waitmsg)
+			}
+			return ctrl.Result{RequeueAfter: pvcWaitInterval}, nil
 		}
 	}
 	if !initRestoreCond && !initOrPVC {
@@ -488,6 +487,7 @@ func (r *RestoreReconciler) cleanupOrphanedVeleroRestores(
 }
 
 func sendResult(restore *v1beta1.Restore, err error) (ctrl.Result, error) {
+	wrapMsg := fmt.Sprintf("could not update status for restore %s/%s", restore.Namespace, restore.Name)
 	if restore.Spec.SyncRestoreWithNewBackups &&
 		restore.IsPhaseEnabled() {
 
@@ -495,20 +495,13 @@ func sendResult(restore *v1beta1.Restore, err error) (ctrl.Result, error) {
 		if restore.Spec.RestoreSyncInterval.Duration != 0 {
 			tryAgain = restore.Spec.RestoreSyncInterval.Duration
 		}
-		return ctrl.Result{RequeueAfter: tryAgain}, errors.Wrap(
-			err,
-			fmt.Sprintf(
-				"could not update status for restore %s/%s",
-				restore.Namespace,
-				restore.Name,
-			),
-		)
+		if err != nil {
+			return ctrl.Result{}, errors.Wrap(err, wrapMsg)
+		}
+		return ctrl.Result{RequeueAfter: tryAgain}, nil
 	}
 
-	return ctrl.Result{}, errors.Wrap(
-		err,
-		fmt.Sprintf("could not update status for restore %s/%s", restore.Namespace, restore.Name),
-	)
+	return ctrl.Result{}, errors.Wrap(err, wrapMsg)
 }
 
 // SetupWithManager sets up the controller with the Manager.
