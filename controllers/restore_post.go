@@ -55,6 +55,7 @@ func executePostRestoreTasks(
 	acmRestore *v1beta1.Restore,
 ) bool {
 	logger := log.FromContext(ctx)
+	logger.Info("enter executePostRestoreTasks")
 
 	processed := false
 
@@ -88,6 +89,7 @@ func executePostRestoreTasks(
 			managedClusters.Items, localClusterName, time.Now().In(time.UTC))
 		acmRestore.Status.Messages = activationMessages
 	}
+	logger.Info("exit executePostRestoreTasks")
 	return processed
 }
 

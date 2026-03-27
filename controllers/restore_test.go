@@ -79,9 +79,19 @@ func Test_isVeleroRestoreFinished(t *testing.T) {
 			args: args{
 				restore: nil,
 			},
+			want: false,
 		},
 		{
-			name: "Finished",
+			name: "empty phase",
+			args: args{
+				restore: &veleroapi.Restore{
+					Status: veleroapi.RestoreStatus{Phase: ""},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "Completed",
 			args: args{
 				restore: &veleroapi.Restore{
 					Status: veleroapi.RestoreStatus{
@@ -92,11 +102,77 @@ func Test_isVeleroRestoreFinished(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "Not Finished",
+			name: "PartiallyFailed",
+			args: args{
+				restore: &veleroapi.Restore{
+					Status: veleroapi.RestoreStatus{
+						Phase: veleroapi.RestorePhasePartiallyFailed,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "Failed",
+			args: args{
+				restore: &veleroapi.Restore{
+					Status: veleroapi.RestoreStatus{
+						Phase: veleroapi.RestorePhaseFailed,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "FailedValidation",
+			args: args{
+				restore: &veleroapi.Restore{
+					Status: veleroapi.RestoreStatus{
+						Phase: veleroapi.RestorePhaseFailedValidation,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "InProgress not finished",
 			args: args{
 				restore: &veleroapi.Restore{
 					Status: veleroapi.RestoreStatus{
 						Phase: veleroapi.RestorePhaseInProgress,
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "New not finished",
+			args: args{
+				restore: &veleroapi.Restore{
+					Status: veleroapi.RestoreStatus{
+						Phase: veleroapi.RestorePhaseNew,
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "Finalizing not finished",
+			args: args{
+				restore: &veleroapi.Restore{
+					Status: veleroapi.RestoreStatus{
+						Phase: veleroapi.RestorePhaseFinalizing,
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "WaitingForPluginOperations not finished",
+			args: args{
+				restore: &veleroapi.Restore{
+					Status: veleroapi.RestoreStatus{
+						Phase: veleroapi.RestorePhaseWaitingForPluginOperations,
 					},
 				},
 			},
@@ -494,7 +570,7 @@ func Test_sendResults(t *testing.T) {
 // - Error status for sync restore with valid options -> RestorePhaseEnabledError
 // - Error status for sync restore with invalid options -> RestorePhaseError
 // - Non-error status for sync restore -> unchanged
-// - Completion timestamp setting for finished states
+// - Completion timestamp for Finished / FinishedWithErrors only (not Error — recoverable)
 //
 // Business Logic:
 // Sync restores that encounter errors should be set to EnabledError state
@@ -525,7 +601,7 @@ func Test_updateRestoreStatus(t *testing.T) {
 				veleroResourcesBackupName(latestBackupStr).object,
 			expectedPhase:    v1beta1.RestorePhaseError,
 			expectedMessage:  "restore failed",
-			expectCompletion: true,
+			expectCompletion: false,
 			description:      "Non-sync restore error should be RestorePhaseError",
 		},
 		{
@@ -553,7 +629,7 @@ func Test_updateRestoreStatus(t *testing.T) {
 				veleroResourcesBackupName(skipRestore).object,    // invalid: should be latest
 			expectedPhase:    v1beta1.RestorePhaseError,
 			expectedMessage:  "invalid configuration",
-			expectCompletion: true,
+			expectCompletion: false,
 			description:      "Sync restore with invalid options should be RestorePhaseError",
 		},
 		{
@@ -1138,6 +1214,92 @@ func Test_setRestorePhase(t *testing.T) {
 			},
 			wantPhase:            v1beta1.RestorePhaseEnabledError,
 			wantCleanupOnEnabled: true,
+		},
+		{
+			name: "Velero Finalizing is not finished; leaves ACM phase unchanged (covers allveleroRestoresCompleted=false)",
+			args: args{
+				restore: createACMRestore("Restore", "velero-ns").
+					syncRestoreWithNewBackups(false).
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).
+					phase(v1beta1.RestorePhaseRunning).object,
+
+				restoreList: &veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						{
+							TypeMeta: metav1.TypeMeta{
+								APIVersion: "velero/v1",
+								Kind:       "Restore",
+							},
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "restore-finalizing",
+								Namespace: "velero-ns",
+							},
+							Spec: veleroapi.RestoreSpec{
+								BackupName: "backup",
+							},
+							Status: veleroapi.RestoreStatus{
+								Phase: veleroapi.RestorePhaseFinalizing,
+							},
+						},
+					},
+				},
+			},
+			wantPhase:            v1beta1.RestorePhaseRunning,
+			wantCleanupOnEnabled: false,
+		},
+		{
+			name: "All Velero restores finished with one PartiallyFailed yields RestorePhaseFinishedWithErrors",
+			args: args{
+				restore: createACMRestore("Restore", "velero-ns").
+					syncRestoreWithNewBackups(false).
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).
+					phase(v1beta1.RestorePhaseRunning).object,
+
+				restoreList: &veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						{
+							TypeMeta: metav1.TypeMeta{
+								APIVersion: "velero/v1",
+								Kind:       "Restore",
+							},
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "restore-completed",
+								Namespace: "velero-ns",
+							},
+							Spec: veleroapi.RestoreSpec{
+								BackupName: "backup-1",
+							},
+							Status: veleroapi.RestoreStatus{
+								Phase: veleroapi.RestorePhaseCompleted,
+							},
+						},
+						{
+							TypeMeta: metav1.TypeMeta{
+								APIVersion: "velero/v1",
+								Kind:       "Restore",
+							},
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "restore-partially-failed",
+								Namespace: "velero-ns",
+							},
+							Spec: veleroapi.RestoreSpec{
+								BackupName: "backup-2",
+							},
+							Status: veleroapi.RestoreStatus{
+								Phase: veleroapi.RestorePhasePartiallyFailed,
+							},
+						},
+					},
+				},
+			},
+			wantPhase:            v1beta1.RestorePhaseFinishedWithErrors,
+			wantCleanupOnEnabled: false,
 		},
 	}
 	for _, tt := range tests {
