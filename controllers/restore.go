@@ -72,16 +72,22 @@ var veleroBackupNames = map[ResourceType]string{
 	ValidationSchedule:     "acm-validation-policy-schedule",
 }
 
+// isVeleroRestoreFinished reports whether the Velero Restore has reached a terminal phase
+// (success or failure). Non-terminal phases include New, InProgress, plugin wait, and
+// Finalizing* (see RestorePhase in velero.io/v1).
 func isVeleroRestoreFinished(restore *veleroapi.Restore) bool {
-	switch {
-	case restore == nil:
-		return false
-	case len(restore.Status.Phase) == 0 || // if no restore exists
-		restore.Status.Phase == veleroapi.RestorePhaseNew ||
-		restore.Status.Phase == veleroapi.RestorePhaseInProgress:
+	if restore == nil || len(restore.Status.Phase) == 0 {
 		return false
 	}
-	return true
+	switch restore.Status.Phase {
+	case veleroapi.RestorePhaseCompleted,
+		veleroapi.RestorePhasePartiallyFailed,
+		veleroapi.RestorePhaseFailed,
+		veleroapi.RestorePhaseFailedValidation:
+		return true
+	default:
+		return false
+	}
 }
 
 func isVeleroRestoreRunning(restore *veleroapi.Restore) bool {
@@ -182,10 +188,10 @@ func updateRestoreStatus(
 	}
 	restore.Status.LastMessage = msg
 
-	// set CompletionTimestamp when restore is completed
-	restoreCompleted := (restore.Status.Phase == v1beta1.RestorePhaseFinished ||
-		restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors ||
-		restore.Status.Phase == v1beta1.RestorePhaseError)
+	// Do not set CompletionTimestamp for RestorePhaseError: reconciliation continues and
+	// status can improve after BSL / Velero issues are fixed.
+	restoreCompleted := restore.Status.Phase == v1beta1.RestorePhaseFinished ||
+		restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors
 	if restoreCompleted {
 		rightNow := metav1.Now()
 		restore.Status.CompletionTimestamp = &rightNow
@@ -281,6 +287,7 @@ func setRestorePhase(
 
 	// get all velero restores and check status for each
 	partiallyFailed := false
+	allveleroRestoresCompleted := true
 	for i := range latestRestores {
 		veleroRestore := latestRestores[i].DeepCopy()
 
@@ -333,7 +340,9 @@ func setRestorePhase(
 			// check if restore status contains the PartiallyFailed string to catch
 			// all variations such as FinalizingPartiallyFailed
 			partiallyFailed = true
-			continue
+		}
+		if !isVeleroRestoreFinished(veleroRestore) {
+			allveleroRestoresCompleted = false
 		}
 	}
 
@@ -347,12 +356,14 @@ func setRestorePhase(
 
 		// delta cleanup needed now
 		cleanupOnEnabled = true
-	} else if partiallyFailed {
-		restore.Status.Phase = v1beta1.RestorePhaseFinishedWithErrors
-		restore.Status.LastMessage = "Velero restores have run to completion but encountered 1+ errors"
-	} else {
-		restore.Status.Phase = v1beta1.RestorePhaseFinished
-		restore.Status.LastMessage = "All Velero restores have run successfully"
+	} else if allveleroRestoresCompleted {
+		if partiallyFailed {
+			restore.Status.Phase = v1beta1.RestorePhaseFinishedWithErrors
+			restore.Status.LastMessage = "Velero restores have run to completion but encountered 1+ errors"
+		} else {
+			restore.Status.Phase = v1beta1.RestorePhaseFinished
+			restore.Status.LastMessage = "All Velero restores have run successfully"
+		}
 	}
 
 	return restore.Status.Phase, cleanupOnEnabled

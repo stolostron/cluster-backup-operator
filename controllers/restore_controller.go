@@ -218,7 +218,8 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 		return ctrl.Result{}, nil
 
-	} else if restore.Status.Phase == v1beta1.RestorePhaseEnabledError &&
+	} else if (restore.Status.Phase == v1beta1.RestorePhaseEnabledError ||
+		restore.Status.Phase == v1beta1.RestorePhaseError) &&
 		strings.Contains(restore.Status.LastMessage, "BackupStorageLocation") {
 		// if the restore is in enabled error phase, and the storage location is available,
 		// update status based on velero restore status
@@ -297,10 +298,10 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			" ; SyncRestoreWithNewBackups option is ignored because " + msg
 	}
 
-	// Set CompletionTimestamp for terminal phases when cleanupOnRestore was skipped
+	// Set CompletionTimestamp for terminal success phases when cleanupOnRestore was skipped.
+	// Omit RestorePhaseError: restore still reconciles and can recover (e.g. BSL available again).
 	restoreCompleted := restore.Status.Phase == v1beta1.RestorePhaseFinished ||
-		restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors ||
-		restore.Status.Phase == v1beta1.RestorePhaseError
+		restore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors
 	if restoreCompleted && restore.Status.CompletionTimestamp == nil {
 		rightNow := metav1.Now()
 		restore.Status.CompletionTimestamp = &rightNow
@@ -386,8 +387,7 @@ func (r *RestoreReconciler) cleanupOnRestore(
 	// set CompletionTimestamp when cleanupOnRestore is true or restore is completed
 	// the CompletionTimestamp must be set after cleanupDeltaResources and executePostRestoreTasks are completed
 	restoreCompleted := (acmRestore.Status.Phase == v1beta1.RestorePhaseFinished ||
-		acmRestore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors ||
-		acmRestore.Status.Phase == v1beta1.RestorePhaseError)
+		acmRestore.Status.Phase == v1beta1.RestorePhaseFinishedWithErrors)
 	if cleanupOnRestore || restoreCompleted {
 		rightNow := metav1.Now()
 		acmRestore.Status.CompletionTimestamp = &rightNow
