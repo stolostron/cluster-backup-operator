@@ -441,23 +441,28 @@ var _ = Describe("Basic Restore controller", func() {
 				// Poll until ACM restore reaches Finished: keep Velero restores Completed on each tick
 				// (same pattern as completeVeleroRestoresUntilPhase) so the controller always observes
 				// a consistent completed set while reconciling.
-				Eventually(func() v1beta1.RestorePhase {
+				Eventually(func() error {
 					veleroRestoresPoll := veleroapi.RestoreList{}
 					if err := k8sClient.List(ctx, &veleroRestoresPoll, client.InNamespace(veleroNamespace.Name)); err != nil {
-						return ""
+						return err
 					}
 					for i := range veleroRestoresPoll.Items {
 						if veleroRestoresPoll.Items[i].Status.Phase != veleroapi.RestorePhaseCompleted {
 							veleroRestoresPoll.Items[i].Status.Phase = veleroapi.RestorePhaseCompleted
-							_ = k8sClient.Update(ctx, &veleroRestoresPoll.Items[i])
+							if err := k8sClient.Update(ctx, &veleroRestoresPoll.Items[i]); err != nil {
+								return err
+							}
 						}
 					}
 					acm := v1beta1.Restore{}
 					if err := k8sClient.Get(ctx, restoreLookupKey, &acm); err != nil {
-						return ""
+						return err
 					}
-					return acm.Status.Phase
-				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseFinished))
+					if acm.Status.Phase != v1beta1.RestorePhaseFinished {
+						return fmt.Errorf("restore phase=%s, want=%s", acm.Status.Phase, v1beta1.RestorePhaseFinished)
+					}
+					return nil
+				}, timeout, interval).Should(Succeed())
 				// When acm restore is finished CompletionTimestamp should be set
 				waitForCompletionTimestamp(ctx, k8sClient, restoreName, veleroNamespace.Name,
 					timeout, interval)
