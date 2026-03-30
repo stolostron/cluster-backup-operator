@@ -291,15 +291,13 @@ func setRestorePhase(
 	for i := range latestRestores {
 		veleroRestore := latestRestores[i].DeepCopy()
 
-		if veleroRestore.Status.Phase == "" {
-			restore.Status.Phase = v1beta1.RestorePhaseUnknown
-			restore.Status.LastMessage = fmt.Sprintf(
-				"Unknown status for Velero restore %s",
-				veleroRestore.Name,
-			)
-			return restore.Status.Phase, cleanupOnEnabled
+		veleroPhase := veleroRestore.Status.Phase
+		if veleroPhase == "" {
+			// Treat unset status like Velero's "new" until the controller populates it, so we do not
+			// flip the ACM restore to Unknown while status is still propagating to the apiserver/cache.
+			veleroPhase = veleroapi.RestorePhaseNew
 		}
-		if veleroRestore.Status.Phase == veleroapi.RestorePhaseNew {
+		if veleroPhase == veleroapi.RestorePhaseNew {
 			restore.Status.Phase = v1beta1.RestorePhaseStarted
 			restore.Status.LastMessage = fmt.Sprintf(
 				"Velero restore %s has started",

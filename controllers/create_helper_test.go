@@ -1052,33 +1052,6 @@ func waitForRestoreStatusFieldValue(
 	}, timeout, interval).Should(BeIdenticalTo(expectedValue))
 }
 
-// updateVeleroRestoreStatusToCompleted updates all velero restores in the list to completed status
-func updateVeleroRestoreStatusToCompleted(
-	ctx context.Context,
-	k8sClient client.Client,
-	restoreNames []string,
-	namespace string,
-	timeout, interval time.Duration,
-) {
-	Eventually(func() error {
-		for _, restoreName := range restoreNames {
-			veleroRestore := &veleroapi.Restore{}
-			err := k8sClient.Get(ctx, createLookupKey(restoreName, namespace), veleroRestore)
-			if err != nil {
-				return err
-			}
-			if veleroRestore.Status.Phase != veleroapi.RestorePhaseCompleted {
-				veleroRestore.Status.Phase = veleroapi.RestorePhaseCompleted
-				err = k8sClient.Update(ctx, veleroRestore)
-				if err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}, timeout, interval).Should(Succeed())
-}
-
 // verifyVeleroRestoreExists verifies that a velero restore resource exists
 func verifyVeleroRestoreExists(
 	ctx context.Context,

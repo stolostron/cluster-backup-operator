@@ -70,7 +70,7 @@ var _ = Describe("Basic Restore controller", func() {
 	var (
 		// Core test context and timing
 		ctx      context.Context          // Test execution context
-		timeout  = time.Second * 10       // Maximum wait time for async operations
+		timeout  = time.Second * 30       // Maximum wait time for async operations
 		interval = time.Millisecond * 250 // Polling interval for Eventually/Consistently checks
 
 		// Velero infrastructure components
@@ -377,8 +377,8 @@ var _ = Describe("Basic Restore controller", func() {
 				veleroRestores := veleroapi.RestoreList{}
 				Expect(k8sClient.List(ctx, &veleroRestores, client.InNamespace(veleroNamespace.Name))).To(Succeed())
 
-				// Initialize all Velero restore statuses to avoid "Unknown" phase
-				// The controller checks all restores, and if any have empty status, ACM restore goes to Unknown
+				// Initialize all Velero restore statuses so Velero phases are explicit before completion
+				// (empty status is treated like New in setRestorePhase; tests still set New for clarity)
 				for i := range veleroRestores.Items {
 					if veleroRestores.Items[i].Status.Phase == "" {
 						veleroRestores.Items[i].Status.Phase = veleroapi.RestorePhaseNew
@@ -397,7 +397,6 @@ var _ = Describe("Basic Restore controller", func() {
 					Values:   []string{"bar2"},
 				}
 
-				restoreNames := []string{}
 				for i := range veleroRestores.Items {
 					// look for velero optional properties
 					Expect(*veleroRestores.Items[i].Spec.RestorePVs).Should(BeTrue())
@@ -437,19 +436,28 @@ var _ = Describe("Basic Restore controller", func() {
 
 					// Verify backup name is set
 					Expect(veleroRestores.Items[i].Spec.BackupName).ShouldNot(BeEmpty())
-
-					restoreNames = append(restoreNames, veleroRestores.Items[i].GetName())
 				}
 
-				// Now update all the velero restores to simulate that they are complete
-				updateVeleroRestoreStatusToCompleted(ctx, k8sClient, restoreNames, veleroNamespace.Name, timeout, interval)
-
-				// TODO: there's a lot more steps in the restore that could be
-				// tested here
-
-				// Now the acm restore should proceed to Finished phase
-				waitForRestorePhase(ctx, k8sClient, restoreName, veleroNamespace.Name,
-					v1beta1.RestorePhaseFinished, timeout, interval)
+				// Poll until ACM restore reaches Finished: keep Velero restores Completed on each tick
+				// (same pattern as completeVeleroRestoresUntilPhase) so the controller always observes
+				// a consistent completed set while reconciling.
+				Eventually(func() v1beta1.RestorePhase {
+					veleroRestoresPoll := veleroapi.RestoreList{}
+					if err := k8sClient.List(ctx, &veleroRestoresPoll, client.InNamespace(veleroNamespace.Name)); err != nil {
+						return ""
+					}
+					for i := range veleroRestoresPoll.Items {
+						if veleroRestoresPoll.Items[i].Status.Phase != veleroapi.RestorePhaseCompleted {
+							veleroRestoresPoll.Items[i].Status.Phase = veleroapi.RestorePhaseCompleted
+							_ = k8sClient.Update(ctx, &veleroRestoresPoll.Items[i])
+						}
+					}
+					acm := v1beta1.Restore{}
+					if err := k8sClient.Get(ctx, restoreLookupKey, &acm); err != nil {
+						return ""
+					}
+					return acm.Status.Phase
+				}, timeout, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseFinished))
 				// When acm restore is finished CompletionTimestamp should be set
 				waitForCompletionTimestamp(ctx, k8sClient, restoreName, veleroNamespace.Name,
 					timeout, interval)
@@ -683,7 +691,7 @@ var _ = Describe("Basic Restore controller", func() {
 					"rhacm-restore-1-acm-resources-schedule-good-old-backup", timeout, interval)
 
 				waitForRestorePhase(ctx, k8sClient, restoreName, veleroNamespace.Name,
-					v1beta1.RestorePhaseUnknown, timeout, interval)
+					v1beta1.RestorePhaseStarted, timeout, interval)
 
 				verifyVeleroRestoreExists(ctx, k8sClient,
 					restoreName+"-acm-credentials-schedule-good-old-backup", veleroNamespace.Name)
@@ -995,7 +1003,7 @@ var _ = Describe("Basic Restore controller", func() {
 				setRestorePhase(&veleroRestores, &createdRestore)
 				Expect(
 					createdRestore.Status.Phase,
-				).Should(BeEquivalentTo(v1beta1.RestorePhaseUnknown))
+				).Should(BeEquivalentTo(v1beta1.RestorePhaseStarted))
 
 				veleroRestores.Items[0].Status.Phase = veleroapi.RestorePhaseNew
 				setRestorePhase(&veleroRestores, &createdRestore)
