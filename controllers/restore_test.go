@@ -28,9 +28,11 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
@@ -1140,6 +1142,42 @@ func Test_setRestorePhase(t *testing.T) {
 				restoreList: nil,
 			},
 			wantPhase:            v1beta1.RestorePhaseEnabled,
+			wantCleanupOnEnabled: false,
+		},
+		{
+			name: "Velero restore with empty Status.Phase is treated like New (ACM Started)",
+			args: args{
+				restore: createACMRestore("Restore", "velero-ns").
+					syncRestoreWithNewBackups(false).
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+					veleroManagedClustersBackupName(latestBackupStr).
+					veleroCredentialsBackupName(latestBackupStr).
+					veleroResourcesBackupName(latestBackupStr).
+					veleroCredentialsRestoreName("one-creds-restore").
+					phase(v1beta1.RestorePhaseRunning).object,
+
+				restoreList: &veleroapi.RestoreList{
+					Items: []veleroapi.Restore{
+						{
+							TypeMeta: metav1.TypeMeta{
+								APIVersion: "velero/v1",
+								Kind:       "Restore",
+							},
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "one-creds-restore",
+								Namespace: "velero-ns",
+							},
+							Spec: veleroapi.RestoreSpec{
+								BackupName: "backup",
+							},
+							Status: veleroapi.RestoreStatus{
+								Phase: "",
+							},
+						},
+					},
+				},
+			},
+			wantPhase:            v1beta1.RestorePhaseStarted,
 			wantCleanupOnEnabled: false,
 		},
 		{
@@ -4992,6 +5030,26 @@ func (f *failVeleroRestoreCreateClient) Create(
 	return f.Client.Create(ctx, obj, opts...)
 }
 
+var veleroRestoresGroupResource = schema.GroupResource{Group: "velero.io", Resource: "restores"}
+
+// alreadyExistsVeleroRestoreCreateClient returns AlreadyExists for velero.io.Restore Create calls.
+type alreadyExistsVeleroRestoreCreateClient struct {
+	client.Client
+	veleroRestoreCreateCalls int
+}
+
+func (a *alreadyExistsVeleroRestoreCreateClient) Create(
+	ctx context.Context,
+	obj client.Object,
+	opts ...client.CreateOption,
+) error {
+	if _, ok := obj.(*veleroapi.Restore); ok {
+		a.veleroRestoreCreateCalls++
+		return apierrors.NewAlreadyExists(veleroRestoresGroupResource, obj.GetName())
+	}
+	return a.Client.Create(ctx, obj, opts...)
+}
+
 // Test_initVeleroRestores_nonAlreadyExistsCreateFailure_returnsNil verifies that when every
 // Velero Restore Create fails with a non-AlreadyExists error, initVeleroRestores still returns
 // (nil, nil, nil) and attempts Create once per restore to create (here: credentials, resources,
@@ -5042,13 +5100,136 @@ func Test_initVeleroRestores_nonAlreadyExistsCreateFailure_returnsNil(t *testing
 	}
 
 	emptyVelero := veleroapi.RestoreList{}
-	_, _, err := r.initVeleroRestores(ctx, acm, false, &emptyVelero)
+	_, _, err, noNewVeleroRestore := r.initVeleroRestores(ctx, acm, false, &emptyVelero)
 	if err != nil {
 		t.Fatalf("initVeleroRestores: %v", err)
+	}
+	if noNewVeleroRestore {
+		t.Fatalf("want noNewVeleroRestore false when any Create fails with non-AlreadyExists, got true")
+	}
+	// Init must not mark ACM Restore Finished when no Velero Restore was created (Create failed);
+	// terminal phase and message are set after cleanup / post-restore / setRestorePhase.
+	if acm.Status.Phase == v1beta1.RestorePhaseFinished {
+		t.Fatalf("initVeleroRestores set Finished with no successful Create; got LastMessage=%q",
+			acm.Status.LastMessage)
 	}
 	const wantVeleroRestoreCreates = 3
 	if c.veleroRestoreCreateCalls != wantVeleroRestoreCreates {
 		t.Fatalf("Velero Restore Create calls = %d, want %d (each planned restore should attempt Create)",
 			c.veleroRestoreCreateCalls, wantVeleroRestoreCreates)
+	}
+}
+
+// Test_initVeleroRestores_allVeleroCreateAlreadyExists_returnsFourthTrue verifies the fourth return
+// (noNewVeleroRestore) is true when every Velero Restore Create returns AlreadyExists and no
+// non-AlreadyExists failure occurred — Reconcile uses this to run cleanup/setRestorePhase.
+func Test_initVeleroRestores_allVeleroCreateAlreadyExists_returnsFourthTrue(t *testing.T) {
+	ctx := context.Background()
+	ns := "default"
+	ts := "20240101120000"
+	clusterLbl := map[string]string{
+		BackupVeleroLabel:          "aa",
+		BackupScheduleClusterLabel: "cls",
+	}
+	cred := *createBackup("acm-credentials-schedule-"+ts, ns).labels(clusterLbl).object
+	res := *createBackup("acm-resources-schedule-"+ts, ns).labels(clusterLbl).object
+	gen := *createBackup("acm-resources-generic-schedule-"+ts, ns).labels(clusterLbl).object
+
+	acm := createACMRestore("restore-init-already-exists", ns).
+		syncRestoreWithNewBackups(false).
+		cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+		veleroManagedClustersBackupName(skipRestoreStr).
+		veleroCredentialsBackupName(latestBackupStr).
+		veleroResourcesBackupName(latestBackupStr).
+		phase(v1beta1.RestorePhaseStarted).
+		object
+
+	scheme := runtime.NewScheme()
+	if err := v1beta1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := veleroapi.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+
+	base := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(acm, &cred, &res, &gen).
+		Build()
+
+	c := &alreadyExistsVeleroRestoreCreateClient{Client: base}
+
+	r := &RestoreReconciler{
+		Client:   c,
+		Scheme:   scheme,
+		Recorder: record.NewFakeRecorder(100),
+	}
+
+	emptyVelero := veleroapi.RestoreList{}
+	mustWait, waitMsg, err, noNewVeleroRestore := r.initVeleroRestores(ctx, acm, false, &emptyVelero)
+	if err != nil {
+		t.Fatalf("initVeleroRestores: %v", err)
+	}
+	if mustWait {
+		t.Fatalf("unexpected mustWait: %s", waitMsg)
+	}
+	if !noNewVeleroRestore {
+		t.Fatalf("want noNewVeleroRestore true when all Creates are AlreadyExists, got false")
+	}
+	const wantCreates = 3
+	if c.veleroRestoreCreateCalls != wantCreates {
+		t.Fatalf("Velero Restore Create calls = %d, want %d", c.veleroRestoreCreateCalls, wantCreates)
+	}
+}
+
+// Test_initVeleroRestores_sync_trackedRestoresNotMissing_returnsFourthTrue covers the sync path that
+// returns early when no new backups are available, managed clusters are not in the "latest-only"
+// activation sub-path, and no tracked Velero restore name is missing from the cluster.
+func Test_initVeleroRestores_sync_trackedRestoresNotMissing_returnsFourthTrue(t *testing.T) {
+	ctx := context.Background()
+	ns := "default"
+	acm := createACMRestore("restore-sync-early-exit", ns).
+		syncRestoreWithNewBackups(true).
+		veleroManagedClustersBackupName(skipRestoreStr).
+		veleroCredentialsBackupName(latestBackupStr).
+		veleroResourcesBackupName(latestBackupStr).
+		phase(v1beta1.RestorePhaseStarted).
+		object
+
+	scheme := runtime.NewScheme()
+	if err := v1beta1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := veleroapi.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+
+	base := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(acm).
+		Build()
+
+	r := &RestoreReconciler{
+		Client:   base,
+		Scheme:   scheme,
+		Recorder: record.NewFakeRecorder(10),
+	}
+
+	emptyVelero := veleroapi.RestoreList{}
+	mustWait, waitMsg, err, noNewVeleroRestore := r.initVeleroRestores(ctx, acm, true, &emptyVelero)
+	if err != nil {
+		t.Fatalf("initVeleroRestores: %v", err)
+	}
+	if mustWait {
+		t.Fatalf("unexpected mustWait: %s", waitMsg)
+	}
+	if !noNewVeleroRestore {
+		t.Fatalf("want noNewVeleroRestore true for sync early exit (tracked not missing), got false")
 	}
 }

@@ -257,8 +257,11 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	initRestoreCond := len(veleroRestoreList.Items) == 0 || sync
 
 	initOrPVC := initRestoreCond || isPVCStep
+	var noNewVeleroRestoreCreated bool
 	if initOrPVC {
-		mustwait, waitmsg, err := r.initVeleroRestores(ctx, restore, sync, &veleroRestoreList)
+		var mustwait bool
+		var waitmsg string
+		mustwait, waitmsg, err, noNewVeleroRestoreCreated = r.initVeleroRestores(ctx, restore, sync, &veleroRestoreList)
 		if err != nil {
 			msg := fmt.Sprintf(
 				"unable to initialize Velero restores for restore %s/%s: %v",
@@ -285,7 +288,11 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{RequeueAfter: pvcWaitInterval}, nil
 		}
 	}
-	if !initRestoreCond && !initOrPVC {
+	// Run cleanup when past init (classic path) or when init ran but every Velero Restore Create was
+	// AlreadyExists (no new Velero objects this pass). In the latter case initOrPVC can stay true
+	// (e.g. sync), so cleanup must not be skipped or setRestorePhase never runs and the restore stalls.
+	cleanupEligible := (!initRestoreCond && !initOrPVC) || (initOrPVC && noNewVeleroRestoreCreated)
+	if cleanupEligible {
 		r.cleanupOnRestore(ctx, restore)
 	}
 
@@ -643,7 +650,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 	restore *v1beta1.Restore,
 	sync bool,
 	veleroRestoreList *veleroapi.RestoreList,
-) (bool, string, error) {
+) (bool, string, error, bool) {
 	restoreLogger := log.FromContext(ctx)
 
 	restoreOnlyManagedClusters := false
@@ -666,7 +673,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			// check if any tracked restore is missing from the cluster
 			trackedRestoresMissing := areTrackedRestoresMissing(restore, veleroRestoreList)
 			if !trackedRestoresMissing {
-				return false, "", nil
+				return false, "", nil, true
 			}
 			restoreLogger.Info(
 				"tracked Velero restore(s) missing, will recreate",
@@ -685,7 +692,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 		restoreOnlyManagedClusters,
 	)
 	if err != nil {
-		return false, "", err
+		return false, "", err, false
 	}
 	if len(veleroRestoresToCreate) == 0 {
 		updateRestoreStatus(
@@ -694,10 +701,11 @@ func (r *RestoreReconciler) initVeleroRestores(
 			fmt.Sprintf(noopMsg, restore.Name),
 			restore,
 		)
-		return false, "", nil
+		return false, "", nil, false
 	}
 
 	newVeleroRestoreCreated := false
+	anyVeleroCreateFailed := false
 
 	// now create the restore resources and start the actual restore
 	for resKey := range resKeys {
@@ -725,6 +733,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 
 		if err != nil {
 			if !k8serr.IsAlreadyExists(err) {
+				anyVeleroCreateFailed = true
 				// log the error only if it is not an already exists error
 				restoreLogger.Info(
 					fmt.Sprintf("unable to create Velero restore for restore %s:%s, error:%s",
@@ -764,7 +773,7 @@ func (r *RestoreReconciler) initVeleroRestores(
 			if shouldWait, waitMsg := processRestoreWait(ctx, r.Client,
 				veleroRestoresToCreate[key].Name, restore.Namespace); shouldWait {
 				// some PVCs were not created yet, wait for them
-				return true, waitMsg, nil
+				return true, waitMsg, nil, false
 			}
 		}
 	}
@@ -772,11 +781,11 @@ func (r *RestoreReconciler) initVeleroRestores(
 	if newVeleroRestoreCreated {
 		restore.Status.Phase = v1beta1.RestorePhaseStarted
 		restore.Status.LastMessage = fmt.Sprintf("Restore %s started", restore.Name)
-	} else {
-		restore.Status.Phase = v1beta1.RestorePhaseFinished
-		restore.Status.LastMessage = fmt.Sprintf("Restore %s completed", restore.Name)
 	}
-	return false, "", nil
+	// Signal cleanup when no new Velero Restore was created (e.g. all Create returned AlreadyExists)
+	// without non-AlreadyExists failures — cleanup runs setRestorePhase / post-restore work.
+	noNewVeleroRestore := !newVeleroRestoreCreated && !anyVeleroCreateFailed
+	return false, "", nil, noNewVeleroRestore
 }
 
 // for an activation phase update restore labels to include activation resources
