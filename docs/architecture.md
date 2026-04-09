@@ -10,15 +10,15 @@ The operator runs on an ACM hub cluster and depends on the OADP operator (which 
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    ACM Hub Cluster                       │
+│                    ACM Hub Cluster                      │
 │                                                         │
 │  ┌─────────────────┐       ┌──────────────────────┐     │
 │  │ BackupSchedule  │──────▶│ BackupSchedule       │     │
 │  │ CR (user)       │       │ Reconciler           │     │
 │  └─────────────────┘       │  - Creates 5 Velero  │     │
-│                            │    Schedule objects   │     │
-│                            │  - Collision detect   │     │
-│                            │  - MSA setup          │     │
+│                            │    Schedule objects  │     │
+│                            │  - Collision detect  │     │
+│                            │  - MSA setup         │     │
 │                            └──────────┬───────────┘     │
 │                                       │                 │
 │                                       ▼                 │
@@ -111,10 +111,10 @@ BackupSchedule CR created/updated
                     │                       │
                     ▼                       ▼
            ┌────────────────┐    ┌──────────────────┐
-           │FailedValidation│    │ BackupCollision   │
-           │                │    │                   │
-           │ Invalid cron   │    │ Another hub owns  │
-           │ No/bad BSL     │    │ latest backups    │
+           │FailedValidation│    │ BackupCollision  │
+           │                │    │                  │
+           │ Invalid cron   │    │ Another hub owns │
+           │ No/bad BSL     │    │ latest backups   │
            │ Active Restore │    └──────────────────┘
            │ Missing MSA CRD│
            └────────────────┘
@@ -185,11 +185,11 @@ Restore CR created/updated
               │          │              │
               ▼          ▼              ▼
         ┌──────────┐ ┌──────────┐ ┌────────────────────┐
-        │ Finished │ │ Enabled  │ │FinishedWithErrors   │
-        │          │ │          │ │                      │
-        │ All done │ │ Sync     │ │ Velero partial fail  │
-        │ MC=latest│ │ MC=skip  │ │ Concurrent resource  │
-        └──────────┘ │ Requeues │ │ Invalid cleanup      │
+        │ Finished │ │ Enabled  │ │FinishedWithErrors  │
+        │          │ │          │ │                    │
+        │ All done │ │ Sync     │ │ Velero partial fail│
+        │ MC=latest│ │ MC=skip  │ │ Concurrent resource│
+        └──────────┘ │ Requeues │ │ Invalid cleanup    │
                      └────┬─────┘ └────────────────────┘
                           │
                     Patch MC to "latest"
@@ -316,6 +316,19 @@ After activation data is restored:
 2. For each, check if a valid MSA token exists in the backup
 3. If valid, create `auto-import-secret` using the token
 4. Import controller reconnects the managed cluster
+
+## Build Pipeline
+
+The operator has two build paths:
+
+| Path | Dockerfile | Builder | Used by | CGO | FIPS |
+|------|-----------|---------|---------|-----|------|
+| **Prow CI** | `Dockerfile` | `stolostron/builder:go1.25-linux` | PR checks, image mirror | Disabled | No |
+| **Konflux** | `Dockerfile.rhtap` | `brew.registry.redhat.io/.../openshift-golang-builder:rhel_9_1.25` | Release builds | Enabled | Yes (`strictfipsruntime`) |
+
+Konflux builds are hermetic (vendored dependencies, no network access during build) with gomod prefetch. Multi-arch is Konflux-only (x86_64, ppc64le, s390x, arm64). Both Dockerfiles must copy the same source directories — if you add a new package directory, update both.
+
+The Konflux pipeline definition lives in `.tekton/` and references a shared pipeline from `stolostron/konflux-build-catalog`.
 
 ## TLS Configuration (pkg/tlsconfig)
 

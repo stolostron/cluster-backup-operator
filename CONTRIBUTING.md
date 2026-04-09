@@ -84,6 +84,8 @@ make test
 
 This runs `go test ./controllers/... ./pkg/...` with envtest.
 
+In CI, Prow uses `Makefile.prow` which wraps the regular Makefile targets — `make unit-tests` calls `make test`.
+
 ### How envtest Works
 
 The test suite (`controllers/suite_test.go`) starts a local API server using envtest. CRDs are loaded from two locations:
@@ -176,16 +178,63 @@ git rebase --signoff main
 
 ## CI Pipeline
 
-### Prow (upstream)
-- Runs `make test` (unit tests with envtest)
-- Runs `make lint` (golangci-lint)
-- SonarCloud quality gate
+PRs are merged via **squash merge** (configured in Tide).
 
-### Konflux/RHTAP (downstream)
-- Hermetic builds from `.tekton/` PipelineRun definitions
-- Multi-arch builds (x86_64, ppc64le, s390x, arm64)
-- Enterprise Contract validation
-- Uses `Dockerfile.rhtap` (FIPS-enabled)
+### Prow CI Checks (all branches)
+
+These must pass before a PR can merge:
+
+| Check | What it does |
+|-------|-------------|
+| `ci/prow/images` | Builds the Docker image |
+| `ci/prow/unit-tests` | Runs `make unit-tests` (envtest) via `Makefile.prow` |
+| `ci/prow/sonar` | SonarCloud quality gate (coverage, code smells, bugs) |
+| `ci/prow/pr-image-mirror` | Mirrors PR image to stolostron registry |
+| `ci/prow/crd-and-gen-files-check` | Verifies CRDs and deepcopy files are up to date (`make manifests` + `make generate`) |
+
+### Konflux/RHTAP (release branches only)
+
+Release branches (2.11+) also require:
+
+| Check | What it does |
+|-------|-------------|
+| `Red Hat Konflux / cluster-backup-operator-acm-XXX-on-pull-request` | Hermetic build from `.tekton/` |
+| `Red Hat Konflux / enterprise-contract-acm-XXX` | Enterprise Contract validation |
+
+Konflux builds use `Dockerfile.rhtap` (FIPS-enabled, multi-arch: x86_64, ppc64le, s390x, arm64).
+
+### SonarCloud
+
+SonarCloud runs on every PR and post-submit. Configuration is in `sonar-project.properties`. Note that `api/v1beta1/` and `main.go` are excluded from SonarCloud analysis. Coverage is reported from `coverage.out`.
+
+If the SonarCloud quality gate fails, check the dashboard link in the CI logs for specific issues (code smells, bugs, coverage threshold).
+
+### Branch Protection
+
+All branches require:
+- At least 1 approving review
+- Stale reviews dismissed on new pushes
+- All required status checks passing
+
+### Post-submit Jobs
+
+After merge to `main`:
+- Image mirrored with `latest` tag
+- Fast-forward to `release-2.17` branch
+- SonarCloud post-submit analysis
+
+## Dependency Management
+
+Go module updates are managed by two tools:
+
+- **Dependabot** (`.github/dependabot.yml`) — Creates weekly PRs for Go module updates on `main`
+- **Renovate** (`.github/renovate.json`) — Disabled on release branches to avoid destabilizing releases. Vulnerability alerts are enabled.
+
+Renovate PRs are auto-labeled with `ok-to-test` so CI runs automatically.
+
+## Code Owners
+
+The `OWNERS` file defines Prow approvers and reviewers. At least one approver must approve a PR before it can merge. Current approvers and reviewers are listed in the [OWNERS](OWNERS) file.
 
 ## Certificate of Origin
 

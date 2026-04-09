@@ -24,9 +24,26 @@ controllers/
   utils.go                  — Shared helpers: sorting, hub ID, BSL check, Velero CRD probe
   create_helper.go          — Test-only constructors for fake Velero/ACM objects
 pkg/tlsconfig/              — TLS configuration utilities (BuildTLSConfig, GetTLSProfileType)
-config/                     — Kustomize: CRDs, RBAC, manager deployment, webhook patches, samples
+config/                     — Kustomize: CRDs, RBAC, manager deployment, webhook patches
+config/samples/             — Example CRs for all backup/restore scenarios
 hack/crds/                  — Extra CRDs required by envtest (Velero, OCM, Hive, OpenShift, etc.)
+images/                     — Architecture diagrams (PNG) referenced by README
+docs/                       — Architecture and design documentation
 ```
+
+### Other Key Files
+
+| File | Purpose |
+|------|---------|
+| `PROJECT` | Kubebuilder v3 project file — defines CRD scaffolding |
+| `OWNERS` | Prow approvers and reviewers for this repo |
+| `COMPONENT_NAME` | Component name for CI build harness (`cluster-backup-controller`) |
+| `COMPONENT_VERSION` | Component version for CI build harness |
+| `sonar-project.properties` | SonarCloud config — excludes `api/v1beta1/` and `main.go` from analysis |
+| `Makefile.prow` | CI wrapper for Makefile — `unit-tests` target calls `make test` |
+| `.github/dependabot.yml` | Weekly Go module updates on main |
+| `.github/renovate.json` | Renovate — disabled on release branches, vulnerability alerts enabled |
+| `.github/workflows/auto-label-release-branch.yml` | Auto-labels PRs targeting release branches |
 
 ## Key Design Patterns
 
@@ -69,6 +86,26 @@ Both `BackupSchedule` and `Restore` use phase fields to track state. Phase trans
 - Velero schedule names follow the pattern: `acm-{type}-schedule` (e.g., `acm-credentials-schedule`)
 - Backup labels use the prefix `cluster.open-cluster-management.io/`
 - Constants for label keys and schedule names are in `backup.go`
+
+### CI and Branching
+- PRs are squash-merged via Tide
+- `main` fast-forwards to the current release branch (e.g., `release-2.17`) on post-submit
+- CI uses `Makefile.prow` which wraps the regular Makefile
+- Required checks: images, unit-tests, sonar, pr-image-mirror, crd-and-gen-files-check
+- Release branches also require Konflux build + Enterprise Contract checks
+
+### Build and Dockerfile
+- **Dockerfile** — Used by Prow CI. Builder: `stolostron/builder:go1.25-linux`. `CGO_ENABLED=0`.
+- **Dockerfile.rhtap** — Used by Konflux. Builder: `brew.registry.redhat.io` with FIPS (`GOEXPERIMENT=strictfipsruntime`). `CGO_ENABLED=1`. Includes Red Hat labels and LICENSE copy.
+- Both Dockerfiles must copy the same source directories. If you add a new top-level package (like `pkg/`), add `COPY <dir>/ <dir>/` to **both** Dockerfiles.
+- Multi-arch builds (x86_64, ppc64le, s390x, arm64) are done by Konflux only.
+
+### Konflux Pipeline
+- `.tekton/` contains PipelineRun definitions per release branch (e.g., `cluster-backup-operator-acm-217-push.yaml`)
+- Pipeline is shared from `stolostron/konflux-build-catalog` (`pipelines/common.yaml`)
+- Builds are hermetic with gomod prefetch
+- Push builds trigger on merge to release branches; PR builds trigger on pull requests
+- Slack notifications are sent on push builds via `backup-team-slack-notification-secret`
 
 ## Important Constraints
 
