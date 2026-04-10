@@ -2519,6 +2519,7 @@ var _ = Describe("Finalizer Cleanup Tests", func() {
 					VeleroManagedClustersBackupName: &skipBackup,
 					VeleroCredentialsBackupName:     &skipBackup,
 					VeleroResourcesBackupName:       &skipBackup,
+					CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
 				},
 			}
 			Expect(k8sClient.Create(ctx, restore)).Should(Succeed())
@@ -2566,6 +2567,7 @@ var _ = Describe("Finalizer Cleanup Tests", func() {
 					VeleroManagedClustersBackupName: &skipBackup,
 					VeleroCredentialsBackupName:     &skipBackup,
 					VeleroResourcesBackupName:       &skipBackup,
+					CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
 				},
 			}
 			Expect(k8sClient.Create(ctx, acmRestore)).Should(Succeed())
@@ -2696,6 +2698,7 @@ var _ = Describe("Finalizer Cleanup Tests", func() {
 					VeleroManagedClustersBackupName: &skipBackup,
 					VeleroCredentialsBackupName:     &skipBackup,
 					VeleroResourcesBackupName:       &skipBackup,
+					CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
 				},
 			}
 			Expect(k8sClient.Create(ctx, acmRestore)).Should(Succeed())
@@ -2827,6 +2830,7 @@ var _ = Describe("Finalizer Cleanup Tests", func() {
 					VeleroManagedClustersBackupName: &skipBackup,
 					VeleroCredentialsBackupName:     &skipBackup,
 					VeleroResourcesBackupName:       &skipBackup,
+					CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
 				},
 			}
 			Expect(k8sClient.Create(ctx, acmRestore)).Should(Succeed())
@@ -2954,6 +2958,7 @@ var _ = Describe("Finalizer Cleanup Tests", func() {
 					VeleroManagedClustersBackupName: &skipBackup,
 					VeleroCredentialsBackupName:     &skipBackup,
 					VeleroResourcesBackupName:       &skipBackup,
+					CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
 				},
 			}
 			Expect(k8sClient.Create(ctx, acmRestore)).Should(Succeed())

@@ -365,6 +365,7 @@ var _ = Describe("BackupSchedule controller", func() {
 						VeleroManagedClustersBackupName: &skipBackup,
 						VeleroCredentialsBackupName:     &skipBackup,
 						VeleroResourcesBackupName:       &skipBackup,
+						CleanupBeforeRestore:            v1beta1.CleanupTypeNone,
 					},
 				}
 				Expect(k8sClient.Create(ctx, conflictingRestore)).Should(Succeed())

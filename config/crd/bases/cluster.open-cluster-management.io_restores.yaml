@@ -61,10 +61,6 @@ spec:
                   None (skip post-restore cleanup, typical for a fresh hub),
                   CleanupAll (broader cleanup of ACM-scoped resources not in the current backup, including user-created; use with
                   caution).
-                enum:
-                - CleanupRestored
-                - None
-                - CleanupAll
                 type: string
               excludedNamespaces:
                 description: |-

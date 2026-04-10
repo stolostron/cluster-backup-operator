@@ -82,7 +82,6 @@ type RestoreSpec struct {
 	// backup_name points to the name of the backup to be restored
 	// +kubebuilder:validation:Required
 	VeleroCredentialsBackupName *string `json:"veleroCredentialsBackupName"`
-	// +kubebuilder:validation:Enum=CleanupRestored;None;CleanupAll
 	// +kubebuilder:validation:Required
 	// CleanupBeforeRestore selects how the operator performs post-restore cleanup on the hub after Velero restores
 	// complete (delta resources not matching the current backup).
