@@ -13,11 +13,6 @@ import sys
 path = pathlib.Path(os.environ["AUGMENT_BACKUPSCHEDULE_CRD"])
 text = path.read_text()
 
-marker = "For ACM hub backups, increase this if CSI"
-if marker in text:
-    print(f"ACM Velero field descriptions already present in {path}, skipping")
-    sys.exit(0)
-
 replacements = [
     (
         """                          csiSnapshotTimeout:
@@ -67,16 +62,25 @@ replacements = [
     ),
 ]
 
+changed = False
 for old, new in replacements:
-    if old not in text:
-        print(
-            "augment-backupschedule-crd-descriptions: expected Velero block not found; "
-            "update hack/augment-backupschedule-crd-descriptions.sh if Velero CRD schema changed",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    text = text.replace(old, new)
+    if old in text:
+        text = text.replace(old, new)
+        changed = True
+        continue
+    if new in text:
+        # Already augmented for this block (idempotent per replacement).
+        continue
+    print(
+        "augment-backupschedule-crd-descriptions: expected Velero block not found; "
+        "update hack/augment-backupschedule-crd-descriptions.sh if Velero CRD schema changed",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 path.write_text(text)
-print(f"Updated {path}")
+if changed:
+    print(f"Updated {path}")
+else:
+    print(f"ACM Velero field descriptions already present in {path}, skipping")
 PY
