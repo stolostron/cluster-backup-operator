@@ -52,8 +52,8 @@ const (
 
 // BackupScheduleSpec defines the desired state of BackupSchedule
 type BackupScheduleSpec struct {
-	// Schedule is a Cron expression defining when to run
-	// the Velero Backup
+	// VeleroSchedule is a cron expression defining when each Velero Backup runs for this ACM BackupSchedule.
+	// Uses standard cron syntax (minute hour day-of-month month day-of-week). Example: "0 */2 * * *" runs every 2 hours.
 	// +kubebuilder:validation:Required
 	VeleroSchedule string `json:"veleroSchedule"`
 	// TTL is a time.Duration-parseable string describing how long
@@ -96,8 +96,10 @@ type BackupScheduleSpec struct {
 	// If not defined, the value is set to false.
 	Paused bool `json:"paused,omitempty"`
 	// +kubebuilder:validation:Optional
-	// UseOwnerReferencesBackup specifies whether to use
-	// OwnerReferences on backups created by this Schedule.
+	// UseOwnerReferencesInBackup, when true, sets owner references on Velero Backup objects created for this
+	// BackupSchedule so they are garbage-collected if the BackupSchedule is deleted. Set this if you want backups tied
+	// to the BackupSchedule lifecycle; leave false (default) if an external process must retain backups independently of
+	// the BackupSchedule.
 	UseOwnerReferencesInBackup bool `json:"useOwnerReferencesInBackup,omitempty"`
 	// +kubebuilder:validation:Optional
 	// SkipImmediately specifies whether to skip backup if schedule is due immediately
@@ -111,10 +113,12 @@ type BackupScheduleSpec struct {
 
 // BackupScheduleStatus defines the observed state of BackupSchedule
 type BackupScheduleStatus struct {
-	// Phase is the current phase of the schedule
+	// Phase is the current lifecycle phase of the BackupSchedule.
+	// One of: New, Enabled, FailedValidation, Failed, Unknown, BackupCollision, Paused.
 	// +kubebuilder:validation:Optional
 	Phase SchedulePhase `json:"phase"`
-	// Message on the last operation
+	// LastMessage is a human-readable message describing the outcome of the most recent backup schedule operation or
+	// validation error.
 	// +kubebuilder:validation:Optional
 	LastMessage string `json:"lastMessage"`
 	// Velero Schedule for backing up remote clusters

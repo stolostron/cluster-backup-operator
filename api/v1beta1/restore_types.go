@@ -83,11 +83,12 @@ type RestoreSpec struct {
 	// +kubebuilder:validation:Required
 	VeleroCredentialsBackupName *string `json:"veleroCredentialsBackupName"`
 	// +kubebuilder:validation:Required
-	//
-	// 1. Use CleanupRestored if you want to delete all
-	// resources created by a previous restore operation, before restoring the new data
-	// 2. Use None if you don't want to clean up any resources before restoring the new data.
-	//
+	// CleanupBeforeRestore selects how the operator performs post-restore cleanup on the hub after Velero restores
+	// complete (delta resources not matching the current backup).
+	// One of: CleanupRestored (remove resources from a prior restore that are not part of the current restored backup),
+	// None (skip post-restore cleanup, typical for a fresh hub),
+	// CleanupAll (broader cleanup of ACM-scoped resources not in the current backup, including user-created; use with
+	// caution).
 	CleanupBeforeRestore CleanupType `json:"cleanupBeforeRestore"`
 	// +kubebuilder:validation:Optional
 	// Set this to true if you want to keep checking for new backups and restore if updates are available.
@@ -172,18 +173,29 @@ type RestoreSpec struct {
 
 // RestoreStatus defines the observed state of Restore
 type RestoreStatus struct {
+	// VeleroManagedClustersRestoreName is the name of the Velero Restore object created to restore managed-cluster
+	// activation resources. Empty if veleroManagedClustersBackupName was set to "skip" or a restore was not created yet.
 	// +kubebuilder:validation:Optional
 	VeleroManagedClustersRestoreName string `json:"veleroManagedClustersRestoreName,omitempty"`
+	// VeleroResourcesRestoreName is the name of the Velero Restore object created to restore ACM hub resources
+	// (applications, policies, and related hub content). Empty if skipped or not yet created.
 	// +kubebuilder:validation:Optional
 	VeleroResourcesRestoreName string `json:"veleroResourcesRestoreName,omitempty"`
+	// VeleroGenericResourcesRestoreName is the name of the Velero Restore object created to restore generic
+	// (non-cluster, non-credential) resources. Empty if skipped or not yet created.
 	// +kubebuilder:validation:Optional
 	VeleroGenericResourcesRestoreName string `json:"veleroGenericResourcesRestoreName,omitempty"`
+	// VeleroCredentialsRestoreName is the name of the Velero Restore object created to restore credential backups
+	// (secrets, service accounts). Empty if veleroCredentialsBackupName was set to "skip" or a restore was not created
+	// yet.
 	// +kubebuilder:validation:Optional
 	VeleroCredentialsRestoreName string `json:"veleroCredentialsRestoreName,omitempty"`
-	// Phase is the current phase of the restore
+	// Phase is the current lifecycle phase of the ACM Restore (aggregated from Velero restore progress and sync mode).
+	// One of: Started, Running, Finished, FinishedWithErrors, Error, Unknown, Enabled, EnabledWithErrors.
 	// +kubebuilder:validation:Optional
 	Phase RestorePhase `json:"phase"`
-	// Message on the last operation
+	// LastMessage is a human-readable message describing the outcome of the most recent restore operation or the reason
+	// for the current phase.
 	// +kubebuilder:validation:Optional
 	LastMessage string `json:"lastMessage"`
 	// Messages contains any messages that were encountered during the restore process.
