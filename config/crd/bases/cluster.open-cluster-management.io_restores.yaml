@@ -55,9 +55,12 @@ spec:
             properties:
               cleanupBeforeRestore:
                 description: |-
-                  1. Use CleanupRestored if you want to delete all
-                  resources created by a previous restore operation, before restoring the new data
-                  2. Use None if you don't want to clean up any resources before restoring the new data.
+                  CleanupBeforeRestore selects how the operator performs post-restore cleanup on the hub after Velero restores
+                  complete (delta resources not matching the current backup).
+                  One of: CleanupRestored (remove resources from a prior restore that are not part of the current restored backup),
+                  None (skip post-restore cleanup, typical for a fresh hub),
+                  CleanupAll (broader cleanup of ACM-scoped resources not in the current backup, including user-created; use with
+                  caution).
                 type: string
               excludedNamespaces:
                 description: |-
@@ -456,7 +459,9 @@ spec:
                 nullable: true
                 type: string
               lastMessage:
-                description: Message on the last operation
+                description: |-
+                  LastMessage is a human-readable message describing the outcome of the most recent restore operation or the reason
+                  for the current phase.
                 type: string
               messages:
                 description: Messages contains any messages that were encountered
@@ -466,15 +471,30 @@ spec:
                 nullable: true
                 type: array
               phase:
-                description: Phase is the current phase of the restore
+                description: |-
+                  Phase is the current lifecycle phase of the ACM Restore (aggregated from Velero restore progress and sync mode).
+                  One of: Started, Running, Finished, FinishedWithErrors, Error, Unknown, Enabled, EnabledWithErrors.
                 type: string
               veleroCredentialsRestoreName:
+                description: |-
+                  VeleroCredentialsRestoreName is the name of the Velero Restore object created to restore credential backups
+                  (secrets, service accounts). Empty if veleroCredentialsBackupName was set to "skip" or a restore was not created
+                  yet.
                 type: string
               veleroGenericResourcesRestoreName:
+                description: |-
+                  VeleroGenericResourcesRestoreName is the name of the Velero Restore object created to restore generic
+                  (non-cluster, non-credential) resources. Empty if skipped or not yet created.
                 type: string
               veleroManagedClustersRestoreName:
+                description: |-
+                  VeleroManagedClustersRestoreName is the name of the Velero Restore object created to restore managed-cluster
+                  activation resources. Empty if veleroManagedClustersBackupName was set to "skip" or a restore was not created yet.
                 type: string
               veleroResourcesRestoreName:
+                description: |-
+                  VeleroResourcesRestoreName is the name of the Velero Restore object created to restore ACM hub resources
+                  (applications, policies, and related hub content). Empty if skipped or not yet created.
                 type: string
             type: object
         type: object
