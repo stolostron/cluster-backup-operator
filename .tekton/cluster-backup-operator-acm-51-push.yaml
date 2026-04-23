@@ -7,13 +7,13 @@ metadata:
     build.appstudio.redhat.com/target_branch: '{{target_branch}}'
     pipelinesascode.tekton.dev/cancel-in-progress: "false"
     pipelinesascode.tekton.dev/max-keep-runs: "3"
-    pipelinesascode.tekton.dev/on-cel-expression: event == "push" && target_branch == "release-5.0"
+    pipelinesascode.tekton.dev/on-cel-expression: event == "push" && target_branch == "release-5.1"
   creationTimestamp: null
   labels:
-    appstudio.openshift.io/application: release-acm-50
-    appstudio.openshift.io/component: cluster-backup-operator-acm-50
+    appstudio.openshift.io/application: release-acm-51
+    appstudio.openshift.io/component: cluster-backup-operator-acm-51
     pipelines.appstudio.openshift.io/type: build
-  name: cluster-backup-operator-acm-50-on-push
+  name: cluster-backup-operator-acm-51-on-push
   namespace: crt-redhat-acm-tenant
 spec:
   params:
@@ -28,7 +28,7 @@ spec:
   - name: revision
     value: '{{revision}}'
   - name: output-image
-    value: quay.io/redhat-user-workloads/crt-redhat-acm-tenant/cluster-backup-operator-acm-50:{{revision}}
+    value: quay.io/redhat-user-workloads/crt-redhat-acm-tenant/cluster-backup-operator-acm-51:{{revision}}
   - name: build-platforms
     value:
     - linux/x86_64
@@ -39,13 +39,13 @@ spec:
     value: Dockerfile.rhtap
   - name: build-args
     value:
-    - ACM_VERSION=5.0
+    - ACM_VERSION=5.1
   - name: path-context
     value: .
   - name: send-slack-notification
     value: "true"
   - name: konflux-application-name
-    value: "release-acm-50"
+    value: "release-acm-51"
   - name: slack-webhook-url-secret-name
     value: "backup-team-slack-notification-secret"
   - name: slack-webhook-url-secret-key
@@ -60,7 +60,7 @@ spec:
       - name: pathInRepo
         value: pipelines/common.yaml
   taskRunTemplate:
-    serviceAccountName: build-pipeline-cluster-backup-operator-acm-50
+    serviceAccountName: build-pipeline-cluster-backup-operator-acm-51
   workspaces:
   - name: git-auth
     secret:
