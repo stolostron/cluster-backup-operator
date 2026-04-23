@@ -7,7 +7,7 @@ metadata:
     build.appstudio.redhat.com/target_branch: '{{target_branch}}'
     pipelinesascode.tekton.dev/cancel-in-progress: "false"
     pipelinesascode.tekton.dev/max-keep-runs: "3"
-    pipelinesascode.tekton.dev/on-cel-expression: event == "push" && target_branch == "main"
+    pipelinesascode.tekton.dev/on-cel-expression: event == "push" && target_branch == "release-5.1"
   creationTimestamp: null
   labels:
     appstudio.openshift.io/application: release-acm-51
@@ -39,7 +39,7 @@ spec:
     value: Dockerfile.rhtap
   - name: build-args
     value:
-    - ACM_VERSION=5.0
+    - ACM_VERSION=5.1
   - name: path-context
     value: .
   - name: send-slack-notification
