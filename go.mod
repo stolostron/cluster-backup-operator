@@ -8,7 +8,7 @@ require (
 	github.com/onsi/gomega v1.40.0
 	github.com/openshift/api v0.0.0-20260213155647-8fe9fe363807 // release 4.13
 	github.com/openshift/controller-runtime-common v0.0.0-20260213175913-767fef058eca
-	github.com/openshift/hive/apis v0.0.0-20251028182716-eb1dc4f43efc
+	github.com/openshift/hive/apis 52fd62d6be80
 	github.com/pkg/errors v0.9.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/vmware-tanzu/velero v1.16.2
