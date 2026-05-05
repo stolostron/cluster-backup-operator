@@ -68,9 +68,9 @@ func init() {
 	utilruntime.Must(chnv1.AddToScheme(scheme))
 	utilruntime.Must(certsv1.AddToScheme(scheme))
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(clusterv1.AddToScheme(scheme))
-	utilruntime.Must(workv1.AddToScheme(scheme))
-	utilruntime.Must(addonv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(clusterv1.Install(scheme))
+	utilruntime.Must(workv1.Install(scheme))
+	utilruntime.Must(addonv1alpha1.Install(scheme))
 	utilruntime.Must(ocinfrav1.AddToScheme(scheme))
 	// utilruntime.Must(operatorapiv1.AddToScheme(scheme)) Not adding since client it's remote
 	utilruntime.Must(veleroapi.AddToScheme(scheme))

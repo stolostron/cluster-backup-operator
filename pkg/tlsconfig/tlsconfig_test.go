@@ -45,6 +45,7 @@ func TestBuildTLSConfig_DisablesHTTP2ByDefault(t *testing.T) {
 
 	if config == nil {
 		t.Fatal("BuildTLSConfig() returned nil")
+		return
 	}
 
 	if len(config.TLSOpts) < 2 {
@@ -75,6 +76,7 @@ func TestBuildTLSConfig_EnablesHTTP2WhenRequested(t *testing.T) {
 
 	if config == nil {
 		t.Fatal("BuildTLSConfig() returned nil")
+		return
 	}
 
 	// Apply the options to a tls.Config
@@ -328,6 +330,7 @@ func TestGetTLSProfileType_OldProfile(t *testing.T) {
 	oldProfile := ocinfrav1.TLSProfiles[ocinfrav1.TLSProfileOldType]
 	if oldProfile == nil {
 		t.Skip("Old TLS profile not defined in OpenShift API")
+		return
 	}
 
 	result := GetTLSProfileType(*oldProfile)
@@ -350,6 +353,7 @@ func TestBuildTLSConfig_EmptyCiphersForTLS12(t *testing.T) {
 
 	if config == nil {
 		t.Fatal("BuildTLSConfig() returned nil")
+		return
 	}
 
 	// Apply the options to a tls.Config

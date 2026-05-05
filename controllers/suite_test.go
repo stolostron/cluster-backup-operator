@@ -623,13 +623,13 @@ func setupSchemes() error {
 	schemes := []func(*runtime.Scheme) error{
 		ocinfrav1.AddToScheme,
 		backupv1beta1.AddToScheme,
-		clusterv1.AddToScheme,
+		clusterv1.Install,
 		chnv1.AddToScheme,
-		addonv1alpha1.AddToScheme,
-		workv1.AddToScheme,
+		addonv1alpha1.Install,
+		workv1.Install,
 		hivev1.AddToScheme,
 		certsv1.AddToScheme,
-		operatorapiv1.AddToScheme,
+		operatorapiv1.Install,
 		rbacv1.AddToScheme,
 		veleroapi.AddToScheme,
 	}
