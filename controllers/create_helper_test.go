@@ -1157,7 +1157,7 @@ func setupTestScheme() (*runtime.Scheme, error) {
 	if err := veleroapi.AddToScheme(scheme); err != nil {
 		return nil, err
 	}
-	if err := clusterv1.AddToScheme(scheme); err != nil {
+	if err := clusterv1.Install(scheme); err != nil {
 		return nil, err
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {

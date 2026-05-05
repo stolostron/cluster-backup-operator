@@ -95,7 +95,7 @@ func createWorkScheme() *runtime.Scheme {
 	if err := corev1.AddToScheme(scheme); err != nil {
 		panic("Error adding corev1 to scheme: " + err.Error())
 	}
-	if err := workv1.AddToScheme(scheme); err != nil {
+	if err := workv1.Install(scheme); err != nil {
 		panic("Error adding workv1 to scheme: " + err.Error())
 	}
 	return scheme
@@ -107,13 +107,13 @@ func createFullScheme() *runtime.Scheme {
 	if err := corev1.AddToScheme(scheme); err != nil {
 		panic("Error adding corev1 to scheme: " + err.Error())
 	}
-	if err := workv1.AddToScheme(scheme); err != nil {
+	if err := workv1.Install(scheme); err != nil {
 		panic("Error adding workv1 to scheme: " + err.Error())
 	}
-	if err := clusterv1.AddToScheme(scheme); err != nil {
+	if err := clusterv1.Install(scheme); err != nil {
 		panic("Error adding clusterv1 to scheme: " + err.Error())
 	}
-	if err := addonv1alpha1.AddToScheme(scheme); err != nil {
+	if err := addonv1alpha1.Install(scheme); err != nil {
 		panic("Error adding addonv1alpha1 to scheme: " + err.Error())
 	}
 	return scheme
