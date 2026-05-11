@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM registry.ci.openshift.org/stolostron/builder:go1.24-linux AS builder
+FROM registry.ci.openshift.org/stolostron/builder:go1.25-linux AS builder
 
 WORKDIR /workspace
 # Copy the source files
