@@ -2,6 +2,8 @@
 
 AI assistant context for the **Cluster Backup and Restore Operator** — an ACM hub operator that drives Velero to back up and restore Open Cluster Management hub resources.
 
+This file follows the Fleet Engineering [repo-onboarding practice](https://github.com/OpenShift-Fleet/agentic-sdlc/blob/main/practices/repo-onboarding.md). Day-to-day workflow: [ai-dev-workflow.md](https://github.com/OpenShift-Fleet/agentic-sdlc/blob/main/practices/ai-dev-workflow.md).
+
 ---
 
 ## Build, Test, and Lint Commands
@@ -41,7 +43,7 @@ make docker-build IMG=<registry>/<image>:<tag>
 
 ## Repo Layout
 
-```
+```text
 api/v1beta1/          CRD type definitions (Backup, Restore)
 controllers/          Reconciler implementations and helpers
   backup_controller.go   BackupReconciler — drives Velero Backup CRs
@@ -65,13 +67,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a full description of the C
 
 ## Personal Config
 
-Read `.claude/user.local.md` at the start of any task that needs an assignee, email, or project key. If the file does not exist, fall back to Claude memory (`user-config`), then placeholders. Run `make personalize` to generate it (if this repo uses Fleet Engineering tooling).
+Read `.claude/user.local.md` at the start of any task that needs an assignee, email, or project key. If the file does not exist, fall back to Claude memory (`user-config`), then placeholders. Run `make personalize` from the [agentic-sdlc](https://github.com/OpenShift-Fleet/agentic-sdlc) repo to generate it.
 
 ---
 
 ## Fleet Engineering Skills
 
-Fetch and apply the relevant skill when the task matches its domain.
+If the Fleet Engineering plugin is installed (`claude plugin list` shows `ocp-fleet-agentic-sdlc`), use slash commands directly (e.g. `/start-work`). Otherwise fetch and apply skills via the URLs below.
 
 | Skill | When to use |
 |---|---|
