@@ -1,0 +1,19 @@
+# apply this resource to restore hub resources in a passive configuration
+# restored managed clusters will show not show on the current hub, where this resource is applied
+
+# cleanupBeforeRestore - required, asks to clean up cluster after applying restore
+# valid options : 
+# CleanupRestored - clean up resources created by a previous acm restore and not part of the currently restored backup
+# None : don't clean up anything, just apply the restore
+
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-passive
+  namespace: open-cluster-management-backup
+spec:
+  cleanupBeforeRestore: CleanupRestored
+  veleroManagedClustersBackupName: skip
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest

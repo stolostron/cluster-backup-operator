@@ -1,0 +1,37 @@
+# This sample shows how to use Velero restore options to filter out the resources to be restored.
+# Follow the https://velero.io/docs/main/api-types/restore/ CRD to find out supported options and how to use them
+# The ACM restore can use the following velero restore options to filter ACM restored resources:
+# - includedResources
+# - includedNamespaces
+# - excludedResources
+# - excludedNamespaces
+# - namespaceMapping
+# - OrLabelSelectors
+# - NamespaceMapping
+# - RestoreStatus
+# - Hooks
+# - LabelSelector
+# This sample shows how to use some of the velero restore options when restoring the ACM hub backup to filter out resources to be restored.
+# In this sample we used the includedResources option to restore only ManagedClusters resources, and the includedNamespaces option
+# to restore only resources from the managed-cls-1 namespace
+#
+# We strongly recommend to review the cleanupBeforeRestore option and use cleanupBeforeRestore=None when restoring a subset of the data, as 
+#  cleanupBeforeRestore=CleanupRestored may clean up resources on the restore hub which are excluded by the restore filter criteria.
+# 
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-options
+  namespace: open-cluster-management-backup
+spec:
+  cleanupBeforeRestore: None # use None when restoring a subset of the data, as CleanupRestored would clean up resources excluded by your restore filter criteria
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
+  includedResources:
+    - ManagedClusters # restore only ManagedClusters
+  includedNamespaces:
+    - managed-cls-1 # restore only resources from the managed-cls-1 namespace
+
+

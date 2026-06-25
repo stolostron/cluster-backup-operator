@@ -1,0 +1,16 @@
+# apply this resource to restore all backup data, including managed clusters activation data 
+# cleanupBeforeRestore - required, asks to clean up cluster after applying restore
+# valid options : 
+# CleanupRestored - clean up resources created by a previous acm restore and not part of the currently restored backup
+# None : don't clean up anything, just apply the restore
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm
+  namespace: open-cluster-management-backup
+spec:
+  cleanupBeforeRestore: CleanupRestored
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
