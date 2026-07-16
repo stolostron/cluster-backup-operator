@@ -6,7 +6,7 @@
 VERSION ?= 0.0.1
 
 # Helper software versions
-GOLANGCI_VERSION := v2.7.2
+GOLANGCI_VERSION := v2.9.0
 CONTROLLER_TOOLS_VERSION := v0.17.3
 ENVTEST_K8S_VERSION = 1.30
 
@@ -136,7 +136,7 @@ kustomize: ## Download kustomize locally if necessary.
 
 .PHONY: golangci-lint
 GOLANGCILINT := $(LOCALBIN)/golangci-lint
-GOLANGCI_URL := https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh
+GOLANGCI_URL := https://raw.githubusercontent.com/golangci/golangci-lint/main/install.sh
 golangci-lint: $(GOLANGCILINT) ## Download golangci-lint
 $(GOLANGCILINT): $(LOCALBIN)
 	test -s $@ || { curl -sSfL $(GOLANGCI_URL) | sh -s -- -b $(LOCALBIN) $(GOLANGCI_VERSION); }
