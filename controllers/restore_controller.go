@@ -38,7 +38,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/restmapper"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -90,7 +90,7 @@ type RestoreReconciler struct {
 	DiscoveryClient discovery.DiscoveryInterface
 	DynamicClient   dynamic.Interface
 	Scheme          *runtime.Scheme
-	Recorder        record.EventRecorder
+	Recorder        events.EventRecorder
 }
 
 //nolint:lll
@@ -750,11 +750,13 @@ func (r *RestoreReconciler) initVeleroRestores(
 			}
 		} else {
 			newVeleroRestoreCreated = true
-			r.Recorder.Event(
+			r.Recorder.Eventf(
 				restore,
+				nil,
 				v1.EventTypeNormal,
-				"Velero restore created:",
-				veleroRestoresToCreate[key].Name,
+				"VeleroRestoreCreated",
+				"CreateRestore",
+				"Velero restore created: %s", veleroRestoresToCreate[key].Name,
 			)
 			switch key {
 			case ManagedClusters:
