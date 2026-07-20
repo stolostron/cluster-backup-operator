@@ -185,7 +185,7 @@ var _ = BeforeSuite(func() {
 		Scheme:          mgr.GetScheme(),
 		DiscoveryClient: fakeDiscovery,
 		DynamicClient:   dynR,
-		Recorder:        mgr.GetEventRecorderFor("restore reconciler"),
+		Recorder: mgr.GetEventRecorder("restore reconciler"),
 	}).SetupWithManager(mgr)
 	Expect(err).ToNot(HaveOccurred())
 
