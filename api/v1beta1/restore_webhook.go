@@ -21,10 +21,8 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -32,8 +30,7 @@ import (
 var restorelog = logf.Log.WithName("restore-resource")
 
 func (r *Restore) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+	return ctrl.NewWebhookManagedBy(mgr, r).
 		WithValidator(r).
 		Complete()
 }
@@ -41,38 +38,22 @@ func (r *Restore) SetupWebhookWithManager(mgr ctrl.Manager) error {
 //nolint:lll
 //+kubebuilder:webhook:path=/validate-cluster-open-cluster-management-io-v1beta1-restore,mutating=false,failurePolicy=fail,sideEffects=None,groups=cluster.open-cluster-management.io,resources=restores,verbs=create;update,versions=v1beta1,name=vrestore.kb.io,admissionReviewVersions=v1
 
-var _ webhook.CustomValidator = &Restore{}
+var _ admission.Validator[*Restore] = &Restore{}
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *Restore) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	restore, ok := obj.(*Restore)
-	if !ok {
-		return nil, fmt.Errorf("expected a Restore object but got %T", obj)
-	}
+// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type.
+func (r *Restore) ValidateCreate(ctx context.Context, restore *Restore) (admission.Warnings, error) {
 	restorelog.Info("validate create", "name", restore.Name)
-
 	return restore.validateRestore()
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *Restore) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	restore, ok := newObj.(*Restore)
-	if !ok {
-		return nil, fmt.Errorf("expected a Restore object but got %T", newObj)
-	}
-
+// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type.
+func (r *Restore) ValidateUpdate(ctx context.Context, oldRestore, restore *Restore) (admission.Warnings, error) {
 	return restore.validateRestore()
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type
-func (r *Restore) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	restore, ok := obj.(*Restore)
-	if !ok {
-		return nil, fmt.Errorf("expected a Restore object but got %T", obj)
-	}
+// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type.
+func (r *Restore) ValidateDelete(ctx context.Context, restore *Restore) (admission.Warnings, error) {
 	restorelog.Info("validate delete", "name", restore.Name)
-
-	// No validation needed on delete
 	return nil, nil
 }
 
