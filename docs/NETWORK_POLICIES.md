@@ -22,9 +22,11 @@ Introduced in [multiclusterhub-operator#4431](https://github.com/stolostron/mult
   `kubernetes.io/metadata.name` (stamped automatically on every namespace, Kubernetes 1.21+) or
   the OpenShift-managed `network.openshift.io/policy-group` / `policy-group.network.openshift.io/host-network`
   labels, rather than custom labels that may not exist in every cluster.
-- **Egress is restricted where it's safe to predict, left open where it isn't.** DNS and API
-  server egress are narrow, well-known targets, so they're locked down to specific ports/namespaces.
-  Object storage egress (Velero, node-agent) is left unrestricted — see
+- **Egress is restricted where it's safe to predict, left open where it isn't.** DNS egress is
+  locked down to a specific namespace and port set. API server egress is restricted by **port
+  only** (443/6443), with no destination selector — see
+  [`allow-apiserver-egress` has no destination selector](#allow-apiserver-egress-has-no-destination-selector)
+  below. Object storage egress (Velero, node-agent) is left fully unrestricted — see
   [Unrestricted egress for Velero/node-agent](#unrestricted-egress-for-veleronode-agent) below.
 
 ## Component network flows
