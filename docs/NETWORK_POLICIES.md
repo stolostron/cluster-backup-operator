@@ -25,7 +25,7 @@ Introduced in [multiclusterhub-operator#4431](https://github.com/stolostron/mult
 - **Egress is restricted where it's safe to predict, left open where it isn't.** DNS and API
   server egress are narrow, well-known targets, so they're locked down to specific ports/namespaces.
   Object storage egress (Velero, node-agent) is left unrestricted — see
-  [Unrestricted egress for Velero/node-agent](#unrestricted-egress-for-velerode-agent) below.
+  [Unrestricted egress for Velero/node-agent](#unrestricted-egress-for-veleronode-agent) below.
 
 ## Component network flows
 
@@ -43,7 +43,7 @@ Introduced in [multiclusterhub-operator#4431](https://github.com/stolostron/mult
 |---|---|---|---|
 | `deny-all` | all pods (`{}`) | Ingress + Egress | No rules — baseline deny. |
 | `allow-dns-egress` | all pods (`{}`) | Egress | To `openshift-dns` namespace, ports 53 + 5353 (UDP/TCP). |
-| `allow-apiserver-egress` | all pods (`{}`) | Egress | Port 443 + 6443, no destination restriction. |
+| `allow-apiserver-egress` | all pods (`{}`) | Egress | Port 443 + 6443, **no destination selector** — allows any destination on these ports, not only the API server. |
 | `allow-storage-egress` | `app.kubernetes.io/name in (velero, node-agent)` | Egress | `{}` — fully unrestricted. |
 | `allow-webhook-ingress` | `app: cluster-backup-chart, component: clusterbackup` | Ingress | Port 9443, from namespaces labeled `policy-group.network.openshift.io/host-network` (the API server runs on host network). |
 | `allow-velero-metrics-ingress` | `app.kubernetes.io/name: velero` | Ingress | Port 8085, from namespaces labeled `network.openshift.io/policy-group: monitoring`. |
@@ -65,6 +65,13 @@ restriction. This was chosen over locking down to port 443 because:
    behind load balancers are all common, especially in air-gapped/on-prem environments.
 4. **The BSL endpoint is customer-configured** — the port a given `BackupStorageLocation` uses
    can't be predicted in advance.
+
+### `allow-apiserver-egress` has no destination selector
+
+The rule only restricts by **port** (443, 6443), not by destination — there's no `to:` selector,
+so it opens those two ports to any destination for every pod in the namespace, not just the API
+server. The flow table above describes this rule by its intended purpose ("API server egress"),
+but it's worth being explicit that the policy itself is broader than that name suggests.
 
 ### DNS port 5353
 
