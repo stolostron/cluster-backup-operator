@@ -949,7 +949,17 @@ func Test_setOptionalProperties(t *testing.T) {
 			if !findValue(tt.args.veleroRestore.Spec.ExcludedResources, "CustomResourceDefinition") {
 				t.Errorf("CustomResourceDefinition should be excluded from restore and be part of veleroRestore.Spec.ExcludedResources")
 			}
-
+			for _, excluded := range restoreExcludedClusterResources {
+				if !findValue(tt.args.veleroRestore.Spec.ExcludedResources, excluded) {
+					t.Errorf("%q should always be excluded from restore and be part of "+
+						"veleroRestore.Spec.ExcludedResources", excluded)
+				}
+			}
+			if !findValue(tt.args.veleroRestore.Spec.ExcludedResources,
+				"clusterrolebindings.rbac.authorization.k8s.io") {
+				t.Errorf("clusterrolebindings.rbac.authorization.k8s.io must be excluded from restore " +
+					"regardless of backup tarball contents")
+			}
 		})
 	}
 }
