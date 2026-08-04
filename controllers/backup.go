@@ -67,6 +67,13 @@ var (
 	}
 	includedActivationAPIGroupsByName = []string{
 		"agent-install.openshift.io",
+		// siteconfig.open-cluster-management.io (ClusterInstance) drives Day-1 installs for
+		// ZTP/bare-metal managed clusters. Treating it as an activation resource ensures it
+		// is only restored during an actual failover (VeleroManagedClustersBackupName=latest),
+		// not on every routine passive-sync cycle, which would otherwise cause the SiteConfig
+		// controller to re-render Day-1 manifests against already-installed clusters and drive
+		// their BareMetalHost objects back into Inspecting. See ACM-39330.
+		"siteconfig.open-cluster-management.io",
 	}
 
 	// exclude resources from these api groups

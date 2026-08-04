@@ -47,6 +47,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	discoveryfake "k8s.io/client-go/discovery/fake"
+	clientgotesting "k8s.io/client-go/testing"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -349,6 +351,61 @@ func verifyDeletedBackups(t *testing.T, deletedBackups map[string]bool, allBacku
 		if !found {
 			t.Errorf("Unknown backup %s was deleted", backupName)
 		}
+	}
+}
+
+// Test_processResourcesToBackup_routesClusterInstanceToActivationResources verifies that
+// ClusterInstance (siteconfig.open-cluster-management.io), like the pre-existing
+// agent-install.openshift.io group, is routed into the activation resource set
+// (backupManagedClusterResources) rather than the generic Resources backup list.
+// This ensures ClusterInstance is only restored during an actual failover
+// (VeleroManagedClustersBackupName=latest), not on every routine passive-sync cycle. See ACM-39330.
+func Test_processResourcesToBackup_routesClusterInstanceToActivationResources(t *testing.T) {
+	// processResourcesToBackup mutates the package-level backupManagedClusterResources
+	// slice; save and restore it so this test doesn't leak state into other tests.
+	originalManagedClusterResources := backupManagedClusterResources
+	backupManagedClusterResources = append([]string{}, originalManagedClusterResources...)
+	defer func() { backupManagedClusterResources = originalManagedClusterResources }()
+
+	groupList := metav1.APIGroupList{
+		Groups: []metav1.APIGroup{
+			{
+				Name: "siteconfig.open-cluster-management.io",
+				Versions: []metav1.GroupVersionForDiscovery{
+					{GroupVersion: "siteconfig.open-cluster-management.io/v1alpha1"},
+				},
+			},
+		},
+	}
+
+	fakeDC := &discoveryfake.FakeDiscovery{
+		Fake: &clientgotesting.Fake{
+			Resources: []*metav1.APIResourceList{
+				{
+					GroupVersion: "siteconfig.open-cluster-management.io/v1alpha1",
+					APIResources: []metav1.APIResource{
+						{Kind: "ClusterInstance"},
+					},
+				},
+			},
+		},
+	}
+
+	backupResourceNames := processResourcesToBackup(context.Background(), fakeDC, groupList)
+
+	const clusterInstanceResource = "clusterinstance.siteconfig.open-cluster-management.io"
+
+	if findValue(backupResourceNames, clusterInstanceResource) {
+		t.Errorf(
+			"expected ClusterInstance to NOT be routed to the generic Resources backup list, got %v",
+			backupResourceNames,
+		)
+	}
+	if !findValue(backupManagedClusterResources, clusterInstanceResource) {
+		t.Errorf(
+			"expected ClusterInstance to be routed to backupManagedClusterResources (activation tier), got %v",
+			backupManagedClusterResources,
+		)
 	}
 }
 
