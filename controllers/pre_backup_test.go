@@ -39,6 +39,7 @@ import (
 	"testing"
 	"time"
 
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
@@ -2988,5 +2989,112 @@ func Test_updateSecret(t *testing.T) {
 				t.Errorf("Expected updateSecret to return %v, got %v", tt.expectUpdate, result)
 			}
 		})
+	}
+}
+
+// createHiveTestScheme creates a scheme with core APIs and hive APIs, for tests that
+// exercise ClusterDeployment-referenced secret/configmap labeling.
+func createHiveTestScheme() *runtime.Scheme {
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		panic("Error adding corev1 to scheme: " + err.Error())
+	}
+	if err := hivev1.AddToScheme(scheme); err != nil {
+		panic("Error adding hivev1 to scheme: " + err.Error())
+	}
+	return scheme
+}
+
+// Test_updateHiveReferencedSecrets verifies that secrets and configmaps explicitly
+// referenced by name on a ClusterDeployment (CertificateBundles, Provisioning's
+// ManifestsSecretRef/ManifestsConfigMapRef) are automatically labeled for backup,
+// without requiring the user to label them manually. See ACM-38831.
+func Test_updateHiveReferencedSecrets(t *testing.T) {
+	setupTestLogger()
+	ctx := createTestContext()
+	scheme := createHiveTestScheme()
+
+	ns := "cd-ns"
+
+	certSecret := createTestSecret("cert-bundle-secret", ns, nil, nil)
+	pullSecret := createTestSecret("pull-secret", ns, nil, nil)
+	manifestsSecret := createTestSecret("manifests-secret", ns, nil, nil)
+	manifestsConfigMap := &corev1.ConfigMap{
+		ObjectMeta: v1.ObjectMeta{Name: "manifests-cm", Namespace: ns},
+	}
+	// a secret that already carries a backup label should not be re-labeled with a
+	// different value
+	alreadyLabeledCertSecret := createTestSecret("already-labeled-cert-secret", ns,
+		map[string]string{backupCredsUserLabel: "user-set"}, nil)
+
+	k8sClient := createFakeClient(scheme, certSecret, pullSecret, manifestsSecret, manifestsConfigMap,
+		alreadyLabeledCertSecret)
+
+	clusterDeployment := hivev1.ClusterDeployment{
+		ObjectMeta: v1.ObjectMeta{Name: "cd", Namespace: ns},
+		Spec: hivev1.ClusterDeploymentSpec{
+			CertificateBundles: []hivev1.CertificateBundleSpec{
+				{CertificateSecretRef: corev1.LocalObjectReference{Name: certSecret.Name}},
+				{CertificateSecretRef: corev1.LocalObjectReference{Name: alreadyLabeledCertSecret.Name}},
+			},
+			PullSecretRef: &corev1.LocalObjectReference{Name: pullSecret.Name},
+			Provisioning: &hivev1.Provisioning{
+				ManifestsSecretRef:    &corev1.LocalObjectReference{Name: manifestsSecret.Name},
+				ManifestsConfigMapRef: &corev1.LocalObjectReference{Name: manifestsConfigMap.Name},
+			},
+		},
+	}
+
+	updateHiveReferencedSecrets(ctx, k8sClient, clusterDeployment)
+
+	gotCertSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: certSecret.Name}, gotCertSecret); err != nil {
+		t.Fatalf("failed to get cert secret: %v", err)
+	}
+	if gotCertSecret.GetLabels()[backupCredsClusterLabel] != certificate_bundle_label_value {
+		t.Errorf("expected certificateBundle secret to have backup label %q=%q, got labels %v",
+			backupCredsClusterLabel, certificate_bundle_label_value, gotCertSecret.GetLabels())
+	}
+
+	gotPullSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: pullSecret.Name}, gotPullSecret); err != nil {
+		t.Fatalf("failed to get pull secret: %v", err)
+	}
+	if gotPullSecret.GetLabels()[backupCredsClusterLabel] != pull_secret_label_value {
+		t.Errorf("expected pullSecretRef secret to have backup label %q=%q, got labels %v",
+			backupCredsClusterLabel, pull_secret_label_value, gotPullSecret.GetLabels())
+	}
+
+	gotManifestsSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: manifestsSecret.Name},
+		gotManifestsSecret); err != nil {
+		t.Fatalf("failed to get manifests secret: %v", err)
+	}
+	if gotManifestsSecret.GetLabels()[backupCredsClusterLabel] != manifests_secret_label_value {
+		t.Errorf("expected manifestsSecretRef secret to have backup label %q=%q, got labels %v",
+			backupCredsClusterLabel, manifests_secret_label_value, gotManifestsSecret.GetLabels())
+	}
+
+	gotManifestsConfigMap := &corev1.ConfigMap{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: manifestsConfigMap.Name},
+		gotManifestsConfigMap); err != nil {
+		t.Fatalf("failed to get manifests configmap: %v", err)
+	}
+	if gotManifestsConfigMap.GetLabels()[backupCredsClusterLabel] != manifests_configmap_label_value {
+		t.Errorf("expected manifestsConfigMapRef configmap to have backup label %q=%q, got labels %v",
+			backupCredsClusterLabel, manifests_configmap_label_value, gotManifestsConfigMap.GetLabels())
+	}
+
+	gotAlreadyLabeled := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: alreadyLabeledCertSecret.Name},
+		gotAlreadyLabeled); err != nil {
+		t.Fatalf("failed to get already-labeled cert secret: %v", err)
+	}
+	if gotAlreadyLabeled.GetLabels()[backupCredsClusterLabel] != "" {
+		t.Errorf("expected already-labeled secret to be left alone, got labels %v", gotAlreadyLabeled.GetLabels())
+	}
+	if gotAlreadyLabeled.GetLabels()[backupCredsUserLabel] != "user-set" {
+		t.Errorf("expected already-labeled secret to keep its original label, got labels %v",
+			gotAlreadyLabeled.GetLabels())
 	}
 }

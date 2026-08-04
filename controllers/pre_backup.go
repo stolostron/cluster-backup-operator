@@ -92,7 +92,17 @@ const (
         ]
     }`
 
-	update_msg = "Updated secret %s in ns %s"
+	update_msg    = "Updated secret %s in ns %s"
+	update_cm_msg = "Updated configmap %s in ns %s"
+
+	// label values for secrets/configmaps referenced by name on a ClusterDeployment
+	// we already back up. Unlike other user-provided Hive data, these references are
+	// discoverable directly off the ClusterDeployment spec, so they don't require the
+	// user to label them manually.
+	certificate_bundle_label_value  = "certificatebundle"
+	pull_secret_label_value         = "pullsecret"
+	manifests_secret_label_value    = "manifestssecret"
+	manifests_configmap_label_value = "manifestsconfigmap"
 )
 
 // isMSAComponentEnabled checks if the managedserviceaccount component is enabled in MCE
@@ -887,6 +897,11 @@ func updateHiveResources(ctx context.Context,
 	if err := c.List(ctx, clusterDeployments, &client.ListOptions{}); err == nil {
 		for i := range clusterDeployments.Items {
 			clusterDeployment := clusterDeployments.Items[i]
+
+			// label secrets/configmaps this ClusterDeployment explicitly references
+			// by name, regardless of whether it originated from a ClusterPool
+			updateHiveReferencedSecrets(ctx, c, clusterDeployment)
+
 			if clusterDeployment.Spec.ClusterPoolRef != nil {
 				secrets := &corev1.SecretList{}
 				if err := c.List(ctx, secrets, &client.ListOptions{
@@ -934,6 +949,117 @@ func updateHiveResources(ctx context.Context,
 			}
 		}
 	}
+}
+
+// updateHiveReferencedSecrets adds the backup label to secrets and configmaps that a
+// ClusterDeployment explicitly references by name: CertificateBundles, PullSecretRef,
+// and the Provisioning ManifestsSecretRef/ManifestsConfigMapRef. These are distinct from
+// other user-provided Hive data (e.g. InstallConfigSecretRef): the reference is read
+// directly off a resource the operator already backs up, so the secret/configmap
+// identity is discoverable without relying on the user to label it manually.
+//
+// BoundServiceAccountSigningKeySecretRef is deliberately NOT included here even though
+// it fits the same discoverability pattern: it references private key material (used to
+// sign ServiceAccount tokens for AWS STS), which carries a different risk profile than a
+// cert bundle or manifest override secret. Left as an open question pending team input
+// (ACM-38831).
+func updateHiveReferencedSecrets(ctx context.Context,
+	c client.Client,
+	clusterDeployment hivev1.ClusterDeployment,
+) {
+	for i := range clusterDeployment.Spec.CertificateBundles {
+		labelSecretByName(ctx, c, clusterDeployment.Namespace,
+			clusterDeployment.Spec.CertificateBundles[i].CertificateSecretRef.Name,
+			certificate_bundle_label_value)
+	}
+
+	if ref := clusterDeployment.Spec.PullSecretRef; ref != nil {
+		labelSecretByName(ctx, c, clusterDeployment.Namespace, ref.Name, pull_secret_label_value)
+	}
+
+	provisioning := clusterDeployment.Spec.Provisioning
+	if provisioning == nil {
+		return
+	}
+
+	if ref := provisioning.ManifestsSecretRef; ref != nil {
+		labelSecretByName(ctx, c, clusterDeployment.Namespace, ref.Name, manifests_secret_label_value)
+	}
+
+	if ref := provisioning.ManifestsConfigMapRef; ref != nil {
+		labelConfigMapByName(ctx, c, clusterDeployment.Namespace, ref.Name, manifests_configmap_label_value)
+	}
+}
+
+// labelSecretByName fetches the named secret and adds the cluster backup label to it,
+// if it doesn't already carry one of the recognized backup labels.
+func labelSecretByName(ctx context.Context,
+	c client.Client,
+	namespace string,
+	name string,
+	labelValue string,
+) {
+	if name == "" {
+		return
+	}
+	secret := &corev1.Secret{}
+	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret); err != nil {
+		// secret not found, or referenced from a different namespace; nothing to label
+		return
+	}
+	updateSecret(ctx, c, *secret, backupCredsClusterLabel, labelValue, true)
+}
+
+// labelConfigMapByName fetches the named configmap and adds the cluster backup label to
+// it, if it doesn't already carry one of the recognized backup labels.
+func labelConfigMapByName(ctx context.Context,
+	c client.Client,
+	namespace string,
+	name string,
+	labelValue string,
+) {
+	if name == "" {
+		return
+	}
+	cm := &corev1.ConfigMap{}
+	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, cm); err != nil {
+		// configmap not found, or referenced from a different namespace; nothing to label
+		return
+	}
+	updateConfigMap(ctx, c, *cm, backupCredsClusterLabel, labelValue, true)
+}
+
+// updateConfigMap adds the backup label to a configmap, mirroring updateSecret's
+// behavior for secrets: it only sets the label if none of the recognized backup
+// labels are already present.
+func updateConfigMap(ctx context.Context,
+	c client.Client,
+	cm corev1.ConfigMap,
+	labelName string,
+	labelValue string,
+	update bool,
+) bool {
+	logger := log.FromContext(ctx)
+	labels := cm.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	if labels[backupCredsHiveLabel] == "" &&
+		labels[backupCredsUserLabel] == "" &&
+		labels[backupCredsClusterLabel] == "" {
+		labels[labelName] = labelValue
+		cm.SetLabels(labels)
+		msg := "update configmap " + cm.Name
+		logger.Info(msg)
+		if !update {
+			return true
+		}
+		if err := c.Update(ctx, &cm, &client.UpdateOptions{}); err == nil {
+			logger.Info(fmt.Sprintf(update_cm_msg, cm.Name, cm.Namespace))
+		}
+		return true
+	}
+	return false
 }
 
 // prepare AutomatedInstaller resources
