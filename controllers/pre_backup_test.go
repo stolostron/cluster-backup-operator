@@ -3219,3 +3219,58 @@ func Test_updateHiveResources_FailsClosedOnLocalClusterLookupError(t *testing.T)
 			gotOtherSecret.GetLabels())
 	}
 }
+
+// Test_updateHiveResources_SkipsLocalClusterClusterPool verifies that a ClusterPool in
+// the local-cluster namespace is skipped by updateHiveResources: its namespace's
+// secrets must not be auto-labeled for backup, even though the same ClusterPool shape
+// in any other namespace would have its matching secrets labeled.
+func Test_updateHiveResources_SkipsLocalClusterClusterPool(t *testing.T) {
+	setupTestLogger()
+	ctx := createTestContext()
+	scheme := createHiveClusterTestScheme()
+
+	localNs := "local-cluster"
+	otherNs := "pool-ns"
+
+	localPool := &hivev1.ClusterPool{
+		ObjectMeta: v1.ObjectMeta{Name: "local-pool", Namespace: localNs},
+	}
+	otherPool := &hivev1.ClusterPool{
+		ObjectMeta: v1.ObjectMeta{Name: "other-pool", Namespace: otherNs},
+	}
+	localPoolSecret := createTestSecret("local-pool-creds", localNs, nil, nil)
+	otherPoolSecret := createTestSecret("other-pool-creds", otherNs, nil, nil)
+
+	// a ManagedCluster labeled local-cluster:true resolves getLocalClusterName() to
+	// "local-cluster", matching the namespace used by localPool above
+	localManagedCluster := createTestManagedCluster(localNs, true)
+
+	k8sClient := createFakeClient(scheme, localPoolSecret, otherPoolSecret, localManagedCluster,
+		localPool, otherPool)
+	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+	dr := dynClient.Resource(schema.GroupVersionResource{
+		Group: "hive.openshift.io", Version: "v1", Resource: "clusterdeployments",
+	})
+
+	updateHiveResources(ctx, k8sClient, dr)
+
+	gotLocalSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: localNs, Name: localPoolSecret.Name},
+		gotLocalSecret); err != nil {
+		t.Fatalf("failed to get local-cluster pool secret: %v", err)
+	}
+	if _, found := gotLocalSecret.GetLabels()[backupCredsClusterLabel]; found {
+		t.Errorf("expected local-cluster ClusterPool secret to NOT be labeled for backup, got labels %v",
+			gotLocalSecret.GetLabels())
+	}
+
+	gotOtherSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: otherNs, Name: otherPoolSecret.Name},
+		gotOtherSecret); err != nil {
+		t.Fatalf("failed to get non-local pool secret: %v", err)
+	}
+	if gotOtherSecret.GetLabels()[backupCredsClusterLabel] != "clusterpool" {
+		t.Errorf("expected non-local-cluster ClusterPool secret to be labeled for backup, got labels %v",
+			gotOtherSecret.GetLabels())
+	}
+}

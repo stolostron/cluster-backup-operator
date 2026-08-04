@@ -928,6 +928,11 @@ func updateHiveResources(ctx context.Context,
 	clusterPools := &hivev1.ClusterPoolList{}
 	if err := c.List(ctx, clusterPools, &client.ListOptions{}); err == nil {
 		for i := range clusterPools.Items {
+			if localClusterName != "" && clusterPools.Items[i].Namespace == localClusterName {
+				// skip local-cluster: restoring these resources would corrupt the target hub
+				continue
+			}
+
 			secrets := &corev1.SecretList{}
 			if err := c.List(ctx, secrets, &client.ListOptions{
 				Namespace: clusterPools.Items[i].Namespace,
