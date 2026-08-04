@@ -92,17 +92,16 @@ const (
         ]
     }`
 
-	update_msg    = "Updated secret %s in ns %s"
-	update_cm_msg = "Updated configmap %s in ns %s"
+	update_msg = "Updated secret %s in ns %s"
 
 	// label values for secrets/configmaps referenced by name on a ClusterDeployment
 	// we already back up. Unlike other user-provided Hive data, these references are
 	// discoverable directly off the ClusterDeployment spec, so they don't require the
 	// user to label them manually.
-	certificate_bundle_label_value  = "certificatebundle"
-	pull_secret_label_value         = "pullsecret"
-	manifests_secret_label_value    = "manifestssecret"
-	manifests_configmap_label_value = "manifestsconfigmap"
+	certificateBundleLabelValue  = "certificatebundle"
+	pullSecretLabelValue         = "pullsecret"
+	manifestsSecretLabelValue    = "manifestssecret"
+	manifestsConfigMapLabelValue = "manifestsconfigmap"
 )
 
 // isMSAComponentEnabled checks if the managedserviceaccount component is enabled in MCE
@@ -892,45 +891,32 @@ func updateHiveResources(ctx context.Context,
 	dr dynamic.NamespaceableResourceInterface,
 ) {
 	logger := log.FromContext(ctx)
+
+	// local-cluster is intentionally excluded from backup: restoring its resources
+	// would corrupt the target hub. Resolved dynamically since the local-cluster's
+	// namespace name is not guaranteed to be literally "local-cluster".
+	localClusterName, err := getLocalClusterName(ctx, c)
+	if err != nil {
+		logger.Error(err, "updateHiveResources: error looking up local-cluster name")
+	}
+
 	// update secrets for clusterDeployments created by cluster claims
 	clusterDeployments := &hivev1.ClusterDeploymentList{}
 	if err := c.List(ctx, clusterDeployments, &client.ListOptions{}); err == nil {
 		for i := range clusterDeployments.Items {
 			clusterDeployment := clusterDeployments.Items[i]
 
+			if localClusterName != "" && clusterDeployment.Namespace == localClusterName {
+				// skip local-cluster: restoring these resources would corrupt the target hub
+				continue
+			}
+
 			// label secrets/configmaps this ClusterDeployment explicitly references
 			// by name, regardless of whether it originated from a ClusterPool
 			updateHiveReferencedSecrets(ctx, c, clusterDeployment)
 
 			if clusterDeployment.Spec.ClusterPoolRef != nil {
-				secrets := &corev1.SecretList{}
-				if err := c.List(ctx, secrets, &client.ListOptions{
-					Namespace: clusterDeployment.Namespace,
-				}); err == nil {
-					// add backup labels if not set yet
-					updateSecretsLabels(ctx, c, *secrets, clusterDeployment.Name,
-						backupCredsClusterLabel,
-						"clusterpool")
-				}
-
-				// add a label annnotation to the resource
-				// to disable the creation webhook validation
-				// which doesn't allow restoring the ClusterDeployment
-				labels := clusterDeployment.GetLabels()
-				if labels == nil {
-					labels = make(map[string]string)
-				}
-				if labels[hive_label] != "" {
-					// label already set
-					continue
-				}
-				logger.Info("Patching disable-creation-webhook-for-dr label on deployment " + clusterDeployment.Name)
-
-				patch := `[ { "op": "add", "path": "` + hive_label_path + `", "value": "true" } ]`
-				if _, err := dr.Namespace(clusterDeployment.GetNamespace()).Patch(ctx, clusterDeployment.GetName(),
-					types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
-					logger.Error(err, "cannot patch with hive label hive.openshift.io~1disable-creation-webhook-for-dr")
-				}
+				prepareClusterPoolDeployment(ctx, c, dr, clusterDeployment)
 			}
 		}
 	}
@@ -948,6 +934,47 @@ func updateHiveResources(ctx context.Context,
 					"clusterpool")
 			}
 		}
+	}
+}
+
+// prepareClusterPoolDeployment labels the secrets in a ClusterPool-derived
+// ClusterDeployment's namespace and patches the disable-creation-webhook-for-dr label,
+// so the ClusterDeployment can be restored later without hitting Hive's creation
+// webhook validation.
+func prepareClusterPoolDeployment(ctx context.Context,
+	c client.Client,
+	dr dynamic.NamespaceableResourceInterface,
+	clusterDeployment hivev1.ClusterDeployment,
+) {
+	logger := log.FromContext(ctx)
+
+	secrets := &corev1.SecretList{}
+	if err := c.List(ctx, secrets, &client.ListOptions{
+		Namespace: clusterDeployment.Namespace,
+	}); err == nil {
+		// add backup labels if not set yet
+		updateSecretsLabels(ctx, c, *secrets, clusterDeployment.Name,
+			backupCredsClusterLabel,
+			"clusterpool")
+	}
+
+	// add a label annnotation to the resource
+	// to disable the creation webhook validation
+	// which doesn't allow restoring the ClusterDeployment
+	labels := clusterDeployment.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	if labels[hive_label] != "" {
+		// label already set
+		return
+	}
+	logger.Info("Patching disable-creation-webhook-for-dr label on deployment " + clusterDeployment.Name)
+
+	patch := `[ { "op": "add", "path": "` + hive_label_path + `", "value": "true" } ]`
+	if _, err := dr.Namespace(clusterDeployment.GetNamespace()).Patch(ctx, clusterDeployment.GetName(),
+		types.JSONPatchType, []byte(patch), v1.PatchOptions{}); err != nil {
+		logger.Error(err, "cannot patch with hive label hive.openshift.io~1disable-creation-webhook-for-dr")
 	}
 }
 
@@ -970,11 +997,11 @@ func updateHiveReferencedSecrets(ctx context.Context,
 	for i := range clusterDeployment.Spec.CertificateBundles {
 		labelSecretByName(ctx, c, clusterDeployment.Namespace,
 			clusterDeployment.Spec.CertificateBundles[i].CertificateSecretRef.Name,
-			certificate_bundle_label_value)
+			certificateBundleLabelValue)
 	}
 
 	if ref := clusterDeployment.Spec.PullSecretRef; ref != nil {
-		labelSecretByName(ctx, c, clusterDeployment.Namespace, ref.Name, pull_secret_label_value)
+		labelSecretByName(ctx, c, clusterDeployment.Namespace, ref.Name, pullSecretLabelValue)
 	}
 
 	provisioning := clusterDeployment.Spec.Provisioning
@@ -983,16 +1010,18 @@ func updateHiveReferencedSecrets(ctx context.Context,
 	}
 
 	if ref := provisioning.ManifestsSecretRef; ref != nil {
-		labelSecretByName(ctx, c, clusterDeployment.Namespace, ref.Name, manifests_secret_label_value)
+		labelSecretByName(ctx, c, clusterDeployment.Namespace, ref.Name, manifestsSecretLabelValue)
 	}
 
 	if ref := provisioning.ManifestsConfigMapRef; ref != nil {
-		labelConfigMapByName(ctx, c, clusterDeployment.Namespace, ref.Name, manifests_configmap_label_value)
+		labelConfigMapByName(ctx, c, clusterDeployment.Namespace, ref.Name, manifestsConfigMapLabelValue)
 	}
 }
 
 // labelSecretByName fetches the named secret and adds the cluster backup label to it,
-// if it doesn't already carry one of the recognized backup labels.
+// if it doesn't already carry one of the recognized backup labels. Only a NotFound
+// error is treated as skippable; other errors (transient API failures, RBAC denials)
+// are logged as warnings so a labeling gap isn't entirely silent.
 func labelSecretByName(ctx context.Context,
 	c client.Client,
 	namespace string,
@@ -1004,14 +1033,19 @@ func labelSecretByName(ctx context.Context,
 	}
 	secret := &corev1.Secret{}
 	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret); err != nil {
-		// secret not found, or referenced from a different namespace; nothing to label
+		if !k8serr.IsNotFound(err) {
+			log.FromContext(ctx).Error(err, "labelSecretByName: error getting referenced secret",
+				"name", name, "namespace", namespace)
+		}
 		return
 	}
 	updateSecret(ctx, c, *secret, backupCredsClusterLabel, labelValue, true)
 }
 
 // labelConfigMapByName fetches the named configmap and adds the cluster backup label to
-// it, if it doesn't already carry one of the recognized backup labels.
+// it, if it doesn't already carry one of the recognized backup labels. Only a NotFound
+// error is treated as skippable; other errors are logged as warnings so a labeling gap
+// isn't entirely silent.
 func labelConfigMapByName(ctx context.Context,
 	c client.Client,
 	namespace string,
@@ -1023,7 +1057,10 @@ func labelConfigMapByName(ctx context.Context,
 	}
 	cm := &corev1.ConfigMap{}
 	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, cm); err != nil {
-		// configmap not found, or referenced from a different namespace; nothing to label
+		if !k8serr.IsNotFound(err) {
+			log.FromContext(ctx).Error(err, "labelConfigMapByName: error getting referenced configmap",
+				"name", name, "namespace", namespace)
+		}
 		return
 	}
 	updateConfigMap(ctx, c, *cm, backupCredsClusterLabel, labelValue, true)
@@ -1049,13 +1086,14 @@ func updateConfigMap(ctx context.Context,
 		labels[backupCredsClusterLabel] == "" {
 		labels[labelName] = labelValue
 		cm.SetLabels(labels)
-		msg := "update configmap " + cm.Name
-		logger.Info(msg)
+		logger.Info("Updating configmap", "name", cm.Name, "namespace", cm.Namespace)
 		if !update {
 			return true
 		}
-		if err := c.Update(ctx, &cm, &client.UpdateOptions{}); err == nil {
-			logger.Info(fmt.Sprintf(update_cm_msg, cm.Name, cm.Namespace))
+		if err := c.Update(ctx, &cm, &client.UpdateOptions{}); err != nil {
+			logger.Error(err, "updateConfigMap: error updating configmap", "name", cm.Name, "namespace", cm.Namespace)
+		} else {
+			logger.Info("Updated configmap", "name", cm.Name, "namespace", cm.Namespace)
 		}
 		return true
 	}
