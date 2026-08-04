@@ -3178,3 +3178,44 @@ func Test_updateHiveResources_SkipsLocalCluster(t *testing.T) {
 			gotOtherSecret.GetLabels())
 	}
 }
+
+// Test_updateHiveResources_FailsClosedOnLocalClusterLookupError verifies that if
+// getLocalClusterName cannot be resolved (e.g. a transient API error), updateHiveResources
+// fails closed: it skips labeling entirely for this cycle rather than risk labeling
+// local-cluster resources for backup because the exclusion check couldn't be evaluated.
+func Test_updateHiveResources_FailsClosedOnLocalClusterLookupError(t *testing.T) {
+	setupTestLogger()
+	ctx := createTestContext()
+	// deliberately omit clusterv1 from the scheme so the ManagedClusterList lookup inside
+	// getLocalClusterName fails, simulating an error resolving the local-cluster name
+	scheme := createHiveTestScheme()
+
+	otherNs := "managed-ns"
+	otherCertSecret := createTestSecret("other-cert-secret", otherNs, nil, nil)
+	otherClusterDeployment := &hivev1.ClusterDeployment{
+		ObjectMeta: v1.ObjectMeta{Name: "other-cd", Namespace: otherNs},
+		Spec: hivev1.ClusterDeploymentSpec{
+			CertificateBundles: []hivev1.CertificateBundleSpec{
+				{CertificateSecretRef: corev1.LocalObjectReference{Name: otherCertSecret.Name}},
+			},
+		},
+	}
+
+	k8sClient := createFakeClient(scheme, otherCertSecret, otherClusterDeployment)
+	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+	dr := dynClient.Resource(schema.GroupVersionResource{
+		Group: "hive.openshift.io", Version: "v1", Resource: "clusterdeployments",
+	})
+
+	updateHiveResources(ctx, k8sClient, dr)
+
+	gotOtherSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: otherNs, Name: otherCertSecret.Name},
+		gotOtherSecret); err != nil {
+		t.Fatalf("failed to get non-local cert secret: %v", err)
+	}
+	if _, found := gotOtherSecret.GetLabels()[backupCredsClusterLabel]; found {
+		t.Errorf("expected no labeling to occur when the local-cluster lookup fails, got labels %v",
+			gotOtherSecret.GetLabels())
+	}
+}

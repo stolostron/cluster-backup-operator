@@ -894,10 +894,13 @@ func updateHiveResources(ctx context.Context,
 
 	// local-cluster is intentionally excluded from backup: restoring its resources
 	// would corrupt the target hub. Resolved dynamically since the local-cluster's
-	// namespace name is not guaranteed to be literally "local-cluster".
+	// namespace name is not guaranteed to be literally "local-cluster". If the lookup
+	// itself fails, fail closed rather than risk labeling local-cluster resources for
+	// backup: skip this reconcile's hive resource prep entirely and retry next cycle.
 	localClusterName, err := getLocalClusterName(ctx, c)
 	if err != nil {
-		logger.Error(err, "updateHiveResources: error looking up local-cluster name")
+		logger.Error(err, "updateHiveResources: error looking up local-cluster name, skipping this cycle")
+		return
 	}
 
 	// update secrets for clusterDeployments created by cluster claims
@@ -969,7 +972,8 @@ func prepareClusterPoolDeployment(ctx context.Context,
 		// label already set
 		return
 	}
-	logger.Info("Patching disable-creation-webhook-for-dr label on deployment " + clusterDeployment.Name)
+	logger.Info("Patching disable-creation-webhook-for-dr label on deployment",
+		"name", clusterDeployment.Name, "namespace", clusterDeployment.Namespace)
 
 	patch := `[ { "op": "add", "path": "` + hive_label_path + `", "value": "true" } ]`
 	if _, err := dr.Namespace(clusterDeployment.GetNamespace()).Patch(ctx, clusterDeployment.GetName(),
