@@ -39,6 +39,7 @@ import (
 	"testing"
 	"time"
 
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
@@ -2988,5 +2989,288 @@ func Test_updateSecret(t *testing.T) {
 				t.Errorf("Expected updateSecret to return %v, got %v", tt.expectUpdate, result)
 			}
 		})
+	}
+}
+
+// createHiveTestScheme creates a scheme with core APIs and hive APIs, for tests that
+// exercise ClusterDeployment-referenced secret/configmap labeling.
+func createHiveTestScheme() *runtime.Scheme {
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		panic("Error adding corev1 to scheme: " + err.Error())
+	}
+	if err := hivev1.AddToScheme(scheme); err != nil {
+		panic("Error adding hivev1 to scheme: " + err.Error())
+	}
+	return scheme
+}
+
+// createHiveClusterTestScheme extends createHiveTestScheme with clusterv1, for tests
+// that also need a ManagedCluster (e.g. to resolve the local-cluster name).
+func createHiveClusterTestScheme() *runtime.Scheme {
+	scheme := createHiveTestScheme()
+	if err := clusterv1.Install(scheme); err != nil {
+		panic("Error adding clusterv1 to scheme: " + err.Error())
+	}
+	return scheme
+}
+
+// Test_updateHiveReferencedSecrets verifies that secrets and configmaps explicitly
+// referenced by name on a ClusterDeployment (CertificateBundles, Provisioning's
+// ManifestsSecretRef/ManifestsConfigMapRef) are automatically labeled for backup,
+// without requiring the user to label them manually. See ACM-38831.
+func Test_updateHiveReferencedSecrets(t *testing.T) {
+	setupTestLogger()
+	ctx := createTestContext()
+	scheme := createHiveTestScheme()
+
+	ns := "cd-ns"
+
+	certSecret := createTestSecret("cert-bundle-secret", ns, nil, nil)
+	pullSecret := createTestSecret("pull-secret", ns, nil, nil)
+	manifestsSecret := createTestSecret("manifests-secret", ns, nil, nil)
+	manifestsConfigMap := &corev1.ConfigMap{
+		ObjectMeta: v1.ObjectMeta{Name: "manifests-cm", Namespace: ns},
+	}
+	// a secret that already carries a backup label should not be re-labeled with a
+	// different value
+	alreadyLabeledCertSecret := createTestSecret("already-labeled-cert-secret", ns,
+		map[string]string{backupCredsUserLabel: "user-set"}, nil)
+
+	k8sClient := createFakeClient(scheme, certSecret, pullSecret, manifestsSecret, manifestsConfigMap,
+		alreadyLabeledCertSecret)
+
+	clusterDeployment := hivev1.ClusterDeployment{
+		ObjectMeta: v1.ObjectMeta{Name: "cd", Namespace: ns},
+		Spec: hivev1.ClusterDeploymentSpec{
+			CertificateBundles: []hivev1.CertificateBundleSpec{
+				{CertificateSecretRef: corev1.LocalObjectReference{Name: certSecret.Name}},
+				{CertificateSecretRef: corev1.LocalObjectReference{Name: alreadyLabeledCertSecret.Name}},
+			},
+			PullSecretRef: &corev1.LocalObjectReference{Name: pullSecret.Name},
+			Provisioning: &hivev1.Provisioning{
+				ManifestsSecretRef:    &corev1.LocalObjectReference{Name: manifestsSecret.Name},
+				ManifestsConfigMapRef: &corev1.LocalObjectReference{Name: manifestsConfigMap.Name},
+			},
+		},
+	}
+
+	updateHiveReferencedSecrets(ctx, k8sClient, clusterDeployment)
+
+	gotCertSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: certSecret.Name}, gotCertSecret); err != nil {
+		t.Fatalf("failed to get cert secret: %v", err)
+	}
+	if gotCertSecret.GetLabels()[backupCredsClusterLabel] != certificateBundleLabelValue {
+		t.Errorf("expected certificateBundle secret to have backup label %q=%q, got labels %v",
+			backupCredsClusterLabel, certificateBundleLabelValue, gotCertSecret.GetLabels())
+	}
+
+	gotPullSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: pullSecret.Name}, gotPullSecret); err != nil {
+		t.Fatalf("failed to get pull secret: %v", err)
+	}
+	if gotPullSecret.GetLabels()[backupCredsClusterLabel] != pullSecretLabelValue {
+		t.Errorf("expected pullSecretRef secret to have backup label %q=%q, got labels %v",
+			backupCredsClusterLabel, pullSecretLabelValue, gotPullSecret.GetLabels())
+	}
+
+	gotManifestsSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: manifestsSecret.Name},
+		gotManifestsSecret); err != nil {
+		t.Fatalf("failed to get manifests secret: %v", err)
+	}
+	if gotManifestsSecret.GetLabels()[backupCredsClusterLabel] != manifestsSecretLabelValue {
+		t.Errorf("expected manifestsSecretRef secret to have backup label %q=%q, got labels %v",
+			backupCredsClusterLabel, manifestsSecretLabelValue, gotManifestsSecret.GetLabels())
+	}
+
+	gotManifestsConfigMap := &corev1.ConfigMap{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: manifestsConfigMap.Name},
+		gotManifestsConfigMap); err != nil {
+		t.Fatalf("failed to get manifests configmap: %v", err)
+	}
+	if gotManifestsConfigMap.GetLabels()[backupCredsClusterLabel] != manifestsConfigMapLabelValue {
+		t.Errorf("expected manifestsConfigMapRef configmap to have backup label %q=%q, got labels %v",
+			backupCredsClusterLabel, manifestsConfigMapLabelValue, gotManifestsConfigMap.GetLabels())
+	}
+
+	gotAlreadyLabeled := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: alreadyLabeledCertSecret.Name},
+		gotAlreadyLabeled); err != nil {
+		t.Fatalf("failed to get already-labeled cert secret: %v", err)
+	}
+	if gotAlreadyLabeled.GetLabels()[backupCredsClusterLabel] != "" {
+		t.Errorf("expected already-labeled secret to be left alone, got labels %v", gotAlreadyLabeled.GetLabels())
+	}
+	if gotAlreadyLabeled.GetLabels()[backupCredsUserLabel] != "user-set" {
+		t.Errorf("expected already-labeled secret to keep its original label, got labels %v",
+			gotAlreadyLabeled.GetLabels())
+	}
+}
+
+// Test_updateHiveResources_SkipsLocalCluster verifies that a ClusterDeployment in the
+// local-cluster namespace is skipped entirely by updateHiveResources: restoring
+// local-cluster resources would corrupt the target hub, so referenced secrets there
+// must not be auto-labeled for backup, even though the same ClusterDeployment shape in
+// any other namespace would be.
+func Test_updateHiveResources_SkipsLocalCluster(t *testing.T) {
+	setupTestLogger()
+	ctx := createTestContext()
+	scheme := createHiveClusterTestScheme()
+
+	localNs := "local-cluster"
+	otherNs := "managed-ns"
+
+	localCertSecret := createTestSecret("local-cert-secret", localNs, nil, nil)
+	otherCertSecret := createTestSecret("other-cert-secret", otherNs, nil, nil)
+
+	// a ManagedCluster labeled local-cluster:true resolves getLocalClusterName() to
+	// "local-cluster", matching the namespace used by localClusterDeployment below
+	localManagedCluster := createTestManagedCluster(localNs, true)
+
+	localClusterDeployment := &hivev1.ClusterDeployment{
+		ObjectMeta: v1.ObjectMeta{Name: "local-cd", Namespace: localNs},
+		Spec: hivev1.ClusterDeploymentSpec{
+			CertificateBundles: []hivev1.CertificateBundleSpec{
+				{CertificateSecretRef: corev1.LocalObjectReference{Name: localCertSecret.Name}},
+			},
+		},
+	}
+	otherClusterDeployment := &hivev1.ClusterDeployment{
+		ObjectMeta: v1.ObjectMeta{Name: "other-cd", Namespace: otherNs},
+		Spec: hivev1.ClusterDeploymentSpec{
+			CertificateBundles: []hivev1.CertificateBundleSpec{
+				{CertificateSecretRef: corev1.LocalObjectReference{Name: otherCertSecret.Name}},
+			},
+		},
+	}
+
+	k8sClient := createFakeClient(scheme, localCertSecret, otherCertSecret, localManagedCluster,
+		localClusterDeployment, otherClusterDeployment)
+
+	// updateHiveResources only touches dr when ClusterPoolRef is set, which neither
+	// test ClusterDeployment does, so an empty dynamic client is sufficient here.
+	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+	dr := dynClient.Resource(schema.GroupVersionResource{
+		Group: "hive.openshift.io", Version: "v1", Resource: "clusterdeployments",
+	})
+
+	updateHiveResources(ctx, k8sClient, dr)
+
+	gotLocalSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: localNs, Name: localCertSecret.Name},
+		gotLocalSecret); err != nil {
+		t.Fatalf("failed to get local-cluster cert secret: %v", err)
+	}
+	if _, found := gotLocalSecret.GetLabels()[backupCredsClusterLabel]; found {
+		t.Errorf("expected local-cluster secret to NOT be labeled for backup, got labels %v",
+			gotLocalSecret.GetLabels())
+	}
+
+	gotOtherSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: otherNs, Name: otherCertSecret.Name},
+		gotOtherSecret); err != nil {
+		t.Fatalf("failed to get non-local cert secret: %v", err)
+	}
+	if gotOtherSecret.GetLabels()[backupCredsClusterLabel] != certificateBundleLabelValue {
+		t.Errorf("expected non-local-cluster secret to be labeled for backup, got labels %v",
+			gotOtherSecret.GetLabels())
+	}
+}
+
+// Test_updateHiveResources_FailsClosedOnLocalClusterLookupError verifies that if
+// getLocalClusterName cannot be resolved (e.g. a transient API error), updateHiveResources
+// fails closed: it skips labeling entirely for this cycle rather than risk labeling
+// local-cluster resources for backup because the exclusion check couldn't be evaluated.
+func Test_updateHiveResources_FailsClosedOnLocalClusterLookupError(t *testing.T) {
+	setupTestLogger()
+	ctx := createTestContext()
+	// deliberately omit clusterv1 from the scheme so the ManagedClusterList lookup inside
+	// getLocalClusterName fails, simulating an error resolving the local-cluster name
+	scheme := createHiveTestScheme()
+
+	otherNs := "managed-ns"
+	otherCertSecret := createTestSecret("other-cert-secret", otherNs, nil, nil)
+	otherClusterDeployment := &hivev1.ClusterDeployment{
+		ObjectMeta: v1.ObjectMeta{Name: "other-cd", Namespace: otherNs},
+		Spec: hivev1.ClusterDeploymentSpec{
+			CertificateBundles: []hivev1.CertificateBundleSpec{
+				{CertificateSecretRef: corev1.LocalObjectReference{Name: otherCertSecret.Name}},
+			},
+		},
+	}
+
+	k8sClient := createFakeClient(scheme, otherCertSecret, otherClusterDeployment)
+	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+	dr := dynClient.Resource(schema.GroupVersionResource{
+		Group: "hive.openshift.io", Version: "v1", Resource: "clusterdeployments",
+	})
+
+	updateHiveResources(ctx, k8sClient, dr)
+
+	gotOtherSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: otherNs, Name: otherCertSecret.Name},
+		gotOtherSecret); err != nil {
+		t.Fatalf("failed to get non-local cert secret: %v", err)
+	}
+	if _, found := gotOtherSecret.GetLabels()[backupCredsClusterLabel]; found {
+		t.Errorf("expected no labeling to occur when the local-cluster lookup fails, got labels %v",
+			gotOtherSecret.GetLabels())
+	}
+}
+
+// Test_updateHiveResources_SkipsLocalClusterClusterPool verifies that a ClusterPool in
+// the local-cluster namespace is skipped by updateHiveResources: its namespace's
+// secrets must not be auto-labeled for backup, even though the same ClusterPool shape
+// in any other namespace would have its matching secrets labeled.
+func Test_updateHiveResources_SkipsLocalClusterClusterPool(t *testing.T) {
+	setupTestLogger()
+	ctx := createTestContext()
+	scheme := createHiveClusterTestScheme()
+
+	localNs := "local-cluster"
+	otherNs := "pool-ns"
+
+	localPool := &hivev1.ClusterPool{
+		ObjectMeta: v1.ObjectMeta{Name: "local-pool", Namespace: localNs},
+	}
+	otherPool := &hivev1.ClusterPool{
+		ObjectMeta: v1.ObjectMeta{Name: "other-pool", Namespace: otherNs},
+	}
+	localPoolSecret := createTestSecret("local-pool-creds", localNs, nil, nil)
+	otherPoolSecret := createTestSecret("other-pool-creds", otherNs, nil, nil)
+
+	// a ManagedCluster labeled local-cluster:true resolves getLocalClusterName() to
+	// "local-cluster", matching the namespace used by localPool above
+	localManagedCluster := createTestManagedCluster(localNs, true)
+
+	k8sClient := createFakeClient(scheme, localPoolSecret, otherPoolSecret, localManagedCluster,
+		localPool, otherPool)
+	dynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+	dr := dynClient.Resource(schema.GroupVersionResource{
+		Group: "hive.openshift.io", Version: "v1", Resource: "clusterdeployments",
+	})
+
+	updateHiveResources(ctx, k8sClient, dr)
+
+	gotLocalSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: localNs, Name: localPoolSecret.Name},
+		gotLocalSecret); err != nil {
+		t.Fatalf("failed to get local-cluster pool secret: %v", err)
+	}
+	if _, found := gotLocalSecret.GetLabels()[backupCredsClusterLabel]; found {
+		t.Errorf("expected local-cluster ClusterPool secret to NOT be labeled for backup, got labels %v",
+			gotLocalSecret.GetLabels())
+	}
+
+	gotOtherSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: otherNs, Name: otherPoolSecret.Name},
+		gotOtherSecret); err != nil {
+		t.Fatalf("failed to get non-local pool secret: %v", err)
+	}
+	if gotOtherSecret.GetLabels()[backupCredsClusterLabel] != "clusterpool" {
+		t.Errorf("expected non-local-cluster ClusterPool secret to be labeled for backup, got labels %v",
+			gotOtherSecret.GetLabels())
 	}
 }
