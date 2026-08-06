@@ -67,6 +67,13 @@ var (
 	}
 	includedActivationAPIGroupsByName = []string{
 		"agent-install.openshift.io",
+		// siteconfig.open-cluster-management.io (ClusterInstance) drives Day-1 installs for
+		// ZTP/bare-metal managed clusters. Treating it as an activation resource ensures it
+		// is only restored during an actual failover (VeleroManagedClustersBackupName=latest),
+		// not on every routine passive-sync cycle, which would otherwise cause the SiteConfig
+		// controller to re-render Day-1 manifests against already-installed clusters and drive
+		// their BareMetalHost objects back into Inspecting. See ACM-39330.
+		"siteconfig.open-cluster-management.io",
 	}
 
 	// exclude resources from these api groups
@@ -447,6 +454,11 @@ func processResourcesToBackup(
 	backupResourceNames := backupResources
 	// build the list of excluded resources
 	ignoreCRDs := excludedCRDs
+	// work on a local copy of the package-level activation resources so this function
+	// doesn't mutate shared state on every matched resource (avoids stale reads/races
+	// across discovery calls); the package variable is updated once, after discovery
+	// completes, below.
+	managedClusterResources := append([]string{}, backupManagedClusterResources...)
 
 	for _, group := range groupList.Groups {
 
@@ -476,7 +488,7 @@ func processResourcesToBackup(
 					// if resource kind is not ignored
 					// and this is an activation group
 					// then add the resource to the activation list
-					backupManagedClusterResources = appendUnique(backupManagedClusterResources, resourceName)
+					managedClusterResources = appendUnique(managedClusterResources, resourceName)
 				}
 
 				// if resource kind is not ignored
@@ -485,13 +497,14 @@ func processResourcesToBackup(
 				if !findValue(includedActivationAPIGroupsByName, group.Name) &&
 					!findValue(ignoreCRDs, resourceKind) &&
 					!findValue(ignoreCRDs, resourceName) &&
-					!findValue(backupManagedClusterResources, resourceKind) &&
-					!findValue(backupManagedClusterResources, resourceName) {
+					!findValue(managedClusterResources, resourceKind) &&
+					!findValue(managedClusterResources, resourceName) {
 					backupResourceNames = appendUnique(backupResourceNames, resourceName)
 				}
 			}
 		}
 	}
+	backupManagedClusterResources = managedClusterResources
 	return backupResourceNames
 }
 
