@@ -171,6 +171,25 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 	}
 
+	// spec.hooks is accepted by the CRD but intentionally not propagated to the
+	// emitted Velero restore (see setOptionalProperties) since it would let a
+	// Restore author execute arbitrary commands inside restored pods using the
+	// operator's own permissions. Surface that as a Warning event rather than
+	// silently ignoring it.
+	if len(restore.Spec.Hooks.Resources) > 0 {
+		r.Recorder.Eventf(
+			restore,
+			nil,
+			v1.EventTypeWarning,
+			"RestoreHooksNotSupported",
+			"RestoreHooksNotSupported",
+			"spec.hooks is specified but is not propagated to the underlying Velero restore for "+
+				"security reasons (restore hooks execute commands inside restored pods using the "+
+				"operator's own permissions, which is a privilege-escalation risk); hooks will not "+
+				"run. If you require restore hooks, create a Velero Restore directly instead.",
+		)
+	}
+
 	// don't create restores if there is any other active resource in this namespace
 	activeResourceMsg, err := isOtherResourcesRunning(ctx, r.Client, restore)
 	if err != nil {
