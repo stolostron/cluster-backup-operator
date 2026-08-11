@@ -250,7 +250,7 @@ func main() {
 		DiscoveryClient: dc,
 		DynamicClient:   dyn,
 		Scheme:          mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorder("Restore controller"),
+		Recorder:        mgr.GetEventRecorder("restore-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create Restore controller")
 		os.Exit(1)
