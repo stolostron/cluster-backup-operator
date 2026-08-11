@@ -113,7 +113,13 @@ type RestoreSpec struct {
 	// +nullable
 	PreserveNodePorts *bool `json:"preserveNodePorts,omitempty"`
 
-	// velero option -  Hooks represent custom behaviors that should be executed during or post restore.
+	// Hooks is accepted for backward compatibility but is NOT propagated to the
+	// underlying Velero Restore and has no effect: Velero restore hooks execute
+	// commands inside restored pods using this operator's own permissions, which
+	// would let a Restore author run arbitrary commands they are not otherwise
+	// authorized to run. A Warning event is emitted on the Restore when this
+	// field is set. Users who need Velero restore hooks must create a Velero
+	// Restore directly and hold the RBAC to do so.
 	// +optional
 	Hooks veleroapi.RestoreHooks `json:"hooks,omitempty"`
 
