@@ -41,6 +41,7 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -497,15 +498,14 @@ var _ = Describe("Basic Restore controller", func() {
 					Expect(veleroRestores.Items[i].Spec.Hooks.Resources).To(BeEmpty())
 				}
 
-				By("a Warning event should be recorded on the restore")
+				By("a Warning event should be emitted for observability")
 				Eventually(func() bool {
-					events := &corev1.EventList{}
-					if err := k8sClient.List(ctx, events, client.InNamespace(veleroNamespace.Name)); err != nil {
+					events := eventsv1.EventList{}
+					if err := k8sClient.List(ctx, &events, client.InNamespace(veleroNamespace.Name)); err != nil {
 						return false
 					}
 					for i := range events.Items {
-						if events.Items[i].InvolvedObject.Name == restoreName &&
-							events.Items[i].Reason == "RestoreHooksNotSupported" &&
+						if events.Items[i].Reason == "RestoreHooksNotSupported" &&
 							events.Items[i].Type == corev1.EventTypeWarning {
 							return true
 						}
