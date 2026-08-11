@@ -61,6 +61,11 @@ func (r *Restore) ValidateDelete(ctx context.Context, restore *Restore) (admissi
 func (r *Restore) validateRestore() (admission.Warnings, error) {
 	var warnings admission.Warnings
 
+	// Validate namespaceMapping does not target protected system namespaces
+	if err := r.validateNamespaceMapping(); err != nil {
+		return warnings, err
+	}
+
 	// Validate sync mode configuration
 	if r.Spec.SyncRestoreWithNewBackups {
 		if err := r.validateSyncMode(); err != nil {
@@ -69,6 +74,34 @@ func (r *Restore) validateRestore() (admission.Warnings, error) {
 	}
 
 	return warnings, nil
+}
+
+// isProtectedNamespaceMappingTarget returns true if the namespace is a
+// platform-reserved namespace that must never be a NamespaceMapping target.
+// Velero applies restored objects with a near-cluster-admin ServiceAccount,
+// so allowing a Restore author to redirect backed-up Secrets/ConfigMaps into
+// kube-* or openshift-* namespaces is a cross-namespace write primitive.
+func isProtectedNamespaceMappingTarget(ns string) bool {
+	ns = strings.ToLower(strings.TrimSpace(ns))
+	return ns == "default" ||
+		ns == "kube-system" || ns == "kube-public" || ns == "kube-node-lease" ||
+		strings.HasPrefix(ns, "kube-") ||
+		strings.HasPrefix(ns, "openshift-")
+}
+
+// validateNamespaceMapping rejects NamespaceMapping entries whose target is a
+// protected system namespace. NamespaceMapping is passed verbatim to the
+// emitted Velero Restore, so this check is the only guard between a Restore
+// author and Velero create/update of arbitrary objects in system namespaces.
+func (r *Restore) validateNamespaceMapping() error {
+	for src, dst := range r.Spec.NamespaceMapping {
+		if isProtectedNamespaceMappingTarget(dst) {
+			return fmt.Errorf(
+				"spec.namespaceMapping[%q]: target namespace %q is a protected system "+
+					"namespace and may not be used as a restore destination", src, dst)
+		}
+	}
+	return nil
 }
 
 // validateSyncMode validates sync mode specific requirements
