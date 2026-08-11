@@ -42,6 +42,7 @@ import (
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
 	veleroapi "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -519,11 +520,20 @@ var _ = Describe("Basic Restore controller", func() {
 					Expect(veleroRestores.Items[i].Spec.Hooks.Resources).To(BeEmpty())
 				}
 
-				// A Warning event ("RestoreHooksNotSupported") is also emitted for
-				// observability, but envtest's real API server doesn't reliably
-				// persist it here (unrelated, pre-existing: the controller's event
-				// recorder name contains a space, which the newer events.k8s.io/v1
-				// validation rejects), so it isn't asserted on in this test.
+				By("a Warning event should be emitted for observability")
+				Eventually(func() bool {
+					events := eventsv1.EventList{}
+					if err := k8sClient.List(ctx, &events, client.InNamespace(veleroNamespace.Name)); err != nil {
+						return false
+					}
+					for i := range events.Items {
+						if events.Items[i].Reason == "RestoreHooksNotSupported" &&
+							events.Items[i].Type == corev1.EventTypeWarning {
+							return true
+						}
+					}
+					return false
+				}, timeout, interval).Should(BeTrue())
 			})
 		})
 
