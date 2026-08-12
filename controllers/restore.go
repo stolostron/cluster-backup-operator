@@ -730,7 +730,10 @@ func processRetrieveRestoreDetails(
 				labels[BackupScheduleClusterLabel] = veleroBackup.GetLabels()[BackupScheduleClusterLabel]
 				veleroRestore.SetLabels(labels)
 
-				setOptionalProperties(key, acmRestore, veleroRestore)
+				if err := setOptionalProperties(key, acmRestore, veleroRestore); err != nil {
+					acmRestore.Status.LastMessage = err.Error()
+					return veleroRestoresToCreate, err
+				}
 
 				if err := ctrl.SetControllerReference(acmRestore, veleroRestore, s); err != nil {
 					acmRestore.Status.LastMessage = fmt.Sprintf(
@@ -750,7 +753,7 @@ func setOptionalProperties(
 	key ResourceType,
 	acmRestore *v1beta1.Restore,
 	veleroRestore *veleroapi.Restore,
-) {
+) error {
 	// set includeClusterResources for all restores except credentials
 	if key == Resources || key == ManagedClusters || key == ResourcesGeneric {
 		var clusterResource = true
@@ -783,8 +786,41 @@ func setOptionalProperties(
 
 	// allow namespace mapping
 	if acmRestore.Spec.NamespaceMapping != nil {
+		if err := validateNamespaceMapping(acmRestore.Spec.NamespaceMapping); err != nil {
+			return err
+		}
 		veleroRestore.Spec.NamespaceMapping = acmRestore.Spec.NamespaceMapping
 	}
+	return nil
+}
+
+// isProtectedNamespaceMappingTarget returns true if the namespace is a
+// platform-reserved namespace that must never be a NamespaceMapping target.
+// Velero applies restored objects with a near-cluster-admin ServiceAccount,
+// so allowing a Restore author to redirect backed-up Secrets/ConfigMaps into
+// kube-* or openshift-* namespaces is a cross-namespace write primitive.
+func isProtectedNamespaceMappingTarget(ns string) bool {
+	ns = strings.ToLower(strings.TrimSpace(ns))
+	return ns == "default" ||
+		ns == "kube-system" || ns == "kube-public" || ns == "kube-node-lease" ||
+		strings.HasPrefix(ns, "kube-") ||
+		strings.HasPrefix(ns, "openshift-")
+}
+
+// validateNamespaceMapping rejects NamespaceMapping entries whose target is a
+// protected system namespace. NamespaceMapping is passed verbatim to the
+// emitted Velero Restore, so this check is the only guard between a Restore
+// author and Velero create/update of arbitrary objects in system namespaces
+// on branches that do not yet run the Restore validating webhook.
+func validateNamespaceMapping(mapping map[string]string) error {
+	for src, dst := range mapping {
+		if isProtectedNamespaceMappingTarget(dst) {
+			return fmt.Errorf(
+				"spec.namespaceMapping[%q]: target namespace %q is a protected system "+
+					"namespace and may not be used as a restore destination", src, dst)
+		}
+	}
+	return nil
 }
 
 // set user options for resource filtering
