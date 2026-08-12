@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -1021,10 +1022,36 @@ func Test_setOptionalProperties(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			setOptionalProperties(tt.args.restype, tt.args.acmRestore, tt.args.veleroRestore)
+			if err := setOptionalProperties(tt.args.restype, tt.args.acmRestore, tt.args.veleroRestore); err != nil {
+				t.Fatalf("setOptionalProperties returned unexpected error: %v", err)
+			}
 			if !findValue(tt.args.veleroRestore.Spec.ExcludedResources, "CustomResourceDefinition") {
 				t.Errorf("CustomResourceDefinition should be excluded from restore and be part of " +
 					"veleroRestore.Spec.ExcludedResources")
+			}
+		})
+	}
+}
+
+func Test_validateNamespaceMapping(t *testing.T) {
+	tests := []struct {
+		name    string
+		mapping map[string]string
+		wantErr bool
+	}{
+		{name: "invalid kube-system target", mapping: map[string]string{"src-ns": "kube-system"}, wantErr: true},
+		{name: "invalid openshift-config target", mapping: map[string]string{"hive-creds": "openshift-config"}, wantErr: true},
+		{name: "invalid default target", mapping: map[string]string{"hive-creds": "default"}, wantErr: true},
+		{name: "valid non-system target", mapping: map[string]string{"old-ns": "new-acm-ns"}, wantErr: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateNamespaceMapping(tt.mapping)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("validateNamespaceMapping() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && err != nil && !strings.Contains(err.Error(), "protected system namespace") {
+				t.Fatalf("expected protected system namespace error, got %v", err)
 			}
 		})
 	}
