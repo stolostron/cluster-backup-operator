@@ -111,6 +111,55 @@ func TestRestore_ValidateCreate(t *testing.T) {
 			errSubstr: "must initially be set to 'skip'",
 		},
 		{
+			name: "invalid namespaceMapping - kube-system target",
+			restore: &Restore{
+				Spec: RestoreSpec{
+					NamespaceMapping: map[string]string{"src-ns": "kube-system"},
+				},
+			},
+			wantErr:   true,
+			errSubstr: "protected system namespace",
+		},
+		{
+			name: "invalid namespaceMapping - openshift-config target",
+			restore: &Restore{
+				Spec: RestoreSpec{
+					NamespaceMapping: map[string]string{"hive-creds": "openshift-config"},
+				},
+			},
+			wantErr:   true,
+			errSubstr: "protected system namespace",
+		},
+		{
+			name: "invalid namespaceMapping - exact openshift target",
+			restore: &Restore{
+				Spec: RestoreSpec{
+					NamespaceMapping: map[string]string{"hive-creds": "openshift"},
+				},
+			},
+			wantErr:   true,
+			errSubstr: "protected system namespace",
+		},
+		{
+			name: "invalid namespaceMapping - default target",
+			restore: &Restore{
+				Spec: RestoreSpec{
+					NamespaceMapping: map[string]string{"hive-creds": "default"},
+				},
+			},
+			wantErr:   true,
+			errSubstr: "protected system namespace",
+		},
+		{
+			name: "valid namespaceMapping - non-system target",
+			restore: &Restore{
+				Spec: RestoreSpec{
+					NamespaceMapping: map[string]string{"old-ns": "new-acm-ns"},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "valid sync - MC latest when Phase=Enabled (activation)",
 			restore: &Restore{
 				Spec: RestoreSpec{
