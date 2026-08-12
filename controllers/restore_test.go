@@ -1031,7 +1031,11 @@ func Test_validateNamespaceMapping(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "invalid kube-system target", mapping: map[string]string{"src-ns": "kube-system"}, wantErr: true},
-		{name: "invalid openshift-config target", mapping: map[string]string{"hive-creds": "openshift-config"}, wantErr: true},
+		{
+			name:    "invalid openshift-config target",
+			mapping: map[string]string{"hive-creds": "openshift-config"},
+			wantErr: true,
+		},
 		{name: "invalid exact openshift target", mapping: map[string]string{"hive-creds": "openshift"}, wantErr: true},
 		{name: "invalid default target", mapping: map[string]string{"hive-creds": "default"}, wantErr: true},
 		{name: "valid non-system target", mapping: map[string]string{"old-ns": "new-acm-ns"}, wantErr: false},
