@@ -1340,6 +1340,11 @@ func Test_validateNamespaceMapping(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "invalid exact openshift target",
+			mapping: map[string]string{"hive-creds": "openshift"},
+			wantErr: true,
+		},
+		{
 			name:    "invalid default target",
 			mapping: map[string]string{"hive-creds": "default"},
 			wantErr: true,
