@@ -38,10 +38,10 @@ func TestRestore_ValidateCreate(t *testing.T) {
 			name: "valid non-sync restore",
 			restore: &Restore{
 				Spec: RestoreSpec{
-					SyncRestoreWithNewBackups:        false,
-					VeleroManagedClustersBackupName:  &specificBackup,
-					VeleroCredentialsBackupName:      &specificBackup,
-					VeleroResourcesBackupName:        &specificBackup,
+					SyncRestoreWithNewBackups:       false,
+					VeleroManagedClustersBackupName: &specificBackup,
+					VeleroCredentialsBackupName:     &specificBackup,
+					VeleroResourcesBackupName:       &specificBackup,
 				},
 			},
 			wantErr: false,
@@ -50,10 +50,10 @@ func TestRestore_ValidateCreate(t *testing.T) {
 			name: "valid sync restore with skip",
 			restore: &Restore{
 				Spec: RestoreSpec{
-					SyncRestoreWithNewBackups:        true,
-					VeleroManagedClustersBackupName:  &skip,
-					VeleroCredentialsBackupName:      &latest,
-					VeleroResourcesBackupName:        &latest,
+					SyncRestoreWithNewBackups:       true,
+					VeleroManagedClustersBackupName: &skip,
+					VeleroCredentialsBackupName:     &latest,
+					VeleroResourcesBackupName:       &latest,
 				},
 			},
 			wantErr: false,
@@ -62,10 +62,10 @@ func TestRestore_ValidateCreate(t *testing.T) {
 			name: "invalid sync - MC specific backup",
 			restore: &Restore{
 				Spec: RestoreSpec{
-					SyncRestoreWithNewBackups:        true,
-					VeleroManagedClustersBackupName:  &specificBackup,
-					VeleroCredentialsBackupName:      &latest,
-					VeleroResourcesBackupName:        &latest,
+					SyncRestoreWithNewBackups:       true,
+					VeleroManagedClustersBackupName: &specificBackup,
+					VeleroCredentialsBackupName:     &latest,
+					VeleroResourcesBackupName:       &latest,
 				},
 			},
 			wantErr:   true,
@@ -75,10 +75,10 @@ func TestRestore_ValidateCreate(t *testing.T) {
 			name: "invalid sync - creds not latest",
 			restore: &Restore{
 				Spec: RestoreSpec{
-					SyncRestoreWithNewBackups:        true,
-					VeleroManagedClustersBackupName:  &skip,
-					VeleroCredentialsBackupName:      &specificBackup,
-					VeleroResourcesBackupName:        &latest,
+					SyncRestoreWithNewBackups:       true,
+					VeleroManagedClustersBackupName: &skip,
+					VeleroCredentialsBackupName:     &specificBackup,
+					VeleroResourcesBackupName:       &latest,
 				},
 			},
 			wantErr:   true,
@@ -88,10 +88,10 @@ func TestRestore_ValidateCreate(t *testing.T) {
 			name: "invalid sync - resources not latest",
 			restore: &Restore{
 				Spec: RestoreSpec{
-					SyncRestoreWithNewBackups:        true,
-					VeleroManagedClustersBackupName:  &skip,
-					VeleroCredentialsBackupName:      &latest,
-					VeleroResourcesBackupName:        &specificBackup,
+					SyncRestoreWithNewBackups:       true,
+					VeleroManagedClustersBackupName: &skip,
+					VeleroCredentialsBackupName:     &latest,
+					VeleroResourcesBackupName:       &specificBackup,
 				},
 			},
 			wantErr:   true,
@@ -101,10 +101,10 @@ func TestRestore_ValidateCreate(t *testing.T) {
 			name: "invalid sync - MC latest on initial create",
 			restore: &Restore{
 				Spec: RestoreSpec{
-					SyncRestoreWithNewBackups:        true,
-					VeleroManagedClustersBackupName:  &latest,
-					VeleroCredentialsBackupName:      &latest,
-					VeleroResourcesBackupName:        &latest,
+					SyncRestoreWithNewBackups:       true,
+					VeleroManagedClustersBackupName: &latest,
+					VeleroCredentialsBackupName:     &latest,
+					VeleroResourcesBackupName:       &latest,
 				},
 			},
 			wantErr:   true,
@@ -163,10 +163,10 @@ func TestRestore_ValidateCreate(t *testing.T) {
 			name: "valid sync - MC latest when Phase=Enabled (activation)",
 			restore: &Restore{
 				Spec: RestoreSpec{
-					SyncRestoreWithNewBackups:        true,
-					VeleroManagedClustersBackupName:  &latest,
-					VeleroCredentialsBackupName:      &latest,
-					VeleroResourcesBackupName:        &latest,
+					SyncRestoreWithNewBackups:       true,
+					VeleroManagedClustersBackupName: &latest,
+					VeleroCredentialsBackupName:     &latest,
+					VeleroResourcesBackupName:       &latest,
 				},
 				Status: RestoreStatus{
 					Phase: RestorePhaseEnabled,
@@ -206,10 +206,10 @@ func TestRestore_ValidateUpdate(t *testing.T) {
 			name: "valid update - activation from skip to latest",
 			oldRestore: &Restore{
 				Spec: RestoreSpec{
-					SyncRestoreWithNewBackups:        true,
-					VeleroManagedClustersBackupName:  &skip,
-					VeleroCredentialsBackupName:      &latest,
-					VeleroResourcesBackupName:        &latest,
+					SyncRestoreWithNewBackups:       true,
+					VeleroManagedClustersBackupName: &skip,
+					VeleroCredentialsBackupName:     &latest,
+					VeleroResourcesBackupName:       &latest,
 				},
 				Status: RestoreStatus{
 					Phase: RestorePhaseEnabled,
@@ -217,10 +217,10 @@ func TestRestore_ValidateUpdate(t *testing.T) {
 			},
 			newRestore: &Restore{
 				Spec: RestoreSpec{
-					SyncRestoreWithNewBackups:        true,
-					VeleroManagedClustersBackupName:  &latest,
-					VeleroCredentialsBackupName:      &latest,
-					VeleroResourcesBackupName:        &latest,
+					SyncRestoreWithNewBackups:       true,
+					VeleroManagedClustersBackupName: &latest,
+					VeleroCredentialsBackupName:     &latest,
+					VeleroResourcesBackupName:       &latest,
 				},
 				Status: RestoreStatus{
 					Phase: RestorePhaseEnabled,
@@ -239,4 +239,3 @@ func TestRestore_ValidateUpdate(t *testing.T) {
 		})
 	}
 }
-
