@@ -83,7 +83,7 @@ func (r *Restore) validateRestore() (admission.Warnings, error) {
 // kube-* or openshift-* namespaces is a cross-namespace write primitive.
 func isProtectedNamespaceMappingTarget(ns string) bool {
 	ns = strings.ToLower(strings.TrimSpace(ns))
-	return ns == "default" ||
+	return ns == "default" || ns == "openshift" ||
 		ns == "kube-system" || ns == "kube-public" || ns == "kube-node-lease" ||
 		strings.HasPrefix(ns, "kube-") ||
 		strings.HasPrefix(ns, "openshift-")

@@ -131,6 +131,16 @@ func TestRestore_ValidateCreate(t *testing.T) {
 			errSubstr: "protected system namespace",
 		},
 		{
+			name: "invalid namespaceMapping - exact openshift target",
+			restore: &Restore{
+				Spec: RestoreSpec{
+					NamespaceMapping: map[string]string{"hive-creds": "openshift"},
+				},
+			},
+			wantErr:   true,
+			errSubstr: "protected system namespace",
+		},
+		{
 			name: "invalid namespaceMapping - default target",
 			restore: &Restore{
 				Spec: RestoreSpec{
