@@ -798,11 +798,14 @@ func setOptionalProperties(
 	if acmRestore.Spec.RestorePVs != nil {
 		veleroRestore.Spec.RestorePVs = acmRestore.Spec.RestorePVs
 	}
-	if len(acmRestore.Spec.Hooks.Resources) > 0 {
-		veleroRestore.Spec.Hooks.Resources = append(veleroRestore.Spec.Hooks.Resources,
-			acmRestore.Spec.Hooks.Resources...,
-		)
-	}
+	// Restore.spec.hooks is intentionally NOT propagated to the emitted Velero
+	// Restore. RestoreResourceHookSpec carries PostHooks[].Exec.Command and
+	// Init container specs which Velero executes inside restored pods with its
+	// own ServiceAccount, giving an ACM Restore author a pods/exec-equivalent
+	// primitive they were not granted directly (confused deputy). The operator
+	// itself never requires restore hooks for ACM resources; users who need
+	// Velero restore hooks must hold create on restores.velero.io and supply
+	// them on a Velero Restore directly.
 
 	// set user options for resource filtering
 	setUserRestoreFilters(acmRestore, veleroRestore)
