@@ -709,6 +709,17 @@ func isValidCleanupOption(
 
 	}
 
+	// CleanupAll drives the operator ServiceAccount to mass-delete ACM-scoped
+	// resources not present in the selected backup, including user-created
+	// hub resources. Require an explicit per-Restore acknowledgement so the
+	// destructive path cannot be reached from spec.cleanupBeforeRestore alone.
+	if string(acmRestore.Spec.CleanupBeforeRestore) == v1beta1.CleanupTypeAll &&
+		acmRestore.GetAnnotations()[v1beta1.RestoreCleanupAllAnnotation] != "true" {
+		return "cleanupBeforeRestore=CleanupAll requires the " +
+			v1beta1.RestoreCleanupAllAnnotation + "=true annotation on the Restore " +
+			"resource to confirm mass deletion of ACM-scoped hub resources"
+	}
+
 	return ""
 }
 
