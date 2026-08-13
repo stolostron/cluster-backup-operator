@@ -72,6 +72,26 @@ var veleroBackupNames = map[ResourceType]string{
 	ValidationSchedule: "acm-validation-policy-schedule",
 }
 
+// restoreExcludedClusterResources are always excluded from every Velero
+// Restore this operator emits, regardless of backup tarball contents or
+// user-supplied filters. The backup side (shouldBackupAPIGroup) never writes
+// rbac.authorization.k8s.io or admissionregistration.k8s.io into a legitimate
+// backup, so re-applying that boundary on the restore side is lossless and
+// prevents a tampered BackupStorageLocation tarball from injecting
+// privilege-escalating cluster-scoped objects when
+// IncludeClusterResources=true and ExistingResourcePolicy=update are set.
+var restoreExcludedClusterResources = []string{
+	"CustomResourceDefinition",
+	"clusterroles.rbac.authorization.k8s.io",
+	"clusterrolebindings.rbac.authorization.k8s.io",
+	"roles.rbac.authorization.k8s.io",
+	"rolebindings.rbac.authorization.k8s.io",
+	"mutatingwebhookconfigurations.admissionregistration.k8s.io",
+	"validatingwebhookconfigurations.admissionregistration.k8s.io",
+	"validatingadmissionpolicies.admissionregistration.k8s.io",
+	"validatingadmissionpolicybindings.admissionregistration.k8s.io",
+}
+
 func isVeleroRestoreFinished(restore *veleroapi.Restore) bool {
 	switch {
 	case restore == nil:
@@ -767,7 +787,10 @@ func setOptionalProperties(
 		veleroRestore.Spec.IncludeClusterResources = &clusterResource
 	}
 
-	veleroRestore.Spec.ExcludedResources = append(veleroRestore.Spec.ExcludedResources, "CustomResourceDefinition")
+	for i := range restoreExcludedClusterResources {
+		veleroRestore.Spec.ExcludedResources = appendUnique(veleroRestore.Spec.ExcludedResources,
+			restoreExcludedClusterResources[i])
+	}
 
 	// update existing resources if part of the new backup
 	veleroRestore.Spec.ExistingResourcePolicy = veleroapi.PolicyTypeUpdate
