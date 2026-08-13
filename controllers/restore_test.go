@@ -1062,6 +1062,29 @@ func Test_validateNamespaceMapping(t *testing.T) {
 	}
 }
 
+// Test_setOptionalProperties_HooksNotPropagated verifies that
+// Restore.spec.hooks is never copied onto the emitted Velero Restore.
+// Velero RestoreResourceHookSpec carries PostHooks[].Exec.Command which
+// Velero executes inside restored pods; propagating it would give an ACM
+// Restore author a pods/exec-equivalent primitive they were not granted.
+func Test_setOptionalProperties_HooksNotPropagated(t *testing.T) {
+	acmRestore := createACMRestore("acm-restore", "ns").
+		veleroManagedClustersBackupName("skip").
+		veleroCredentialsBackupName(latestBackupStr).
+		veleroResourcesBackupName(latestBackupStr).
+		hookResources([]veleroapi.RestoreResourceHookSpec{{Name: "pwn"}}).object
+	veleroRestore := createRestore("resources-restore", "ns").object
+
+	if err := setOptionalProperties(Resources, acmRestore, veleroRestore); err != nil {
+		t.Fatalf("setOptionalProperties() error = %v", err)
+	}
+
+	if len(veleroRestore.Spec.Hooks.Resources) != 0 {
+		t.Errorf("Restore.spec.hooks must not be propagated to the Velero Restore, "+
+			"got %d hook resource(s)", len(veleroRestore.Spec.Hooks.Resources))
+	}
+}
+
 func Test_retrieveRestoreDetails(t *testing.T) {
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths: []string{
