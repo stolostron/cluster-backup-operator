@@ -347,8 +347,9 @@ var _ = Describe("Basic Restore controller", func() {
 				Expect(*veleroRestores.Items[i].Spec.PreserveNodePorts).Should(BeTrue())
 				Expect(veleroRestores.Items[i].Spec.RestoreStatus.IncludedResources[0]).
 					Should(BeIdenticalTo("webhook"))
-				Expect(veleroRestores.Items[i].Spec.Hooks.Resources[0].Name).Should(
-					BeIdenticalTo("hookName"))
+				// spec.hooks must NOT be propagated to the Velero Restore
+				// (pods/exec-equivalent confused-deputy primitive)
+				Expect(veleroRestores.Items[i].Spec.Hooks.Resources).Should(BeEmpty())
 				Expect(veleroRestores.Items[i].Spec.ExcludedNamespaces).Should(
 					ContainElement("ns1"))
 				Expect(veleroRestores.Items[i].Spec.IncludedNamespaces).Should(
@@ -431,6 +432,67 @@ var _ = Describe("Basic Restore controller", func() {
 				}
 				return createdRestore.Status.CompletionTimestamp
 			}, timeout, interval).ShouldNot(BeNil())
+		})
+	})
+
+	Context("When creating a Restore with spec.hooks set", func() {
+		BeforeEach(func() {
+			// Use a dedicated namespace (like the other Contexts in this Describe)
+			// instead of the shared default, to avoid racing the previous test's
+			// namespace cleanup. Redirect the already-built default fixtures
+			// (from the outer BeforeEach) onto the new namespace.
+			veleroNamespace = createNamespace("velero-restore-ns-hooks")
+			backupStorageLocation.Namespace = veleroNamespace.Name
+			rhacmRestore.Namespace = veleroNamespace.Name
+			for i := range veleroBackups {
+				veleroBackups[i].Namespace = veleroNamespace.Name
+			}
+
+			// spec.hooks is accepted by the CRD but must never be propagated to the
+			// emitted Velero restore (security fix); instead the controller should
+			// emit a Warning event so the omission is observable.
+			rhacmRestore.Spec.Hooks.Resources = []veleroapi.RestoreResourceHookSpec{
+				{Name: "test-hook"},
+			}
+		})
+
+		It("should not propagate hooks to velero restores and should emit a Warning event", func() {
+			restoreLookupKey := types.NamespacedName{Name: restoreName, Namespace: veleroNamespace.Name}
+			createdRestore := v1beta1.Restore{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, restoreLookupKey, &createdRestore)
+			}, timeout, interval).Should(Succeed())
+
+			By("velero restores should never receive spec.hooks")
+			Eventually(func() int {
+				veleroRestores := veleroapi.RestoreList{}
+				if err := k8sClient.List(ctx, &veleroRestores, client.InNamespace(veleroNamespace.Name)); err != nil {
+					return -1
+				}
+				return len(veleroRestores.Items)
+			}, timeout, interval).Should(BeNumerically(">", 0))
+
+			veleroRestores := veleroapi.RestoreList{}
+			Expect(k8sClient.List(ctx, &veleroRestores, client.InNamespace(veleroNamespace.Name))).To(Succeed())
+			for i := range veleroRestores.Items {
+				Expect(veleroRestores.Items[i].Spec.Hooks.Resources).To(BeEmpty())
+			}
+
+			By("a Warning event should be recorded on the restore")
+			Eventually(func() bool {
+				events := &corev1.EventList{}
+				if err := k8sClient.List(ctx, events, client.InNamespace(veleroNamespace.Name)); err != nil {
+					return false
+				}
+				for i := range events.Items {
+					if events.Items[i].InvolvedObject.Name == restoreName &&
+						events.Items[i].Reason == "RestoreHooksNotSupported" &&
+						events.Items[i].Type == corev1.EventTypeWarning {
+						return true
+					}
+				}
+				return false
+			}, timeout, interval).Should(BeTrue())
 		})
 	})
 
