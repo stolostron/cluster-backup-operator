@@ -62,6 +62,14 @@ const (
 	CleanupTypeAll = "CleanupAll"
 )
 
+// RestoreCleanupAllAnnotation must be present on a Restore CR with value
+// "true" for cleanupBeforeRestore=CleanupAll to be honored. CleanupAll drives
+// the operator ServiceAccount to mass-delete ACM-scoped Secrets, ConfigMaps
+// and discovered CRs that are not in the selected backup, so it is gated
+// behind an explicit per-Restore acknowledgement rather than being reachable
+// from spec alone.
+const RestoreCleanupAllAnnotation = "cluster.open-cluster-management.io/restore-cleanup-all-confirmed"
+
 // RestoreSpec defines the desired state of Restore
 type RestoreSpec struct {
 	// VeleroManagedClustersBackupName is the name of the velero back-up used to restore managed clusters.
