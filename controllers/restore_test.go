@@ -1319,6 +1319,27 @@ func Test_setOptionalProperties(t *testing.T) {
 	}
 }
 
+// Test_setOptionalProperties_HooksNotPropagated verifies that
+// Restore.spec.hooks is never copied onto the emitted Velero Restore.
+// Velero RestoreResourceHookSpec carries PostHooks[].Exec.Command which
+// Velero executes inside restored pods; propagating it would give an ACM
+// Restore author a pods/exec-equivalent primitive they were not granted.
+func Test_setOptionalProperties_HooksNotPropagated(t *testing.T) {
+	acmRestore := createACMRestore("acm-restore", "ns").
+		veleroManagedClustersBackupName("skip").
+		veleroCredentialsBackupName(latestBackupStr).
+		veleroResourcesBackupName(latestBackupStr).
+		hookResources([]veleroapi.RestoreResourceHookSpec{{Name: "pwn"}}).object
+	veleroRestore := createRestore("resources-restore", "ns").object
+
+	setOptionalProperties(Resources, acmRestore, veleroRestore)
+
+	if len(veleroRestore.Spec.Hooks.Resources) != 0 {
+		t.Errorf("Restore.spec.hooks must not be propagated to the Velero Restore, "+
+			"got %d hook resource(s)", len(veleroRestore.Spec.Hooks.Resources))
+	}
+}
+
 // Test_retrieveRestoreDetails tests comprehensive restore information gathering and validation.
 //
 // This test validates the logic that retrieves and processes detailed information
