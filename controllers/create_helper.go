@@ -362,6 +362,16 @@ func (b *ACMRestoreHelper) setFinalizer(values []string) *ACMRestoreHelper {
 
 func (b *ACMRestoreHelper) cleanupBeforeRestore(cleanup v1beta1.CleanupType) *ACMRestoreHelper {
 	b.object.Spec.CleanupBeforeRestore = cleanup
+	if string(cleanup) == v1beta1.CleanupTypeAll {
+		// test fixtures that exercise CleanupAll model an admin who has
+		// explicitly acknowledged the destructive operation
+		ann := b.object.GetAnnotations()
+		if ann == nil {
+			ann = map[string]string{}
+		}
+		ann[v1beta1.RestoreCleanupAllAnnotation] = "true"
+		b.object.SetAnnotations(ann)
+	}
 	return b
 }
 
