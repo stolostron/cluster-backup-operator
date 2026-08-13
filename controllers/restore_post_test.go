@@ -2828,3 +2828,37 @@ func Test_cleanupDeltaForResourcesAndClustersBackup(t *testing.T) {
 		t.Fatalf("Error stopping testenv: %s", err.Error())
 	}
 }
+
+// Test_isValidCleanupOption_CleanupAllRequiresAnnotation verifies that
+// cleanupBeforeRestore=CleanupAll is rejected unless the Restore CR carries
+// the explicit RestoreCleanupAllAnnotation acknowledgement. The guard runs
+// in Reconcile before any Velero Restore is created or any cleanup runs,
+// so a Restore author without the annotation cannot drive the operator
+// ServiceAccount to mass-delete hub resources.
+func Test_isValidCleanupOption_CleanupAllRequiresAnnotation(t *testing.T) {
+	withoutAnnotation := &v1beta1.Restore{
+		Spec: v1beta1.RestoreSpec{CleanupBeforeRestore: v1beta1.CleanupTypeAll},
+	}
+	if msg := isValidCleanupOption(withoutAnnotation); msg == "" {
+		t.Errorf("CleanupAll without %s annotation must be rejected",
+			v1beta1.RestoreCleanupAllAnnotation)
+	}
+
+	withAnnotation := &v1beta1.Restore{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{v1beta1.RestoreCleanupAllAnnotation: "true"},
+		},
+		Spec: v1beta1.RestoreSpec{CleanupBeforeRestore: v1beta1.CleanupTypeAll},
+	}
+	if msg := isValidCleanupOption(withAnnotation); msg != "" {
+		t.Errorf("CleanupAll with %s=true annotation must be accepted, got: %s",
+			v1beta1.RestoreCleanupAllAnnotation, msg)
+	}
+
+	restored := &v1beta1.Restore{
+		Spec: v1beta1.RestoreSpec{CleanupBeforeRestore: v1beta1.CleanupTypeRestored},
+	}
+	if msg := isValidCleanupOption(restored); msg != "" {
+		t.Errorf("CleanupRestored without annotation must be accepted, got: %s", msg)
+	}
+}
