@@ -1,0 +1,18 @@
+# This sample shows how to use Velero restoreStatus https://velero.io/docs/main/api-types/restore/
+# restoreStatus - optional, selects resources to restore not only the specification, but the status of the manifest.
+# This sample restores BareMetalHosts resources status
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-status
+  namespace: open-cluster-management-backup
+spec:
+  cleanupBeforeRestore: CleanupRestored
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: latest
+  veleroResourcesBackupName: latest
+  restoreStatus:
+    includedResources: 
+      - BareMetalHosts
+

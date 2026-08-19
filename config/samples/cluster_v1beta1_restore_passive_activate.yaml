@@ -1,0 +1,20 @@
+# apply this resource to activate a passive configuration
+# this resource can be applied after the restore-acm-passive configuration was applied on this hub
+# after this resource is applied, all restored managed clusters 
+# will resume connection on the current hub; hive clusters will automatically switch to this cluster
+
+# cleanupBeforeRestore - required, asks to clean up cluster after applying restore
+# valid options : 
+# CleanupRestored - clean up resources created by a previous acm restore and not part of the currently restored backup
+# None : don't clean up anything, just apply the restore
+
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: restore-acm-passive-activate
+  namespace: open-cluster-management-backup
+spec:
+  cleanupBeforeRestore: CleanupRestored
+  veleroManagedClustersBackupName: latest
+  veleroCredentialsBackupName: skip
+  veleroResourcesBackupName: skip

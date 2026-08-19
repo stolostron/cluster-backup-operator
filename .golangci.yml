@@ -1,0 +1,37 @@
+---
+version: "2"
+linters:
+  # Defaults are still enabled, see:
+  #  https://golangci-lint.run/usage/linters/#enabled-by-default
+  #
+  # Enable these specific additional linters to match what
+  # sonar checks for
+  enable:
+    - funlen
+    - lll
+    - misspell
+    - unparam
+  settings:
+    funlen:
+      statements: -1
+      ignore-comments: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

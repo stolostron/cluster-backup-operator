@@ -1,0 +1,37 @@
+# Scenario : 
+# - Hub1 manages vb-managed-cls-1, vb-managed-cls-2, .. vb-managed-cls-n
+# - you want to move ALL managed clusters to Hub2
+# - Hub2 manages some other clusters 
+########################################
+
+
+# Before applying the move-all-managed-clusters resource on Hub2:
+# 1. Pause BackupSchedule on Hub1
+# 2. After BackupSchedule is set to paused on Hub1, set this label annotation on ALL ManagedCluster ( except local cluster )
+#    on Hub1 :  import.open-cluster-management.io/disable-auto-import: ''
+#    This annotation will prevent Hub1 trying to recover any of the managed clusters after being moved to Hub2
+
+# 3. Pause any BackupSchedule on Hub2
+# 4. Update DataProtectionApplication resource on Hub2 to point to the same storage location as Hub1
+# 5. Wait until you see the backups from Hub1 being synced up on Hub2
+
+# After the move-all-managed-clusters restore is applied on Hub2 and has a status of Finished, wait and look for a status Ready 
+# for each managed cluster moved from Hub1 to Hub2. When this happens, the cluster is managed by Hub2.
+# To remove the managed clusters from Hub1, for each managaed cluster, wait until the status is Unknown on Hub1. Only when 
+#  this happens, delete the ManagedCluster global resource on Hub1. This will clean up the
+#  managed cluster resources on Hub1 but since the cluster status it Unknown, it will not run any detach operation - which you don't want to happen.
+
+# You can now resume the BackupSchedules on Hub1.
+# Update the DataProtectionApplication on Hub2 to point to Hub2 storage location. You can resume now the BackupSchedule on Hub2.
+
+# apply this resource on Hub2, all user resources and managed clusters from Hub1 to Hub2
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Restore
+metadata:
+  name: move-all-managed-clusters
+  namespace: open-cluster-management-backup
+spec:
+  cleanupBeforeRestore: None # don't clean up anything, just apply the restore
+  veleroCredentialsBackupName: latest # move hub credential resources
+  veleroResourcesBackupName: latest  # move hub resources, such as apps, policies
+  veleroManagedClustersBackupName: latest  # move all managed clusters
