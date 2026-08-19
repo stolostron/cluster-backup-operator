@@ -219,7 +219,7 @@ With this approach the backup includes all CRDs installed on the hub, including 
 
 1. Exclude all resources in the MultiClusterHub namespace. This is to avoid backing up installation resources which are linked to the current Hub identity and should not be backed up.
 2. Backup all CRDs with an api version suffixed by `.open-cluster-management.io` and `.hive.openshift.io`. This will cover all Advanced Cluster Management resources.
-3. Additionally, backup all CRDs from these api groups: `argoproj.io`,`app.k8s.io`,`core.observatorium.io`,`hive.openshift.io` under the resources backup and all CRDs from these groups `agent-install.openshift.io` and `siteconfig.open-cluster-management.io` under the managed-clusters backup. Routing `siteconfig.open-cluster-management.io` (the `ClusterInstance` resource used for ZTP/bare-metal managed clusters) here ensures it is only restored during an actual failover, not on every routine passive-sync cycle.
+3. Additionally, backup all CRDs from these api groups: `argoproj.io`,`app.k8s.io`,`core.observatorium.io`,`hive.openshift.io` under the resources backup and all CRDs from this group `agent-install.openshift.io` under the managed-clusters backup.
 4. Exclude all CRDs from the following api groups : 
 		"internal.open-cluster-management.io",
 		"operator.open-cluster-management.io",
@@ -292,8 +292,6 @@ Aside of these activation data resources, identified by using the `cluster.open-
   - machinepool.hive.openshift.io
   - clustersync.hiveinternal.openshift.io
   - clustercurator.cluster.open-cluster-management.io
-
-In addition to this fixed list, all CRDs belonging to the `agent-install.openshift.io` and `siteconfig.open-cluster-management.io` api groups (for example `ClusterInstance`, used by ZTP/bare-metal managed clusters) are automatically included in the activation set as well, so they are only restored when `veleroManagedClustersBackupName:latest` is used.
 
 ### Passive data
 
