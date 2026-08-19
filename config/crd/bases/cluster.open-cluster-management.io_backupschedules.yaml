@@ -660,6 +660,10 @@ spec:
                                   uploader.
                                 type: integer
                             type: object
+                          volumeGroupSnapshotLabelKey:
+                            description: VolumeGroupSnapshotLabelKey specifies the
+                              label key to group PVCs under a VGS.
+                            type: string
                           volumeSnapshotLocations:
                             description: VolumeSnapshotLocations is a list containing
                               names of VolumeSnapshotLocations associated with this
@@ -1235,6 +1239,10 @@ spec:
                                   uploader.
                                 type: integer
                             type: object
+                          volumeGroupSnapshotLabelKey:
+                            description: VolumeGroupSnapshotLabelKey specifies the
+                              label key to group PVCs under a VGS.
+                            type: string
                           volumeSnapshotLocations:
                             description: VolumeSnapshotLocations is a list containing
                               names of VolumeSnapshotLocations associated with this
@@ -1810,6 +1818,10 @@ spec:
                                   uploader.
                                 type: integer
                             type: object
+                          volumeGroupSnapshotLabelKey:
+                            description: VolumeGroupSnapshotLabelKey specifies the
+                              label key to group PVCs under a VGS.
+                            type: string
                           volumeSnapshotLocations:
                             description: VolumeSnapshotLocations is a list containing
                               names of VolumeSnapshotLocations associated with this
