@@ -15,7 +15,7 @@ require (
 	go.uber.org/zap v1.28.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.36.2
-	k8s.io/apimachinery v0.36.2
+	k8s.io/apimachinery v0.36.3
 	k8s.io/client-go v0.36.2
 	open-cluster-management.io/api v1.3.0
 	open-cluster-management.io/multicloud-operators-channel v0.16.0
@@ -91,5 +91,5 @@ require (
 	golang.org/x/mod v0.40.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.5.0 // indirect
 	k8s.io/apiserver v0.36.2 // indirect
-	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
+	sigs.k8s.io/structured-merge-diff/v6 v6.3.3 // indirect
 )
