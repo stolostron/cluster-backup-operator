@@ -39,7 +39,7 @@ spec:
     value: Dockerfile.rhtap
   - name: build-args
     value:
-    - ACM_VERSION=5.1
+    - ACM_VERSION=5.2
   - name: path-context
     value: .
   - name: send-slack-notification
