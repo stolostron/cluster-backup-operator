@@ -109,10 +109,10 @@ github.com/openshift/api v0.0.0-20260805215214-cfb63858e9d7 h1:Z6p+yoWjFXbfnN2zP
 github.com/openshift/api v0.0.0-20260805215214-cfb63858e9d7/go.mod h1:k6qH5QOVa5GDln2VVm8Jz4NV3Z7R2SATHFLwGS6Wh3M=
 github.com/openshift/controller-runtime-common v0.0.0-20260813135806-e1187ec555fc h1:7v9PXV3WR5h8h4x44yfzFKwF0KrdiG6YTKV+26YIcfo=
 github.com/openshift/controller-runtime-common v0.0.0-20260813135806-e1187ec555fc/go.mod h1:zyxfp5JNVAFiTBwG0j+RxKPeLUVIEuzkeGMvTeYMaoA=
-github.com/openshift/hive/apis v0.0.0-20260720214935-3b28262c9c20 h1:arPEihyOjxLZluNupgRWwkPgsOJDxskxi8i8gM11jmc=
-github.com/openshift/hive/apis v0.0.0-20260720214935-3b28262c9c20/go.mod h1:tAOMm03dkzM6JZi9xfT5ezx5Z4k1ewV2uelSiUHWqQo=
-github.com/openshift/installer v1.4.22-ec5 h1:NG9X2iZG5mbUVZIBhpMtMrGNK7Tbm9dDGAI6aXh/QZc=
-github.com/openshift/installer v1.4.22-ec5/go.mod h1:PbGvWlLRbmmSsaTQBAjhXPzliz9XJAYUdXcY0t/3UiY=
+github.com/openshift/hive/apis v0.0.0-20260903065954-f2be0d4ee185 h1:Yob6W290qx3HR681joba47byGB2vYkPslutBVgFFXtM=
+github.com/openshift/hive/apis v0.0.0-20260903065954-f2be0d4ee185/go.mod h1:W3eBQwIEWYuleQBBo2H8tLQWLWZCkRPc159gQaEZgLM=
+github.com/openshift/installer v1.5.0-alpha.2 h1:5u6TSe3MON6MYvzIWgTyrzWzT21XMT+yJm9DEtxpcmM=
+github.com/openshift/installer v1.5.0-alpha.2/go.mod h1:K6syzgcjEQO7QymXOD/CnJTqNNrJVoBX3I1YecYmfck=
 github.com/openshift/library-go v0.0.0-20260807194649-ee0a87843dda h1:yVQlJiQZGCi3ydS74ysAkLbP+bVbvAQaAuCDZi6UgDY=
 github.com/openshift/library-go v0.0.0-20260807194649-ee0a87843dda/go.mod h1:IrZbEK+wVUMEd+aXzYR2DCCh0p5IaQ7DvycYGP7qIYM=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
