@@ -8,7 +8,7 @@ require (
 	github.com/onsi/gomega v1.43.0
 	github.com/openshift/api v0.0.0-20260805215214-cfb63858e9d7 // release 4.13
 	github.com/openshift/controller-runtime-common v0.0.0-20260813135806-e1187ec555fc
-	github.com/openshift/hive/apis v0.0.0-20260720214935-3b28262c9c20
+	github.com/openshift/hive/apis v0.0.0-20260903065954-f2be0d4ee185
 	github.com/pkg/errors v0.9.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/vmware-tanzu/velero v1.18.2
@@ -85,7 +85,7 @@ require (
 	github.com/go-openapi/swag/stringutils v0.27.1 // indirect
 	github.com/go-openapi/swag/typeutils v0.27.1 // indirect
 	github.com/go-openapi/swag/yamlutils v0.27.1 // indirect
-	github.com/openshift/installer v1.4.22-ec5 // indirect
+	github.com/openshift/installer v1.5.0-alpha.2 // indirect
 	github.com/openshift/library-go v0.0.0-20260807194649-ee0a87843dda // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	golang.org/x/mod v0.40.0 // indirect
