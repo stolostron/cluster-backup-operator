@@ -96,7 +96,7 @@ Both `BackupSchedule` and `Restore` use phase fields to track state. Phase trans
 
 ### Build and Dockerfile
 - **Dockerfile** — Used by Prow CI. Builder: `stolostron/builder:go1.25-linux`. `CGO_ENABLED=0`.
-- **Dockerfile.rhtap** — Used by Konflux. Builder: `brew.registry.redhat.io` with FIPS (`GOEXPERIMENT=strictfipsruntime`). `CGO_ENABLED=1`. Includes Red Hat labels and LICENSE copy.
+- **Dockerfile.rhtap** — Used by Konflux. Builder: `registry.redhat.io/openshift/golang-builder:golang-builder-v1.26-rhel9` with FIPS (`GOEXPERIMENT=strictfipsruntime`). `CGO_ENABLED=1`. Includes Red Hat labels and LICENSE copy.
 - Both Dockerfiles must copy the same source directories. If you add a new top-level package (like `pkg/`), add `COPY <dir>/ <dir>/` to **both** Dockerfiles.
 - Multi-arch builds (x86_64, ppc64le, s390x, arm64) are done by Konflux only.
 
