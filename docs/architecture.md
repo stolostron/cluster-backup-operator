@@ -324,7 +324,7 @@ The operator has two build paths:
 | Path | Dockerfile | Builder | Used by | CGO | FIPS |
 |------|-----------|---------|---------|-----|------|
 | **Prow CI** | `Dockerfile` | `stolostron/builder:go1.25-linux` | PR checks, image mirror | Disabled | No |
-| **Konflux** | `Dockerfile.rhtap` | `brew.registry.redhat.io/.../openshift-golang-builder:rhel_9_1.25` | Release builds | Enabled | Yes (`strictfipsruntime`) |
+| **Konflux** | `Dockerfile.rhtap` | `registry.redhat.io/openshift/golang-builder:golang-builder-v1.26-rhel9` | Release builds | Enabled | Yes (`strictfipsruntime`) |
 
 Konflux builds are hermetic (vendored dependencies, no network access during build) with gomod prefetch. Multi-arch is Konflux-only (x86_64, ppc64le, s390x, arm64). Both Dockerfiles must copy the same source directories — if you add a new package directory, update both.
 
