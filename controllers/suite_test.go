@@ -122,6 +122,7 @@ var _ = BeforeSuite(func() {
 		GroupVersion: "addon.open-cluster-management.io/v1alpha1",
 		APIResources: []metav1.APIResource{
 			{Name: "managedclusteraddons", Namespaced: true, Kind: "ManagedClusterAddOn"},
+			{Name: "clustermanagementaddons", Namespaced: false, Kind: "ClusterManagementAddOn"},
 		},
 	}
 	clusterv1beta1Info := metav1.APIResourceList{
@@ -665,6 +666,10 @@ var _ = BeforeSuite(func() {
 	aoVKList := schema.GroupVersionResource{Group: "addon.open-cluster-management.io",
 		Version: "v1alpha1", Resource: "managedclusteraddons"}
 
+	//cluster management addon
+	cmaGVKList := schema.GroupVersionResource{Group: "addon.open-cluster-management.io",
+		Version: "v1alpha1", Resource: "clustermanagementaddons"}
+
 	///
 	gvrToListKindR := map[schema.GroupVersionResource]string{
 		mchGVRList:    "InternalHubComponentList",
@@ -684,6 +689,7 @@ var _ = BeforeSuite(func() {
 		hVKList:       "HiveConfigList",
 		subsGVKList:   "SubscriptionList",
 		aoVKList:      "ManagedClusterAddOnList",
+		cmaGVKList:    "ClusterManagementAddOnList",
 	}
 
 	unstructuredSchemeR := runtime.NewScheme()
