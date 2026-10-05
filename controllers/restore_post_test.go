@@ -37,6 +37,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -459,6 +460,136 @@ func Test_postRestoreActivation(t *testing.T) {
 				_ = k8sClient1.Delete(tt.args.ctx, &cluster)
 			}
 		})
+	}
+}
+
+// Test_postRestoreActivation_ImmediateImportAnnotation verifies that the
+// import.open-cluster-management.io/immediate-import annotation is set on a Hive-provisioned
+// ManagedCluster that needs reimporting, independent of whether a usable MSA secret/token is
+// available - and that behavior for non-Hive clusters is unchanged (annotation only set once a
+// usable MSA token is found).
+//
+// This guards against a regression where Hive-provisioned managed clusters never get an MSA
+// secret (prepareImportedClusters unconditionally skips MSA setup for them), so if the annotation
+// were only set after a successful MSA token lookup, those clusters would never be signaled for
+// reimport when the hub's AutoImportStrategy is ImportOnly.
+func Test_postRestoreActivation_ImmediateImportAnnotation(t *testing.T) {
+	ctx := context.Background()
+	current, _ := time.Parse(time.RFC3339, "2022-07-26T15:25:34Z")
+	nextTenHours := "2022-07-27T04:25:34Z"
+
+	ns1 := *createNamespace("hive-spoke-1")
+	ns2 := *createNamespace("msa-spoke-1")
+	ns3 := *createNamespace("active-spoke-1")
+	ns4 := *createNamespace("no-msa-spoke-1")
+	// a Hive admin-kubeconfig-like secret, so isHiveCreatedCluster() treats hive-spoke-1 as
+	// Hive-provisioned, the same way prepareImportedClusters would at backup time.
+	hiveSecret := *createSecret("hive-spoke-1-admin-kubeconfig", "hive-spoke-1",
+		map[string]string{backupCredsHiveLabel: "kubeconfig"}, nil, nil)
+	c := CreateTestClientOrFail(t, &ns1, &ns2, &ns3, &ns4, &hiveSecret)
+
+	// Case 1: Hive-provisioned cluster, no MSA secret at all (prepareImportedClusters never creates
+	// one for Hive clusters).
+	hiveCluster := createManagedCluster("hive-spoke-1", false).
+		clusterUrl("https://hive-spoke-1:6443").
+		conditions([]metav1.Condition{{Status: metav1.ConditionFalse}}).object
+	if err := c.Create(ctx, hiveCluster); err != nil {
+		t.Fatalf("failed to create hive-spoke-1 ManagedCluster: %v", err)
+	}
+
+	// Case 2: a non-Hive cluster with a valid, usable MSA secret - the pre-existing path.
+	msaCluster := createManagedCluster("msa-spoke-1", false).
+		clusterUrl("https://msa-spoke-1:6443").
+		conditions([]metav1.Condition{{Status: metav1.ConditionFalse}}).object
+	if err := c.Create(ctx, msaCluster); err != nil {
+		t.Fatalf("failed to create msa-spoke-1 ManagedCluster: %v", err)
+	}
+	msaSecret := *createSecret("auto-import-account", "msa-spoke-1",
+		nil, map[string]string{
+			"expirationTimestamp": nextTenHours,
+		}, map[string][]byte{
+			"token": []byte("YWRtaW4="),
+		})
+
+	// Case 3: a cluster that is already Available and does not need reimporting at all.
+	activeCluster := createManagedCluster("active-spoke-1", false).
+		clusterUrl("https://active-spoke-1:6443").
+		conditions([]metav1.Condition{
+			{Status: metav1.ConditionTrue, Type: "ManagedClusterConditionAvailable"},
+		}).object
+	if err := c.Create(ctx, activeCluster); err != nil {
+		t.Fatalf("failed to create active-spoke-1 ManagedCluster: %v", err)
+	}
+
+	// Case 4: a non-Hive cluster that needs reimporting but has no usable MSA secret. Unlike the
+	// Hive case, this must NOT get the annotation - preserves the existing intent of not forcing a
+	// reimport retry for a cluster we have no working credential for.
+	noMSACluster := createManagedCluster("no-msa-spoke-1", false).
+		clusterUrl("https://no-msa-spoke-1:6443").
+		conditions([]metav1.Condition{{Status: metav1.ConditionFalse}}).object
+	if err := c.Create(ctx, noMSACluster); err != nil {
+		t.Fatalf("failed to create no-msa-spoke-1 ManagedCluster: %v", err)
+	}
+
+	managedClusters := []clusterv1.ManagedCluster{*hiveCluster, *msaCluster, *activeCluster, *noMSACluster}
+	secrets := []corev1.Secret{msaSecret}
+
+	got, messages := postRestoreActivation(ctx, c, secrets, managedClusters, "local-cluster", current)
+
+	if want := []string{"msa-spoke-1"}; len(got) != len(want) {
+		t.Errorf("postRestoreActivation() auto-import-secrets created = %v, want %v", got, want)
+	}
+
+	// hive-spoke-1 never has an MSA secret by design (it's Hive-provisioned), so it must not
+	// report the generic "no suitable MSA secret" message - that would misreport an expected,
+	// by-design state as a problem.
+	for _, m := range messages {
+		if strings.Contains(m, "No suitable MSA secret found for cluster (hive-spoke-1)") {
+			t.Errorf("did not expect a 'no suitable MSA secret' message for Hive cluster hive-spoke-1, got messages = %v",
+				messages)
+		}
+	}
+
+	// hive-spoke-1 has no MSA secret, but still needed a reimport, so it must still get the
+	// immediate-import annotation.
+	gotHive := &clusterv1.ManagedCluster{}
+	if err := c.Get(ctx, types.NamespacedName{Name: "hive-spoke-1"}, gotHive); err != nil {
+		t.Fatalf("failed to get hive-spoke-1 ManagedCluster: %v", err)
+	}
+	if _, ok := gotHive.GetAnnotations()[immediateImportAnnotation]; !ok {
+		t.Errorf("expected hive-spoke-1 to have the %s annotation set, annotations = %v",
+			immediateImportAnnotation, gotHive.GetAnnotations())
+	}
+
+	// msa-spoke-1 has a valid MSA secret, it must still get the immediate-import annotation too.
+	gotMSA := &clusterv1.ManagedCluster{}
+	if err := c.Get(ctx, types.NamespacedName{Name: "msa-spoke-1"}, gotMSA); err != nil {
+		t.Fatalf("failed to get msa-spoke-1 ManagedCluster: %v", err)
+	}
+	if _, ok := gotMSA.GetAnnotations()[immediateImportAnnotation]; !ok {
+		t.Errorf("expected msa-spoke-1 to have the %s annotation set, annotations = %v",
+			immediateImportAnnotation, gotMSA.GetAnnotations())
+	}
+
+	// active-spoke-1 does not need reimporting, it must not get the annotation.
+	gotActive := &clusterv1.ManagedCluster{}
+	if err := c.Get(ctx, types.NamespacedName{Name: "active-spoke-1"}, gotActive); err != nil {
+		t.Fatalf("failed to get active-spoke-1 ManagedCluster: %v", err)
+	}
+	if _, ok := gotActive.GetAnnotations()[immediateImportAnnotation]; ok {
+		t.Errorf("expected active-spoke-1 to NOT have the %s annotation set, annotations = %v",
+			immediateImportAnnotation, gotActive.GetAnnotations())
+	}
+
+	// no-msa-spoke-1 is not Hive-provisioned and has no usable MSA secret, so it must NOT get the
+	// annotation - behavior for non-Hive clusters is unchanged from before this fix.
+	gotNoMSA := &clusterv1.ManagedCluster{}
+	if err := c.Get(ctx, types.NamespacedName{Name: "no-msa-spoke-1"}, gotNoMSA); err != nil {
+		t.Fatalf("failed to get no-msa-spoke-1 ManagedCluster: %v", err)
+	}
+	if _, ok := gotNoMSA.GetAnnotations()[immediateImportAnnotation]; ok {
+		t.Errorf("expected no-msa-spoke-1 to NOT have the %s annotation set, annotations = %v",
+			immediateImportAnnotation, gotNoMSA.GetAnnotations())
 	}
 }
 
