@@ -177,10 +177,12 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// operator's own permissions. Surface that as a Warning event rather than
 	// silently ignoring it.
 	if len(restore.Spec.Hooks.Resources) > 0 {
-		r.Recorder.Event(
+		r.Recorder.Eventf(
 			restore,
+			nil,
 			v1.EventTypeWarning,
 			"RestoreHooksNotSupported",
+			"SkipHooks",
 			"spec.hooks is specified but is not propagated to the underlying Velero restore for "+
 				"security reasons (restore hooks execute commands inside restored pods using the "+
 				"operator's own permissions, which is a privilege-escalation risk); hooks will not "+
