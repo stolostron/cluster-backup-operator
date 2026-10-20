@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/go-logr/logr v1.4.4
-	github.com/onsi/ginkgo/v2 v2.33.0
+	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.43.1
 	github.com/openshift/api v0.0.0-20261002115817-f8795cdde518 // release 4.13
 	github.com/openshift/controller-runtime-common v0.0.0-20261008111711-8ec0dc844066
