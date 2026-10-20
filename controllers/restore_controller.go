@@ -38,7 +38,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/restmapper"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -90,7 +90,7 @@ type RestoreReconciler struct {
 	DiscoveryClient discovery.DiscoveryInterface
 	DynamicClient   dynamic.Interface
 	Scheme          *runtime.Scheme
-	Recorder        record.EventRecorder
+	Recorder        events.EventRecorder
 }
 
 //nolint:lll
@@ -177,10 +177,12 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// operator's own permissions. Surface that as a Warning event rather than
 	// silently ignoring it.
 	if len(restore.Spec.Hooks.Resources) > 0 {
-		r.Recorder.Event(
+		r.Recorder.Eventf(
 			restore,
+			nil,
 			v1.EventTypeWarning,
 			"RestoreHooksNotSupported",
+			"SkipHooks",
 			"spec.hooks is specified but is not propagated to the underlying Velero restore for "+
 				"security reasons (restore hooks execute commands inside restored pods using the "+
 				"operator's own permissions, which is a privilege-escalation risk); hooks will not "+
@@ -597,11 +599,13 @@ func (r *RestoreReconciler) initVeleroRestores(
 			}
 		} else {
 			newVeleroRestoreCreated = true
-			r.Recorder.Event(
+			r.Recorder.Eventf(
 				restore,
+				nil,
 				v1.EventTypeNormal,
-				"Velero restore created:",
-				veleroRestoresToCreate[key].Name,
+				"VeleroRestoreCreated",
+				"CreateRestore",
+				"Velero restore created: %s", veleroRestoresToCreate[key].Name,
 			)
 			switch key {
 			case ManagedClusters:

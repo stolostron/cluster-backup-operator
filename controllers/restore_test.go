@@ -32,7 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -3312,7 +3312,7 @@ func TestRestoreReconciler_finalizeRestore(t *testing.T) {
 		Client     client.Client
 		KubeClient kubernetes.Interface
 		Scheme     *runtime.Scheme
-		Recorder   record.EventRecorder
+		Recorder   events.EventRecorder
 	}
 	type args struct {
 		ctx               context.Context
