@@ -2158,6 +2158,238 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 	}
 }
 
+// Test_processRetrieveRestoreDetails_genericResourcesTimestampMismatch
+// validates the fix for silent-skip of generic-resources restore
+// (customer case 07798359).
+//
+// Scenario 1 (the bug): a pinned veleroResourcesBackupName exists,
+// and a Completed acm-resources-generic-schedule-* backup also exists
+// but its Status.StartTimestamp is >30s from the name-embedded
+// timestamp. Before the fix, this was silently swallowed. After the
+// fix, processRetrieveRestoreDetails must return an error and set
+// Status.LastMessage so the Restore CR reports the failure.
+//
+// Scenario 2 (backward compat): no acm-resources-generic-schedule-*
+// backups exist at all (old controller / OADP 1.1 OrSelector backup
+// format). This must remain a silent skip with no error.
+func Test_processRetrieveRestoreDetails_genericResourcesTimestampMismatch(t *testing.T) {
+	ns := "backup-ns"
+
+	type testCase struct {
+		name        string
+		backups     []veleroapi.Backup
+		wantErr     bool
+		wantLastMsg string
+	}
+
+	tests := []testCase{
+		buildTimestampMismatchCase(ns),
+		buildNoCandidatesCase(ns),
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			runGenericRestoreTestCase(t, ns, tc.backups,
+				tc.wantErr, tc.wantLastMsg)
+		})
+	}
+}
+
+func buildTimestampMismatchCase(
+	ns string,
+) struct {
+	name        string
+	backups     []veleroapi.Backup
+	wantErr     bool
+	wantLastMsg string
+} {
+	nameTs := "20261024130016"
+	genericNameTs := "20261024130017"
+	genericStartTs := metav1.NewTime(
+		time.Date(2026, 10, 24, 13, 4, 35, 0, time.UTC),
+	)
+
+	backups := []veleroapi.Backup{
+		*createBackup(
+			"acm-resources-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			startTimestamp(
+				metav1.NewTime(
+					time.Date(
+						2026, 10, 24, 13, 0, 42, 0,
+						time.UTC,
+					),
+				),
+			).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-resources-generic-schedule-"+genericNameTs,
+			ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			startTimestamp(genericStartTs).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-credentials-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			startTimestamp(
+				metav1.NewTime(
+					time.Date(
+						2026, 10, 24, 13, 0, 16, 0,
+						time.UTC,
+					),
+				),
+			).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+	}
+	return struct {
+		name        string
+		backups     []veleroapi.Backup
+		wantErr     bool
+		wantLastMsg string
+	}{
+		name:    "timestamp mismatch with existing generic backup",
+		backups: backups,
+		wantErr: true,
+		wantLastMsg: "Backup acm-resources-schedule-" +
+			nameTs + " Not found for resource type: " +
+			string(ResourcesGeneric),
+	}
+}
+
+func buildNoCandidatesCase(
+	ns string,
+) struct {
+	name        string
+	backups     []veleroapi.Backup
+	wantErr     bool
+	wantLastMsg string
+} {
+	nameTs := "20261024130016"
+	backups := []veleroapi.Backup{
+		*createBackup(
+			"acm-resources-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			startTimestamp(
+				metav1.NewTime(
+					time.Date(
+						2026, 10, 24, 13, 0, 16, 0,
+						time.UTC,
+					),
+				),
+			).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-credentials-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			startTimestamp(
+				metav1.NewTime(
+					time.Date(
+						2026, 10, 24, 13, 0, 16, 0,
+						time.UTC,
+					),
+				),
+			).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+	}
+	return struct {
+		name        string
+		backups     []veleroapi.Backup
+		wantErr     bool
+		wantLastMsg string
+	}{
+		name:        "no generic backup candidates (old format)",
+		backups:     backups,
+		wantErr:     false,
+		wantLastMsg: "",
+	}
+}
+
+func runGenericRestoreTestCase(
+	t *testing.T,
+	ns string,
+	backups []veleroapi.Backup,
+	wantErr bool,
+	wantLastMsg string,
+) {
+	t.Helper()
+	pinnedName := "acm-resources-schedule-20261024130016"
+
+	testScheme := runtime.NewScheme()
+	if err := veleroapi.AddToScheme(testScheme); err != nil {
+		t.Fatalf("Error adding velero api: %s", err)
+	}
+	if err := corev1.AddToScheme(testScheme); err != nil {
+		t.Fatalf("Error adding corev1: %s", err)
+	}
+	if err := v1beta1.AddToScheme(testScheme); err != nil {
+		t.Fatalf("Error adding v1beta1: %s", err)
+	}
+
+	objs := make([]client.Object, 0, len(backups)+1)
+	objs = append(objs, createNamespace(ns))
+	for i := range backups {
+		objs = append(objs, &backups[i])
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(objs...).
+		Build()
+
+	acmRestore := createACMRestore("test-restore", ns).
+		veleroManagedClustersBackupName(skipRestoreStr).
+		veleroCredentialsBackupName(pinnedName).
+		veleroResourcesBackupName(pinnedName).object
+
+	restoreKeys := []ResourceType{
+		Credentials, ResourcesGeneric, Resources,
+	}
+
+	restoreMap, err := processRetrieveRestoreDetails(
+		context.Background(), fakeClient, testScheme,
+		acmRestore, restoreKeys,
+	)
+
+	if wantErr && err == nil {
+		t.Errorf("expected error but got nil")
+	}
+	if !wantErr && err != nil {
+		t.Errorf("expected no error but got: %v", err)
+	}
+	if wantErr {
+		if acmRestore.Status.LastMessage != wantLastMsg {
+			t.Errorf(
+				"LastMessage = %q, want %q",
+				acmRestore.Status.LastMessage,
+				wantLastMsg,
+			)
+		}
+		if restoreMap[ResourcesGeneric] != nil {
+			t.Errorf("expected no generic restore entry")
+		}
+	}
+	if !wantErr && restoreMap[ResourcesGeneric] != nil {
+		t.Errorf(
+			"expected nil generic restore for old format",
+		)
+	}
+}
+
 // Test_isOtherResourcesRunning tests detection of other running resource operations.
 //
 // This test validates the logic that determines whether other resource operations

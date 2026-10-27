@@ -811,24 +811,51 @@ func processRetrieveRestoreDetails(
 				veleroBackups,
 			)
 			if err != nil {
-				if key != ResourcesGeneric && key != ResourcesGenericActive && key != CredentialsActive {
-					// ignore missing hive or cluster key backup files
-					// for the case when the backups were created with an older controller version
-					// or with oadp 1.1 when the OrSelector has being used
-					restoreLogger.Info(
-						"backup name not found, skipping restore for",
-						"name", acmRestore.Name,
-						"namespace", acmRestore.Namespace,
-						"type", key,
+				isExemptType := key == ResourcesGeneric ||
+					key == ResourcesGenericActive ||
+					key == CredentialsActive
+				if isExemptType {
+					// Check whether any completed/partially-failed backups
+					// with this type's prefix exist. If none exist, this is
+					// the legitimate backward-compat case (old controller or
+					// OADP 1.1 OrSelector backups) and we silently skip.
+					// If candidates DO exist but getVeleroBackupName failed
+					// to match them (timestamp window mismatch), this is a
+					// real failure and must be surfaced loudly.
+					prefix := veleroBackupNames[key]
+					candidates := filterBackups(
+						veleroBackups.Items,
+						func(bkp veleroapi.Backup) bool {
+							return strings.HasPrefix(
+								bkp.Name, prefix,
+							) && (bkp.Status.Phase ==
+								veleroapi.BackupPhaseCompleted ||
+								bkp.Status.Phase ==
+									veleroapi.BackupPhasePartiallyFailed)
+						},
 					)
-					acmRestore.Status.LastMessage = fmt.Sprintf(
-						"Backup %s Not found for resource type: %s",
-						backupName,
-						key,
-					)
-
-					return veleroRestoresToCreate, err
+					if len(candidates) == 0 {
+						// No matching backups exist at all — old
+						// backup format, silently skip this type.
+						continue
+					}
 				}
+				// Either a non-exempt type, or an exempt type where
+				// candidate backups exist but none matched — report
+				// the failure loudly.
+				restoreLogger.Info(
+					"backup name not found, skipping restore for",
+					"name", acmRestore.Name,
+					"namespace", acmRestore.Namespace,
+					"type", key,
+				)
+				acmRestore.Status.LastMessage = fmt.Sprintf(
+					"Backup %s Not found for resource type: %s",
+					backupName,
+					key,
+				)
+
+				return veleroRestoresToCreate, err
 			} else {
 				veleroRestore.Name = getValidKsRestoreName(acmRestore.Name, veleroBackupName)
 
