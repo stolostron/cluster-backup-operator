@@ -663,13 +663,25 @@ func getVeleroBackupName(
 		if len(exactTimeBackup) != 0 {
 			return exactTimeBackup[0].Name, &exactTimeBackup[0], nil
 		}
-		// Fall back to a time-window match using the candidate backup's
-		// CreationTimestamp (the moment the Velero Backup CR was created
-		// by the schedule controller — fast, identical for all sibling
-		// backup types) instead of Status.StartTimestamp (the moment
-		// Velero's backup controller actually began executing the backup,
-		// which can lag minutes behind creation on large hubs due to
-		// wildcard resource discovery and queue depth).
+		// Fall back to a time-window match using each candidate's own
+		// name-embedded timestamp (parsed the same way as the target's,
+		// via getBackupTimestamp), instead of either:
+		//   - Status.StartTimestamp: when Velero's backup controller
+		//     actually began *executing* the backup, which can lag
+		//     minutes behind the backup's creation on large hubs due to
+		//     wildcard resource discovery and queue depth (the original
+		//     bug this fallback exists to work around); or
+		//   - ObjectMeta.CreationTimestamp: when the local Backup CR was
+		//     created on *this* cluster, which Kubernetes resets whenever
+		//     Velero's backup-sync controller re-creates a Backup CR for
+		//     a backup discovered in object storage (e.g. after a DR
+		//     failover onto a new/passive hub) - it no longer identifies
+		//     the original backup cycle once a backup has been synced.
+		// The name-embedded timestamp is assigned once, at the original
+		// backup's creation, and Velero's backup-sync preserves the name
+		// byte-for-byte when re-creating the Backup CR elsewhere, so it
+		// is the only signal that reliably survives both execution-queue
+		// delays and cross-cluster backup sync.
 		targetTimestamp, err := getBackupTimestamp(backupName)
 		if err != nil || targetTimestamp.IsZero() {
 			return "", nil, fmt.Errorf(
@@ -686,11 +698,19 @@ func getVeleroBackupName(
 				) {
 					return false
 				}
-				ct := bkp.CreationTimestamp.Time
-				if ct.IsZero() {
+				// Only Completed/PartiallyFailed backups have restorable
+				// data; a New/InProgress/Failed candidate just means this
+				// sibling isn't ready yet this cycle (same as if it
+				// didn't exist), rather than something restorable.
+				if bkp.Status.Phase != veleroapi.BackupPhaseCompleted &&
+					bkp.Status.Phase != veleroapi.BackupPhasePartiallyFailed {
 					return false
 				}
-				diff := targetTimestamp.Sub(ct)
+				candidateTimestamp, ctErr := getBackupTimestamp(bkp.Name)
+				if ctErr != nil || candidateTimestamp.IsZero() {
+					return false
+				}
+				diff := targetTimestamp.Sub(candidateTimestamp)
 				if diff < 0 {
 					diff = -diff
 				}

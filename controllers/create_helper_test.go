@@ -813,16 +813,12 @@ func createDefaultVeleroBackups(config VeleroBackupConfig) []veleroapi.Backup {
 			object,
 		// Note: an "unrelated" resources-generic backup (deliberately far from
 		// the pinned resources backup) used to be included here to prove the
-		// matching window correctly rejects a stale candidate. Now that
-		// getVeleroBackupName matches on CreationTimestamp (server-assigned,
-		// immutable) instead of Status.StartTimestamp (test-controllable),
-		// a real envtest-backed test can't fabricate two backups with
-		// meaningfully different CreationTimestamps without actually
-		// sleeping, so that negative case is no longer practical to express
-		// here. It is covered precisely, with full control over
-		// CreationTimestamp via a fake client, by
-		// Test_getVeleroBackupName_creationTimestampMatch's
-		// "true negative" subtest in restore_test.go.
+		// matching window correctly rejects a stale candidate. That negative
+		// case is covered precisely, with full control over each backup's
+		// name-embedded timestamp via a fake client, by
+		// Test_getVeleroBackupName_nameTimestampMatch's "true negative"
+		// subtest in restore_test.go, so it's omitted from this fixture to
+		// keep the envtest suite's default backup set simple.
 		*createBackup(config.CredentialsBackupName, config.VeleroNamespace).
 			phase(veleroapi.BackupPhaseCompleted).
 			errors(0).includedResources(backupCredsResources).

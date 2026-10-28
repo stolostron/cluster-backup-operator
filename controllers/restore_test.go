@@ -2158,20 +2158,28 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 	}
 }
 
-// Test_getVeleroBackupName_creationTimestampMatch validates the
-// CreationTimestamp-based fallback matching in getVeleroBackupName.
+// Test_getVeleroBackupName_nameTimestampMatch validates the name-timestamp
+// based fallback matching in getVeleroBackupName.
 //
-// The schedule controller creates all sibling Velero Backup CRs (e.g.
-// acm-resources-schedule-*, acm-resources-generic-schedule-*) within
-// the same reconcile pass. Their CreationTimestamps are nearly
-// identical (sub-second), but Status.StartTimestamp — when the Velero
-// backup controller actually begins executing — can lag minutes behind
-// for the wildcard resources-generic backup on large hubs.
+// The schedule controller names all sibling Velero Backup CRs (e.g.
+// acm-resources-schedule-*, acm-resources-generic-schedule-*) using
+// nearly-identical (sub-second) timestamps embedded at creation, even
+// though Status.StartTimestamp — when the Velero backup controller
+// actually begins executing — can lag minutes behind for the wildcard
+// resources-generic backup on large hubs.
 //
-// The fix switches the 30s fallback window from StartTimestamp to
-// CreationTimestamp so sibling backups from the same schedule cycle
-// match reliably regardless of Velero controller queue depth.
-func Test_getVeleroBackupName_creationTimestampMatch(
+// The fix switches the 30s fallback window from comparing
+// Status.StartTimestamp to comparing each candidate's own name-embedded
+// timestamp (parsed via getBackupTimestamp, same as the target's) so
+// sibling backups from the same schedule cycle match reliably regardless
+// of Velero controller queue depth. Unlike ObjectMeta.CreationTimestamp,
+// the name is preserved byte-for-byte by Velero's backup-sync controller
+// when a backup discovered in object storage is re-created as a local
+// Backup CR (e.g. after a DR failover onto a new/passive hub), so this
+// also keeps working correctly for synced backups, whose
+// CreationTimestamp would otherwise reflect sync time, not the original
+// backup cycle.
+func Test_getVeleroBackupName_nameTimestampMatch(
 	t *testing.T,
 ) {
 	ns := "backup-ns"
@@ -2185,6 +2193,7 @@ func Test_getVeleroBackupName_creationTimestampMatch(
 		buildCustomerScenarioCase(ns),
 		buildTrueNegativeCase(ns),
 		buildNoCandidateBackupsCase(ns),
+		buildIncompleteCandidateCase(ns),
 	}
 
 	for _, tc := range tests {
@@ -2367,6 +2376,55 @@ func buildNoCandidateBackupsCase(ns string) struct {
 		wantErr bool
 	}{
 		name:    "no generic backup candidates at all",
+		backups: backups,
+		want:    "",
+		wantErr: true,
+	}
+}
+
+// buildIncompleteCandidateCase covers a resources-generic backup that is
+// from the same cycle (well within the 30s name-timestamp window) as the
+// backup being restored, but is still InProgress. It is not yet a valid
+// Velero restore source and must not be matched - selecting it would
+// create a Velero Restore pointing at a backup with no usable data yet.
+func buildIncompleteCandidateCase(ns string) struct {
+	name    string
+	backups []veleroapi.Backup
+	want    string
+	wantErr bool
+} {
+	nameTs := "20261024130016"
+	genericNameTs := "20261024130017" // 1s later by name - same cycle
+
+	backups := []veleroapi.Backup{
+		*createBackup(
+			"acm-resources-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-resources-generic-schedule-"+genericNameTs, ns,
+		).phase(veleroapi.BackupPhaseInProgress).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-credentials-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+	}
+	return struct {
+		name    string
+		backups []veleroapi.Backup
+		want    string
+		wantErr bool
+	}{
+		name:    "same-cycle candidate still InProgress is not a valid match",
 		backups: backups,
 		want:    "",
 		wantErr: true,
