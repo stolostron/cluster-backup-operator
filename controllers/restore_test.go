@@ -2195,6 +2195,7 @@ func Test_getVeleroBackupName_nameTimestampMatch(
 		buildNoCandidateBackupsCase(ns),
 		buildIncompleteCandidateCase(ns),
 		buildDelayedScheduleSubmissionCase(ns),
+		buildAdjacentCycleCandidatesCase(ns),
 	}
 
 	for _, tc := range tests {
@@ -2484,6 +2485,70 @@ func buildDelayedScheduleSubmissionCase(ns string) struct {
 		name:    "delayed sibling schedule submission (~90s, same cycle)",
 		backups: backups,
 		want:    genericName,
+		wantErr: false,
+	}
+}
+
+// buildAdjacentCycleCandidatesCase covers a short veleroSchedule interval
+// (nothing today enforces a minimum - see siblingBackupNameWindow) placing
+// two resources-generic candidates inside the matching window: one from
+// the same cycle (a few seconds after the target) and one from an
+// adjacent, later cycle (still within the window, but clearly the wrong
+// backup). getVeleroBackupName must pick the nearest candidate, not
+// whichever happens to come first in list order.
+func buildAdjacentCycleCandidatesCase(ns string) struct {
+	name    string
+	backups []veleroapi.Backup
+	want    string
+	wantErr bool
+} {
+	nameTs := "20261024130016"
+	nearGenericTs := "20261024130020" // 4s later - the real sibling
+	farGenericTs := "20261024130500"  // 4m44s later - adjacent cycle, still inside the 5m window
+
+	nearGenericName := "acm-resources-generic-schedule-" + nearGenericTs
+
+	backups := []veleroapi.Backup{
+		*createBackup(
+			"acm-resources-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		// Listed first deliberately, so a naive "first match wins" would
+		// pick this wrong, adjacent-cycle candidate instead of the
+		// nearer one below.
+		*createBackup(
+			"acm-resources-generic-schedule-"+farGenericTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(nearGenericName, ns).
+			phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-credentials-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+	}
+	return struct {
+		name    string
+		backups []veleroapi.Backup
+		want    string
+		wantErr bool
+	}{
+		name:    "two in-window candidates from adjacent cycles: nearest wins",
+		backups: backups,
+		want:    nearGenericName,
 		wantErr: false,
 	}
 }

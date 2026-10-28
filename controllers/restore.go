@@ -619,7 +619,18 @@ func validateStorageSettings(
 // 5 minutes comfortably covers realistic schedule-controller reconcile
 // delays while staying well under the minimum practical backup cadence
 // (hourly - see README.md and config/samples/), so it never risks
-// matching backups from two different cycles.
+// matching backups from two different cycles under that assumption.
+//
+// Nothing currently enforces a minimum veleroSchedule interval (only
+// cron syntax is validated - see parseCronSchedule in schedule.go), so a
+// user-configured interval at or below this window could in principle
+// place backups from two adjacent cycles inside it. getVeleroBackupName
+// mitigates this by preferring the nearest candidate rather than an
+// arbitrary one when more than one falls in range, but does not reject
+// such a short interval outright: doing so would be a separate,
+// user-facing BackupSchedule validation change (with its own
+// backward-compatibility considerations for already-deployed short
+// intervals), not a restore-matching fix.
 const siblingBackupNameWindow = 5 * time.Minute
 
 // getVeleroBackupName returns the name of velero backup will be restored
@@ -737,6 +748,18 @@ func getVeleroBackupName(
 			},
 		)
 		if len(timeRangeBackups) != 0 {
+			// Prefer the candidate nearest to the target, not just the
+			// first one in list order (which has no guaranteed
+			// relationship to time). This matters if a veleroSchedule
+			// interval at or below siblingBackupNameWindow ever places
+			// more than one candidate inside the window - see
+			// siblingBackupNameWindow for why that isn't rejected
+			// up front.
+			sort.Slice(timeRangeBackups, func(i, j int) bool {
+				iTs, _ := getBackupTimestamp(timeRangeBackups[i].Name)
+				jTs, _ := getBackupTimestamp(timeRangeBackups[j].Name)
+				return targetTimestamp.Sub(iTs).Abs() < targetTimestamp.Sub(jTs).Abs()
+			})
 			return timeRangeBackups[0].Name, &timeRangeBackups[0], nil
 		}
 		// if no backups within the range, return error
