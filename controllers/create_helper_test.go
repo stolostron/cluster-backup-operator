@@ -740,15 +740,13 @@ func createDefaultBackupNames(timestamp, genericTimestamp string) (string, strin
 
 // createDefaultTimestamps creates standard timestamp objects for restore testing with specified timestamp strings
 func createDefaultTimestamps(
-	resourcesTime, resourcesGenericTime, unrelatedResourcesGenericTime string,
-) (metav1.Time, metav1.Time, metav1.Time) {
+	resourcesTime, resourcesGenericTime string,
+) (metav1.Time, metav1.Time) {
 	resourcesTimestamp, _ := time.Parse("20060102150405", resourcesTime)
 	resourcesGenericTimestamp, _ := time.Parse("20060102150405", resourcesGenericTime)
-	unrelatedResourcesGenericTimestamp, _ := time.Parse("20060102150405", unrelatedResourcesGenericTime)
 
 	return metav1.NewTime(resourcesTimestamp),
-		metav1.NewTime(resourcesGenericTimestamp),
-		metav1.NewTime(unrelatedResourcesGenericTimestamp)
+		metav1.NewTime(resourcesGenericTimestamp)
 }
 
 // createDefaultClusterVersions creates standard cluster version test data
@@ -784,17 +782,16 @@ func createDefaultChannels() []chnv1.Channel {
 
 // VeleroBackupConfig holds configuration for creating default Velero backups
 type VeleroBackupConfig struct {
-	VeleroNamespace                    string
-	ManagedClustersBackupName          string
-	ResourcesBackupName                string
-	ResourcesGenericBackupName         string
-	CredentialsBackupName              string
-	CredentialsHiveBackupName          string
-	CredentialsClusterBackupName       string
-	ResourcesStartTime                 metav1.Time
-	ResourcesGenericStartTime          metav1.Time
-	UnrelatedResourcesGenericStartTime metav1.Time
-	IncludedResources                  []string
+	VeleroNamespace              string
+	ManagedClustersBackupName    string
+	ResourcesBackupName          string
+	ResourcesGenericBackupName   string
+	CredentialsBackupName        string
+	CredentialsHiveBackupName    string
+	CredentialsClusterBackupName string
+	ResourcesStartTime           metav1.Time
+	ResourcesGenericStartTime    metav1.Time
+	IncludedResources            []string
 }
 
 // createDefaultVeleroBackups creates standard velero backup test data
@@ -814,11 +811,18 @@ func createDefaultVeleroBackups(config VeleroBackupConfig) []veleroapi.Backup {
 			phase(veleroapi.BackupPhaseCompleted).
 			errors(0).includedResources(config.IncludedResources).
 			object,
-		*createBackup("acm-resources-generic-schedule-20210910181420", config.VeleroNamespace).
-			startTimestamp(config.UnrelatedResourcesGenericStartTime).
-			phase(veleroapi.BackupPhaseCompleted).
-			errors(0).includedResources(config.IncludedResources).
-			object,
+		// Note: an "unrelated" resources-generic backup (deliberately far from
+		// the pinned resources backup) used to be included here to prove the
+		// matching window correctly rejects a stale candidate. Now that
+		// getVeleroBackupName matches on CreationTimestamp (server-assigned,
+		// immutable) instead of Status.StartTimestamp (test-controllable),
+		// a real envtest-backed test can't fabricate two backups with
+		// meaningfully different CreationTimestamps without actually
+		// sleeping, so that negative case is no longer practical to express
+		// here. It is covered precisely, with full control over
+		// CreationTimestamp via a fake client, by
+		// Test_getVeleroBackupName_creationTimestampMatch's
+		// "true negative" subtest in restore_test.go.
 		*createBackup(config.CredentialsBackupName, config.VeleroNamespace).
 			phase(veleroapi.BackupPhaseCompleted).
 			errors(0).includedResources(backupCredsResources).

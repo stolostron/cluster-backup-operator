@@ -209,15 +209,24 @@ var _ = Describe("Basic Restore controller", func() {
 		// Initialize test execution context
 		ctx = context.Background()
 
-		// Create standard backup names using factory function
-		// Uses timestamps: 20210910181336 for most backups, 20210910181346 for generic
+		// Create standard backup names using factory function.
+		// Anchored to "now" (not a fixed historical date): getVeleroBackupName's
+		// fallback window now matches on the generic backup's CreationTimestamp,
+		// which envtest's real API server always assigns to the actual creation
+		// moment regardless of what timestamp is embedded in the object's name.
+		// The resources-generic timestamp stays 10s after the resources
+		// timestamp so this fixture still exercises the 30s fallback-window
+		// branch (not the exact-name-match short-circuit) in getVeleroBackupName.
+		now := time.Now().UTC()
+		resourcesTimeStr := now.Format("20060102150405")
+		genericTimeStr := now.Add(10 * time.Second).Format("20060102150405")
 		veleroManagedClustersBackupName, veleroResourcesBackupName, veleroResourcesGenericBackupName,
 			veleroCredentialsBackupName, veleroCredentialsHiveBackupName, veleroCredentialsClusterBackupName =
-			createDefaultBackupNames("20210910181336", "20210910181346")
+			createDefaultBackupNames(resourcesTimeStr, genericTimeStr)
 
 		// Create corresponding timestamp objects for backup start times
-		resourcesStartTime, resourcesGenericStartTime, unrelatedResourcesGenericStartTime :=
-			createDefaultTimestamps("20210910181336", "20210910181346", "20210910181420")
+		resourcesStartTime, resourcesGenericStartTime :=
+			createDefaultTimestamps(resourcesTimeStr, genericTimeStr)
 
 		// Set special backup name values for testing different scenarios
 		skipRestore = "skip"                  // Indicates backup should be skipped
@@ -238,17 +247,16 @@ var _ = Describe("Basic Restore controller", func() {
 		// Create standard Velero backup resources using factory function
 		// These represent the backups that the restore will reference
 		veleroBackups = createDefaultVeleroBackups(VeleroBackupConfig{
-			VeleroNamespace:                    veleroNamespace.Name,
-			ManagedClustersBackupName:          veleroManagedClustersBackupName,
-			ResourcesBackupName:                veleroResourcesBackupName,
-			ResourcesGenericBackupName:         veleroResourcesGenericBackupName,
-			CredentialsBackupName:              veleroCredentialsBackupName,
-			CredentialsHiveBackupName:          veleroCredentialsHiveBackupName,
-			CredentialsClusterBackupName:       veleroCredentialsClusterBackupName,
-			ResourcesStartTime:                 resourcesStartTime,
-			ResourcesGenericStartTime:          resourcesGenericStartTime,
-			UnrelatedResourcesGenericStartTime: unrelatedResourcesGenericStartTime,
-			IncludedResources:                  includedResources,
+			VeleroNamespace:              veleroNamespace.Name,
+			ManagedClustersBackupName:    veleroManagedClustersBackupName,
+			ResourcesBackupName:          veleroResourcesBackupName,
+			ResourcesGenericBackupName:   veleroResourcesGenericBackupName,
+			CredentialsBackupName:        veleroCredentialsBackupName,
+			CredentialsHiveBackupName:    veleroCredentialsHiveBackupName,
+			CredentialsClusterBackupName: veleroCredentialsClusterBackupName,
+			ResourcesStartTime:           resourcesStartTime,
+			ResourcesGenericStartTime:    resourcesGenericStartTime,
+			IncludedResources:            includedResources,
 		})
 
 		// Create standard label selector configurations for restore filtering
