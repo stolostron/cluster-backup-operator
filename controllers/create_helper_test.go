@@ -228,6 +228,13 @@ func (b *BackupHelper) startTimestamp(timestamp metav1.Time) *BackupHelper {
 	return b
 }
 
+func (b *BackupHelper) creationTimestamp(
+	timestamp metav1.Time,
+) *BackupHelper {
+	b.object.CreationTimestamp = timestamp
+	return b
+}
+
 func (b *BackupHelper) phase(phase veleroapi.BackupPhase) *BackupHelper {
 	b.object.Status.Phase = phase
 	return b

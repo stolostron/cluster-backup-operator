@@ -663,7 +663,13 @@ func getVeleroBackupName(
 		if len(exactTimeBackup) != 0 {
 			return exactTimeBackup[0].Name, &exactTimeBackup[0], nil
 		}
-		// next try to find a backup with StartTimestamp in 30s range of the target timestamp
+		// Fall back to a time-window match using the candidate backup's
+		// CreationTimestamp (the moment the Velero Backup CR was created
+		// by the schedule controller — fast, identical for all sibling
+		// backup types) instead of Status.StartTimestamp (the moment
+		// Velero's backup controller actually began executing the backup,
+		// which can lag minutes behind creation on large hubs due to
+		// wildcard resource discovery and queue depth).
 		targetTimestamp, err := getBackupTimestamp(backupName)
 		if err != nil || targetTimestamp.IsZero() {
 			return "", nil, fmt.Errorf(
@@ -672,17 +678,25 @@ func getVeleroBackupName(
 				string(resourceType),
 			)
 		}
-		timeRangeBackups := filterBackups(veleroBackups.Items[:], func(bkp veleroapi.Backup) bool {
-			if !strings.Contains(bkp.Name, veleroBackupNames[resourceType]) ||
-				bkp.Status.StartTimestamp == nil {
-				return false
-			}
-			if targetTimestamp.Sub(bkp.Status.StartTimestamp.Time).Seconds() > 30 ||
-				bkp.Status.StartTimestamp.Time.Sub(targetTimestamp).Seconds() > 30 {
-				return false // not related, more then 30s apart
-			}
-			return true
-		})
+		timeRangeBackups := filterBackups(
+			veleroBackups.Items[:],
+			func(bkp veleroapi.Backup) bool {
+				if !strings.Contains(
+					bkp.Name, veleroBackupNames[resourceType],
+				) {
+					return false
+				}
+				ct := bkp.CreationTimestamp.Time
+				if ct.IsZero() {
+					return false
+				}
+				diff := targetTimestamp.Sub(ct)
+				if diff < 0 {
+					diff = -diff
+				}
+				return diff.Seconds() <= 30
+			},
+		)
 		if len(timeRangeBackups) != 0 {
 			return timeRangeBackups[0].Name, &timeRangeBackups[0], nil
 		}
