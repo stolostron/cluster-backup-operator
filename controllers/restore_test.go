@@ -2168,7 +2168,7 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 // actually begins executing — can lag minutes behind for the wildcard
 // resources-generic backup on large hubs.
 //
-// The fix switches the 30s fallback window from comparing
+// The fix switches the fallback window from comparing
 // Status.StartTimestamp to comparing each candidate's own name-embedded
 // timestamp (parsed via getBackupTimestamp, same as the target's) so
 // sibling backups from the same schedule cycle match reliably regardless
@@ -2194,6 +2194,7 @@ func Test_getVeleroBackupName_nameTimestampMatch(
 		buildTrueNegativeCase(ns),
 		buildNoCandidateBackupsCase(ns),
 		buildIncompleteCandidateCase(ns),
+		buildDelayedScheduleSubmissionCase(ns),
 	}
 
 	for _, tc := range tests {
@@ -2383,8 +2384,8 @@ func buildNoCandidateBackupsCase(ns string) struct {
 }
 
 // buildIncompleteCandidateCase covers a resources-generic backup that is
-// from the same cycle (well within the 30s name-timestamp window) as the
-// backup being restored, but is still InProgress. It is not yet a valid
+// from the same cycle (well within the name-timestamp matching window) as
+// the backup being restored, but is still InProgress. It is not yet a valid
 // Velero restore source and must not be matched - selecting it would
 // create a Velero Restore pointing at a backup with no usable data yet.
 func buildIncompleteCandidateCase(ns string) struct {
@@ -2428,6 +2429,62 @@ func buildIncompleteCandidateCase(ns string) struct {
 		backups: backups,
 		want:    "",
 		wantErr: true,
+	}
+}
+
+// buildDelayedScheduleSubmissionCase reproduces a sibling-schedule
+// reconcile delay rather than a backup-execution delay: Velero's own
+// schedule controller reconciles each Schedule independently and names
+// each Backup using the reconcile-time clock, not a shared cron tick (see
+// siblingBackupNameWindow). Under a busy hub, that reconcile can be
+// delayed by more than the old 30s window - here the resources-generic
+// Schedule's cron tick is only actually submitted ~90s after its sibling
+// resources Schedule's - while still being well within the current
+// window and nowhere near the next hourly cycle.
+func buildDelayedScheduleSubmissionCase(ns string) struct {
+	name    string
+	backups []veleroapi.Backup
+	want    string
+	wantErr bool
+} {
+	nameTs := "20261024130016"
+	// 90s later by name - would have missed the old 30s window, but is
+	// still the same logical cycle, not a different hourly tick.
+	genericNameTs := "20261024130146"
+
+	genericName := "acm-resources-generic-schedule-" + genericNameTs
+	backups := []veleroapi.Backup{
+		*createBackup(
+			"acm-resources-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(genericName, ns).
+			phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-credentials-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+	}
+	return struct {
+		name    string
+		backups []veleroapi.Backup
+		want    string
+		wantErr bool
+	}{
+		name:    "delayed sibling schedule submission (~90s, same cycle)",
+		backups: backups,
+		want:    genericName,
+		wantErr: false,
 	}
 }
 

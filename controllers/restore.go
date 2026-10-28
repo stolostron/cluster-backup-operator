@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
@@ -599,6 +600,28 @@ func validateStorageSettings(
 	return msg, retry
 }
 
+// siblingBackupNameWindow bounds how far apart two sibling backups'
+// name-embedded timestamps may be and still be considered the same backup
+// cycle, when getVeleroBackupName falls back to a time-window match.
+//
+// ACM creates one long-lived Velero Schedule per backup type (resources,
+// resources-generic, credentials, ...), all sharing the same cron
+// expression, but Velero's own schedule controller reconciles each
+// Schedule independently (verified against Velero v1.18.2's
+// scheduleReconciler.submitBackup, which names each Backup using a
+// per-reconcile time.Now() call, not a shared cron-tick time). Under a
+// busy hub, that independent reconcile can be delayed differently per
+// Schedule, so sibling backups' name timestamps can drift by more than a
+// few seconds even though they were "due" at the same logical tick - in
+// addition to the backup-execution delay this fallback already exists to
+// tolerate (see getVeleroBackupName).
+//
+// 5 minutes comfortably covers realistic schedule-controller reconcile
+// delays while staying well under the minimum practical backup cadence
+// (hourly - see README.md and config/samples/), so it never risks
+// matching backups from two different cycles.
+const siblingBackupNameWindow = 5 * time.Minute
+
 // getVeleroBackupName returns the name of velero backup will be restored
 //
 //nolint:funlen
@@ -710,11 +733,7 @@ func getVeleroBackupName(
 				if ctErr != nil || candidateTimestamp.IsZero() {
 					return false
 				}
-				diff := targetTimestamp.Sub(candidateTimestamp)
-				if diff < 0 {
-					diff = -diff
-				}
-				return diff.Seconds() <= 30
+				return targetTimestamp.Sub(candidateTimestamp).Abs() <= siblingBackupNameWindow
 			},
 		)
 		if len(timeRangeBackups) != 0 {
