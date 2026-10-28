@@ -1256,6 +1256,86 @@ var _ = Describe("Basic Restore controller", func() {
 			})
 		})
 
+		// Test Context: Generic-Resources Backup Timestamp Mismatch
+		//
+		// This context covers a pinned resources backup whose resources-generic
+		// sibling exists but falls outside the matching window used by
+		// getVeleroBackupName. Unlike a simple invalid/missing backup name,
+		// this condition will not resolve by retrying - the pinned backups
+		// never change - so it must be surfaced as a terminal
+		// RestorePhaseFinishedWithErrors instead of looping forever in
+		// RestorePhaseError, and must not block subsequent Restores.
+		Context("when a pinned resources-generic backup falls outside the match window", func() {
+			pinnedTs := "20261024130016"
+			mismatchedGenericTs := "20261024130200"
+
+			BeforeEach(func() {
+				veleroNamespace = createNamespace("velero-restore-ns-mismatch")
+
+				veleroBackups = []veleroapi.Backup{
+					*createBackup("acm-resources-schedule-"+pinnedTs, veleroNamespace.Name).
+						phase(veleroapi.BackupPhaseCompleted).
+						errors(0).
+						startTimestamp(
+							metav1.NewTime(time.Date(2026, 10, 24, 13, 0, 16, 0, time.UTC)),
+						).object,
+					// Same cycle as the pinned resources backup above (~104s
+					// later), but outside getVeleroBackupName's 30s matching
+					// window - a genuine mismatch, not a legacy/old-format gap.
+					*createBackup("acm-resources-generic-schedule-"+mismatchedGenericTs, veleroNamespace.Name).
+						phase(veleroapi.BackupPhaseCompleted).
+						errors(0).
+						startTimestamp(
+							metav1.NewTime(time.Date(2026, 10, 24, 13, 2, 0, 0, time.UTC)),
+						).object,
+					*createBackup("acm-credentials-schedule-"+pinnedTs, veleroNamespace.Name).
+						phase(veleroapi.BackupPhaseCompleted).
+						errors(0).
+						startTimestamp(
+							metav1.NewTime(time.Date(2026, 10, 24, 13, 0, 16, 0, time.UTC)),
+						).object,
+				}
+
+				backupStorageLocation = createStorageLocation("default", veleroNamespace.Name).
+					setOwner().
+					phase(veleroapi.BackupStorageLocationPhaseAvailable).object
+
+				rhacmRestore = *createACMRestore(restoreName, veleroNamespace.Name).
+					cleanupBeforeRestore(v1beta1.CleanupTypeRestored).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName("acm-credentials-schedule-" + pinnedTs).
+					veleroResourcesBackupName("acm-resources-schedule-" + pinnedTs).object
+			})
+			It("should reach FinishedWithErrors without looping, and must not block a later restore", func() {
+				waitForRestorePhase(ctx, k8sClient, restoreName, veleroNamespace.Name,
+					v1beta1.RestorePhaseFinishedWithErrors, timeout, interval)
+
+				createdRestore := getRestoreWithRetry(ctx, k8sClient, restoreName, veleroNamespace.Name, timeout, interval)
+				Expect(createdRestore.Status.LastMessage).Should(ContainSubstring(
+					"acm-resources-schedule-" + pinnedTs))
+				Expect(createdRestore.Status.CompletionTimestamp).ShouldNot(BeNil())
+
+				// Must not keep looping back into RestorePhaseError on later
+				// reconciles: the underlying backups never change.
+				Consistently(func() v1beta1.RestorePhase {
+					r := getRestoreWithRetry(ctx, k8sClient, restoreName, veleroNamespace.Name, timeout, interval)
+					return r.Status.Phase
+				}, 2*time.Second, interval).Should(BeEquivalentTo(v1beta1.RestorePhaseFinishedWithErrors))
+
+				// Because restoreName above is terminal (not RestorePhaseError),
+				// a new Restore must not be blocked by it.
+				rhacmRestoreNotBlocked := *createACMRestore(restoreName+"-next", veleroNamespace.Name).
+					cleanupBeforeRestore(v1beta1.CleanupTypeNone).
+					veleroManagedClustersBackupName(skipRestore).
+					veleroCredentialsBackupName(skipRestore).
+					veleroResourcesBackupName(skipRestore).object
+
+				Expect(k8sClient.Create(ctx, &rhacmRestoreNotBlocked)).Should(Succeed())
+				waitForRestorePhase(ctx, k8sClient, restoreName+"-next", veleroNamespace.Name,
+					v1beta1.RestorePhaseFinished, timeout, interval)
+			})
+		})
+
 		// Test Context: Namespace Validation
 		//
 		// This context tests scenarios where restores are created in incorrect

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
@@ -749,6 +750,28 @@ func retrieveRestoreDetails(
 	return restoreKeys, restoreMap, err
 }
 
+// errGenericBackupTimestampMismatch is returned by processRetrieveRestoreDetails
+// when a ResourcesGeneric, ResourcesGenericActive or CredentialsActive backup
+// candidate exists for this restore point but none of them matched the
+// timestamp window used by getVeleroBackupName. Unlike a missing/invalid
+// backup name, this will not resolve by simply retrying a restore that is
+// pinned to a specific (non-"latest") backup: the underlying Velero backups
+// do not change between reconciles. Callers can detect this case with
+// errors.Is to avoid looping a pinned restore forever in RestorePhaseError
+// and blocking any other Restore (see isOtherRestoresRunning).
+var errGenericBackupTimestampMismatch = fmt.Errorf("resources-generic backup timestamp mismatch")
+
+// legacyGenericBackupDetectionWindow is used only to decide whether a
+// resources-generic/credentials-active candidate found elsewhere in the
+// backup list is plausibly from the same backup cycle as the backup being
+// restored (a genuine mismatch, worth surfacing loudly) or clearly from a
+// different era, e.g. created after the hub's controller was upgraded to a
+// version that started producing resources-generic backups (the legitimate
+// backward-compat case, which should stay a silent skip). It is
+// deliberately much wider than the 30s window getVeleroBackupName itself
+// uses to pick the matching backup - that selection logic is unchanged.
+const legacyGenericBackupDetectionWindow = 24 * time.Hour
+
 //nolint:funlen
 func processRetrieveRestoreDetails(
 	ctx context.Context,
@@ -814,34 +837,47 @@ func processRetrieveRestoreDetails(
 				isExemptType := key == ResourcesGeneric ||
 					key == ResourcesGenericActive ||
 					key == CredentialsActive
+				isGenuineMismatch := false
 				if isExemptType {
 					// Check whether any completed/partially-failed backups
-					// with this type's prefix exist. If none exist, this is
-					// the legitimate backward-compat case (old controller or
-					// OADP 1.1 OrSelector backups) and we silently skip.
-					// If candidates DO exist but getVeleroBackupName failed
-					// to match them (timestamp window mismatch), this is a
-					// real failure and must be surfaced loudly.
+					// with this type's prefix, AND from roughly the same
+					// backup cycle as the one being restored, exist. If
+					// none exist, this is the legitimate backward-compat
+					// case (old controller version, or OADP 1.1 OrSelector
+					// backups, or a hub upgraded well after this pinned
+					// backup was taken) and we silently skip. If a
+					// same-era candidate DOES exist but getVeleroBackupName
+					// failed to match it (timestamp window mismatch), this
+					// is a real failure and must be surfaced loudly.
 					prefix := veleroBackupNames[key]
+					targetTimestamp, tsErr := getBackupTimestamp(backupName)
 					candidates := filterBackups(
 						veleroBackups.Items,
 						func(bkp veleroapi.Backup) bool {
-							return strings.HasPrefix(
-								bkp.Name, prefix,
-							) && (bkp.Status.Phase ==
-								veleroapi.BackupPhaseCompleted ||
-								bkp.Status.Phase ==
-									veleroapi.BackupPhasePartiallyFailed)
+							if !strings.HasPrefix(bkp.Name, prefix) ||
+								(bkp.Status.Phase != veleroapi.BackupPhaseCompleted &&
+									bkp.Status.Phase != veleroapi.BackupPhasePartiallyFailed) {
+								return false
+							}
+							if tsErr != nil || targetTimestamp.IsZero() ||
+								bkp.Status.StartTimestamp == nil {
+								// Can't compare eras — fall back to the
+								// permissive, existence-only check.
+								return true
+							}
+							return bkp.Status.StartTimestamp.Time.
+								Sub(targetTimestamp).Abs() <= legacyGenericBackupDetectionWindow
 						},
 					)
 					if len(candidates) == 0 {
-						// No matching backups exist at all — old
+						// No same-era matching backups exist — old
 						// backup format, silently skip this type.
 						continue
 					}
+					isGenuineMismatch = true
 				}
-				// Either a non-exempt type, or an exempt type where
-				// candidate backups exist but none matched — report
+				// Either a non-exempt type, or an exempt type where a
+				// same-era candidate exists but none matched — report
 				// the failure loudly.
 				restoreLogger.Info(
 					"backup name not found, skipping restore for",
@@ -854,6 +890,14 @@ func processRetrieveRestoreDetails(
 					backupName,
 					key,
 				)
+
+				if isGenuineMismatch {
+					// Tag the error so Reconcile can tell this apart from
+					// other, potentially-recoverable errors (e.g. a simple
+					// typo in the backup name) and avoid retrying a pinned
+					// restore forever.
+					err = fmt.Errorf("%w: %w", err, errGenericBackupTimestampMismatch)
+				}
 
 				return veleroRestoresToCreate, err
 			} else {

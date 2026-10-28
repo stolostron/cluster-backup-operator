@@ -290,7 +290,26 @@ func (r *RestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			)
 			restoreLogger.Error(err, msg)
 
-			// set error status for all errors from initVeleroRestores
+			// A resources-generic/credentials-active backup timestamp
+			// mismatch will not resolve by retrying a restore that is
+			// pinned to a specific (non-"latest") backup: the underlying
+			// Velero backups do not change between reconciles. Treat it as
+			// terminal so it doesn't loop in RestorePhaseError forever and
+			// block any other Restore (see isOtherRestoresRunning).
+			// Restores with valid sync options are left on the normal
+			// RestorePhaseError path below, which updateRestoreStatus
+			// converts to RestorePhaseEnabledError, preserving sync's
+			// perpetual-retry semantics since a later backup cycle may
+			// still fall within the matching window.
+			if errors.Is(err, errGenericBackupTimestampMismatch) && !isValidSync {
+				updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseFinishedWithErrors, err.Error(), restore)
+				if updErr := r.Client.Status().Update(ctx, restore); updErr != nil {
+					return ctrl.Result{}, errors.Wrap(updErr, msg)
+				}
+				return ctrl.Result{}, nil
+			}
+
+			// set error status for all other errors from initVeleroRestores
 			updateRestoreStatus(restoreLogger, v1beta1.RestorePhaseError, err.Error(), restore)
 			if updErr := r.Client.Status().Update(ctx, restore); updErr != nil {
 				return ctrl.Result{}, errors.Wrap(updErr, msg)

@@ -2185,6 +2185,7 @@ func Test_processRetrieveRestoreDetails_genericResourcesTimestampMismatch(t *tes
 	tests := []testCase{
 		buildTimestampMismatchCase(ns),
 		buildNoCandidatesCase(ns),
+		buildLegacyWithDistantUnrelatedCandidateCase(ns),
 	}
 
 	for _, tc := range tests {
@@ -2319,6 +2320,78 @@ func buildNoCandidatesCase(
 	}
 }
 
+// buildLegacyWithDistantUnrelatedCandidateCase covers a hub that was upgraded
+// well after an old-format (pre-resources-generic) backup was pinned: a
+// resources-generic backup DOES exist in the backup list, but it is from a
+// completely different era (over a year later) than the backup being
+// restored. It must not be mistaken for evidence that the pinned backup
+// should have had a same-cycle resources-generic sibling - this should
+// still be the legitimate, silent backward-compat skip.
+func buildLegacyWithDistantUnrelatedCandidateCase(
+	ns string,
+) struct {
+	name        string
+	backups     []veleroapi.Backup
+	wantErr     bool
+	wantLastMsg string
+} {
+	nameTs := "20261024130016"
+	distantGenericNameTs := "20280115090000"
+
+	backups := []veleroapi.Backup{
+		*createBackup(
+			"acm-resources-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			startTimestamp(
+				metav1.NewTime(
+					time.Date(2026, 10, 24, 13, 0, 16, 0, time.UTC),
+				),
+			).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		// Created over a year after the pinned backup above - e.g. only
+		// after this hub's controller was upgraded to a version that
+		// started producing resources-generic backups.
+		*createBackup(
+			"acm-resources-generic-schedule-"+distantGenericNameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			startTimestamp(
+				metav1.NewTime(
+					time.Date(2028, 1, 15, 9, 0, 0, 0, time.UTC),
+				),
+			).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-credentials-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			startTimestamp(
+				metav1.NewTime(
+					time.Date(2026, 10, 24, 13, 0, 16, 0, time.UTC),
+				),
+			).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+	}
+	return struct {
+		name        string
+		backups     []veleroapi.Backup
+		wantErr     bool
+		wantLastMsg string
+	}{
+		name:        "pinned backup with only a distant-era generic candidate stays a silent skip",
+		backups:     backups,
+		wantErr:     false,
+		wantLastMsg: "",
+	}
+}
+
 func runGenericRestoreTestCase(
 	t *testing.T,
 	ns string,
@@ -2382,10 +2455,67 @@ func runGenericRestoreTestCase(
 		if restoreMap[ResourcesGeneric] != nil {
 			t.Errorf("expected no generic restore entry")
 		}
+		// Every wantErr=true case here is a genuine same-era timestamp
+		// mismatch, so Reconcile must be able to tell it apart from other,
+		// potentially-recoverable errors (e.g. a simple backup-name typo)
+		// via errors.Is, so it can avoid retrying a pinned restore forever.
+		if !errors.Is(err, errGenericBackupTimestampMismatch) {
+			t.Errorf(
+				"expected err to be tagged as a generic-resources "+
+					"timestamp mismatch via errors.Is, got: %v", err,
+			)
+		}
 	}
 	if !wantErr && restoreMap[ResourcesGeneric] != nil {
 		t.Errorf(
 			"expected nil generic restore for old format",
+		)
+	}
+}
+
+// Test_processRetrieveRestoreDetails_mismatchErrorIsScopedToExemptTypes is a
+// negative control for errGenericBackupTimestampMismatch: a plain
+// missing/invalid backup name for a NON-exempt resource type (e.g. a typo in
+// ManagedClustersBackupName) is a potentially-recoverable error - fixing the
+// Restore spec resolves it - and must keep using the existing
+// RestorePhaseError retry path, not be mistaken for the terminal
+// generic-resources timestamp mismatch case.
+func Test_processRetrieveRestoreDetails_mismatchErrorIsScopedToExemptTypes(t *testing.T) {
+	ns := "backup-ns-scoped"
+
+	testScheme := runtime.NewScheme()
+	if err := veleroapi.AddToScheme(testScheme); err != nil {
+		t.Fatalf("Error adding velero api: %s", err)
+	}
+	if err := corev1.AddToScheme(testScheme); err != nil {
+		t.Fatalf("Error adding corev1: %s", err)
+	}
+	if err := v1beta1.AddToScheme(testScheme); err != nil {
+		t.Fatalf("Error adding v1beta1: %s", err)
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(createNamespace(ns)).
+		Build()
+
+	acmRestore := createACMRestore("test-restore-scoped", ns).
+		veleroManagedClustersBackupName("does-not-exist").
+		veleroCredentialsBackupName(skipRestoreStr).
+		veleroResourcesBackupName(skipRestoreStr).object
+
+	_, err := processRetrieveRestoreDetails(
+		context.Background(), fakeClient, testScheme,
+		acmRestore, []ResourceType{ManagedClusters},
+	)
+
+	if err == nil {
+		t.Fatalf("expected an error for a missing managed-clusters backup")
+	}
+	if errors.Is(err, errGenericBackupTimestampMismatch) {
+		t.Errorf(
+			"a plain missing/invalid backup name for a non-exempt type " +
+				"must not be tagged as a generic-resources timestamp mismatch",
 		)
 	}
 }
