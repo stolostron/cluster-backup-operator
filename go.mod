@@ -7,7 +7,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 	github.com/openshift/api v0.0.0-20261002115817-f8795cdde518 // release 4.13
-	github.com/openshift/controller-runtime-common v0.0.0-20261008111711-8ec0dc844066
+	github.com/openshift/controller-runtime-common v0.0.0-20261026124434-bdfc411d93cd
 	github.com/openshift/hive/apis v0.0.0-20261022181904-20d13c74d2a9
 	github.com/pkg/errors v0.9.1
 	github.com/robfig/cron/v3 v3.0.1
