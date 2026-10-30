@@ -2010,12 +2010,15 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 		BackupNameVeleroLabel: "name2", // doesn't match CloseToCredsBackup, no creds label
 	}, nil, nil)
 
-	relatedCredentialsBackup := *createBackup("acm-credentials-schedule-"+currentTime, namespace).
+	relatedCredentialsBackup := *createBackup(
+		"acm-credentials-schedule-"+currentTime, namespace,
+	).
 		labels(map[string]string{
 			BackupScheduleTypeLabel: string(Credentials),
 			BackupScheduleNameLabel: "acm-credentials-schedule-" + currentTime,
 		}).
 		phase(veleroapi.BackupPhaseCompleted).
+		creationTimestamp(rightNow).
 		startTimestamp(rightNow).
 		object
 
@@ -2103,13 +2106,21 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 		// Add CredentialsActive backups incrementally for each test case
 		if index == 1 {
 			// Add an old CredentialsActive backup
-			credsOldBackup := *createBackup("acm-credentials-schedule-"+tenHourAgoTime, namespace).
+			credsOldBackup := *createBackup(
+				"acm-credentials-schedule-"+tenHourAgoTime,
+				namespace,
+			).
 				labels(map[string]string{
 					BackupScheduleTypeLabel: string(CredentialsActive),
 					BackupScheduleNameLabel: "acm-credentials-schedule-" + tenHourAgoTime,
 				}).
 				phase(veleroapi.BackupPhaseCompleted).
-				startTimestamp(metav1.NewTime(tenHourAgo)).
+				creationTimestamp(
+					metav1.NewTime(tenHourAgo),
+				).
+				startTimestamp(
+					metav1.NewTime(tenHourAgo),
+				).
 				object
 
 			err := k8sClient1.Create(ctx, &credsOldBackup)
@@ -2121,13 +2132,21 @@ func Test_deleteSecretsForBackupType(t *testing.T) {
 		if index == 2 {
 			// Add both a recent and an old CredentialsActive backup
 			// This should trigger cleanup of secrets from the old backup
-			credsCloseToCredsBackup := *createBackup("acm-credentials-schedule-"+aFewSecondsAgoTime, namespace).
+			credsCloseToCredsBackup := *createBackup(
+				"acm-credentials-schedule-"+aFewSecondsAgoTime,
+				namespace,
+			).
 				labels(map[string]string{
 					BackupScheduleTypeLabel: string(CredentialsActive),
 					BackupScheduleNameLabel: "acm-credentials-schedule-" + aFewSecondsAgoTime,
 				}).
 				phase(veleroapi.BackupPhaseCompleted).
-				startTimestamp(metav1.NewTime(aFewSecondsAgo)).
+				creationTimestamp(
+					metav1.NewTime(aFewSecondsAgo),
+				).
+				startTimestamp(
+					metav1.NewTime(aFewSecondsAgo),
+				).
 				object
 
 			err := k8sClient1.Create(ctx, &credsCloseToCredsBackup)

@@ -2158,6 +2158,453 @@ func Test_retrieveRestoreDetails(t *testing.T) {
 	}
 }
 
+// Test_getVeleroBackupName_nameTimestampMatch validates the name-timestamp
+// based fallback matching in getVeleroBackupName.
+//
+// The schedule controller names all sibling Velero Backup CRs (e.g.
+// acm-resources-schedule-*, acm-resources-generic-schedule-*) using
+// nearly-identical (sub-second) timestamps embedded at creation, even
+// though Status.StartTimestamp — when the Velero backup controller
+// actually begins executing — can lag minutes behind for the wildcard
+// resources-generic backup on large hubs.
+//
+// The fix switches the fallback window from comparing
+// Status.StartTimestamp to comparing each candidate's own name-embedded
+// timestamp (parsed via getBackupTimestamp, same as the target's) so
+// sibling backups from the same schedule cycle match reliably regardless
+// of Velero controller queue depth. Unlike ObjectMeta.CreationTimestamp,
+// the name is preserved byte-for-byte by Velero's backup-sync controller
+// when a backup discovered in object storage is re-created as a local
+// Backup CR (e.g. after a DR failover onto a new/passive hub), so this
+// also keeps working correctly for synced backups, whose
+// CreationTimestamp would otherwise reflect sync time, not the original
+// backup cycle.
+func Test_getVeleroBackupName_nameTimestampMatch(
+	t *testing.T,
+) {
+	ns := "backup-ns"
+
+	tests := []struct {
+		name    string
+		backups []veleroapi.Backup
+		want    string
+		wantErr bool
+	}{
+		buildCustomerScenarioCase(ns),
+		buildTrueNegativeCase(ns),
+		buildNoCandidateBackupsCase(ns),
+		buildIncompleteCandidateCase(ns),
+		buildDelayedScheduleSubmissionCase(ns),
+		buildAdjacentCycleCandidatesCase(ns),
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			runGetBackupNameTestCase(
+				t, ns, tc.backups, tc.want, tc.wantErr,
+			)
+		})
+	}
+}
+
+func buildCustomerScenarioCase(ns string) struct {
+	name    string
+	backups []veleroapi.Backup
+	want    string
+	wantErr bool
+} {
+	nameTs := "20261024130016"
+	genericNameTs := "20261024130017"
+
+	createdAt := time.Date(
+		2026, 10, 24, 13, 0, 16, 0, time.UTC,
+	)
+	genericCreatedAt := time.Date(
+		2026, 10, 24, 13, 0, 17, 0, time.UTC,
+	)
+	genericStartedAt := time.Date(
+		2026, 10, 24, 13, 4, 35, 0, time.UTC,
+	)
+
+	genericName := "acm-resources-generic-schedule-" +
+		genericNameTs
+	backups := []veleroapi.Backup{
+		*createBackup(
+			"acm-resources-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			creationTimestamp(metav1.NewTime(createdAt)).
+			startTimestamp(
+				metav1.NewTime(createdAt.Add(26 * time.Second)),
+			).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(genericName, ns).
+			phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			creationTimestamp(
+				metav1.NewTime(genericCreatedAt),
+			).
+			startTimestamp(
+				metav1.NewTime(genericStartedAt),
+			).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-credentials-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			creationTimestamp(metav1.NewTime(createdAt)).
+			startTimestamp(metav1.NewTime(createdAt)).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+	}
+	return struct {
+		name    string
+		backups []veleroapi.Backup
+		want    string
+		wantErr bool
+	}{
+		name:    "customer scenario: creation ~1s apart, start ~4m19s apart",
+		backups: backups,
+		want:    genericName,
+		wantErr: false,
+	}
+}
+
+func buildTrueNegativeCase(ns string) struct {
+	name    string
+	backups []veleroapi.Backup
+	want    string
+	wantErr bool
+} {
+	nameTs := "20261024130016"
+	oldCreatedAt := time.Date(
+		2026, 10, 24, 12, 0, 5, 0, time.UTC,
+	)
+	oldStartedAt := time.Date(
+		2026, 10, 24, 12, 4, 20, 0, time.UTC,
+	)
+
+	createdAt := time.Date(
+		2026, 10, 24, 13, 0, 16, 0, time.UTC,
+	)
+
+	backups := []veleroapi.Backup{
+		*createBackup(
+			"acm-resources-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			creationTimestamp(metav1.NewTime(createdAt)).
+			startTimestamp(metav1.NewTime(createdAt)).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-resources-generic-schedule-20261024120005",
+			ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			creationTimestamp(
+				metav1.NewTime(oldCreatedAt),
+			).
+			startTimestamp(
+				metav1.NewTime(oldStartedAt),
+			).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-credentials-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			creationTimestamp(metav1.NewTime(createdAt)).
+			startTimestamp(metav1.NewTime(createdAt)).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+	}
+	return struct {
+		name    string
+		backups []veleroapi.Backup
+		want    string
+		wantErr bool
+	}{
+		name:    "true negative: generic from prior cycle (1h apart)",
+		backups: backups,
+		want:    "",
+		wantErr: true,
+	}
+}
+
+func buildNoCandidateBackupsCase(ns string) struct {
+	name    string
+	backups []veleroapi.Backup
+	want    string
+	wantErr bool
+} {
+	nameTs := "20261024130016"
+	createdAt := time.Date(
+		2026, 10, 24, 13, 0, 16, 0, time.UTC,
+	)
+
+	backups := []veleroapi.Backup{
+		*createBackup(
+			"acm-resources-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			creationTimestamp(metav1.NewTime(createdAt)).
+			startTimestamp(metav1.NewTime(createdAt)).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-credentials-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			creationTimestamp(metav1.NewTime(createdAt)).
+			startTimestamp(metav1.NewTime(createdAt)).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+	}
+	return struct {
+		name    string
+		backups []veleroapi.Backup
+		want    string
+		wantErr bool
+	}{
+		name:    "no generic backup candidates at all",
+		backups: backups,
+		want:    "",
+		wantErr: true,
+	}
+}
+
+// buildIncompleteCandidateCase covers a resources-generic backup that is
+// from the same cycle (well within the name-timestamp matching window) as
+// the backup being restored, but is still InProgress. It is not yet a valid
+// Velero restore source and must not be matched - selecting it would
+// create a Velero Restore pointing at a backup with no usable data yet.
+func buildIncompleteCandidateCase(ns string) struct {
+	name    string
+	backups []veleroapi.Backup
+	want    string
+	wantErr bool
+} {
+	nameTs := "20261024130016"
+	genericNameTs := "20261024130017" // 1s later by name - same cycle
+
+	backups := []veleroapi.Backup{
+		*createBackup(
+			"acm-resources-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-resources-generic-schedule-"+genericNameTs, ns,
+		).phase(veleroapi.BackupPhaseInProgress).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-credentials-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+	}
+	return struct {
+		name    string
+		backups []veleroapi.Backup
+		want    string
+		wantErr bool
+	}{
+		name:    "same-cycle candidate still InProgress is not a valid match",
+		backups: backups,
+		want:    "",
+		wantErr: true,
+	}
+}
+
+// buildDelayedScheduleSubmissionCase reproduces a sibling-schedule
+// reconcile delay rather than a backup-execution delay: Velero's own
+// schedule controller reconciles each Schedule independently and names
+// each Backup using the reconcile-time clock, not a shared cron tick (see
+// siblingBackupNameWindow). Under a busy hub, that reconcile can be
+// delayed by more than the old 30s window - here the resources-generic
+// Schedule's cron tick is only actually submitted ~90s after its sibling
+// resources Schedule's - while still being well within the current
+// window and nowhere near the next hourly cycle.
+func buildDelayedScheduleSubmissionCase(ns string) struct {
+	name    string
+	backups []veleroapi.Backup
+	want    string
+	wantErr bool
+} {
+	nameTs := "20261024130016"
+	// 90s later by name - would have missed the old 30s window, but is
+	// still the same logical cycle, not a different hourly tick.
+	genericNameTs := "20261024130146"
+
+	genericName := "acm-resources-generic-schedule-" + genericNameTs
+	backups := []veleroapi.Backup{
+		*createBackup(
+			"acm-resources-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(genericName, ns).
+			phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-credentials-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+	}
+	return struct {
+		name    string
+		backups []veleroapi.Backup
+		want    string
+		wantErr bool
+	}{
+		name:    "delayed sibling schedule submission (~90s, same cycle)",
+		backups: backups,
+		want:    genericName,
+		wantErr: false,
+	}
+}
+
+// buildAdjacentCycleCandidatesCase covers a short veleroSchedule interval
+// (nothing today enforces a minimum - see siblingBackupNameWindow) placing
+// two resources-generic candidates inside the matching window: one from
+// the same cycle (a few seconds after the target) and one from an
+// adjacent, later cycle (still within the window, but clearly the wrong
+// backup). getVeleroBackupName must pick the nearest candidate, not
+// whichever happens to come first in list order.
+func buildAdjacentCycleCandidatesCase(ns string) struct {
+	name    string
+	backups []veleroapi.Backup
+	want    string
+	wantErr bool
+} {
+	nameTs := "20261024130016"
+	nearGenericTs := "20261024130020" // 4s later - the real sibling
+	farGenericTs := "20261024130500"  // 4m44s later - adjacent cycle, still inside the 5m window
+
+	nearGenericName := "acm-resources-generic-schedule-" + nearGenericTs
+
+	backups := []veleroapi.Backup{
+		*createBackup(
+			"acm-resources-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		// Listed first deliberately, so a naive "first match wins" would
+		// pick this wrong, adjacent-cycle candidate instead of the
+		// nearer one below.
+		*createBackup(
+			"acm-resources-generic-schedule-"+farGenericTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(nearGenericName, ns).
+			phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+		*createBackup(
+			"acm-credentials-schedule-"+nameTs, ns,
+		).phase(veleroapi.BackupPhaseCompleted).
+			errors(0).
+			labels(map[string]string{
+				BackupScheduleClusterLabel: "hub1",
+			}).object,
+	}
+	return struct {
+		name    string
+		backups []veleroapi.Backup
+		want    string
+		wantErr bool
+	}{
+		name:    "two in-window candidates from adjacent cycles: nearest wins",
+		backups: backups,
+		want:    nearGenericName,
+		wantErr: false,
+	}
+}
+
+func runGetBackupNameTestCase(
+	t *testing.T,
+	ns string,
+	backups []veleroapi.Backup,
+	wantName string,
+	wantErr bool,
+) {
+	t.Helper()
+	pinnedName := "acm-resources-schedule-20261024130016"
+
+	testScheme := runtime.NewScheme()
+	if err := veleroapi.AddToScheme(testScheme); err != nil {
+		t.Fatalf("velero scheme: %s", err)
+	}
+	if err := corev1.AddToScheme(testScheme); err != nil {
+		t.Fatalf("corev1 scheme: %s", err)
+	}
+
+	objs := make([]client.Object, 0, len(backups)+1)
+	objs = append(objs, createNamespace(ns))
+	for i := range backups {
+		objs = append(objs, &backups[i])
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(objs...).
+		Build()
+
+	veleroBackups := &veleroapi.BackupList{}
+	if err := fakeClient.List(
+		context.Background(), veleroBackups,
+		client.InNamespace(ns),
+	); err != nil {
+		t.Fatalf("list backups: %s", err)
+	}
+
+	gotName, _, err := getVeleroBackupName(
+		context.Background(), fakeClient, ns,
+		ResourcesGeneric, pinnedName, veleroBackups,
+	)
+	if wantErr && err == nil {
+		t.Errorf("expected error but got nil")
+	}
+	if !wantErr && err != nil {
+		t.Errorf("expected no error but got: %v", err)
+	}
+	if gotName != wantName {
+		t.Errorf("name = %q, want %q", gotName, wantName)
+	}
+}
+
 // Test_isOtherResourcesRunning tests detection of other running resource operations.
 //
 // This test validates the logic that determines whether other resource operations

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	v1beta1 "github.com/stolostron/cluster-backup-operator/api/v1beta1"
@@ -599,6 +600,39 @@ func validateStorageSettings(
 	return msg, retry
 }
 
+// siblingBackupNameWindow bounds how far apart two sibling backups'
+// name-embedded timestamps may be and still be considered the same backup
+// cycle, when getVeleroBackupName falls back to a time-window match.
+//
+// ACM creates one long-lived Velero Schedule per backup type (resources,
+// resources-generic, credentials, ...), all sharing the same cron
+// expression, but Velero's own schedule controller reconciles each
+// Schedule independently (verified against Velero v1.18.2's
+// scheduleReconciler.submitBackup, which names each Backup using a
+// per-reconcile time.Now() call, not a shared cron-tick time). Under a
+// busy hub, that independent reconcile can be delayed differently per
+// Schedule, so sibling backups' name timestamps can drift by more than a
+// few seconds even though they were "due" at the same logical tick - in
+// addition to the backup-execution delay this fallback already exists to
+// tolerate (see getVeleroBackupName).
+//
+// 5 minutes comfortably covers realistic schedule-controller reconcile
+// delays while staying well under the minimum practical backup cadence
+// (hourly - see README.md and config/samples/), so it never risks
+// matching backups from two different cycles under that assumption.
+//
+// Nothing currently enforces a minimum veleroSchedule interval (only
+// cron syntax is validated - see parseCronSchedule in schedule.go), so a
+// user-configured interval at or below this window could in principle
+// place backups from two adjacent cycles inside it. getVeleroBackupName
+// mitigates this by preferring the nearest candidate rather than an
+// arbitrary one when more than one falls in range, but does not reject
+// such a short interval outright: doing so would be a separate,
+// user-facing BackupSchedule validation change (with its own
+// backward-compatibility considerations for already-deployed short
+// intervals), not a restore-matching fix.
+const siblingBackupNameWindow = 5 * time.Minute
+
 // getVeleroBackupName returns the name of velero backup will be restored
 //
 //nolint:funlen
@@ -663,7 +697,25 @@ func getVeleroBackupName(
 		if len(exactTimeBackup) != 0 {
 			return exactTimeBackup[0].Name, &exactTimeBackup[0], nil
 		}
-		// next try to find a backup with StartTimestamp in 30s range of the target timestamp
+		// Fall back to a time-window match using each candidate's own
+		// name-embedded timestamp (parsed the same way as the target's,
+		// via getBackupTimestamp), instead of either:
+		//   - Status.StartTimestamp: when Velero's backup controller
+		//     actually began *executing* the backup, which can lag
+		//     minutes behind the backup's creation on large hubs due to
+		//     wildcard resource discovery and queue depth (the original
+		//     bug this fallback exists to work around); or
+		//   - ObjectMeta.CreationTimestamp: when the local Backup CR was
+		//     created on *this* cluster, which Kubernetes resets whenever
+		//     Velero's backup-sync controller re-creates a Backup CR for
+		//     a backup discovered in object storage (e.g. after a DR
+		//     failover onto a new/passive hub) - it no longer identifies
+		//     the original backup cycle once a backup has been synced.
+		// The name-embedded timestamp is assigned once, at the original
+		// backup's creation, and Velero's backup-sync preserves the name
+		// byte-for-byte when re-creating the Backup CR elsewhere, so it
+		// is the only signal that reliably survives both execution-queue
+		// delays and cross-cluster backup sync.
 		targetTimestamp, err := getBackupTimestamp(backupName)
 		if err != nil || targetTimestamp.IsZero() {
 			return "", nil, fmt.Errorf(
@@ -672,18 +724,42 @@ func getVeleroBackupName(
 				string(resourceType),
 			)
 		}
-		timeRangeBackups := filterBackups(veleroBackups.Items[:], func(bkp veleroapi.Backup) bool {
-			if !strings.Contains(bkp.Name, veleroBackupNames[resourceType]) ||
-				bkp.Status.StartTimestamp == nil {
-				return false
-			}
-			if targetTimestamp.Sub(bkp.Status.StartTimestamp.Time).Seconds() > 30 ||
-				bkp.Status.StartTimestamp.Time.Sub(targetTimestamp).Seconds() > 30 {
-				return false // not related, more then 30s apart
-			}
-			return true
-		})
+		timeRangeBackups := filterBackups(
+			veleroBackups.Items[:],
+			func(bkp veleroapi.Backup) bool {
+				if !strings.Contains(
+					bkp.Name, veleroBackupNames[resourceType],
+				) {
+					return false
+				}
+				// Only Completed/PartiallyFailed backups have restorable
+				// data; a New/InProgress/Failed candidate just means this
+				// sibling isn't ready yet this cycle (same as if it
+				// didn't exist), rather than something restorable.
+				if bkp.Status.Phase != veleroapi.BackupPhaseCompleted &&
+					bkp.Status.Phase != veleroapi.BackupPhasePartiallyFailed {
+					return false
+				}
+				candidateTimestamp, ctErr := getBackupTimestamp(bkp.Name)
+				if ctErr != nil || candidateTimestamp.IsZero() {
+					return false
+				}
+				return targetTimestamp.Sub(candidateTimestamp).Abs() <= siblingBackupNameWindow
+			},
+		)
 		if len(timeRangeBackups) != 0 {
+			// Prefer the candidate nearest to the target, not just the
+			// first one in list order (which has no guaranteed
+			// relationship to time). This matters if a veleroSchedule
+			// interval at or below siblingBackupNameWindow ever places
+			// more than one candidate inside the window - see
+			// siblingBackupNameWindow for why that isn't rejected
+			// up front.
+			sort.Slice(timeRangeBackups, func(i, j int) bool {
+				iTs, _ := getBackupTimestamp(timeRangeBackups[i].Name)
+				jTs, _ := getBackupTimestamp(timeRangeBackups[j].Name)
+				return targetTimestamp.Sub(iTs).Abs() < targetTimestamp.Sub(jTs).Abs()
+			})
 			return timeRangeBackups[0].Name, &timeRangeBackups[0], nil
 		}
 		// if no backups within the range, return error
