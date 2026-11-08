@@ -147,5 +147,5 @@ The `local-cluster` namespace is excluded from managed-clusters and resources ba
 ## Further Reading
 
 - [README.md](README.md) — Full design documentation, backup/restore flows, samples, scale numbers
-- [docs/architecture.md](docs/architecture.md) — Controller design, phase state machines, data flow
+- [docs/INTERNAL_ARCHITECTURE.md](docs/INTERNAL_ARCHITECTURE.md) — Controller design, phase state machines, data flow
 - [Official docs](https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes/2.16/html/business_continuity/index)
