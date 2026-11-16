@@ -131,6 +131,20 @@ func TestBuildTLSConfig_AppliesMinTLSVersion(t *testing.T) {
 	}
 }
 
+func TestBuildTLSConfig_AppliesCurvePreferences(t *testing.T) {
+	logger := ctrl.Log.WithName("test")
+
+	profile := *ocinfrav1.TLSProfiles[ocinfrav1.TLSProfileIntermediateType]
+	config := BuildTLSConfig(profile, true, logger)
+
+	tlsConfig := &tls.Config{}
+	applyTLSOptions(config.TLSOpts, tlsConfig)
+
+	if len(tlsConfig.CurvePreferences) == 0 {
+		t.Fatal("BuildTLSConfig() with Intermediate profile should configure CurvePreferences")
+	}
+}
+
 func TestBuildTLSConfig_AppliesCipherSuites(t *testing.T) {
 	logger := ctrl.Log.WithName("test")
 
@@ -308,6 +322,16 @@ func TestProfilesMatch_OneEmptyCiphers(t *testing.T) {
 	}
 	if profilesMatch(a, b) {
 		t.Error("profilesMatch() should return false when one has empty ciphers")
+	}
+}
+
+func TestProfilesMatch_DifferentGroups(t *testing.T) {
+	base := *ocinfrav1.TLSProfiles[ocinfrav1.TLSProfileIntermediateType]
+	withDifferentGroups := base
+	withDifferentGroups.Groups = []ocinfrav1.TLSGroup{ocinfrav1.TLSGroupX25519}
+
+	if profilesMatch(base, withDifferentGroups) {
+		t.Error("profilesMatch() should return false when TLS groups differ")
 	}
 }
 
