@@ -89,6 +89,7 @@ func main() {
 	var renewDeadline time.Duration
 	var retryPeriod time.Duration
 	var enableHTTP2 bool
+	var disableWebhook bool
 
 	flag.StringVar(
 		&metricsAddr,
@@ -121,6 +122,12 @@ func main() {
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the webhook server. "+
 			"HTTP/2 is disabled by default due to CVE-2023-44487.")
+	flag.BoolVar(&disableWebhook, "disable-webhook", false,
+		"If set, the validating webhook server is not started. "+
+			"Intended for local debugging when webhook TLS certificates are not mounted. "+
+			"If the fail-closed Restore ValidatingWebhookConfiguration is installed, keep a "+
+			"reachable in-cluster webhook backend or adjust admission configuration on the test cluster; "+
+			"otherwise Restore create/update admission will fail while only reconcilers run locally.")
 
 	opts := zap.Options{
 		Development: true,
@@ -163,10 +170,17 @@ func main() {
 	setupLog.Info("Using TLS profile for webhook server",
 		"minTLSVersion", tlsProfileSpec.MinTLSVersion,
 		"ciphers", tlsProfileSpec.Ciphers,
+		"groups", tlsProfileSpec.Groups,
 		"profileType", tlsconfig.GetTLSProfileType(tlsProfileSpec))
 
 	// Build the TLS configuration from the profile.
 	tlsConfig := tlsconfig.BuildTLSConfig(tlsProfileSpec, enableHTTP2, setupLog)
+
+	webhookPort := 9443
+	if disableWebhook {
+		webhookPort = -1
+		setupLog.Info("Webhook server disabled via -disable-webhook")
+	}
 
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme: scheme,
@@ -174,7 +188,7 @@ func main() {
 			BindAddress: metricsAddr,
 		},
 		WebhookServer: webhook.NewServer(webhook.Options{
-			Port:    9443,
+			Port:    webhookPort,
 			TLSOpts: tlsConfig.TLSOpts,
 		}),
 		HealthProbeBindAddress: probeAddr,
@@ -273,7 +287,9 @@ func main() {
 				"oldProfileType", tlsconfig.GetTLSProfileType(oldProfile),
 				"newProfileType", tlsconfig.GetTLSProfileType(newProfile),
 				"oldMinTLSVersion", oldProfile.MinTLSVersion,
-				"newMinTLSVersion", newProfile.MinTLSVersion)
+				"newMinTLSVersion", newProfile.MinTLSVersion,
+				"oldGroups", oldProfile.Groups,
+				"newGroups", newProfile.Groups)
 			// Cancel the context to trigger a graceful shutdown of the manager.
 			// The operator will be restarted by the deployment controller.
 			cancel()

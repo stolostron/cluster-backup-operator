@@ -334,12 +334,13 @@ The Konflux pipeline definition lives in `.tekton/` and references a shared pipe
 
 At startup, the operator fetches the TLS security profile from the OpenShift APIServer and applies it to the webhook server:
 
-1. `FetchAPIServerTLSProfile()` — gets min TLS version and cipher suites
-2. `BuildTLSConfig()` — converts profile to `[]func(*tls.Config)` options
+1. `FetchAPIServerTLSProfile()` — gets min TLS version, cipher suites, and TLS groups
+2. `BuildTLSConfig()` — converts profile to `[]func(*tls.Config)` options (including `CurvePreferences` from groups)
 3. HTTP/2 disabled by default (CVE-2023-44487)
-4. `SecurityProfileWatcher` monitors for TLS profile changes and triggers graceful shutdown
+4. `SecurityProfileWatcher` monitors for TLS profile changes (full `TLSProfileSpec`, including groups) and triggers graceful shutdown
 
 ## Key Constants and Labels (backup.go)
+
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
