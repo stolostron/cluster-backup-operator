@@ -341,6 +341,7 @@ At startup, the operator fetches the TLS security profile from the OpenShift API
 
 ## Key Constants and Labels (backup.go)
 
+
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `BackupScheduleClusterLabel` | `cluster.open-cluster-management.io/backup-cluster` | Hub ID on backups |
