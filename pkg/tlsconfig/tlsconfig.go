@@ -38,10 +38,10 @@ type Config struct {
 // It returns a Config containing the TLS options to apply to the webhook server.
 func BuildTLSConfig(tlsProfileSpec ocinfrav1.TLSProfileSpec, enableHTTP2 bool, logger logr.Logger) *Config {
 	// Build the TLS configuration function from the profile.
-	tlsConfigFunc, unsupportedCiphers := openshifttls.NewTLSConfigFromProfile(tlsProfileSpec)
-	if len(unsupportedCiphers) > 0 {
-		logger.Info("Some ciphers from the TLS profile are not supported",
-			"unsupportedCiphers", unsupportedCiphers)
+	tlsConfigFunc, unsupported := openshifttls.NewTLSConfigFromProfile(tlsProfileSpec)
+	if len(unsupported) > 0 {
+		logger.Info("Some TLS profile ciphers or groups are not supported by this runtime",
+			"unsupported", unsupported)
 	}
 
 	// Build webhook TLS options.
@@ -91,6 +91,14 @@ func profilesMatch(a, b ocinfrav1.TLSProfileSpec) bool {
 	// Compare cipher lists - they should be in the same order for known profiles
 	for i, cipher := range a.Ciphers {
 		if cipher != b.Ciphers[i] {
+			return false
+		}
+	}
+	if len(a.Groups) != len(b.Groups) {
+		return false
+	}
+	for i, group := range a.Groups {
+		if group != b.Groups[i] {
 			return false
 		}
 	}
