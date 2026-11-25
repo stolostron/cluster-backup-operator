@@ -609,6 +609,20 @@ func postRestoreActivation(
 			continue
 		}
 
+		// Hive-provisioned clusters never get an MSA secret - prepareImportedClusters unconditionally
+		// skips MSA setup for them. Set the immediate-import annotation for them here instead,
+		// right after we know a reimport is needed, since they rely on Hive's own admin kubeconfig
+		// (not on an MSA-based auto-import-secret) once a reimport is retried. There is nothing
+		// further to do for them in this loop, so move on to the next cluster - without this,
+		// they would always fall through to the "no suitable MSA secret" branch below and log a
+		// misleading message for an expected, by-design state.
+		if isHiveCreatedCluster(ctx, c, clusterName) {
+			if msg := setImmediateImportAnnotation(ctx, c, &managedCluster); msg != "" {
+				activationMessages = append(activationMessages, msg)
+			}
+			continue
+		}
+
 		// Get MSA secrets for this cluster
 		var clusterMSASecrets []corev1.Secret
 		for _, secret := range msaSecrets {
@@ -658,15 +672,12 @@ func postRestoreActivation(
 			activationMessages = append(activationMessages, msg)
 		}
 
-		// Add immediate-import annotation to trigger reimport even with ImportOnly strategy (ACM 2.14+)
-		annotations := managedCluster.GetAnnotations()
-		if annotations == nil {
-			annotations = make(map[string]string)
-			managedCluster.SetAnnotations(annotations)
-		}
-		annotations[immediateImportAnnotation] = ""
-		if err := c.Update(ctx, &managedCluster); err != nil {
-			logger.Error(err, "Error adding immediate-import annotation to ManagedCluster", "name", clusterName)
+		// Non-Hive clusters (Hive clusters already continued above): only signal immediate-import
+		// once we know a usable MSA token is available and we are about to (re)create the
+		// auto-import-secret - avoid forcing a reimport retry for a cluster we have no working
+		// credential for.
+		if msg := setImmediateImportAnnotation(ctx, c, &managedCluster); msg != "" {
+			activationMessages = append(activationMessages, msg)
 		}
 
 		// create an auto-import-secret for this managed cluster
@@ -686,6 +697,40 @@ func postRestoreActivation(
 	logger.Info("exit postRestoreActivation")
 
 	return autoImportSecretsCreated, activationMessages
+}
+
+// setImmediateImportAnnotation sets the import.open-cluster-management.io/immediate-import
+// annotation on the given ManagedCluster to force the import controller to retry importing this
+// cluster even when AutoImportStrategy=ImportOnly would otherwise treat a previously-successful
+// import as permanent and skip it. This is intentionally independent of whether an
+// MSA-based auto-import-secret can be created: Hive-provisioned clusters never go through the MSA
+// path at all (prepareImportedClusters skips MSA setup for them unconditionally), and instead rely
+// on Hive's own admin kubeconfig once a reimport is retried, so this annotation must still be set
+// for them. Returns a human-readable message describing the failure, or "" on success.
+//
+// Uses a merge patch rather than Update: managedCluster was read earlier in the restore flow and
+// may no longer match the current resourceVersion by the time this runs (other controllers
+// actively update ManagedCluster objects, e.g. klusterlet status). A merge patch only touches the
+// annotations field and isn't subject to that resourceVersion conflict.
+func setImmediateImportAnnotation(
+	ctx context.Context,
+	c client.Client,
+	managedCluster *clusterv1.ManagedCluster,
+) string {
+	logger := log.FromContext(ctx)
+	original := managedCluster.DeepCopy()
+	annotations := managedCluster.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+	annotations[immediateImportAnnotation] = ""
+	managedCluster.SetAnnotations(annotations)
+	if err := c.Patch(ctx, managedCluster, client.MergeFrom(original)); err != nil {
+		msg := fmt.Sprintf("Error adding immediate-import annotation to ManagedCluster (%s)", managedCluster.Name)
+		logger.Error(err, msg)
+		return msg
+	}
+	return ""
 }
 
 // create an autoImportSecret using the url and accessToken
